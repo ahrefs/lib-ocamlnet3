@@ -328,7 +328,7 @@ object(self)
 	| Some p ->
 	    ( try
 		while true do
-		  let have_ctrl_data = Netsys.is_readable p in
+		  let have_ctrl_data = Netsys.is_readable `Read_write p in
 		  if not have_ctrl_data then
 		    raise(Unix_error(EAGAIN,"(artificial)",""));
 		  ignore(read p dummy_buf 0 1)
@@ -497,7 +497,7 @@ object(self)
 			| None -> "anonymous" ) ^ 
 		    " <" ^ msg ^ ">")
 
-  method exn_log ?(suppressed = false) ?(to_string = Printexc.to_string)
+  method exn_log ?(suppressed = false) ?(to_string = Netexn.to_string)
                  ?label e =
     if !debug_mode then
       let msg = 
@@ -852,7 +852,7 @@ object(self)
      * we will never find here one.
      *)
     debug_print (lazy (sprintf "abort <group %d, exception %s>"
-			 (Oo.id g) (Printexc.to_string ex)));
+			 (Oo.id g) (Netexn.to_string ex)));
     let action = try Some (List.assoc g abort_tab) with Not_found -> None in
     match action with
 	Some a ->
@@ -872,7 +872,7 @@ object(self)
 		None -> ()
 	      | Some m -> 
 		  debug_print (lazy (sprintf "abort <propagating exception %s>"
-				       (Printexc.to_string m)));
+				       (Netexn.to_string m)));
 		  raise m
 	  end
       | None ->
@@ -1018,7 +1018,18 @@ let exn_log ues =
 let debug_log ues =
   ues # debug_log
 
-let event_system_factory = ref select_event_system
+let default_event_system =
+  match Sys.os_type with
+    | "Win32" ->
+	(fun () ->
+	   let pset = Netsys_pollset_win32.pollset() in
+	   Unixqueue2.pollset_event_system pset
+	)
+    | _ ->
+	(* Later we should also switch to Unixqueue2... *)
+	select_event_system
+
+let event_system_factory = ref default_event_system
 
 let set_event_system_factory f =
   event_system_factory := f

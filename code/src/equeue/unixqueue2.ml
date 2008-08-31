@@ -60,11 +60,11 @@ let pset_set (pset:Netsys_pollset.pollset) fd (i,o,p) =
   if not i && not o && not p then
     pset # remove fd
   else
-    pset # add fd (Netsys.poll_in_events i o p)
+    pset # add fd (Netsys_posix.poll_req_events i o p)
 
 
 let pset_find (pset:Netsys_pollset.pollset) fd =
-  try Netsys.poll_in_triple(pset#find fd)
+  try Netsys_posix.poll_req_triple(pset#find fd)
   with
     | Not_found -> (false,false,false)
 
@@ -150,9 +150,9 @@ object(self)
       List.flatten
 	(List.map
 	   (fun (fd,ev_in,ev_out) ->
-	      let have_input  = Netsys.poll_input_result ev_out in 
-	      let have_output = Netsys.poll_output_result ev_out in 
-	      let have_pri    = Netsys.poll_priority_result ev_out in 
+	      let have_input  = Netsys_posix.poll_rd_result ev_out in 
+	      let have_output = Netsys_posix.poll_wr_result ev_out in 
+	      let have_pri    = Netsys_posix.poll_pri_result ev_out in 
 	      if have_input || have_output || have_pri then (
 		let e1 =
 		  if have_pri then
@@ -404,7 +404,7 @@ object(self)
                         | None -> "anonymous" ) ^
                     " <" ^ msg ^ ">")
 
-  method exn_log ?(suppressed = false) ?(to_string = Printexc.to_string)
+  method exn_log ?(suppressed = false) ?(to_string = Netexn.to_string)
                  ?label e =
     if !debug_mode then
       let msg =
@@ -620,7 +620,7 @@ object(self)
      * we will never find here one.
      *)
     debug_print (lazy (sprintf "abort <group %d, exception %s>"
-                         (Oo.id g) (Printexc.to_string ex)));
+                         (Oo.id g) (Netexn.to_string ex)));
     let action = try Some (List.assoc g abort_tab) with Not_found -> None in
     match action with
       | Some a ->
@@ -640,7 +640,7 @@ object(self)
               | None -> ()
               | Some m ->
                   debug_print (lazy (sprintf "abort <propagating exception %s>"
-                                       (Printexc.to_string m)));
+                                       (Netexn.to_string m)));
                   raise m
           end
       | None ->

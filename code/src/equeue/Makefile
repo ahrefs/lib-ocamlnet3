@@ -1,7 +1,7 @@
 TOP_DIR=../..
 
 PKGNAME = equeue
-OBJECTS = equeue.cmo unixqueue_util.cmo unixqueue.cmo unixqueue2.cmo \
+OBJECTS = equeue.cmo unixqueue_util.cmo unixqueue2.cmo unixqueue.cmo \
           uq_engines.cmo uq_socks5.cmo
 DOBJECTS = equeue.mli unixqueue.mli unixqueue2.mli \
            uq_engines.mli uq_socks5.mli \

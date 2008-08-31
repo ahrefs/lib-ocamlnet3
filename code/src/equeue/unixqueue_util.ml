@@ -77,15 +77,20 @@ type handler =
 exception Abort of (group * exn)
 
 
+let () =
+  Netexn.register_printer
+    (Abort(new group_object, Not_found))
+    (fun e ->
+       match e with
+	 | Abort(g,e') ->
+	     "Unixqueue.Abort(" ^ string_of_int(Oo.id g) ^ 
+	       ", " ^ Netexn.to_string e' ^ ")"
+	 | _ -> assert false
+    )
+
 
 let string_of_fd fd =
-  (* For Unix, the fd is an integer that can be simply casted and printed.
-   * For other systems: don't know
-   *)
-  if Obj.is_int(Obj.repr fd) then
-    string_of_int(Obj.magic fd : int)
-  else
-    "<abstr>"
+  Int64.to_string (Netsys.int64_of_file_descr fd)
 ;;
 
 
@@ -111,7 +116,7 @@ let string_of_event ev =
   | Signal ->
       "Signal"
   | Extra x ->
-      sprintf "Extra(%s)" (Printexc.to_string x)
+      sprintf "Extra(%s)" (Netexn.to_string x)
 ;;
 
 
