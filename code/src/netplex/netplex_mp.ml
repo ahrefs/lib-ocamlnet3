@@ -63,6 +63,11 @@ object(self)
              * Make sure we close [fd_wr] last! This tells the main process
              * that the critical section is over.
              *)
+	    (* FIXME: Closing descriptors may be wrong, because there may
+               be references to descriptors which still exist in the child.
+               Especially check Netsys_pollset_posix.reset.
+               Maybe we should allow to register "atfork" functions?
+	     *)
 	    let l' = List.map Netsys_posix.int_of_file_descr (fd_wr :: l) in
 	    let fd_max = Netsys_posix.sysconf_open_max() in
 	    for k = 3 to fd_max - 1 do  (* Note: Keep 0, 1, 2 open *)
