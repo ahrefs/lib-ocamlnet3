@@ -614,7 +614,7 @@ object(self)
 
 
 
-  method abort g ex =
+  method private abort g ex =
     (* is there an abort action ? *)
     (* Note: If g has been terminated, the abort action is removed. So
      * we will never find here one.
