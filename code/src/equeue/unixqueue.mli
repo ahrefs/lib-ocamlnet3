@@ -289,6 +289,16 @@ val add_close_action :
    * is called.
    *
    * You can only add (set) one close action for every descriptor.
+   *
+   * Of course, the idea is to do [add_close_action ... Unix.close]. Note
+   * that there is a problem with multi-threaded programs, and this construct
+   * must not be used there. In particular, the close action is called from
+   * [remove_resource] or [clear], but it is possible that the event system
+   * is running, so a watched descriptor might be closed. This has undesired
+   * effects. What you should better do is to delay the closure of the
+   * descriptor to a sane moment, e.g. by calling
+   *   {[ Unixqueue.once esys g 0.0 (fun () -> Unix.close fd) ]}
+   * from the close action.
    *)
 
 
