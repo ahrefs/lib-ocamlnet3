@@ -122,6 +122,5 @@ let start() =
 	prerr_endline "RPC: Authentication failed";
 ;;
 
-if Sys.os_type <> "Win32" then
-  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+Netsys_signal.init();
 start();;

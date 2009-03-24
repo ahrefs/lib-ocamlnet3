@@ -17,28 +17,28 @@ object(self)
   method create_mem_mutex() =
     (fun () -> ()), (fun () -> ())
 
+  val mutable forward_signals = true
+    (* This will be disabled in the child processes *)
+
+  method private on_sigterm() =
+    if forward_signals then (
+      List.iter
+	(fun pid ->
+	   try Unix.kill pid Sys.sigterm
+	   with _ -> ()
+	)
+	pid_list;
+      exit 6
+    )
+
   method init() =
-(*
-    (* We do not wait for forked processes, so ignore SIGCHLD: *)
-    Sys.set_signal Sys.sigchld Sys.Signal_ignore
- *)
-
     (* SIGTERM is forwarded to all children: *)
-    Sys.set_signal 
-      Sys.sigterm
-      (Sys.Signal_handle
-	 (fun _ ->
-	    List.iter
-	      (fun pid ->
-		 try Unix.kill pid Sys.sigterm
-		 with _ -> ()
-	      )
-	      pid_list;
-	    exit 6
-	 )
-      );
-
-    ()
+    Netsys_signal.register_handler
+      ~library:"netplex"
+      ~name:"Netplex_mp forwarding to child processes"
+      ~signal:Sys.sigterm
+      ~callback:(fun _ -> self # on_sigterm() )
+      ()
 
   method start_thread : 
            (par_thread -> unit) -> 'x -> string -> logger -> par_thread =
@@ -50,10 +50,8 @@ object(self)
 	  Unix.close fd_rd; Unix.close fd_wr; raise err in
       match r_fork with
 	| 0 ->
-(*
-	    Sys.set_signal Sys.sigchld Sys.Signal_default;
- *)
-	    Sys.set_signal Sys.sigterm Sys.Signal_default;
+	    (* Disable signal forwarding in the child processes: *)
+	    forward_signals <- false;
 
 	    Unix.close fd_rd;
 	    (* We close all file descriptors except those in [l]. Note that

@@ -182,6 +182,5 @@ let start() =
     cmdline_cfg
 ;;
 
-if Sys.os_type <> "Win32" then
-  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+Netsys_signal.init();
 start();;
