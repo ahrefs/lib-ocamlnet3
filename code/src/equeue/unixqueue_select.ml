@@ -106,9 +106,16 @@ object(self)
 
   val mutable sys = lazy (assert false)   (* initialized below *)
   val mutable res = (RID_Map.empty : resource_prop RID_Map.t)
-            (* current resources *)
+            (* current resources. Note that this map may contain terminated
+               groups! These groups are first removed at the next [setup]
+               time.
+	     *)
+  val mutable res_may_contain_terminated_groups = false
   val mutable new_res = (RID_Map.empty : resource_prop RID_Map.t)
-            (* added resources *)
+            (* added resources. Note that this map may contain terminated
+               groups! These groups are first removed at the next [setup]
+               time.
+	     *)
   val mutable close_tab = (Hashtbl.create 10 : (Unix.file_descr, (group * (Unix.file_descr -> unit))) Hashtbl.t)
   val mutable abort_tab = ([] : (group * (group -> exn -> unit)) list)
   val mutable aborting = false
@@ -138,6 +145,23 @@ object(self)
     (* CHECK: Can we do this faster? Only new_res? *)
     let tref = Unix.gettimeofday () in
 
+    if res_may_contain_terminated_groups then (
+      (* This is the right time to remove references to terminated groups
+         from [res]. We don't do it directly in [clear] to avoid bad
+         performance when there are a lot of resources.
+       *)
+      res <- RID_Map.fold 
+	        (fun op (g, tout, tlast) acc ->
+		   if not(g#is_terminating) then 
+		     RID_Map.add op (g, tout, tref) acc
+		   else
+		     acc
+		)
+	        res
+	        RID_Map.empty;
+      res_may_contain_terminated_groups <- false;
+    );
+
     if new_res <> RID_Map.empty then begin
       (* Append new_res to res, and change negative tlast to tref.
        * A negative event time tlast indicates that the
@@ -145,8 +169,12 @@ object(self)
        * the last event has just been seen.
        *)    
       res <- RID_Map.fold 
-                  (fun op (g, tout, tlast) res ->
-		     RID_Map.add op (g, tout, tref) res)
+                  (fun op (g, tout, tlast) acc ->
+		     if not(g#is_terminating) then 
+		       RID_Map.add op (g, tout, tref) acc
+		     else
+		       acc
+		  )
                   new_res
                   res;
       new_res <- RID_Map.empty;
@@ -448,13 +476,13 @@ object(self)
 
   method private exists_resource_nolock op =
     try
-      let _ = RID_Map.find op res in
-      true
+      let (g,_,_) = RID_Map.find op res in
+      not (g#is_terminating)
     with
 	Not_found ->
 	  try
-	    let _ = RID_Map.find op new_res in
-	    true
+	    let (g,_,_) = RID_Map.find op new_res in
+	    not (g#is_terminating)
 	  with
 	      Not_found ->
 		false
@@ -644,7 +672,11 @@ object(self)
       let hlist_all =
 	self#protect
 	  (fun () ->
-	     Hashtbl.fold (fun g hlist l -> (g,hlist) :: l) handlers [])
+	     Hashtbl.fold
+	       (fun g hlist l -> 
+		  if g#is_terminating then l else (g,hlist) :: l)
+	       handlers []
+	  )
 	  ()
       in
       try
@@ -733,6 +765,12 @@ object(self)
     g # terminate();
 
     (* (i) delete all resources of g: *)
+    (* This is no longer done immediately like in the two following assignments
+       that are commented out. Instead, the resources are deleted the next
+       time [setup] is running. Also, the access functions like
+       [exists_resource] hide the existence of terminated groups.
+     *)
+    (*
     res <- RID_Map.fold
              (fun op (g',tout,tlast) res ->
 		if g <> g' then RID_Map.add op (g',tout,tlast) res
@@ -745,8 +783,10 @@ object(self)
 		    else res)
                  new_res
                  RID_Map.empty;
+     *)
+    res_may_contain_terminated_groups <- true;  (* Faster replacement *)
 
-    (* (ii) delete all handlers of g: *)
+    (* (ii) delete all handlers of g: (delayed *)
     self#add_event_nolock (Extra (Term g));
 
     (* (iii) delete special actions of g: *)
