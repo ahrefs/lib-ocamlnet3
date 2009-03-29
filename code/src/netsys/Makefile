@@ -34,7 +34,7 @@ netsys_oothr.cma: netsys_oothr.cmo netsys_oothr_mt.cmo
 netsys_oothr.cmxa: netsys_oothr.cmx netsys_oothr-$(MT_TYPE)
 	extra=""; \
 	if [ -f  netsys_oothr_mt.cmx ]; then extra="netsys_oothr_mt.cmx"; fi; \
-	$(OCAMLOPT) -o netsys_oothr.cmxa -a netsys_oothr.cmx $$(extra)
+	$(OCAMLOPT) -o netsys_oothr.cmxa -a netsys_oothr.cmx $$extra
 
 .PHONY: netsys_oothr-vm netsys_oothr-posix
 netsys_oothr-vm:

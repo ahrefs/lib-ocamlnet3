@@ -587,6 +587,7 @@ object(self)
     let g_found, _, _ = 
       try RID_Table.find res op 
       with Not_found -> RID_Table.find new_res op in
+    if g_found # is_terminating then raise Not_found; (* ADD TO WINK PATCH *)
     if g <> g_found then
       failwith "remove_resource: descriptor belongs to different group";
     RID_Table.remove res op;

@@ -663,6 +663,11 @@ let wait
     List.filter (fun p -> p.p_status = None) pl0 in
   (* Only processes we not yet have waited for are relevant *)
 
+  let select_emulation = lazy (
+    let pset = Netsys_pollset_generic.standard_pollset() in
+    Netsys_pollset_generic.select_emulation pset
+  ) in
+
   if List.exists (fun p -> p.p_abandoned) pl then
     failwith "Shell_sys.wait: cannot wait for abandoned processes";
 
@@ -718,7 +723,7 @@ let wait
 	  let timeout =
 	    if wnohang then 0.0 else check_interval in
 	  let indicate_read, indicate_write, indicate_except =
-	    Unix.select read write except timeout in
+	    (Lazy.force select_emulation) read write except timeout in
 	  if indicate_read = [] && indicate_write = [] && indicate_except = []
 	     && not wnohang
 	  then

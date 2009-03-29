@@ -1860,6 +1860,11 @@ object(self)
 	  | `W32_pipe -> Netsys_win32.pipe_shutdown (get_ph())
 	  | _ -> Unix.close fd
       )
+	(* It is important that Unix.close (or substitute) is the very
+           last action. From here on, a thread running in parallel can
+           allocate this descriptor again, so it is essential that there
+           are no references anymore to it when the old descriptor is closed.
+	 *)
     )
 
   method event_system = esys

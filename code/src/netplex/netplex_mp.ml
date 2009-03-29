@@ -5,9 +5,36 @@
 open Netplex_types
 open Printf
 
-class mp () : Netplex_types.parallelizer =
+
+let close_all_except l = 
+  let fd_max = Netsys_posix.sysconf_open_max() in
+  for k = 3 to fd_max - 1 do  (* Note: Keep 0, 1, 2 open *)
+    if not(List.mem k l) then
+      ( try
+	  Unix.close (Netsys_posix.file_descr_of_int k)
+	with
+	  | _ -> ()
+      )
+  done
+
+
+let close_list l =
+  List.iter
+    (fun fd ->
+      ( try
+	  Unix.close fd
+	with
+	  | _ -> ()
+      )
+    )
+    l
+
+
+let pid_list = ref []
+
+
+class mp ?(keep_fd_open=false) () : Netplex_types.parallelizer =
 object(self)
-  val mutable pid_list = []
 
   method ptype = `Multi_processing
 
@@ -27,7 +54,7 @@ object(self)
 	   try Unix.kill pid Sys.sigterm
 	   with _ -> ()
 	)
-	pid_list;
+	!pid_list;
       exit 6
     )
 
@@ -41,8 +68,8 @@ object(self)
       ()
 
   method start_thread : 
-           (par_thread -> unit) -> 'x -> string -> logger -> par_thread =
-    fun f l srv_name logger ->
+           (par_thread -> unit) -> 'x -> 'y -> string -> logger -> par_thread =
+    fun f l_close l_share srv_name logger ->
       let (fd_rd, fd_wr) = Unix.pipe() in
       let r_fork = 
 	try Unix.fork()
@@ -54,28 +81,24 @@ object(self)
 	    forward_signals <- false;
 
 	    Unix.close fd_rd;
-	    (* We close all file descriptors except those in [l]. Note that
+	    Netsys_posix.run_post_fork_handlers();
+
+	    (* We close all file descriptors except those in [l_share]. Note that
              * this is important for proper function of the main process
              * (e.g. to detect EOF of file descriptors).
              *
              * Make sure we close [fd_wr] last! This tells the main process
              * that the critical section is over.
              *)
-	    (* FIXME: Closing descriptors may be wrong, because there may
-               be references to descriptors which still exist in the child.
-               Especially check Netsys_pollset_posix.reset.
-               Maybe we should allow to register "atfork" functions?
-	     *)
-	    let l' = List.map Netsys_posix.int_of_file_descr (fd_wr :: l) in
-	    let fd_max = Netsys_posix.sysconf_open_max() in
-	    for k = 3 to fd_max - 1 do  (* Note: Keep 0, 1, 2 open *)
-	      if not(List.mem k l') then
-		( try
-		    Unix.close (Netsys_posix.file_descr_of_int k)
-		  with
-		    | _ -> ()
-		)
-	    done;
+
+	    if keep_fd_open then
+	      close_list l_close
+	    else (
+	      let l_share' = 
+		List.map Netsys_posix.int_of_file_descr (fd_wr :: l_share) in
+	      close_all_except l_share';
+	    );
+
 	    Unix.close fd_wr;
 	    let pid = Unix.getpid() in
 	    let arg =
@@ -99,7 +122,7 @@ object(self)
 	      (* CHECK: Not sure whether we want to run onexit handlers *)
 
       | pid ->
-	  pid_list <- pid :: pid_list;
+	  pid_list := pid :: !pid_list;
 	  (* Wait until the child completes the critical section: *)
 	  Unix.close fd_wr;
 	  ignore (Netsys.restart
@@ -118,8 +141,8 @@ object(self)
 		let cnt = ref 0 in
 
 		let remove() =
-		  pid_list <- 
-		    List.filter (fun p -> p <> pid) pid_list in
+		  pid_list :=
+		    List.filter (fun p -> p <> pid) !pid_list in
 
 		let watch() =
 		  incr cnt;
@@ -189,4 +212,7 @@ let the_mp = lazy(
   par
 )
 
-let mp () = Lazy.force the_mp
+let mp ?keep_fd_open () = 
+  Lazy.force the_mp;
+  new mp ?keep_fd_open()
+
