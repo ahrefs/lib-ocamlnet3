@@ -24,14 +24,15 @@ OTHER_MAPPINGS = mappings/cp*.unimap \
 
 PMAP = netmappings_iso.pmap netmappings_other.pmap netmappings_jp.pmap netmappings_kr.pmap
 
-# netconversion.cmx: Allow cross-library inlining for this module
+# netconversion.cmx, netbuffer.cmx: 
+# Allow cross-library inlining for these modules
 
 INSTALL_EXTRA = netmappings_iso.cmo   netmappings_iso.cmx   netmappings_iso.o  \
 	        netmappings_jp.cmo   netmappings_jp.cmx   netmappings_jp.o  \
 	        netmappings_kr.cmo   netmappings_kr.cmx   netmappings_kr.o  \
 	        netmappings_other.cmo netmappings_other.cmx netmappings_other.o\
 		netmappings_min.cmo  netmappings_min.cmx netmappings_min.o \
-		netconversion.cmx \
+		netconversion.cmx netbuffer.cmx \
 		netstring_top.cmo \
 		netdb-packlist \
 		dllnetaccel_c.* netaccel_link.cmo
