@@ -413,47 +413,36 @@ let parse_document ?(dtd = html40_dtd)
 
     let rec parse_atts_lookahead next =
       match next with
-	| Relement  -> ( [], false )
-	| Relement_empty  -> ( [], true )
+	  Relement -> []
       	| Name n ->
-	    ( match next_no_space false with
+	    begin match next_no_space false with
 	      	Is ->
-		  ( match next_no_space true with
+		  begin match next_no_space true with
 		      Name v ->
-			let toks, is_empty =
-			  parse_atts_lookahead (next_no_space false) in
-		      	( (String.lowercase n, v) :: toks, is_empty )
+		      	(String.lowercase n, v) ::
+			parse_atts_lookahead (next_no_space false)
 		    | Literal v ->
-			let toks, is_empty =
-			  parse_atts_lookahead (next_no_space false) in
-		      	( (String.lowercase n,v) :: toks, is_empty )
+		      	(String.lowercase n,v) ::
+			parse_atts_lookahead (next_no_space false)
 		    | Eof ->
 		      	raise End_of_scan
 		    | Relement ->
 		      	(* Illegal *)
-		      	( [], false )
-		    | Relement_empty ->
-		      	(* Illegal *)
-		      	( [], true )
+		      	[]
 		    | _ ->
 		      	(* Illegal *)
 		      	parse_atts_lookahead (next_no_space false)
-		  )
+		  end
 	      | Eof ->
 		  raise End_of_scan
 	      | Relement ->
 		  (* <tag name> <==> <tag name="name"> *)
-		  ( [ String.lowercase n, String.lowercase n ], false)
-	      | Relement_empty ->
-		  (* <tag name> <==> <tag name="name"> *)
-		  ( [ String.lowercase n, String.lowercase n ], true)
+		  [ String.lowercase n, String.lowercase n ]
 	      | next' ->
 		  (* assume <tag name ... > <==> <tag name="name" ...> *)
-		  let toks, is_empty = 
-		    parse_atts_lookahead next' in
-		  ( ( String.lowercase n, String.lowercase n ) :: toks,
-		    is_empty)
-	    )
+		  ( String.lowercase n, String.lowercase n ) ::
+		  parse_atts_lookahead next'
+	    end
       	| Eof ->
 	    raise End_of_scan
       	| _ ->
@@ -466,7 +455,7 @@ let parse_document ?(dtd = html40_dtd)
   let rec parse_special name =
     (* Parse until </name> *)
     match scan_special buf with
-      | Lelementend n ->
+	Lelementend n ->
 	  if String.lowercase n = name then
 	    ""
 	  else
@@ -481,9 +470,9 @@ let parse_document ?(dtd = html40_dtd)
   in
 
   let rec skip_element() =
-    (* Skip until ">" (or "/>") *)
+    (* Skip until ">" *)
     match scan_element buf with
-      | Relement | Relement_empty ->
+	Relement ->
 	  ()
       | Eof ->
 	  raise End_of_scan
@@ -494,7 +483,7 @@ let parse_document ?(dtd = html40_dtd)
   let rec parse_next() =
     let t = scan_document buf in
     match t with
-      | Lcomment ->
+	Lcomment ->
 	  let comment = parse_comment buf in
 	  if return_comments then
 	    current_subs := (Element("--",["contents",comment],[])) :: !current_subs;
@@ -514,50 +503,37 @@ let parse_document ?(dtd = html40_dtd)
 	  let (_, model) = model_of name in
 	  ( match model with
 		`Empty ->
-		  let atts, _ = parse_atts() in
+		  let atts = parse_atts() in
 		  unwind_stack name;
 		  current_subs := (Element(name, atts, [])) :: !current_subs;
 		  parse_next()
 	      | `Special ->
-		  let atts, is_empty = parse_atts() in
+		  let atts = parse_atts() in
 		  unwind_stack name;
-		  let data = 
-		    if is_empty then 
-		      ""
-		    else (
-		      let d = parse_special name in
-		      (* Read until ">" *)
-		      skip_element();
-		      d
-		    ) in
+		  let data = parse_special name in
+		  (* Read until ">" *)
+		  skip_element();
 		  current_subs := (Element(name, atts, [Data data])) :: !current_subs;
 		  parse_next()
 	      | _ ->
-		  let atts, is_empty = parse_atts() in
+		  let atts = parse_atts() in
 		  (* Unwind the stack until we find an element which can be
 		   * the parent of the new element:
 		   *)
 		  unwind_stack name;
-		  if is_empty then (
-		    (* Simple case *)
-		    current_subs := (Element(name, atts, [])) :: !current_subs;
-		  )
-		  else (
-		    (* Push the current element on the stack, and this element
-		     * becomes the new current element:
-		     *)
-		    let new_excl = exclusions_of name in
-		    Stack.push 
-		      (!current_name, 
-		       !current_atts, !current_subs, !current_excl)
-		      stack;
-		    current_name := name;
-		    current_atts := atts;
-		    current_subs := [];
-		    List.iter
-		      (fun xel -> current_excl := Strset.add xel !current_excl)
-		      new_excl;
-		  );
+		  (* Push the current element on the stack, and this element
+		   * becomes the new current element:
+		   *)
+		  let new_excl = exclusions_of name in
+		  Stack.push 
+		    (!current_name, !current_atts, !current_subs, !current_excl)
+		    stack;
+		  current_name := name;
+		  current_atts := atts;
+		  current_subs := [];
+		  List.iter
+		    (fun xel -> current_excl := Strset.add xel !current_excl)
+		    new_excl;
 		  parse_next()
 	  )
       | Cdata data ->
@@ -639,86 +615,40 @@ let parse ?dtd ?return_declarations ?return_pis ?return_comments ch =
   parse_document ?dtd ?return_declarations ?return_comments ?return_pis buf
 ;;  
 
-
-type xmap_value =
-  | Xmap_attribute of string * string * string (* elname, attname, attval *)
-  | Xmap_data of string option * string        (* elname, pcdata *)
-
-let rec xmap f surelem doc =
-  (* surdoc: surrounding element *)
+let rec map f doc =
   match doc with
-    | Element(name,atts,subdocs) ->
+      Element(name,atts,subdocs) ->
 	(match name with
-	   | "!"
+	     "!"
 	   | "?"
 	   | "--" ->
-	       Element(name,atts,xmap_list f None subdocs)
+	       Element(name,atts,map_list f subdocs)
 	   | _ ->
 	       let atts' =
 		 List.map
 		   (fun (aname,aval) ->
-		      aname, f (Xmap_attribute(name, aname, aval))
+		      aname, f aval
 		   )
 		   atts
 	       in
-	       let subdocs' =  xmap_list f (Some name) subdocs in
+	       let subdocs' =  map_list f subdocs in
 	       Element(name,atts',subdocs')
 	)
     | Data s ->
-	Data(f (Xmap_data(surelem,s)))
-and xmap_list f surelem l = List.map (xmap f surelem) l;;
-
-let map_list f l =
-  xmap_list
-    (function
-       | Xmap_attribute(_, _, v) -> f v
-       | Xmap_data(_, v) -> f v
-    )
-    None
-    l
+	Data(f s)
+and map_list f l = List.map (map f) l;;
 
 
-let encode ?(enc = `Enc_iso88591) ?(prefer_name = true) ?(dtd = html40_dtd)
-           dl = 
-  let enc_string =
-    Netencoding.Html.encode 
-      ~in_enc:enc ~out_enc:`Enc_usascii ~prefer_name () in
-  let dtd_hash = hashtbl_from_alist dtd in
-  let enc_node = 
-    function
-      | Xmap_attribute(_, _, v) -> enc_string v
-      | Xmap_data(None, v) -> enc_string v
-      | Xmap_data(Some el, v) ->
-	  let is_special =
-	    try snd(Hashtbl.find dtd_hash el) = `Special
-	    with Not_found -> false in
-	  if is_special then
-	    v
-	  else
-	    enc_string v in
-  xmap_list enc_node None dl
+let encode ?(enc = `Enc_iso88591) ?(prefer_name = true) dl = 
+  let enc_string = 
+    Netencoding.Html.encode ~in_enc:enc ~out_enc:`Enc_usascii ~prefer_name () in
+  map_list enc_string dl
 ;;
 
-let decode ?(enc = `Enc_iso88591) ?subst ?entity_base ?lookup 
-           ?(dtd = html40_dtd)
-           dl = 
+let decode ?(enc = `Enc_iso88591) ?subst ?entity_base ?lookup dl = 
   let dec_string =
-    Netencoding.Html.decode 
-      ~in_enc:enc ~out_enc:enc ?subst ?entity_base ?lookup () in
-  let dtd_hash = hashtbl_from_alist dtd in
-  let dec_node = 
-    function
-      | Xmap_attribute(_, _, v) -> dec_string v
-      | Xmap_data(None, v) -> dec_string v
-      | Xmap_data(Some el, v) ->
-	  let is_special =
-	    try snd(Hashtbl.find dtd_hash el) = `Special
-	    with Not_found -> false in
-	  if is_special then
-	    v
-	  else
-	    dec_string v in
-  xmap_list dec_node None dl
+    Netencoding.Html.decode ~in_enc:enc ~out_enc:enc ?subst ?entity_base ?lookup () in
+  map_list dec_string dl
 ;;
 
 

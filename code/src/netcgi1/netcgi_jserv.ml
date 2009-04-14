@@ -420,14 +420,8 @@ let jvm_emu_main est_server =
    * Note that for SIGCHLD an empty handler has a different meaning than
    * ignoring the signal!
    *)
-  (* Now using the Netsys_signal framework: *)
-  Netsys_signal.register_handler
-    ~library:"netcgi1"
-    ~name:"Jserv emulation"
-    ~signal:Sys.sigchld
-    ~callback:(fun _ -> ())
-    ();
-  (* Note: the handler for sigpipe is set by Netsys_signal anyway *)
+  ignore(Sys.signal Sys.sigpipe Sys.Signal_ignore);
+  ignore(Sys.signal Sys.sigchld (Sys.Signal_handle (fun _ -> ())));
 
   est_server props auth addr port
 ;;

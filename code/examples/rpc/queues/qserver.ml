@@ -1176,15 +1176,12 @@ let main() =
 
   List.iter
     (fun signal ->
-       Netsys_signal.register_handler
-	 ~signal
-	 ~name:"Qserver"
-	 ~callback:(fun _ ->
-		      Unixqueue.remove_resource esys g (Unixqueue.Wait w);
-		      Rpc_server.stop_server server;
-		   )
-	 ()
-    )
+      Sys.set_signal
+        signal
+        (Sys.Signal_handle (fun _ ->
+			      Unixqueue.remove_resource esys g (Unixqueue.Wait w);
+			      Rpc_server.stop_server server;
+			   )))
     [ Sys.sighup; Sys.sigint; Sys.sigquit; Sys.sigterm ];
 
   Sys.set_signal

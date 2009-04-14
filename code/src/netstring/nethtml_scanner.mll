@@ -16,8 +16,7 @@
     | Mpi       (* within processing instruction *)
     | Lelement of string
     | Lelementend of string
-    | Relement  (* > *)
-    | Relement_empty   (* />, for XML compat *)
+    | Relement
     | Cdata of string 
     | Space of int
     | Name of string
@@ -113,8 +112,6 @@ and scan_pi = parse
 and scan_element = parse
   | ">"
       { Relement }
-  | "/>"
-      { Relement_empty }
   | ws+
       { Space (String.length (Lexing.lexeme lexbuf)) }
   | name
@@ -135,8 +132,6 @@ and scan_element = parse
 and scan_element_after_Is = parse
   | ">"
       { Relement }
-  | "/>"
-      { Relement_empty }
   | ws+
       { Space (String.length (Lexing.lexeme lexbuf)) }
   | '"' 

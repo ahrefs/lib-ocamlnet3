@@ -50,12 +50,10 @@ let () =
 
 (* If the socket connection is closed on the client end, the SIGPIPE
    signal will be triggered, aborting the program.  We want to see the
-   unix error [EPIPE], so disable the signal (if it exists for the OS)
-   The Netsys_signal framework disables this signal by default, so we
-   simply initialize the framework.
-.  *)
+   unix error [EPIPE], so disable the signal (if it exists for the OS).  *)
 let () =
-  Netsys_signal.init()
+  try Sys.set_signal Sys.sigpipe Sys.Signal_ignore
+  with Invalid_argument _ -> ()
 
 
 (* Useful functions

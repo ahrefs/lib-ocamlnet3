@@ -56,3 +56,7 @@ val unlock : unit -> unit
    * Lazy.force the values found in to_unicode and from_unicode.
    * In single-threaded applications: a NO-OP
    *)
+
+
+val init_mt : (unit -> unit) -> (unit -> unit) -> unit
+  (* Internally used; see netstring_mt.ml *)

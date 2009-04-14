@@ -36,5 +36,5 @@ let start() =
     cmdline_cfg
 ;;
 
-Netsys_signal.init();
+Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
 start();;

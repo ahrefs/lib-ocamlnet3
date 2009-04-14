@@ -47,7 +47,7 @@ type event =
   | Extra of exn
 
 type resource_prop =
-    group * float * float ref
+    group * float * float
     (* group, timeout value, time of last event *)
 
 
@@ -153,5 +153,3 @@ let set_debug_mode b =
   Equeue.set_debug_mode b
 ;;
 
-let () =
-  Netsys_signal.init()
