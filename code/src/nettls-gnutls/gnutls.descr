@@ -328,6 +328,9 @@ let types =
                           "GNUTLS_E_|ILLEGAL_PARAMETER";
                           "GNUTLS_E_|UNIMPLEMENTED_FEATURE";
                         ];
+    "str_datum", `Manual("type str_datum = string");
+    "str_datum_p", `Manual("type str_datum_p = string");
+    "const_str_datum_p", `Manual("type const_str_datum_p = string");
   ]
 
 (* standard parser:
@@ -338,14 +341,16 @@ let types =
 (* abbrevs:
     - uint = unsigned int
     - ztstr = zero-terminated string
-    - ztlist = zero-terminated list
-    - array = array of something
+    - <elt> ztlist = zero-terminated list (of ints or enums)
+    - <elt> array = array of something
     - array_size
-    - bigarray = a data buffer as bigarray
-    - bigarray_size = the size of the bigarray
-    - bigarray_datum = a gnutls_datum_t * as bigarray
+    - <id> bigarray = a data buffer as bigarray
+    - <id> bigarray_size = the size of the bigarray
+    - (bigarray_datum = a gnutls_datum_t * as bigarray)
     - str_datum = a gnutls_datum_t * as string
     - file_descr
+
+   Output values are not deallocated by the generated wrapper code.
  *)
 
 let standard decl =
@@ -353,9 +358,16 @@ let standard decl =
   let params1 =
     List.map (fun (n,ty) -> (n, `In, ty)) params in
   (name,
-   params1 @ [ "result", `Return_ignore, result ],
+   params1 @ 
+     [ "result", 
+       (if result = "void" || result = "error_code" then
+          `Return_ignore 
+        else `Return
+       ), 
+       result
+     ],
    if result = "error_code" || has_prefix ~prefix:"error_code/" result then
-    [ `Post("net_gnutls_error_check(result);") ]
+    [ `Post("net_gnutls_error_check(RESULT);") ]
    else
      []
   )
@@ -365,16 +377,21 @@ let standard_blocking decl =
   (name, params, directives @ [ `Blocking ])
 
 let functions =
-  [ (* gnutls_global_init is called on first use *)
+  [ standard
+      "void gnutls_global_init()";
 
     standard
       "bool gnutls_error_is_fatal(error_code error)";    
     standard
-      "ztstr gnutls_strerror(error_code error)";
+      "const ztstr gnutls_strerror(error_code error)";
     standard
-      "ztstr gnutls_strerror_name(error_code error)";
-    standard
-      "ztstr gnutls_check_version(null req_version)";
+      "const ztstr gnutls_strerror_name(error_code error)";
+
+    "gnutls_check_version",
+    [ "req_version", `In_ignore, "const_charp";
+      "result", `Return, "const ztstr"
+    ],
+    [ `Pre("req_version__c = NULL;") ];
 
     (**********************************************************************)
     (* Logging                                                            *)
@@ -392,7 +409,7 @@ let functions =
       "flags",   `In,  "gnutls_init_flags";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO IMPORTANT: gnutls_credentials_set *)
 
@@ -409,12 +426,12 @@ let functions =
       "status", `Out, "gnutls_certificate_status_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     "gnutls_certificate_get_peers",
     [ "session", `In, "gnutls_session_t";
-      "list_size", `Out, "array_size";
-      "result", `Out, "str_datum array";
+      "list_size", `Out_ignore, "array_size";
+      "result", `Return, "const str_datum array";
     ],
     [];
 
@@ -429,10 +446,10 @@ let functions =
       "error_code gnutls_rehandshake (gnutls_session_t session)";
     standard_blocking
       "error_code/uint gnutls_record_send \
-          (gnutls_session_t session, bigarray data, bigarray_size data_size)";
+          (gnutls_session_t session, 1 bigarray data, 1 bigarray_size data_size)";
     standard_blocking
       "error_code/uint gnutls_record_recv \
-          (gnutls_session_t session, bigarray data, bigarray_size data_size)";
+          (gnutls_session_t session, 1 bigarray data, 1 bigarray_size data_size)";
     (* TODO: gnutls_record_recv_seq *)
 
     standard
@@ -450,9 +467,9 @@ let functions =
     standard
       "gnutls_alert_description_t gnutls_alert_get (gnutls_session_t session)";
     standard
-      "ztstr gnutls_alert_get_name (gnutls_alert_description_t alert)";
+      "const ztstr gnutls_alert_get_name (gnutls_alert_description_t alert)";
     standard
-      "ztstr gnutls_alert_get_strname (gnutls_alert_description_t alert)";
+      "const ztstr gnutls_alert_get_strname (gnutls_alert_description_t alert)";
     standard_blocking
       "error_code gnutls_alert_send (gnutls_session_t session, \
              gnutls_alert_level_t level, \
@@ -462,7 +479,7 @@ let functions =
           (gnutls_session_t session, int err)";
     "gnutls_error_to_alert",
     [ "error", `In, "error_code";
-      "level", `Out, "gnutls_alert_level_t";
+      "level", `Out, "int/gnutls_alert_level_t";
       "result", `Return, "gnutls_alert_description_t";
     ],
     [];
@@ -474,12 +491,12 @@ let functions =
     "gnutls_priority_init",
     [ "prority_cache", `Out, "gnutls_priority_t";
       "priorities", `In, "ztstr";
-      "err_pos", `In_ignore, "char **";
+      "err_pos", `In_ignore, "const char **";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Declare("char *err_pos_dummy;");
-      `Pre("err_pos = &err_pos_dummy;");
-      `Post("net_gnutls_error_check(result);")
+    [ `Declare("const char *err_pos_dummy;");
+      `Pre("err_pos__c = &err_pos_dummy;");
+      `Post("net_gnutls_error_check(RESULT);")
     ];
 
     "gnutls_priority_get_cipher_suite_index",
@@ -488,7 +505,7 @@ let functions =
       "sidx", `Out, "uint";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_priority_set \
@@ -509,7 +526,7 @@ let functions =
                              (gnutls_pk_algorithm_t algo, \
                               uint bits)";
     standard
-      "ztstr gnutls_sec_param_get_name (gnutls_sec_param_t param)";
+      "const ztstr gnutls_sec_param_get_name (gnutls_sec_param_t param)";
 
 
     (**********************************************************************)
@@ -519,23 +536,23 @@ let functions =
     standard
       "error_code gnutls_session_set_data \
            (gnutls_session_t session, \
-            bigarray session_data, bigarray_size session_data_size)";
+            1 bigarray session_data, 1 bigarray_size session_data_size)";
 
     "gnutls_session_get_data",
     [ "session", `In, "gnutls_session_t";
-      "session_data", `In, "bigarray";
-      "session_data_size", `In_out, "bigarray_size";
+      "session_data", `In, "1 bigarray";
+      "session_data_size", `In_out, "1 bigarray_size";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     "gnutls_session_get_id",
     [ "session", `In, "gnutls_session_t";
-      "session_data", `In, "bigarray";
-      "session_data_size", `In_out, "bigarray_size";
+      "session_data", `In, "1 bigarray";
+      "session_data_size", `In_out, "1 bigarray_size";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "bool gnutls_session_is_resumed (gnutls_session_t session)";
@@ -563,14 +580,14 @@ let functions =
     [ "key", `Out, "str_datum";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_session_ticket_enable_client \
            (gnutls_session_t session)";
     standard
       "error_code gnutls_session_ticket_enable_server \
-           (gnutls_session_t session, str_datum key)";
+           (gnutls_session_t session, str_datum_p key)";
 
     (**********************************************************************)
     (* PRF                                                                *)
@@ -579,16 +596,16 @@ let functions =
     standard
       "error_code gnutls_prf \
            (gnutls_session_t session, \
-            bigarray_size_1 label_size, bigarray_1 label, \
+            1 bigarray_size label_size, 1 bigarray label, \
             bool server_random_first, \
-            bigarray_size_2 extra_size, bigarray_2 extra, \
-            bigarray_size_3 outsize, bigarray_3 out)";
+            2 bigarray_size extra_size, 2 bigarray extra, \
+            3 bigarray_size outsize, 3 bigarray out)";
     standard
       "error_code gnutls_prf_raw \
            (gnutls_session_t session, \
-            bigarray_size_1 label_size, bigarray_1 label, \
-            bigarray_size_2 seed_size, bigarray_2 seed,  \
-            bigarray_size_3 outsize, bigarray_3 out)";
+            1 bigarray_size label_size, 1 bigarray label, \
+            2 bigarray_size seed_size, 2 bigarray seed,  \
+            3 bigarray_size outsize, 3 bigarray out)";
 
     (**********************************************************************)
     (* Channel binding                                                    *)
@@ -600,14 +617,14 @@ let functions =
       "cb", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     (**********************************************************************)
     (* Elliptic curves                                                    *)
     (**********************************************************************)
 
     standard
-      "ztstr gnutls_ecc_curve_get_name (gnutls_ecc_curve_t curve)";
+      "const ztstr gnutls_ecc_curve_get_name (gnutls_ecc_curve_t curve)";
     standard
       "int gnutls_ecc_curve_get_size (gnutls_ecc_curve_t curve)";
     standard
@@ -635,19 +652,19 @@ let functions =
     standard
       "uint gnutls_mac_get_key_size (gnutls_mac_algorithm_t algorithm)";
     standard
-      "ztstr gnutls_cipher_get_name (gnutls_cipher_algorithm_t algorithm)";
+      "const ztstr gnutls_cipher_get_name (gnutls_cipher_algorithm_t algorithm)";
     standard
-      "ztstr gnutls_mac_get_name (gnutls_mac_algorithm_t algorithm)";
+      "const ztstr gnutls_mac_get_name (gnutls_mac_algorithm_t algorithm)";
     standard
-      "ztstr gnutls_compression_get_name (gnutls_compression_method_t algo)";
+      "const ztstr gnutls_compression_get_name (gnutls_compression_method_t algo)";
     standard
-      "ztstr gnutls_kx_get_name (gnutls_kx_algorithm_t algorithm)";
+      "const ztstr gnutls_kx_get_name (gnutls_kx_algorithm_t algorithm)";
     standard
-      "ztstr gnutls_certificate_type_get_name (gnutls_certificate_type_t ty)";
+      "const ztstr gnutls_certificate_type_get_name (gnutls_certificate_type_t ty)";
     standard
-      "ztstr gnutls_pk_get_name (gnutls_pk_algorithm_t algorithm)";
+      "const ztstr gnutls_pk_get_name (gnutls_pk_algorithm_t algorithm)";
     standard
-      "ztstr gnutls_sign_get_name (gnutls_sign_algorithm_t algorithm)";
+      "const ztstr gnutls_sign_get_name (gnutls_sign_algorithm_t algorithm)";
     standard
       "gnutls_mac_algorithm_t gnutls_mac_get_id(ztstr name)";
     standard
@@ -665,28 +682,28 @@ let functions =
     standard
       "gnutls_sign_algorithm_t gnutls_sign_get_id(ztstr name)";
     standard
-      "gnutls_cipher_algorithm_t ztlist gnutls_cipher_list ()";
+      "const gnutls_cipher_algorithm_t ztlist gnutls_cipher_list ()";
     standard
-      "gnutls_mac_algorithm_t ztlist gnutls_mac_list()";
+      "const gnutls_mac_algorithm_t ztlist gnutls_mac_list()";
     standard
-      "gnutls_compression_method_t ztlist gnutls_compression_list()";
+      "const gnutls_compression_method_t ztlist gnutls_compression_list()";
     standard
-      "gnutls_protocol_t ztlist gnutls_protocol_list()";
+      "const gnutls_protocol_t ztlist gnutls_protocol_list()";
     standard
-      "gnutls_certificate_type_t ztlist gnutls_certificate_type_list()";
+      "const gnutls_certificate_type_t ztlist gnutls_certificate_type_list()";
     standard
-      "gnutls_kx_algorithm_t ztlist gnutls_kx_list()";
+      "const gnutls_kx_algorithm_t ztlist gnutls_kx_list()";
     standard
-      "gnutls_pk_algorithm_t ztlist gnutls_pk_list()";
+      "const gnutls_pk_algorithm_t ztlist gnutls_pk_list()";
     standard
-      "gnutls_sign_algorithm_t ztlist gnutls_sign_list()";
+      "const gnutls_sign_algorithm_t ztlist gnutls_sign_list()";
     standard
       "gnutls_protocol_t gnutls_protocol_get_version \
            (gnutls_session_t session)";
     standard
-      "ztstr gnutls_protocol_get_name (gnutls_protocol_t version)";
+      "const ztstr gnutls_protocol_get_name (gnutls_protocol_t version)";
     standard
-      "ztstr gnutls_cipher_suite_get_name \
+      "const ztstr gnutls_cipher_suite_get_name \
            (gnutls_kx_algorithm_t kx_algorithm, \
             gnutls_cipher_algorithm_t cipher_algorithm, \
             gnutls_mac_algorithm_t mac_algorithm)";
@@ -720,7 +737,7 @@ let functions =
       "algo", `Out, "gnutls_sign_algorithm_t";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
 
     standard
@@ -737,22 +754,22 @@ let functions =
       "int gnutls_server_name_set \
            (gnutls_session_t session, \
             gnutls_server_name_type_t type, \
-            bigarray name, bigarray_size name_length)";
+            1 bigarray name, 1 bigarray_size name_length)";
     
     "gnutls_server_name_get",
     [ "session", `In, "gnutls_session_t";
-      "data", `In, "bigarray";
-      "data_length", `In_out, "bigarray_size";
+      "data", `In, "1 bigarray";
+      "data_length", `In_out, "1 bigarray_size";
       "ty", `Out, "gnutls_server_name_type_t";
       "indx", `In, "uint";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
     
     standard
       "bool gnutls_safe_renegotiation_status (gnutls_session_t session)";
     standard
-      "ztstr gnutls_supplemental_get_name \
+      "const ztstr gnutls_supplemental_get_name \
             (gnutls_supplemental_data_format_type_t ty)";
 
     standard
@@ -767,16 +784,16 @@ let functions =
       "key_size", `In, "uint";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     "gnutls_fingerprint",
     [ "algo", `In, "gnutls_digest_algorithm_t";
-      "data", `In, "str_datum";
-      "result_data", `Out, "bigarray";
-      "result_size", `In_out, "bigarray_size";
+      "data", `In, "str_datum_p";
+      "result_data", `In, "1 bigarray";
+      "result_size", `In_out, "1 bigarray_size";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO: gnutls_random_art *)
 
@@ -788,7 +805,7 @@ let functions =
     [ "sc", `Out, "gnutls_certificate_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_certificate_set_x509_trust_file \
@@ -798,7 +815,7 @@ let functions =
     standard
       "error_code gnutls_certificate_set_x509_trust_mem \
            (gnutls_certificate_credentials_t res, \
-            str_datum * ca, \
+            str_datum_p ca, \
             gnutls_x509_crt_fmt_t type)";
     standard
       "error_code gnutls_certificate_set_x509_crl_file \
@@ -808,7 +825,7 @@ let functions =
     standard
       "error_code gnutls_certificate_set_x509_crl_mem \
            (gnutls_certificate_credentials_t res, \
-            str_datum * crl, \
+            str_datum_p crl, \
             gnutls_x509_crt_fmt_t type)";
     standard
       "error_code gnutls_certificate_set_x509_key_file \
@@ -819,8 +836,8 @@ let functions =
     standard
       "error_code gnutls_certificate_set_x509_key_mem \
            (gnutls_certificate_credentials_t res, \
-            str_datum * cert, \
-            str_datum * key, \
+            str_datum_p cert, \
+            str_datum_p key, \
             gnutls_x509_crt_fmt_t type)";
     standard
       "error_code gnutls_certificate_set_x509_simple_pkcs12_file \
@@ -831,31 +848,39 @@ let functions =
     standard
       "error_code gnutls_certificate_set_x509_simple_pkcs12_mem \
            (gnutls_certificate_credentials_t res, \
-            str_datum p12blob, \
+            str_datum_p p12blob, \
             gnutls_x509_crt_fmt_t type, \
             ztstr password)";
+(*
     standard
       "error_code gnutls_certificate_set_x509_key \
            (gnutls_certificate_credentials_t res, \
             gnutls_x509_crt_t array cert_list, \
             array_size cert_list_size, \
             gnutls_x509_privkey_t key)";
+ *)
+(*
     standard
       "error_code gnutls_certificate_set_x509_trust \
            (gnutls_certificate_credentials_t res, \
             gnutls_x509_crt_t array ca_list, \
             array_size ca_list_size)";
+ *)
+(*
     standard
       "error_code gnutls_certificate_set_x509_crl \
            (gnutls_certificate_credentials_t res, \
             gnutls_x509_crl_t array crl_list, \
             array_size crl_list_size)";
+ *)
+(*
     "gnutls_certificate_get_openpgp_keyring",
     [ "sc", `In, "gnutls_certificate_credentials_t";
       "keyring", `Out, "gnutls_openpgp_keyring_t";
-      "result", `Return_ignore, "error_code";
+      "result", `Return_ignore, "void";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ ];
+ *)
 
 
     (**********************************************************************)
@@ -866,7 +891,7 @@ let functions =
     [ "sc", `Out, "gnutls_anon_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO: gnutls_anon_set_server_params_function *)
 
@@ -874,7 +899,7 @@ let functions =
     [ "sc", `Out, "gnutls_anon_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
 
     (**********************************************************************)
@@ -885,17 +910,17 @@ let functions =
     [ "dh_params", `Out, "gnutls_dh_params_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_dh_params_import_raw \
            (gnutls_dh_params_t dh_params, \
-            str_datum prime, \
-            str_datum generator)";
+            str_datum_p prime, \
+            str_datum_p generator)";
     standard
       "error_code gnutls_dh_params_import_pkcs3 \
            (gnutls_dh_params_t params, \
-            str_datum pkcs3_params, \
+            str_datum_p pkcs3_params, \
             gnutls_x509_crt_fmt_t format)";
     standard
       "error_code gnutls_dh_params_generate2 \
@@ -923,7 +948,7 @@ let functions =
 
     standard
       "void gnutls_dh_set_prime_bits \
-           (gnutls_session_t session, unsigned int bits)";
+           (gnutls_session_t session, uint bits)";
     standard
       "int gnutls_dh_get_secret_bits (gnutls_session_t session)";
     standard
@@ -937,14 +962,14 @@ let functions =
       "raw_prime", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     "gnutls_dh_get_pubkey",
     [ "session", `In, "gnutls_session_t";
       "raw_key", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO: gnutls_certificate_set_params_function *)
     (* TODO: gnutls_anon_set_params_function *)
@@ -968,7 +993,7 @@ let functions =
     (* TODO: gnutls_certificate_set_verify_function *)
 
     standard
-      "str_datum gnutls_certificate_get_ours (gnutls_session_t session)";
+      "const_str_datum_p gnutls_certificate_get_ours (gnutls_session_t session)";
     standard
       "double gnutls_certificate_activation_time_peers \
            (gnutls_session_t session)";
@@ -983,6 +1008,7 @@ let functions =
     (* X509 details                                                       *)
     (**********************************************************************)
 
+(*
     "gnutls_certificate_get_issuer",
     [ "sc", `In, "gnutls_certificate_credentials_t";
       "cert", `In, "gnutls_x509_crt_t";
@@ -990,7 +1016,8 @@ let functions =
       "flags", `In, "uint";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+ *)
 
     (* TODO_ gnutls_certificate_free_* *)
 
@@ -1010,7 +1037,7 @@ let functions =
     (**********************************************************************)
 
     standard
-      "gnutls_openpgp_send_cert \
+      "void gnutls_openpgp_send_cert \
            (gnutls_session_t session, gnutls_openpgp_crt_status_t status)";
 
 
@@ -1023,7 +1050,7 @@ let functions =
     [ "sc", `Out, "gnutls_srp_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_srp_set_client_credentials \
@@ -1034,27 +1061,27 @@ let functions =
     [ "sc", `Out, "gnutls_srp_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_srp_set_server_credentials_file \
            (gnutls_srp_server_credentials_t res, \
             ztstr password_file, ztstr password_conf_file)";
     standard
-      "ztstr gnutls_srp_server_get_username (gnutls_session_t session)";
+      "const ztstr gnutls_srp_server_get_username (gnutls_session_t session)";
     standard
       "void gnutls_srp_set_prime_bits (gnutls_session_t session, uint bits)";
 
     "gnutls_srp_verifier",
     [ "username", `In, "ztstr";
       "password", `In, "ztstr";
-      "salt", `In, "str_datum";
-      "generator", `In, "str_datum";
-      "prime", `In, "str_datum";
+      "salt", `In, "str_datum_p";
+      "generator", `In, "str_datum_p";
+      "prime", `In, "str_datum_p";
       "res", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO: access to gnutls_srp_<N>_group_prime/generator *)
 
@@ -1072,20 +1099,20 @@ let functions =
     [ "sc", `Out, "gnutls_psk_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_psk_set_client_credentials \
            (gnutls_psk_client_credentials_t res, \
             ztstr username, \
-            str_datum key, \
+            str_datum_p key, \
             gnutls_psk_key_flags flags)";
 
     "gnutls_psk_allocate_server_credentials",
     [ "sc", `Out, "gnutls_psk_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(result);") ];
+    [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_psk_set_server_credentials_file \
@@ -1094,9 +1121,9 @@ let functions =
       "error_code gnutls_psk_set_server_credentials_hint \
            (gnutls_psk_server_credentials_t res, ztstr hint)";
     standard
-      "ztstr gnutls_psk_server_get_username (gnutls_session_t session)";
+      "const ztstr gnutls_psk_server_get_username (gnutls_session_t session)";
     standard
-      "ztstr gnutls_psk_client_get_hint (gnutls_session_t session)";
+      "const ztstr gnutls_psk_client_get_hint (gnutls_session_t session)";
 
     (* TODO: gnutls_psk_set_server_credentials_function
              gnutls_psk_set_client_credentials_function
@@ -1107,6 +1134,8 @@ let functions =
   ]
 
 
+(* TODO: net_gnutls_error_check returns real exception *)
+
 let c_head =
   "#include <gnutls/gnutls.h>\n\
    #include <gnutls/openpgp.h>\n\
@@ -1114,6 +1143,61 @@ let c_head =
    typedef int error_code;\n\
    typedef unsigned int gnutls_init_flags;\n\
    typedef unsigned int key_usage;\n\
+   typedef const char * const_charp;\n\
+   typedef gnutls_datum_t str_datum;\n\
+   typedef gnutls_datum_t * str_datum_p;\n\
+   typedef const gnutls_datum_t * const_str_datum_p;\n\
+   \n\
+   #define wrap_const_str_datum_p wrap_str_datum_p\n\
+   #define unwrap_const_str_datum_p unwrap_str_datum_p\n\
+   \n\
+   static const char * unwrap_charp(value dummy) { return NULL; }\n
+   \n\
+   static value wrap_str_datum(const gnutls_datum_t d) {\n\
+   \032   value s;\n\
+   \032   s = caml_alloc_string(d.size);\n\
+   \032   memcpy(String_val(s), d.data, d.size);\n\
+   \032   return s;\n\
+   }\n\
+   \n\
+   static value wrap_str_datum_p(const gnutls_datum_t *d) {\n\
+   \032   if (d==NULL) failwith(\"Nettls_gnutls_bindings: NULL pointer\");\n\
+   \032   return wrap_str_datum(*d);\n\
+   }\n\
+   \n\
+   static gnutls_datum_t unwrap_str_datum(value v) {\n\
+   \032   gnutls_datum_t d;\n\
+   \032   d.size = caml_string_length(v);\n\
+   \032   d.data = stat_alloc(d.size);\n\
+   \032   memcpy(d.data, String_val(v), d.size);\n\
+   \032   return d;\n\
+   }\n\
+   \n\
+   static gnutls_datum_t * unwrap_str_datum_p(value v) {\n\
+   \032   gnutls_datum_t *d;\n\
+   \032   d = stat_alloc(sizeof(gnutls_datum_t));\n\
+   \032   *d = unwrap_str_datum(v);\n\
+   \032   return d;\n\
+   }\n\
+   \n\
+   static void free_str_datum(gnutls_datum_t d) {\n\
+   \032   if (d.data != NULL) { stat_free(d.data); d.data = NULL; };\n\
+   }\n\
+   \n\
+   static void free_str_datum_p(gnutls_datum_t *d) {\n\
+   \032   if (d != NULL) {
+   \032       if (d->data != NULL) stat_free(d->data);\n\
+   \032       stat_free(d);\n\
+   \032   }\n\
+   }\n\
+   \n\
+   static void net_gnutls_error_check(int error_code) {\n\
+   \032   if (error_code < 0) failwith(\"error\");\n\
+   }\n\
+   \n\
+   static void net_gnutls_transport_set_int(gnutls_session_t s,long fd) {\n\
+   \032   gnutls_transport_set_ptr(s, (gnutls_transport_ptr_t) fd);\n\
+   }\n\
    \n"
 
 let () =
@@ -1122,4 +1206,5 @@ let () =
     ~modname:"nettls_gnutls_bindings"
     ~types
     ~functions
+    ~free: [ "str_datum"; "str_datum_p" ]
     ()
