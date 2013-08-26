@@ -113,6 +113,19 @@ let types =
                                           "GNUTLS_CERT_|REQUEST";
                                           "GNUTLS_CERT_|REQUIRE";
                                         ];
+    "gnutls_certificate_verify_flags",
+                                  `Flags [ "GNUTLS_VERIFY_|DISABLE_CA_SIGN";
+                                           "GNUTLS_VERIFY_|ALLOW_X509_V1_CA_CRT";
+                                           "GNUTLS_VERIFY_|DO_NOT_ALLOW_SAME";
+                                           "GNUTLS_VERIFY_|ALLOW_ANY_X509_V1_CA_CRT";
+                                           "GNUTLS_VERIFY_|ALLOW_SIGN_RSA_MD2";
+                                           "GNUTLS_VERIFY_|ALLOW_SIGN_RSA_MD5";
+                                           "GNUTLS_VERIFY_|DISABLE_TIME_CHECKS";
+                                           "GNUTLS_VERIFY_|DISABLE_TRUSTED_TIME_CHECKS";
+                                           "GNUTLS_VERIFY_|DO_NOT_ALLOW_X509_V1_CA_CRT";
+                                           "GNUTLS_VERIFY_|DISABLE_CRL_CHECKS";
+                                         ];
+
     "gnutls_openpgp_crt_status_t",
                                   `Enum [ "GNUTLS_OPENPGP_|CERT";
                                           "GNUTLS_OPENPGP_|CERT_FINGERPRINT"
@@ -1023,8 +1036,8 @@ let functions =
 
     standard
       "void gnutls_certificate_set_verify_flags \
-           (gnutls_certificate_credentials_t res, uint flags)";
-    (* CHECK: no enum for flags *)
+           (gnutls_certificate_credentials_t res, \
+            gnutls_certificate_verify_flags flags)";
 
     standard
       "void gnutls_certificate_set_verify_limits \
@@ -1136,75 +1149,22 @@ let functions =
 
 (* TODO: net_gnutls_error_check returns real exception *)
 
-let c_head =
-  "#include <gnutls/gnutls.h>\n\
-   #include <gnutls/openpgp.h>\n\
-   \n\
-   typedef int error_code;\n\
-   typedef unsigned int gnutls_init_flags;\n\
-   typedef unsigned int key_usage;\n\
-   typedef const char * const_charp;\n\
-   typedef gnutls_datum_t str_datum;\n\
-   typedef gnutls_datum_t * str_datum_p;\n\
-   typedef const gnutls_datum_t * const_str_datum_p;\n\
-   \n\
-   #define wrap_const_str_datum_p wrap_str_datum_p\n\
-   #define unwrap_const_str_datum_p unwrap_str_datum_p\n\
-   \n\
-   static const char * unwrap_charp(value dummy) { return NULL; }\n
-   \n\
-   static value wrap_str_datum(const gnutls_datum_t d) {\n\
-   \032   value s;\n\
-   \032   s = caml_alloc_string(d.size);\n\
-   \032   memcpy(String_val(s), d.data, d.size);\n\
-   \032   return s;\n\
-   }\n\
-   \n\
-   static value wrap_str_datum_p(const gnutls_datum_t *d) {\n\
-   \032   if (d==NULL) failwith(\"Nettls_gnutls_bindings: NULL pointer\");\n\
-   \032   return wrap_str_datum(*d);\n\
-   }\n\
-   \n\
-   static gnutls_datum_t unwrap_str_datum(value v) {\n\
-   \032   gnutls_datum_t d;\n\
-   \032   d.size = caml_string_length(v);\n\
-   \032   d.data = stat_alloc(d.size);\n\
-   \032   memcpy(d.data, String_val(v), d.size);\n\
-   \032   return d;\n\
-   }\n\
-   \n\
-   static gnutls_datum_t * unwrap_str_datum_p(value v) {\n\
-   \032   gnutls_datum_t *d;\n\
-   \032   d = stat_alloc(sizeof(gnutls_datum_t));\n\
-   \032   *d = unwrap_str_datum(v);\n\
-   \032   return d;\n\
-   }\n\
-   \n\
-   static void free_str_datum(gnutls_datum_t d) {\n\
-   \032   if (d.data != NULL) { stat_free(d.data); d.data = NULL; };\n\
-   }\n\
-   \n\
-   static void free_str_datum_p(gnutls_datum_t *d) {\n\
-   \032   if (d != NULL) {
-   \032       if (d->data != NULL) stat_free(d->data);\n\
-   \032       stat_free(d);\n\
-   \032   }\n\
-   }\n\
-   \n\
-   static void net_gnutls_error_check(int error_code) {\n\
-   \032   if (error_code < 0) failwith(\"error\");\n\
-   }\n\
-   \n\
-   static void net_gnutls_transport_set_int(gnutls_session_t s,long fd) {\n\
-   \032   gnutls_transport_set_ptr(s, (gnutls_transport_ptr_t) fd);\n\
-   }\n\
-   \n"
 
 let () =
   generate 
-    ~c_head
+    ~c_file:"gnutls.c"
+    ~ml_file:"gnutls.ml"
+    ~mli_file:"gnutls.mli"
     ~modname:"nettls_gnutls_bindings"
     ~types
     ~functions
     ~free: [ "str_datum"; "str_datum_p" ]
+    ~hashes:[ "Certificate";
+              "Srp_client";
+              "Srp_server";
+              "Anon_client";
+              "Anon_server";
+              "Psk_client";
+              "Psk_server"
+            ]
     ()

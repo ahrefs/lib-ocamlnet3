@@ -4,7 +4,7 @@ PRE = 1
 PKGNAME = nettls_gnutls
 GENERATE = META nettls_gnutls_bindings.ml
 
-nettls_gnutls_bindings.ml: gnutls.descr $(TOP_DIR)/tools/stubgen.ml
+nettls_gnutls_bindings.ml: gnutls.descr gnutls.c gnutls.ml gnutls.mli $(TOP_DIR)/tools/stubgen.ml
 	ocaml -I $(TOP_DIR)/tools gnutls.descr
 
 

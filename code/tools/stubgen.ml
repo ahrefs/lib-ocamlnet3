@@ -101,6 +101,14 @@ let gen_abstract_enum c mli ml tyname =
 (* Abstract_ptr                                                       *)
 (**********************************************************************)
 
+(* Here we allocate a pair
+
+   (custom, list)
+
+   where custom is the custom block, and list is a list of
+   auxiliary values whose lifetime must exceed the custom block
+ *)
+
 let gen_abstract_ptr c mli ml tyname abs =
   fprintf mli "type %s\n" tyname;
   fprintf ml "type %s\n" tyname;
@@ -117,14 +125,14 @@ let gen_abstract_ptr c mli ml tyname abs =
   fprintf c "static int abs_%s_compare(value v1, value v2) {\n" tyname;
   fprintf c "  struct absstruct_%s *p1;\n" tyname;
   fprintf c "  struct absstruct_%s *p2;\n" tyname;
-  fprintf c "  p1 = absstructptr_%s_val(v1);\n" tyname;
-  fprintf c "  p2 = absstructptr_%s_val(v2);\n" tyname;
+  fprintf c "  p1 = absstructptr_%s_val(Field(v1,0));\n" tyname;
+  fprintf c "  p2 = absstructptr_%s_val(Field(v2,0));\n" tyname;
   fprintf c "  return p1->oid - p2->oid;\n";
   fprintf c "}\n\n";
 
   fprintf c "static void abs_%s_finalize(value v1) {\n" tyname;
   fprintf c "  struct absstruct_%s *p1;\n" tyname;
-  fprintf c "  p1 = absstructptr_%s_val(v1);\n" tyname;
+  fprintf c "  p1 = absstructptr_%s_val(Field(v1,0));\n" tyname;
   fprintf c "  %s(p1->value);\n" abs.abs_free_fn;
   fprintf c "}\n\n";
 
@@ -138,18 +146,32 @@ let gen_abstract_ptr c mli ml tyname abs =
   fprintf c "};\n\n";
 
   fprintf c "static %s unwrap_%s(value v) {\n" tyname tyname;
-  fprintf c "  return abs_%s_unwrap(v);\n" tyname;
+  fprintf c "  return abs_%s_unwrap(Field(v,0));\n" tyname;
   fprintf c "}\n\n";
 
   fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
-  fprintf c "  value v;\n";
+  fprintf c "  CAMLparam0();\n";
+  fprintf c "  CAMLlocal2(v,r);\n";
   fprintf c "  if (x == NULL) failwith(\"wrap_%s: NULL pointer\");\n" tyname;
   fprintf c "  v = caml_alloc_custom(&abs_%s_ops, \
                                      sizeof(struct absstruct_%s), 0, 1);\n"
          tyname tyname;
   fprintf c "  absstructptr_%s_val(v)->value = x;\n" tyname;
   fprintf c "  absstructptr_%s_val(v)->oid = abs_%s_oid++;\n" tyname tyname;
-  fprintf c "  return v;\n";
+  fprintf c "  r = caml_alloc(2,0);\n";
+  fprintf c "  Field(r,0) = v;\n";
+  fprintf c "  Field(r,1) = Val_int(0);\n";
+  fprintf c "  CAMLreturn(r);\n";
+  fprintf c "}\n\n";
+
+  fprintf c "static void attach_%s(value v, value aux) {\n" tyname;
+  fprintf c "  CAMLparam2(v,aux);\n";
+  fprintf c "  CAMLlocal1(h);\n";
+  fprintf c "  h = caml_alloc(2,0);\n";
+  fprintf c "  Field(h,0) = aux;\n";
+  fprintf c "  Field(h,1) = Field(v,1);\n";
+  fprintf c "  Store_field(v,1,h);\n";
+  fprintf c "  CAMLreturn0;\n";
   fprintf c "}\n\n";
 
   ()
@@ -795,6 +817,21 @@ let gen_fun c mli ml name args directives free =
   );
 
   fprintf c "}\n\n";
+
+  if List.length trans_input_ml_args > 5 then (
+    fprintf c "value net_%s__byte(value * argv, int argn) {\n" name;
+    fprintf c "  return net_%s(%s);\n"
+            name
+            (String.concat ","
+               (Array.to_list
+                  (Array.init
+                     (List.length trans_input_ml_args)
+                     (fun i -> sprintf "argv[%d]" i)
+                  )
+               )
+            );
+    fprintf c "}\n\n";
+  );
   
   ()
 
@@ -816,19 +853,26 @@ let gen_c_head c =
              #include \"caml/callback.h\"\n\
              #include \"caml/bigarray.h\"\n\
              \n\
-             static unsigned int uint_val(value v) {\n\
+             static unsigned int uint_val(value v);\n\
+             static value protected_copy_string(const char *s);\n\
+             \n"
+
+let gen_c_head2 c =
+  fprintf c "static unsigned int uint_val(value v) {\n\
              \032   if (Int_val(v) < 0) invalid_argument(\"negative integer\");\n\
              \032   return (unsigned int) Int_val(v);\n\
              }\n\
              \n\
              static value protected_copy_string(const char *s) {\n\
-             \032   if (s==NULL) failwith(\"NULL pointer\");\n\
+             \032   if (s==NULL) raise_null_pointer();\n\
              \032   return caml_copy_string(s);\n\
              }\n\
              \n"
 
 
-let generate ?(c_head="") ~modname ~types ~functions ~free () =
+let generate ?c_file ?ml_file ?mli_file ~modname ~types ~functions ~free
+             ~hashes
+             () =
   let c_name = modname ^ "_stubs.c" in
   let ml_name = modname ^ ".ml" in
   let mli_name = modname ^ ".mli" in
@@ -841,8 +885,30 @@ let generate ?(c_head="") ~modname ~types ~functions ~free () =
     let mli = open_out mli_name in
     to_close := (fun () -> close_out_noerr mli) :: !to_close;
 
+    List.iter
+      (fun h ->
+         fprintf c "#define H_%s %d\n" h (Btype.hash_variant h)
+      )
+      hashes;
+
+    let copy out file =
+      match file with
+        | Some fn ->
+             let f = open_in fn in
+             ( try
+                 while true do
+                   let line = input_line f in
+                   fprintf out "%s\n" line
+                 done;
+                 assert false
+               with End_of_file ->
+                 close_in f
+             );
+        | None -> ()  in
+
     gen_c_head c;
-    fprintf c "%s\n" c_head;
+    copy c c_file;
+    gen_c_head2 c;
 
     List.iter
       (fun (tyname,tydecl) ->
@@ -868,6 +934,9 @@ let generate ?(c_head="") ~modname ~types ~functions ~free () =
          gen_fun c mli ml name args directives free
       )
       functions;
+
+    copy ml ml_file;
+    copy mli mli_file;
 
     close_out c;
     close_out ml;
