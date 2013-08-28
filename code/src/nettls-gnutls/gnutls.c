@@ -3,6 +3,7 @@
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+#include <errno.h>
 
 typedef int error_code;
 typedef unsigned int gnutls_init_flags;
@@ -91,9 +92,383 @@ static void net_gnutls_error_check(int error_code) {
     }
 }
 
+
+static void net_gnutls_size_check(int error_code, size_t s) {
+    if (error_code == GNUTLS_E_SHORT_MEMORY_BUFFER) {
+        caml_raise_with_arg(*caml_named_value
+                              ("Nettls_gnutls_bindings.Short_memory_buffer"),
+                            Val_long(s));
+    }
+}
+
+
+/*
 static void net_gnutls_transport_set_int(gnutls_session_t s,long fd) {
     gnutls_transport_set_ptr(s, (gnutls_transport_ptr_t) fd);
 }
+*/
+
+
+struct b_session_callbacks_st {
+    gnutls_session_t session;
+    value pull_fun;            /* memory -> int unix_code */
+    value pull_timeout_fun;    /* int -> int unix_code */
+    value push_fun;            /* memory -> int unix_code */
+    value verify_fun;          /* unit -> bool */
+    /* value params_fun; */
+    value db_retrieve_fun;     /* string -> string */
+    value db_store_fun;        /* string -> string -> unit */
+    value db_remove_fun;       /* string -> unit */
+};
+
+typedef struct b_session_callbacks_st *b_session_callbacks_t;
+
+
+static int get_transport_errno(value r) {
+    switch (Int_val(r)) {
+    case 0:
+        return EINTR;
+    case 1:
+        return EAGAIN;
+    case 2:
+        return EMSGSIZE;
+    case 3:
+        return EPERM;
+    default:
+        return EPERM;
+    }    
+}
+
+
+static ssize_t push_callback(gnutls_transport_ptr_t cb_ptr, const void *data,
+                     size_t size) {
+    b_session_callbacks_t cb;
+    int flags;
+    ssize_t n;
+    CAMLparam0();
+    CAMLlocal2(ba,r);
+
+    cb = (b_session_callbacks_t) cb_ptr;
+    if (Is_block(cb->push_fun)) {
+        flags = CAML_BA_UINT8 | CAML_BA_C_LAYOUT | CAML_BA_EXTERNAL;
+        ba = caml_ba_alloc_dims(flags, 1, (void *) data, (intnat) size);
+        r = caml_callback_exn(cb->push_fun, ba);
+        if (Is_exception_result(r)) {
+            r = Extract_exception(r);
+            gnutls_transport_set_errno(cb->session, EPERM);
+            n = -1;
+        }
+        else {
+            /* r is an [int unix_code] */
+            if (Is_block(r)) {
+                n = Long_val(Field(r, 0));
+                if (n<0) {
+                    gnutls_transport_set_errno(cb->session, EPERM);
+                    n = -1;
+                }
+            }
+            else {
+                gnutls_transport_set_errno(cb->session, get_transport_errno(r));
+                n = -1;
+            }
+        }
+    } else {
+        gnutls_transport_set_errno(cb->session, EPERM);
+        n = -1;
+    };
+    CAMLreturn(n);
+}
+
+
+static ssize_t pull_callback(gnutls_transport_ptr_t cb_ptr, void *data,
+                     size_t size) {
+    b_session_callbacks_t cb;
+    int flags;
+    ssize_t n;
+    CAMLparam0();
+    CAMLlocal2(ba,r);
+
+    cb = (b_session_callbacks_t) cb_ptr;
+    if (Is_block(cb->pull_fun)) {
+        flags = CAML_BA_UINT8 | CAML_BA_C_LAYOUT | CAML_BA_EXTERNAL;
+        ba = caml_ba_alloc_dims(flags, 1, data, (intnat) size);
+        r = caml_callback_exn(cb->pull_fun, ba);
+        if (Is_exception_result(r)) {
+            r = Extract_exception(r);
+            gnutls_transport_set_errno(cb->session, EPERM);
+            n = -1;
+        }
+        else {
+            /* r is an [int unix_code] */
+            if (Is_block(r)) {
+                n = Long_val(Field(r, 0));
+                if (n<0) {
+                    gnutls_transport_set_errno(cb->session, EPERM);
+                    n = -1;
+                }
+            }
+            else {
+                gnutls_transport_set_errno(cb->session, get_transport_errno(r));
+                n = -1;
+            }
+        }
+    } else {
+        gnutls_transport_set_errno(cb->session, EPERM);
+        n = -1;
+    };
+    CAMLreturn(n);
+}
+
+
+static int pull_timeout_callback(gnutls_transport_ptr_t cb_ptr,
+                                     unsigned int ms) {
+    b_session_callbacks_t cb;
+    int n;
+    CAMLparam0();
+    CAMLlocal1(r);
+
+    cb = (b_session_callbacks_t) cb_ptr;
+    if (Is_block(cb->pull_timeout_fun)) {
+        r = caml_callback_exn(cb->pull_timeout_fun, Val_int(ms));
+        if (Is_exception_result(r)) {
+            r = Extract_exception(r);
+            gnutls_transport_set_errno(cb->session, EPERM);
+            n = -1;
+        }
+        else {
+            /* r is an [int unix_code] */
+            if (Is_block(r)) {
+                n = Long_val(Field(r, 0));
+                if (n<0) {
+                    gnutls_transport_set_errno(cb->session, EPERM);
+                    n = -1;
+                }
+            }
+            else {
+                gnutls_transport_set_errno(cb->session, get_transport_errno(r));
+                n = -1;
+            }
+        }
+    } else {
+        gnutls_transport_set_errno(cb->session, EPERM);
+        n = -1;
+    };
+    CAMLreturn(n);
+}
+
+
+static int verify_callback(gnutls_session_t s) {
+    b_session_callbacks_t cb;
+    int n;
+    CAMLparam0();
+    CAMLlocal1(r);
+
+    cb = (b_session_callbacks_t) gnutls_session_get_ptr(s);
+    if (Is_block(cb->verify_fun)) {
+        r = caml_callback_exn(cb->verify_fun, Val_unit);
+        if (Is_exception_result(r)) {
+            r = Extract_exception(r);
+            n = 1;
+        }
+        else
+            n = Bool_val(r) ? 0 : 1;
+    }
+    else 
+        n=0;
+    CAMLreturn(n);
+}
+
+
+static int db_store_callback(void *ptr, gnutls_datum_t key, 
+                             gnutls_datum_t data) {
+    b_session_callbacks_t cb;
+    int n;
+    CAMLparam0();
+    CAMLlocal3(r, keyv, datav);
+
+    cb = (b_session_callbacks_t) ptr;
+    if (Is_block(cb->db_store_fun)) {
+        keyv = wrap_str_datum(key);
+        datav = wrap_str_datum(data);
+        r = caml_callback2_exn(cb->db_store_fun, keyv, datav);
+        if (Is_exception_result(r)) {
+            r = Extract_exception(r);
+            n = 1;
+        }
+        else
+            n = 0;
+    }
+    else
+        n = 1;
+    CAMLreturn(n);
+}
+
+
+static int db_remove_callback(void *ptr, gnutls_datum_t key) {
+    b_session_callbacks_t cb;
+    int n;
+    CAMLparam0();
+    CAMLlocal2(r, keyv);
+
+    cb = (b_session_callbacks_t) ptr;
+    if (Is_block(cb->db_remove_fun)) {
+        keyv = wrap_str_datum(key);
+        r = caml_callback_exn(cb->db_remove_fun, keyv);
+        if (Is_exception_result(r)) {
+            r = Extract_exception(r);
+            n = 1;
+        }
+        else
+            n = 0;
+    }
+    else
+        n = 1;
+    CAMLreturn(n);
+}
+
+
+static gnutls_datum_t db_retrieve_callback(void *ptr, gnutls_datum_t key) {
+    b_session_callbacks_t cb;
+    gnutls_datum_t r;
+    CAMLparam0();
+    CAMLlocal2(keyv, datav);
+
+    r.data = NULL;
+    r.size = 0;
+    cb = (b_session_callbacks_t) ptr;
+    if (Is_block(cb->db_retrieve_fun)) {
+        keyv = wrap_str_datum(key);
+        datav = caml_callback_exn(cb->db_retrieve_fun, keyv);
+        if (Is_exception_result(datav)) {
+            datav = Extract_exception(datav);
+        }
+        else {
+            r.size = caml_string_length(datav);
+            r.data = gnutls_malloc(r.size);
+            memcpy(r.data, String_val(datav), r.size);
+        }
+    };
+    CAMLreturnT(gnutls_datum_t, r);
+}
+
+
+static void attach_session_callbacks (gnutls_session_t s) {
+    b_session_callbacks_t cb;
+
+    cb = (b_session_callbacks_t) 
+            stat_alloc(sizeof(struct b_session_callbacks_st));
+    cb->session = s;
+    cb->pull_fun = Val_int(0);
+    cb->pull_timeout_fun = Val_int(0);
+    cb->push_fun = Val_int(0);
+    cb->verify_fun = Val_int(0);
+    /* cb->params_fun = Val_int(0); */
+    cb->db_retrieve_fun = Val_int(0);
+    cb->db_store_fun = Val_int(0);
+    cb->db_remove_fun = Val_int(0);
+
+    caml_register_generational_global_root(&(cb->pull_fun));
+    caml_register_generational_global_root(&(cb->pull_timeout_fun));
+    caml_register_generational_global_root(&(cb->push_fun));
+    caml_register_generational_global_root(&(cb->verify_fun));
+    /* caml_register_generational_global_root(&(cb->params_fun));*/
+    caml_register_generational_global_root(&(cb->db_retrieve_fun));
+    caml_register_generational_global_root(&(cb->db_store_fun));
+    caml_register_generational_global_root(&(cb->db_remove_fun));
+
+    gnutls_session_set_ptr(s, cb);
+    gnutls_transport_set_ptr(s, cb);
+    gnutls_db_set_ptr(s, cb);
+    gnutls_transport_set_push_function(s, &push_callback);
+    gnutls_transport_set_pull_function(s, &pull_callback);
+    gnutls_transport_set_pull_timeout_function(s, &pull_timeout_callback);
+    /*
+    gnutls_db_set_retrieve_function: see net_b_set_db_callbacks
+    gnutls_db_set_remove_function: see net_b_set_db_callbacks
+    gnutls_db_set_store_function: see net_b_set_db_callbacks
+    */
+    /* verify_callback: this is set in net_gnutls_credentials_set for
+       the certificate once it is connected with the session. (The
+       callback is the same for all sessions, so this is no problem.)
+    */
+}
+
+
+static void b_free_session(gnutls_session_t s) {
+    b_session_callbacks_t cb;
+
+    cb = gnutls_session_get_ptr(s);
+    caml_remove_generational_global_root(&(cb->pull_fun));
+    caml_remove_generational_global_root(&(cb->pull_timeout_fun));
+    caml_remove_generational_global_root(&(cb->push_fun));
+    caml_remove_generational_global_root(&(cb->verify_fun));
+    /* caml_remove_generational_global_root(&(cb->params_fun)); */
+    caml_remove_generational_global_root(&(cb->db_retrieve_fun));
+    caml_remove_generational_global_root(&(cb->db_store_fun));
+    caml_remove_generational_global_root(&(cb->db_remove_fun));
+
+    stat_free(cb);
+    gnutls_deinit(s);
+}
+
+
+CAMLprim value net_b_set_pull_callback(value sv, value fun) {
+    gnutls_session_t s;
+    b_session_callbacks_t cb;
+    s = unwrap_gnutls_session_t(sv);
+    cb = gnutls_session_get_ptr(s);
+    caml_modify_generational_global_root(&(cb->pull_fun), fun);
+    return Val_unit;
+}
+
+
+CAMLprim value net_b_set_pull_timeout_callback(value sv, value fun) {
+    gnutls_session_t s;
+    b_session_callbacks_t cb;
+    s = unwrap_gnutls_session_t(sv);
+    cb = gnutls_session_get_ptr(s);
+    caml_modify_generational_global_root(&(cb->pull_timeout_fun), fun);
+    return Val_unit;
+}
+
+
+CAMLprim value net_b_set_push_callback(value sv, value fun) {
+    gnutls_session_t s;
+    b_session_callbacks_t cb;
+    s = unwrap_gnutls_session_t(sv);
+    cb = gnutls_session_get_ptr(s);
+    caml_modify_generational_global_root(&(cb->push_fun), fun);
+    return Val_unit;
+}
+
+
+CAMLprim value net_b_set_verify_callback(value sv, value fun) {
+    gnutls_session_t s;
+    b_session_callbacks_t cb;
+    s = unwrap_gnutls_session_t(sv);
+    cb = gnutls_session_get_ptr(s);
+    caml_modify_generational_global_root(&(cb->verify_fun), fun);
+    return Val_unit;
+}
+
+
+CAMLprim value net_b_set_db_callbacks(value sv,
+                                      value store_fun,
+                                      value remove_fun,
+                                      value retrieve_fun) {
+    gnutls_session_t s;
+    b_session_callbacks_t cb;
+    s = unwrap_gnutls_session_t(sv);
+    cb = gnutls_session_get_ptr(s);
+    gnutls_db_set_retrieve_function(s, &db_retrieve_callback);
+    gnutls_db_set_remove_function(s, &db_remove_callback);
+    gnutls_db_set_store_function(s, &db_store_callback);
+    caml_modify_generational_global_root(&(cb->db_store_fun), store_fun);
+    caml_modify_generational_global_root(&(cb->db_remove_fun), remove_fun);
+    caml_modify_generational_global_root(&(cb->db_retrieve_fun), retrieve_fun);
+    return Val_unit;
+}
+
 
 
 value net_gnutls_credentials_set(value sess, value creds) {
@@ -102,14 +477,15 @@ value net_gnutls_credentials_set(value sess, value creds) {
     CAMLparam2(sess,creds);
     s = unwrap_gnutls_session_t(sess);
     switch (Long_val(Field(creds,0))) {
-    case H_Certificate:
+    case H_Certificate: {
+        gnutls_certificate_credentials_t cert;
+        cert = unwrap_gnutls_certificate_credentials_t(Field(creds,1));
         error_code = 
-            gnutls_credentials_set(s,
-                                   GNUTLS_CRD_CERTIFICATE,
-                                   unwrap_gnutls_certificate_credentials_t 
-                                     (Field(creds,1))
-                                   );
+            gnutls_credentials_set(s, GNUTLS_CRD_CERTIFICATE, cert);
+        if (error_code == 0) 
+            gnutls_certificate_set_verify_function(cert, &verify_callback);
         break;
+        }
     case H_Srp_client:
         error_code = 
             gnutls_credentials_set(s,
@@ -165,3 +541,5 @@ value net_gnutls_credentials_set(value sess, value creds) {
     attach_gnutls_session_t(sess, creds);
     CAMLreturn(Val_unit);
 }
+
+

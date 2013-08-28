@@ -2,6 +2,10 @@
 
 exception Null_pointer
 exception Error of error_code
+exception Short_memory_buffer of int
+
+type memory = 
+    (char,Bigarray.int8_unsigned_elt,Bigarray.c_layout) Bigarray.Array1.t
 
 type gnutls_credentials =
     [ `Certificate of gnutls_certificate_credentials_t
@@ -16,12 +20,105 @@ type gnutls_credentials =
 external gnutls_credentials_set : gnutls_session_t -> gnutls_credentials -> unit
   = "net_gnutls_credentials_set" "net_gnutls_credentials_set"
 
+type 'a unix_code =
+  | ESUCCESS of 'a
+  | EINTR
+  | EAGAIN
+  | EMSGSIZE
+  | EPERM
+
+external net_b_set_pull_callback : 
+  gnutls_session_t -> (memory -> int unix_code) -> unit
+  = "net_b_set_pull_callback" "net_b_set_pull_callback"
+
+external net_b_set_push_callback : 
+  gnutls_session_t -> (memory -> int unix_code) -> unit
+  = "net_b_set_push_callback" "net_b_set_push_callback"
+
+external net_b_set_pull_timeout_callback : 
+  gnutls_session_t -> (int -> bool unix_code) -> unit
+  = "net_b_set_pull_timeout_callback" "net_b_set_pull_timeout_callback"
+
+external net_b_set_verify_callback : 
+  gnutls_session_t -> (unit -> bool) -> unit
+  = "net_b_set_verify_callback" "net_b_set_verify_callback"
+
+
+let protect f arg =
+  try
+    ESUCCESS(f arg)
+  with
+    | Unix.Unix_error(Unix.EINTR, _, _) ->
+         EINTR
+    | Unix.Unix_error((Unix.EAGAIN | Unix.EWOULDBLOCK), _, _) ->
+         EAGAIN
+    | Unix.Unix_error(Unix.EMSGSIZE, _, _) ->
+         EMSGSIZE
+    | Unix.Unix_error(_, _, _) ->
+         EPERM
+    | e ->
+         Netlog.logf `Crit "Exception in Nettls_gnutls_bindings: %s"
+                     (Netexn.to_string e);
+         EPERM
+
+
+let b_set_pull_callback s f =
+  net_b_set_pull_callback s (protect f)
+
+
+let b_set_push_callback s f =
+  net_b_set_push_callback s (protect f)
+
+
+let b_set_pull_timeout_callback s f =
+  net_b_set_pull_timeout_callback s (protect f)
+
+
+let b_set_verify_callback s f =
+  net_b_set_verify_callback s (fun () -> f s)
+
+
+external b_set_db_callbacks :
+  gnutls_session_t ->
+  (string -> string -> unit) ->
+  (string -> unit) ->
+  (string -> string) ->
+  unit
+  = "net_b_set_db_callbacks" "net_b_set_db_callbacks"
+
+
+let set_fd s fd =
+  let recv mem =
+    Netsys_mem.mem_recv fd mem 0 (Bigarray.Array1.dim mem) [] in
+  let send mem =
+    Netsys_mem.mem_send fd mem 0 (Bigarray.Array1.dim mem) [] in
+  let timeout ms =
+    Netsys_posix.poll_single fd true false false (0.001 *. float ms) in
+  b_set_pull_callback s recv;
+  b_set_push_callback s send;
+  b_set_pull_timeout_callback s timeout;
+  ()
+
+let string_of_verification_status_flag =
+  function
+    | `Invalid -> "INVALID"
+    | `Revoked -> "REVOKED"
+    | `Signer_not_found -> "SIGNER_NOT_FOUND"
+    | `Signer_not_ca -> "SIGNER_NOT_CA"
+    | `Insecure_algorithm -> "INSECURE_ALGORITHM"
+    | `Not_activated -> "NOT_ACTIVATED"
+    | `Expired -> "EXPIRED"
+
+
 let () =
   Callback.register_exception
     "Nettls_gnutls_bindings.Null_pointer"
     Null_pointer;
   Callback.register_exception
     "Nettls_gnutls_bindings.Error"
-    (Error `Success)
+    (Error `Success);
+  Callback.register_exception
+    "Nettls_gnutls_bindings.Short_memory_buffer"
+    (Short_memory_buffer 0)
 
 
