@@ -89,7 +89,7 @@ EOF
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
 int main (int argc, char *argv[], char *envp[]) {
-  $fun();
+  (void) & $fun;
   return 0;
 }
 EOF
