@@ -1,5 +1,7 @@
 (* -*- tuareg -*- *)
 
+(* The minimum tested version is gnutls-2.8.6, as found in Debian Squeeze *)
+
 #use "stubgen.ml"
 
 let types =
