@@ -12,11 +12,17 @@ typedef const char * const_charp;
 typedef gnutls_datum_t str_datum;
 typedef gnutls_datum_t * str_datum_p;
 typedef const gnutls_datum_t * const_str_datum_p;
+
+#define DUMMY 0
+
+typedef unsigned int empty_flags;
    
 #define wrap_const_str_datum_p wrap_str_datum_p
 #define unwrap_const_str_datum_p unwrap_str_datum_p
 
 static value wrap_error_code(error_code x);
+static value wrap_gnutls_x509_crt_t(gnutls_x509_crt_t x);
+static value wrap_gnutls_x509_crl_t(gnutls_x509_crl_t x);
 
 static gnutls_session_t 
            unwrap_gnutls_session_t(value v);
@@ -36,6 +42,10 @@ static gnutls_anon_client_credentials_t
            unwrap_gnutls_anon_client_credentials_t(value v);
 static gnutls_anon_server_credentials_t 
            unwrap_gnutls_anon_server_credentials_t(value v);
+static gnutls_x509_crt_fmt_t 
+           unwrap_gnutls_x509_crt_fmt_t(value v);
+static gnutls_certificate_import_flags 
+           unwrap_gnutls_certificate_import_flags(value v);
 
 #define raise_null_pointer net_gnutls_null_pointer
 
@@ -471,7 +481,7 @@ CAMLprim value net_b_set_db_callbacks(value sv,
 
 
 
-value net_gnutls_credentials_set(value sess, value creds) {
+CAMLprim value net_gnutls_credentials_set(value sess, value creds) {
     gnutls_session_t s;
     int error_code;
     CAMLparam2(sess,creds);
@@ -543,3 +553,83 @@ value net_gnutls_credentials_set(value sess, value creds) {
 }
 
 
+CAMLprim value net_gnutls_x509_crt_list_import(value datav, value formatv, 
+                                               value flagsv) {
+    gnutls_datum data;
+    gnutls_x509_crt_fmt_t format;
+    unsigned int flags;
+    gnutls_x509_crt_t cert1;
+    gnutls_x509_crt_t *certs;
+    unsigned int n;
+    int code, k, alloc_certs;
+    CAMLparam3(datav, formatv, flagsv);
+    CAMLlocal2(array, crt);
+
+    data = unwrap_str_datum(datav);
+    format = unwrap_gnutls_x509_crt_fmt_t(formatv);
+    flags = unwrap_gnutls_certificate_import_flags(flagsv);
+
+    certs = &cert1;
+    n = 1;
+    alloc_certs = 0;
+    code = gnutls_x509_crt_list_import(certs, &n, &data, format, 
+                    flags | GNUTLS_X509_CRT_LIST_IMPORT_FAIL_IF_EXCEED);
+    if (code == GNUTLS_E_SHORT_MEMORY_BUFFER) {
+        certs = (gnutls_x509_crt_t *) stat_alloc(n * sizeof(void *));
+        alloc_certs = 1;
+        code = gnutls_x509_crt_list_import(certs, &n, &data, format, 
+                                           flags);
+    };
+    if (code >= 0) {
+        array = caml_alloc(code, 0);
+        for (k = 0; k < code; k++) {
+            crt = wrap_gnutls_x509_crt_t(certs[k]);
+            Store_field(array, k, crt);
+        };
+    };
+    if (alloc_certs)
+        stat_free(certs);
+    net_gnutls_error_check(code);
+    CAMLreturn(array);
+}
+
+
+CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv, 
+                                               value flagsv) {
+    gnutls_datum data;
+    gnutls_x509_crt_fmt_t format;
+    unsigned int flags;
+    gnutls_x509_crl_t cert1;
+    gnutls_x509_crl_t *certs;
+    unsigned int n;
+    int code, k, alloc_certs;
+    CAMLparam3(datav, formatv, flagsv);
+    CAMLlocal2(array, crt);
+
+    data = unwrap_str_datum(datav);
+    format = unwrap_gnutls_x509_crt_fmt_t(formatv);
+    flags = unwrap_gnutls_certificate_import_flags(flagsv);
+
+    certs = &cert1;
+    n = 1;
+    alloc_certs = 0;
+    code = gnutls_x509_crl_list_import(certs, &n, &data, format, 
+                    flags | GNUTLS_X509_CRT_LIST_IMPORT_FAIL_IF_EXCEED);
+    if (code == GNUTLS_E_SHORT_MEMORY_BUFFER) {
+        certs = (gnutls_x509_crl_t *) stat_alloc(n * sizeof(void *));
+        alloc_certs = 1;
+        code = gnutls_x509_crl_list_import(certs, &n, &data, format, 
+                                           flags);
+    };
+    if (code >= 0) {
+        array = caml_alloc(code, 0);
+        for (k = 0; k < code; k++) {
+            crt = wrap_gnutls_x509_crl_t(certs[k]);
+            Store_field(array, k, crt);
+        };
+    };
+    if (alloc_certs)
+        stat_free(certs);
+    net_gnutls_error_check(code);
+    CAMLreturn(array);
+}

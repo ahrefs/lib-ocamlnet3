@@ -20,9 +20,13 @@ let parse decl =
         List.map
           (fun param_s ->
              let l = Str.split p3_re param_s in
-             let n = List.hd (List.rev l) in
-             let ty = List.rev (List.tl (List.rev l)) in
-             (n, String.concat " " ty)
+             let tag, l1 =
+               match l with
+                 | "OUT" :: l1 -> (`Out, l1)
+                 | _ -> (`In, l) in
+             let n = List.hd (List.rev l1) in
+             let ty = List.rev (List.tl (List.rev l1)) in
+             (n, tag, String.concat " " ty)
           )
           (Str.split p2_re part2) in
       let name = List.hd (List.rev result_name) in
@@ -317,7 +321,7 @@ let gen_same_as c mli ml old_tyname tyname =
   fprintf mli "type %s = %s\n" tyname old_tyname;
   fprintf ml "type %s = %s\n" tyname old_tyname;
   fprintf c "#define wrap_%s wrap_%s\n" tyname old_tyname;
-  fprintf c "#define unwrap_%s wrap_%s\n" tyname old_tyname
+  fprintf c "#define unwrap_%s unwrap_%s\n" tyname old_tyname
 
 (**********************************************************************)
 (* Functions                                                          *)
@@ -339,13 +343,16 @@ let rec translate_type_to_ml name ty =
     | [ "int" ] -> "int"
     | [ "uint" ] -> "int"
     | [ "bool" ] -> "bool"
+    | [ "ubool" ] -> "bool"
     | [ "double" ] -> "float"
     | [ "ztstr" ] -> "string"
     | [ elt; "ztlist" ] -> translate_type_to_ml name elt ^ " list"
     | [ elt; "array" ] -> translate_type_to_ml name elt ^ " array"
-    | [ "array_size" ] -> "int"
+    | [ aname; "array_size" ] -> "int"
     | [ id; "bigarray" ] -> "Netsys_mem.memory"
     | [ id; "bigarray_size" ] -> "int"
+    | [ id; "stringbuf" ] -> "string"
+    | [ id; "stringbuf_size" ] -> "int"
     | [ "bigarray_datum" ] -> "Netsys_mem.memory"
     | [ "str_datum" ] -> "string"
     | [ "file_descr" ] -> "Unix.file_descr"
@@ -373,6 +380,8 @@ let rec translate_type_to_c name ty =
            "unsigned int", `Plain("uint_val", "Val_int")
       | [ "bool" ] -> 
            "int", `Plain("Bool_val", "Val_bool")
+      | [ "ubool" ] -> 
+           "unsigned int", `Plain("Bool_val", "Val_bool")
       | [ "double" ] -> 
            "double", `Plain("Double_val", "caml_copy_double")
       | [ "ztstr" ] -> 
@@ -387,12 +396,16 @@ let rec translate_type_to_c name ty =
            let el_cty, el_tag =
              translate_type_to_c name elt in
            el_cty ^ " *", `Array(el_cty, el_tag)
-      | [ "array_size" ] ->
-           "unsigned int", `Array_size
+      | [ aname; "array_size" ] ->
+           "unsigned int", `Array_size aname
       | [ id; "bigarray" ] -> 
            "void *", `Bigarray id
       | [ id; "bigarray_size" ] -> 
            "size_t", `Bigarray_size id
+      | [ id; "stringbuf" ] -> 
+           "void *", `Stringbuf id
+      | [ id; "stringbuf_size" ] -> 
+           "size_t", `Stringbuf_size id
 (*
       | [ "bigarray_datum" ] -> 
            "gnutls_datum_t", `Bigarray_datum
@@ -583,17 +596,7 @@ let gen_fun c mli ml name args directives free =
                      else []) @
                       [ sprintf "stat_free(%s);" n1 ] in
                   c_code_post_prio := List.rev code2 @ !c_code_post_prio;
-             | `Array_size ->
-                  let (n_array,_,_,_,_) =
-                    try
-                      List.find
-                        (fun (_,_,_,_,tag) -> 
-                           match tag with `Array _ -> true | _ -> false
-                        )
-                        c_args
-                    with
-                      | Not_found ->
-                           failwith ("array_size needs array, fn: " ^  name) in
+             | `Array_size n_array ->
                   let code =
                     sprintf "%s = (unsigned long) Wosize_val(%s);" n1 n_array in
                   c_code_pre := code :: !c_code_pre
@@ -615,6 +618,27 @@ let gen_fun c mli ml name args directives free =
                                        name) in
                   let code1 =
                     [ sprintf "%s = caml_ba_byte_size(Caml_ba_array_val(%s));"
+                              n1 n_array ] in
+                  c_code_pre := List.rev code1 @ !c_code_pre;
+                  
+             | `Stringbuf id ->
+                  let code1 =
+                    [ sprintf "%s = String_val(%s);" n1 n ] in
+                  c_code_pre := List.rev code1 @ !c_code_pre;
+             | `Stringbuf_size id ->
+                  let (n_array,_,_,_,_) =
+                    try
+                      List.find
+                        (fun (_,_,_,_,tag) -> 
+                           tag = `Stringbuf id
+                        )
+                        c_args
+                    with
+                      | Not_found ->
+                           failwith ("stringbuf_size needs stringbuf, fn: " ^ 
+                                       name) in
+                  let code1 =
+                    [ sprintf "%s = caml_string_length(%s);"
                               n1 n_array ] in
                   c_code_pre := List.rev code1 @ !c_code_pre;
                   
@@ -657,7 +681,7 @@ let gen_fun c mli ml name args directives free =
                     try
                       List.find
                         (fun (_,_,_,_,tag) -> 
-                           tag = `Array_size
+                           tag = `Array_size n
                         )
                         c_args
                     with
@@ -677,7 +701,7 @@ let gen_fun c mli ml name args directives free =
                     ] in
                   c_code_post := List.rev code @ !c_code_post;
 
-             | `Array_size ->
+             | `Array_size aname ->
                   let code =
                     [ sprintf "%s = Val_long(%s);" n n1 ] in
                   c_code_post := List.rev code @ !c_code_post;
@@ -690,15 +714,37 @@ let gen_fun c mli ml name args directives free =
                     [ sprintf "%s = Val_long(%s);" n n1 ] in
                   c_code_post := List.rev code1 @ !c_code_post;
 
+             | `Stringbuf id ->
+                  if kind = `In_out then
+                    failwith ("Stringbuf unsupported as `In_out: " ^ name);
+                  if not (List.mem `GNUTLS_ask_for_size directives) then
+                    failwith ("Stringbuf needs GNUTLS_ask_for_size: " ^ name);
+                  ()
+
+             | `Stringbuf_size id ->
+                  let code1 =
+                    [ sprintf "%s = Val_long(%s);" n n1 ] in
+                  c_code_post := List.rev code1 @ !c_code_post;
+
              | _ ->
                   failwith ("Unsupported arg: " ^ n ^ ", fn " ^ name)
          );
+
+         let noref =
+           (* don't put a "&" before the arg even if it is an output *)
+           match tag with
+             | `Stringbuf _ -> true
+             | `Bigarray _ -> true
+             | _ -> false in
 
          ( match kind with
              | `In | `In_ignore ->
                   c_act_args := n1 :: !c_act_args
              | `In_out | `Out | `Out_ignore ->
-                  c_act_args := ("&" ^ n1) :: !c_act_args
+                  if noref then
+                    c_act_args := n1 :: !c_act_args
+                  else
+                    c_act_args := ("&" ^ n1) :: !c_act_args
              | `Return | `Return_ignore ->
                   c_act_ret := Some n1
          )
@@ -780,6 +826,47 @@ let gen_fun c mli ml name args directives free =
       | _ -> ()
     )
     directives;
+
+  if List.mem `GNUTLS_ask_for_size directives then (
+    (* Call the function twice: once to get the size of the string buffer,
+       and a second time to fill the buffer
+     *)
+    let (n_strbuf,_,_,_,_) =
+      try
+        List.find
+          (fun (_,_,_,_,tag) -> tag = `Stringbuf "1")
+          c_args
+      with
+        | Not_found ->
+             failwith ("GNUTLS_ask_for_size needs '1 stringbuf', fn: " ^ 
+                         name) in
+    let (n_strbuf_size,_,_,_,_) =
+      try
+        List.find
+          (fun (_,_,_,_,tag) -> tag = `Stringbuf_size "1")
+          c_args
+      with
+        | Not_found ->
+             failwith ("GNUTLS_ask_for_size needs '1 stringbuf_size', fn: " ^ 
+                         name) in
+    fprintf c "  %s__c = NULL;\n" n_strbuf;
+    fprintf c "  %s__c = 1;\n" n_strbuf_size;
+    fprintf c "  %s = caml_alloc_string(0);\n" n_strbuf;
+    (* "pre call" *)
+    fprintf c "  ";
+    let ret_var =
+      match !c_act_ret with
+        | None -> assert false
+        | Some var -> var in
+    fprintf c "%s = " ret_var;
+    fprintf c "%s(%s);\n" name (String.concat "," (List.rev !c_act_args));
+    fprintf c "  if (%s == 0 || %s == GNUTLS_E_SHORT_MEMORY_BUFFER) {\n" 
+            ret_var ret_var;
+    fprintf c "    %s = caml_alloc_string(%s__c);\n"
+            n_strbuf n_strbuf_size;
+    fprintf c "    %s__c = String_val(%s);\n" n_strbuf n_strbuf;
+    fprintf c "  };\n";
+  );
 
   fprintf c "  ";
   ( match !c_act_ret with

@@ -110,6 +110,17 @@ let string_of_verification_status_flag =
     | `Expired -> "EXPIRED"
 
 
+external gnutls_x509_crt_list_import : string -> gnutls_x509_crt_fmt_t ->
+                                  gnutls_certificate_import_flags ->
+                                  gnutls_x509_crt_t array
+  = "net_gnutls_x509_crt_list_import" "net_gnutls_x509_crt_list_import"
+
+external gnutls_x509_crl_list_import : string -> gnutls_x509_crt_fmt_t ->
+                                  gnutls_certificate_import_flags ->
+                                  gnutls_x509_crl_t array
+  = "net_gnutls_x509_crl_list_import" "net_gnutls_x509_crl_list_import"
+
+
 let () =
   Callback.register_exception
     "Nettls_gnutls_bindings.Null_pointer"

@@ -22,7 +22,7 @@ let types =
     "gnutls_priority_t",         abstract_ptr "gnutls_priority_deinit";
 
     (* "gnutls_x509_privkey_t",     `Abstract_ptr; (* in x509.h *) *)
-    (* "gnutls_x509_crl_t",         `Abstract_ptr; (* in x509.h *) *)
+    "gnutls_x509_crl_t",         abstract_ptr "gnutls_x509_crl_deinit";
     "gnutls_x509_crt_t",         abstract_ptr "gnutls_x509_crt_deinit";
     (* "gnutls_x509_crq_t",         `Abstract_ptr; (* in x509.h *) *)
     "gnutls_openpgp_keyring_t",  abstract_ptr "gnutls_openpgp_keyring_deinit";
@@ -202,7 +202,15 @@ let types =
                           "GNUTLS_KEY_|DECIPHER_ONLY";
                         ];
     "gnutls_channel_binding_t", `Enum [ "GNUTLS_CB_|TLS_UNIQUE" ];
-
+    "gnutls_info_access_what_t", `Enum [ "GNUTLS_IA_|ACCESSMETHOD_OID";
+                                         "GNUTLS_IA_|ACCESSLOCATION_GENERALNAME_TYPE";
+                                         "GNUTLS_IA_|URI";
+                                         "GNUTLS_IA_|OCSP_URI";
+                                         "GNUTLS_IA_|CAISSUERS_URI";
+                                       ];
+    "gnutls_certificate_import_flags", 
+        `Flags [ "GNUTLS_X509_CRT_LIST_|FAIL_IF_UNSORTED" ];
+        (* GNUTLS_X509_CRT_LIST_IMPORT_FAIL_IF_EXCEED intentionally omitted *)
     "error_code", `Enum [ "GNUTLS_E_|SUCCESS";
                           "GNUTLS_E_|UNKNOWN_COMPRESSION_ALGORITHM";
                           "GNUTLS_E_|UNKNOWN_CIPHER_TYPE";
@@ -341,6 +349,7 @@ let types =
                           "GNUTLS_E_|ILLEGAL_PARAMETER";
                           "GNUTLS_E_|UNIMPLEMENTED_FEATURE";
                         ];
+    "empty_flags", `Flags [ "DUMMY" ];
     "str_datum", `Manual("type str_datum = string");
     "str_datum_p", `Manual("type str_datum_p = string");
     "const_str_datum_p", `Manual("type const_str_datum_p = string");
@@ -366,15 +375,18 @@ let types =
    Output values are not deallocated by the generated wrapper code.
  *)
 
-let standard ?(enable_buffer=false) decl =
+let standard ?(ask_for_size=false) decl =
   let (name, result, params) = parse decl in
   let params1 =
     List.map 
-      (fun (n,ty) -> 
-         if enable_buffer && ty = "1 bigarray_size" then
-           (n, `In_out, ty)
+      (fun (n,tag,ty) -> 
+         if ask_for_size && 
+              (ty = "1 bigarray_size" || ty = "1 stringbuf_size") then
+           (n, `Out_ignore, ty)
+         else if ask_for_size && ty = "1 stringbuf" then
+           (n, `Out, ty)
          else
-           (n, `In, ty)
+           (n,  tag, ty)
       )
       params in
   (name,
@@ -386,20 +398,12 @@ let standard ?(enable_buffer=false) decl =
        ), 
        result
      ],
-   ( if enable_buffer then
-       let name_size, _ =
-         try List.find (fun (n,ty) -> ty = "1 bigarray_size") params
-         with Not_found ->
-           failwith("buffer enabled, but no 1 bigarray_size, fn: " ^ name) in
-       [ `Post("net_gnutls_size_check(RESULT," ^ name_size ^ "__c);") ]
-     else
-       []
-   ) @
-     (if result = "error_code" || has_prefix ~prefix:"error_code/" result then
-        [ `Post("net_gnutls_error_check(RESULT);") ]
-      else
-        []
-     )
+   (if ask_for_size then [ `GNUTLS_ask_for_size ] else []) @
+   (if result = "error_code" || has_prefix ~prefix:"error_code/" result then
+      [ `Post("net_gnutls_error_check(RESULT);") ]
+    else
+      []
+   )
   )
 
 
@@ -446,8 +450,6 @@ let functions =
       `Post("attach_session_callbacks(session__c);");
     ];
 
-    (* TODO IMPORTANT: gnutls_credentials_set *)
-
     standard
       "void gnutls_certificate_server_set_request \
            (gnutls_session_t session, gnutls_certificate_request_t req)";
@@ -465,7 +467,7 @@ let functions =
 
     "gnutls_certificate_get_peers",
     [ "session", `In, "gnutls_session_t";
-      "list_size", `Out_ignore, "array_size";
+      "list_size", `Out_ignore, "result array_size";
       "result", `Return, "const str_datum array";
     ],
     [];
@@ -494,8 +496,6 @@ let functions =
     standard
       "error_code gnutls_bye \
           (gnutls_session_t session, gnutls_close_request_t how)";
-
-    (* TODO: set push/pull functions *)
 
     (**********************************************************************)
     (* Alerts                                                             *)
@@ -823,15 +823,11 @@ let functions =
     ],
     [ `Post("net_gnutls_error_check(RESULT);") ];
 
-    "gnutls_fingerprint",
-    [ "algo", `In, "gnutls_digest_algorithm_t";
-      "data", `In, "str_datum_p";
-      "result_data", `In, "1 bigarray";
-      "result_size", `In_out, "1 bigarray_size";
-      "result", `Return_ignore, "error_code";
-    ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
-
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_fingerprint \
+           (gnutls_digest_algorithm_t algo, str_datum_p data, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
     (* TODO: gnutls_random_art *)
 
     (**********************************************************************)
@@ -1045,16 +1041,11 @@ let functions =
     (* X509 details                                                       *)
     (**********************************************************************)
 
-(*
-    "gnutls_certificate_get_issuer",
-    [ "sc", `In, "gnutls_certificate_credentials_t";
-      "cert", `In, "gnutls_x509_crt_t";
-      "issuer", `Out, "gnutls_x509_crt_t";
-      "flags", `In, "uint";
-      "result", `Return_ignore, "error_code";
-    ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
- *)
+    standard
+      "error_code gnutls_certificate_get_issuer \
+           (gnutls_certificate_credentials_t sc, \
+            gnutls_x509_crt_t cert, OUT gnutls_x509_crt_t issuer, \
+            empty_flags flags)";
 
     (* TODO_ gnutls_certificate_free_* *)
 
@@ -1185,159 +1176,211 @@ let functions =
             const_str_datum_p data, \
             gnutls_x509_crt_fmt_t format)";
 
-    (* gnutls_x509_crt_list_import2 (gnutls_x509_crt_t ** certs,
-                             unsigned int * size,
-                             const gnutls_datum_t * data,
-                             gnutls_x509_crt_fmt_t format, unsigned int flags);
-       int gnutls_x509_crt_list_import (gnutls_x509_crt_t * certs,
-                                   unsigned int *cert_max,
-                                   const gnutls_datum_t * data,
-                                   gnutls_x509_crt_fmt_t format,
-                                   unsigned int flags);
+    (* gnutls_x509_crt_list_import: in gnutls.c *)
+
+    (* In the following, ask_for_size:true enables special handling of the
+       "1 stringbuf" and "1 stringbuf_size" arguments. The function is first
+       called with a NULL buffer pointer to get the size of the buffer, and
+       then again with a buffer of the right size. The buffer is returned as
+       string
      *)
 
-(*
-    "gnutls_x509_crt_export",
-    [ "cert", `In, "gnutls_x509_crt_t";
-      "format", `In, "gnutls_x509_crt_fmt_t format";
-      "output_data", `In, "1 bigarray";
-      "output_data_size", `In_out, "1 bigarray_size";
-      "result", `Return_ignore, "error_code";
-    ],
-    [ `Post("net_gnutls_size_check(RESULT, output_data_size__c);");
-      `Post("net_gnutls_error_check(RESULT);")
-    ];
- *)
-
-    (* standard_buffer: handles bigarray_size specially *)
-
     standard
-      ~enable_buffer:true
+      ~ask_for_size:true
       "error_code gnutls_x509_crt_export \
            (gnutls_x509_crt_t cert, \
             gnutls_x509_crt_fmt_t format, \
-            1 bigarray output_data, 1 bigarray_size output_data_size)";
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_issuer_dn \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_issuer_dn_oid \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
 
 (*
-  int gnutls_x509_crt_get_issuer_dn (gnutls_x509_crt_t cert, char *buf,
-                                     size_t * buf_size);
-  int gnutls_x509_crt_get_issuer_dn_oid (gnutls_x509_crt_t cert, int indx,
-                                         void *oid, size_t * oid_size);
   int gnutls_x509_crt_get_issuer_dn_by_oid (gnutls_x509_crt_t cert,
                                             const char *oid, int indx,
                                             unsigned int raw_flag,
                                             void *buf, size_t * buf_size);
-  int gnutls_x509_crt_get_dn (gnutls_x509_crt_t cert, char *buf,
-                              size_t * buf_size);
-  int gnutls_x509_crt_get_dn_oid (gnutls_x509_crt_t cert, int indx,
-                                  void *oid, size_t * oid_size);
+ *)
+
+    (* FIXME: there is a null byte at the end of the returned string *)
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_dn \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_dn_oid \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+(*
   int gnutls_x509_crt_get_dn_by_oid (gnutls_x509_crt_t cert,
                                      const char *oid, int indx,
                                      unsigned int raw_flag, void *buf,
                                      size_t * buf_size);
-:
+ *)
 
-  int gnutls_x509_crt_check_hostname (gnutls_x509_crt_t cert,
-                                      const char *hostname);
-
-  int gnutls_x509_crt_get_signature_algorithm (gnutls_x509_crt_t cert);
-  int gnutls_x509_crt_get_signature (gnutls_x509_crt_t cert,
-                                     char *sig, size_t * sizeof_sig);
-  int gnutls_x509_crt_get_version (gnutls_x509_crt_t cert);
-  int gnutls_x509_crt_get_key_id (gnutls_x509_crt_t crt,
-                                  unsigned int flags,
-                                  unsigned char *output_data,
-                                  size_t * output_data_size);
-
-  int gnutls_x509_crt_set_authority_key_id (gnutls_x509_crt_t cert,
-                                            const void *id, size_t id_size);
-  int gnutls_x509_crt_get_authority_key_id (gnutls_x509_crt_t cert,
-                                            void *ret, size_t * ret_size,
-                                            unsigned int *critical);
-
-  int gnutls_x509_crt_get_subject_key_id (gnutls_x509_crt_t cert,
-                                          void *ret, size_t * ret_size,
-                                          unsigned int *critical);
-
-  int gnutls_x509_crt_get_subject_unique_id (gnutls_x509_crt_t crt, char *buf,
-                                             size_t * buf_size);
-
-  int gnutls_x509_crt_get_issuer_unique_id (gnutls_x509_crt_t crt, char *buf,
-                                            size_t * buf_size);
-  int gnutls_x509_crt_get_authority_info_access (gnutls_x509_crt_t crt,
-                                                 unsigned int seq,
-                                                 int what,
-                                                 gnutls_datum_t * data,
-                                                 int *critical);
-  time_t gnutls_x509_crt_get_activation_time (gnutls_x509_crt_t cert);
-  time_t gnutls_x509_crt_get_expiration_time (gnutls_x509_crt_t cert);
-  int gnutls_x509_crt_get_serial (gnutls_x509_crt_t cert, void *result,
-                                  size_t * result_size);
-
-  int gnutls_x509_crt_get_pk_algorithm (gnutls_x509_crt_t cert,
-                                        unsigned int *bits);
-  int gnutls_x509_crt_get_pk_rsa_raw (gnutls_x509_crt_t crt,
-                                      gnutls_datum_t * m, gnutls_datum_t * e);
-  int gnutls_x509_crt_get_pk_dsa_raw (gnutls_x509_crt_t crt,
-                                      gnutls_datum_t * p,
-                                      gnutls_datum_t * q,
-                                      gnutls_datum_t * g, gnutls_datum_t * y);
-
-  int gnutls_x509_crt_get_subject_alt_name (gnutls_x509_crt_t cert,
-                                            unsigned int seq, void *ret,
-                                            size_t * ret_size,
-                                            unsigned int *critical);
+    standard
+      "error_code gnutls_x509_crt_check_hostname \
+           (gnutls_x509_crt_t cert, const ztstr hostname)";
+    standard
+      "error_code/gnutls_sign_algorithm_t \
+       gnutls_x509_crt_get_signature_algorithm \
+           (gnutls_x509_crt_t cert)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_signature \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      "error_code/uint gnutls_x509_crt_get_version \
+           (gnutls_x509_crt_t cert)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_key_id \
+           (gnutls_x509_crt_t crt, \
+            empty_flags flags, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_authority_key_id \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_subject_key_id \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_subject_unique_id \
+           (gnutls_x509_crt_t crt, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_issuer_unique_id \
+           (gnutls_x509_crt_t crt, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      "error_code gnutls_x509_crt_get_authority_info_access \
+           (gnutls_x509_crt_t crt, \
+            uint seq, gnutls_info_access_what_t what, \
+            OUT str_datum data, \
+            OUT bool critical)";
+    standard
+      "double gnutls_x509_crt_get_activation_time(gnutls_x509_crt_t cert)";
+    standard
+      "double gnutls_x509_crt_get_expiration_time (gnutls_x509_crt_t cert)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_serial \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      "error_code/gnutls_pk_algorithm_t gnutls_x509_crt_get_pk_algorithm \
+           (gnutls_x509_crt_t cert, OUT uint bits)";
+    standard
+      "error_code gnutls_x509_crt_get_pk_rsa_raw \
+           (gnutls_x509_crt_t crt, \
+            OUT str_datum m, OUT str_datum e)";
+    standard
+      "error_code gnutls_x509_crt_get_pk_dsa_raw \
+           (gnutls_x509_crt_t crt, \
+           OUT str_datum p, OUT str_datum q, OUT str_datum g, OUT str_datum y)";
+    standard
+      ~ask_for_size:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_subject_alt_name \
+           (gnutls_x509_crt_t cert, \
+            uint seq, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+(*
   int gnutls_x509_crt_get_subject_alt_name2 (gnutls_x509_crt_t cert,
                                              unsigned int seq, void *ret,
                                              size_t * ret_size,
                                              unsigned int *ret_type,
                                              unsigned int *critical);
-  int gnutls_x509_crt_get_subject_alt_othername_oid (gnutls_x509_crt_t cert,
-                                                     unsigned int seq,
-                                                     void *oid,
-                                                     size_t * oid_size);
-
-  int gnutls_x509_crt_get_issuer_alt_name (gnutls_x509_crt_t cert,
-                                           unsigned int seq, void *ret,
-                                           size_t * ret_size,
-                                           unsigned int *critical);
+ *)
+    standard
+      ~ask_for_size:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_subject_alt_othername_oid \
+           (gnutls_x509_crt_t cert, \
+            uint seq, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    
+    standard
+      ~ask_for_size:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_issuer_alt_name \
+           (gnutls_x509_crt_t cert, \
+            uint seq,\
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+(*
   int gnutls_x509_crt_get_issuer_alt_name2 (gnutls_x509_crt_t cert,
                                             unsigned int seq, void *ret,
                                             size_t * ret_size,
                                             unsigned int *ret_type,
                                             unsigned int *critical);
+ *)
 
-  int gnutls_x509_crt_get_issuer_alt_othername_oid (gnutls_x509_crt_t cert,
-                                                    unsigned int seq,
-                                                    void *ret,
-                                                    size_t * ret_size);
+    standard
+      ~ask_for_size:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_issuer_alt_othername_oid \
+           (gnutls_x509_crt_t cert, \
+            uint seq, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
 
-  int gnutls_x509_crt_get_ca_status (gnutls_x509_crt_t cert,
-                                     unsigned int *critical);
-  int gnutls_x509_crt_get_basic_constraints (gnutls_x509_crt_t cert,
-                                             unsigned int *critical,
-                                             unsigned int *ca, int *pathlen);
-
-  int gnutls_x509_crt_get_key_usage (gnutls_x509_crt_t cert,
-                                     unsigned int *key_usage,
-                                     unsigned int *critical);
-  int gnutls_x509_crt_get_extension_oid (gnutls_x509_crt_t cert, int indx,
-                                         void *oid, size_t * oid_size);
-  int gnutls_x509_crt_get_extension_by_oid (gnutls_x509_crt_t cert,
-                                            const char *oid, int indx,
-                                            void *buf, size_t * buf_size,
-                                            unsigned int *critical);
-  int gnutls_x509_crt_get_extension_info (gnutls_x509_crt_t cert, int indx,
-                                          void *oid, size_t * oid_size,
-                                          unsigned int *critical);
-  int gnutls_x509_crt_get_extension_data (gnutls_x509_crt_t cert, int indx,
-                                          void *data, size_t * sizeof_data);
-
-  int gnutls_x509_crt_set_extension_by_oid (gnutls_x509_crt_t crt,
-                                            const char *oid,
-                                            const void *buf,
-                                            size_t sizeof_buf,
-                                            unsigned int critical);
+    standard
+      "error_code gnutls_x509_crt_get_ca_status \
+           (gnutls_x509_crt_t cert, OUT ubool critical)";
+    standard
+      "error_code gnutls_x509_crt_get_basic_constraints \
+           (gnutls_x509_crt_t cert, \
+            OUT ubool critical, OUT ubool ca, OUT int pathlen)";
+    standard
+      "error_code gnutls_x509_crt_get_key_usage \
+           (gnutls_x509_crt_t cert, \
+            OUT key_usage key_usage, OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_oid \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+(*
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_by_oid \
+           (gnutls_x509_crt_t cert, const ztstr oid, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+ *)
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_info \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_data \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+(*
   int gnutls_x509_crt_get_subject (gnutls_x509_crt_t cert,
                                    gnutls_x509_dn_t * dn);
   int gnutls_x509_crt_get_issuer (gnutls_x509_crt_t cert,
@@ -1355,47 +1398,53 @@ let functions =
                              size_t * output_data_size);
 
   void gnutls_x509_dn_deinit (gnutls_x509_dn_t dn);
-
-  int gnutls_x509_crt_check_issuer (gnutls_x509_crt_t cert,
-                                    gnutls_x509_crt_t issuer);
-
-  int gnutls_x509_crt_list_verify (const gnutls_x509_crt_t * cert_list,
-                                   int cert_list_length,
-                                   const gnutls_x509_crt_t * CA_list,
-                                   int CA_list_length,
-                                   const gnutls_x509_crl_t * CRL_list,
-                                   int CRL_list_length,
-                                   unsigned int flags, unsigned int *verify);
-
-  int gnutls_x509_crt_verify (gnutls_x509_crt_t cert,
-                              const gnutls_x509_crt_t * CA_list,
-                              int CA_list_length, unsigned int flags,
-                              unsigned int *verify);
-  int gnutls_x509_crl_verify (gnutls_x509_crl_t crl,
-                              const gnutls_x509_crt_t * CA_list,
-                              int CA_list_length, unsigned int flags,
-                              unsigned int *verify);
-
-  int gnutls_x509_crt_check_revocation (gnutls_x509_crt_t cert,
-                                        const gnutls_x509_crl_t *
-                                        crl_list, int crl_list_length);
-
-  int gnutls_x509_crt_get_fingerprint (gnutls_x509_crt_t cert,
-                                       gnutls_digest_algorithm_t algo,
-                                       void *buf, size_t * buf_size);
-
-  int gnutls_x509_crt_get_key_purpose_oid (gnutls_x509_crt_t cert,
-                                           int indx, void *oid,
-                                           size_t * oid_size,
-                                           unsigned int *critical);
-  int gnutls_x509_crt_set_key_purpose_oid (gnutls_x509_crt_t cert,
-                                           const void *oid,
-                                           unsigned int critical);
  *)
+    standard
+      "bool gnutls_x509_crt_check_issuer \
+           (gnutls_x509_crt_t cert, gnutls_x509_crt_t issuer)";
+    standard
+      "error_code gnutls_x509_crt_list_verify \
+           (gnutls_x509_crt_t array cert_list, \
+            cert_list array_size cert_list_length, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_length, \
+            gnutls_x509_crl_t array crl_list, \
+            crl_list array_size crl_list_length, \
+            gnutls_certificate_verify_flags flags, \
+            OUT gnutls_certificate_status_t verify)";
+    standard
+      "error_code gnutls_x509_crt_verify \
+           (gnutls_x509_crt_t cert, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_length, \
+            gnutls_certificate_verify_flags flags, \
+            OUT gnutls_certificate_status_t verify)";
+    standard
+      "error_code gnutls_x509_crl_verify \
+           (gnutls_x509_crl_t crl, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_length, \
+            gnutls_certificate_verify_flags flags, \
+            OUT gnutls_certificate_status_t verify)";
+    standard
+      "error_code/bool gnutls_x509_crt_check_revocation \
+           (gnutls_x509_crt_t cert, \
+            gnutls_x509_crl_t array crl_list, \
+            crl_list array_size crl_list_length)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_fingerprint \
+           (gnutls_x509_crt_t cert, \
+            gnutls_digest_algorithm_t algo, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_key_purpose_oid \
+           (gnutls_x509_crt_t cert, \
+            int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
   ]
-
-
-(* TODO: net_gnutls_error_check returns real exception *)
 
 
 let () =
