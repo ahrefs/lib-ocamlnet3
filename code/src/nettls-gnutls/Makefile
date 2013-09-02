@@ -18,10 +18,6 @@ INCLUDES = $(INC_NETSYS)
 
 include $(TOP_DIR)/Makefile.rules
 
-CLEAN_LIST += netsys_gnutls_bindings.ml \
-              netsys_gnutls_bindings.mli \
-              netsys_gnutls_bindings_stubs.c
-
 .PHONY: cobjects
 cobjects: $(COBJECTS)
 

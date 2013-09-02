@@ -42,7 +42,7 @@ let types =
 
     "gnutls_params_type_t",      `Enum [ "GNUTLS_PARAMS_|RSA_EXPORT";
                                          "GNUTLS_PARAMS_|DH";
-                                         "GNUTLS_PARAMS_|ECDH"
+                                         "?GNUTLS_PARAMS_|ECDH"
                                        ];
     "gnutls_credentials_type_t", `Enum [ "GNUTLS_CRD_|CERTIFICATE";
                                          "GNUTLS_CRD_|ANON";
@@ -80,14 +80,16 @@ let types =
                                          "GNUTLS_A_|UNSUPPORTED_EXTENSION";
                                          "GNUTLS_A_|CERTIFICATE_UNOBTAINABLE";
                                          "GNUTLS_A_|UNRECOGNIZED_NAME";
-                                         "GNUTLS_A_|UNKNOWN_PSK_IDENTITY"
+                                         "GNUTLS_A_|UNKNOWN_PSK_IDENTITY";
+                                         "?GNUTLS_A_|INNER_APPLICATION_FAILURE";
+                                         "?GNUTLS_A_|INNER_APPLICATION_VERIFICATION";
                                        ];
     "gnutls_handshake_description_t",
                                  `Enum [ "GNUTLS_HANDSHAKE_|HELLO_REQUEST";
                                          "GNUTLS_HANDSHAKE_|CLIENT_HELLO";
                                          "GNUTLS_HANDSHAKE_|SERVER_HELLO";
-                                         "GNUTLS_HANDSHAKE_|HELLO_VERIFY_REQUEST";
-                                         "GNUTLS_HANDSHAKE_|NEW_SESSION_TICKET";
+                                         "?GNUTLS_HANDSHAKE_|HELLO_VERIFY_REQUEST";
+                                         "?GNUTLS_HANDSHAKE_|NEW_SESSION_TICKET";
                                          "GNUTLS_HANDSHAKE_|CERTIFICATE_PKT";
                                          "GNUTLS_HANDSHAKE_|SERVER_KEY_EXCHANGE";
                                          "GNUTLS_HANDSHAKE_|CERTIFICATE_REQUEST";
@@ -96,8 +98,8 @@ let types =
                                          "GNUTLS_HANDSHAKE_|CLIENT_KEY_EXCHANGE";
                                          "GNUTLS_HANDSHAKE_|FINISHED";
                                          "GNUTLS_HANDSHAKE_|SUPPLEMENTAL";
-                                         "GNUTLS_HANDSHAKE_|CHANGE_CIPHER_SPEC";
-                                         "GNUTLS_HANDSHAKE_|CLIENT_HELLO_V2";
+                                         "?GNUTLS_HANDSHAKE_|CHANGE_CIPHER_SPEC";
+                                         "?GNUTLS_HANDSHAKE_|CLIENT_HELLO_V2";
                                        ];
     "gnutls_certificate_status_t",
                                  `Flags [ "GNUTLS_CERT_|INVALID";
@@ -121,9 +123,9 @@ let types =
                                            "GNUTLS_VERIFY_|ALLOW_SIGN_RSA_MD2";
                                            "GNUTLS_VERIFY_|ALLOW_SIGN_RSA_MD5";
                                            "GNUTLS_VERIFY_|DISABLE_TIME_CHECKS";
-                                           "GNUTLS_VERIFY_|DISABLE_TRUSTED_TIME_CHECKS";
-                                           "GNUTLS_VERIFY_|DO_NOT_ALLOW_X509_V1_CA_CRT";
-                                           "GNUTLS_VERIFY_|DISABLE_CRL_CHECKS";
+                                           "?GNUTLS_VERIFY_|DISABLE_TRUSTED_TIME_CHECKS";
+                                           "?GNUTLS_VERIFY_|DO_NOT_ALLOW_X509_V1_CA_CRT";
+                                           "?GNUTLS_VERIFY_|DISABLE_CRL_CHECKS";
                                          ];
 
     "gnutls_openpgp_crt_status_t",
@@ -138,7 +140,7 @@ let types =
                                           "GNUTLS_|TLS1_0";
                                           "GNUTLS_|TLS1_1";
                                           "GNUTLS_|TLS1_2";
-                                          "GNUTLS_|DTLS1_0";
+                                          "?GNUTLS_|DTLS1_0";
                                           "GNUTLS_|VERSION_UNKNOWN";
                                         ];
     "gnutls_x509_crt_fmt_t",      `Enum [ "GNUTLS_X509_FMT_|DER";
@@ -166,8 +168,8 @@ let types =
 
     "gnutls_init_flags",         `Flags [ "GNUTLS_|SERVER";
                                           "GNUTLS_|CLIENT";
-                                          "GNUTLS_|DATAGRAM";
-                                          "GNUTLS_|NONBLOCK"
+                                          "?GNUTLS_|DATAGRAM";
+                                          "?GNUTLS_|NONBLOCK"
                                         ];
     "gnutls_server_name_type_t",  `Enum [ "GNUTLS_NAME_|DNS" ];
 
@@ -209,8 +211,9 @@ let types =
                                          "GNUTLS_IA_|CAISSUERS_URI";
                                        ];
     "gnutls_certificate_import_flags", 
-        `Flags [ "GNUTLS_X509_CRT_LIST_|FAIL_IF_UNSORTED" ];
-        (* GNUTLS_X509_CRT_LIST_IMPORT_FAIL_IF_EXCEED intentionally omitted *)
+        `Flags [ "?GNUTLS_X509_CRT_LIST_|FAIL_IF_UNSORTED";
+                 "GNUTLS_X509_CRT_LIST_|IMPORT_FAIL_IF_EXCEED";
+               ];
     "error_code", `Enum [ "GNUTLS_E_|SUCCESS";
                           "GNUTLS_E_|UNKNOWN_COMPRESSION_ALGORITHM";
                           "GNUTLS_E_|UNKNOWN_CIPHER_TYPE";
@@ -262,7 +265,7 @@ let types =
                           "GNUTLS_E_|FILE_ERROR";
                           "GNUTLS_E_|TOO_MANY_EMPTY_PACKETS";
                           "GNUTLS_E_|UNKNOWN_PK_ALGORITHM";
-                          "GNUTLS_E_|TOO_MANY_HANDSHAKE_PACKETS";
+                          "?GNUTLS_E_|TOO_MANY_HANDSHAKE_PACKETS";
                           "GNUTLS_E_|NO_TEMPORARY_RSA_PARAMS";
                           "GNUTLS_E_|NO_COMPRESSION_ALGORITHMS";
                           "GNUTLS_E_|NO_CIPHER_SUITES";
@@ -300,11 +303,11 @@ let types =
                           "GNUTLS_E_|WARNING_IA_FPHF_RECEIVED";
                           "GNUTLS_E_|IA_VERIFY_FAILED";
                           "GNUTLS_E_|UNKNOWN_ALGORITHM";
-                          "GNUTLS_E_|UNSUPPORTED_SIGNATURE_ALGORITHM";
-                          "GNUTLS_E_|SAFE_RENEGOTIATION_FAILED";
-                          "GNUTLS_E_|UNSAFE_RENEGOTIATION_DENIED";
-                          "GNUTLS_E_|UNKNOWN_SRP_USERNAME";
-                          "GNUTLS_E_|PREMATURE_TERMINATION";
+                          "?GNUTLS_E_|UNSUPPORTED_SIGNATURE_ALGORITHM";
+                          "?GNUTLS_E_|SAFE_RENEGOTIATION_FAILED";
+                          "?GNUTLS_E_|UNSAFE_RENEGOTIATION_DENIED";
+                          "?GNUTLS_E_|UNKNOWN_SRP_USERNAME";
+                          "?GNUTLS_E_|PREMATURE_TERMINATION";
                           "GNUTLS_E_|BASE64_ENCODING_ERROR";
                           (* "GNUTLS_E_|INCOMPATIBLE_GCRYPT_LIBRARY"; *)
                           "GNUTLS_E_|INCOMPATIBLE_CRYPTO_LIBRARY";
@@ -316,37 +319,37 @@ let types =
                           "GNUTLS_E_|OPENPGP_SUBKEY_ERROR";
                           "GNUTLS_E_|CRYPTO_ALREADY_REGISTERED";
                           "GNUTLS_E_|HANDSHAKE_TOO_LARGE";
-                          "GNUTLS_E_|CRYPTODEV_IOCTL_ERROR";
-                          "GNUTLS_E_|CRYPTODEV_DEVICE_ERROR";
-                          "GNUTLS_E_|CHANNEL_BINDING_NOT_AVAILABLE";
-                          "GNUTLS_E_|BAD_COOKIE";
-                          "GNUTLS_E_|OPENPGP_PREFERRED_KEY_ERROR";
-                          "GNUTLS_E_|INCOMPAT_DSA_KEY_WITH_TLS_PROTOCOL";
-                          "GNUTLS_E_|PKCS11_ERROR";
-                          "GNUTLS_E_|PKCS11_LOAD_ERROR";
-                          "GNUTLS_E_|PARSING_ERROR";
-                          "GNUTLS_E_|PKCS11_PIN_ERROR";
-                          "GNUTLS_E_|PKCS11_SLOT_ERROR";
-                          "GNUTLS_E_|LOCKING_ERROR";
-                          "GNUTLS_E_|PKCS11_ATTRIBUTE_ERROR";
-                          "GNUTLS_E_|PKCS11_DEVICE_ERROR";
-                          "GNUTLS_E_|PKCS11_DATA_ERROR";
-                          "GNUTLS_E_|PKCS11_UNSUPPORTED_FEATURE_ERROR";
-                          "GNUTLS_E_|PKCS11_KEY_ERROR";
-                          "GNUTLS_E_|PKCS11_PIN_EXPIRED";
-                          "GNUTLS_E_|PKCS11_PIN_LOCKED";
-                          "GNUTLS_E_|PKCS11_SESSION_ERROR";
-                          "GNUTLS_E_|PKCS11_SIGNATURE_ERROR";
-                          "GNUTLS_E_|PKCS11_TOKEN_ERROR";
-                          "GNUTLS_E_|PKCS11_USER_ERROR";
-                          "GNUTLS_E_|CRYPTO_INIT_FAILED";
-                          "GNUTLS_E_|TIMEDOUT";
-                          "GNUTLS_E_|USER_ERROR";
-                          "GNUTLS_E_|ECC_NO_SUPPORTED_CURVES";
-                          "GNUTLS_E_|ECC_UNSUPPORTED_CURVE";
-                          "GNUTLS_E_|PKCS11_REQUESTED_OBJECT_NOT_AVAILBLE";
-                          "GNUTLS_E_|CERTIFICATE_LIST_UNSORTED";
-                          "GNUTLS_E_|ILLEGAL_PARAMETER";
+                          "?GNUTLS_E_|CRYPTODEV_IOCTL_ERROR";
+                          "?GNUTLS_E_|CRYPTODEV_DEVICE_ERROR";
+                          "?GNUTLS_E_|CHANNEL_BINDING_NOT_AVAILABLE";
+                          "?GNUTLS_E_|BAD_COOKIE";
+                          "?GNUTLS_E_|OPENPGP_PREFERRED_KEY_ERROR";
+                          "?GNUTLS_E_|INCOMPAT_DSA_KEY_WITH_TLS_PROTOCOL";
+                          "?GNUTLS_E_|PKCS11_ERROR";
+                          "?GNUTLS_E_|PKCS11_LOAD_ERROR";
+                          "?GNUTLS_E_|PARSING_ERROR";
+                          "?GNUTLS_E_|PKCS11_PIN_ERROR";
+                          "?GNUTLS_E_|PKCS11_SLOT_ERROR";
+                          "?GNUTLS_E_|LOCKING_ERROR";
+                          "?GNUTLS_E_|PKCS11_ATTRIBUTE_ERROR";
+                          "?GNUTLS_E_|PKCS11_DEVICE_ERROR";
+                          "?GNUTLS_E_|PKCS11_DATA_ERROR";
+                          "?GNUTLS_E_|PKCS11_UNSUPPORTED_FEATURE_ERROR";
+                          "?GNUTLS_E_|PKCS11_KEY_ERROR";
+                          "?GNUTLS_E_|PKCS11_PIN_EXPIRED";
+                          "?GNUTLS_E_|PKCS11_PIN_LOCKED";
+                          "?GNUTLS_E_|PKCS11_SESSION_ERROR";
+                          "?GNUTLS_E_|PKCS11_SIGNATURE_ERROR";
+                          "?GNUTLS_E_|PKCS11_TOKEN_ERROR";
+                          "?GNUTLS_E_|PKCS11_USER_ERROR";
+                          "?GNUTLS_E_|CRYPTO_INIT_FAILED";
+                          "?GNUTLS_E_|TIMEDOUT";
+                          "?GNUTLS_E_|USER_ERROR";
+                          "?GNUTLS_E_|ECC_NO_SUPPORTED_CURVES";
+                          "?GNUTLS_E_|ECC_UNSUPPORTED_CURVE";
+                          "?GNUTLS_E_|PKCS11_REQUESTED_OBJECT_NOT_AVAILBLE";
+                          "?GNUTLS_E_|CERTIFICATE_LIST_UNSORTED";
+                          "?GNUTLS_E_|ILLEGAL_PARAMETER";
                           "GNUTLS_E_|UNIMPLEMENTED_FEATURE";
                         ];
     "empty_flags", `Flags [ "DUMMY" ];
@@ -375,7 +378,7 @@ let types =
    Output values are not deallocated by the generated wrapper code.
  *)
 
-let standard ?(ask_for_size=false) decl =
+let standard ?(ask_for_size=false) ?(optional=false) decl =
   let (name, result, params) = parse decl in
   let params1 =
     List.map 
@@ -403,7 +406,8 @@ let standard ?(ask_for_size=false) decl =
       [ `Post("net_gnutls_error_check(RESULT);") ]
     else
       []
-   )
+   ) @
+   (if optional then [ `Optional ] else [])
   )
 
 
@@ -506,6 +510,7 @@ let functions =
     standard
       "const ztstr gnutls_alert_get_name (gnutls_alert_description_t alert)";
     standard
+      ~optional:true
       "const ztstr gnutls_alert_get_strname (gnutls_alert_description_t alert)";
     standard
       "error_code gnutls_alert_send (gnutls_session_t session, \
@@ -542,7 +547,9 @@ let functions =
       "sidx", `Out, "uint";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
 
     standard
       "error_code gnutls_priority_set \
@@ -556,13 +563,16 @@ let functions =
     (**********************************************************************)
 
     standard
+      ~optional:true
       "uint gnutls_sec_param_to_pk_bits (gnutls_pk_algorithm_t algo, \
                                             gnutls_sec_param_t param)";
     standard
+      ~optional:true
       "gnutls_sec_param_t gnutls_pk_bits_to_sec_param \
                              (gnutls_pk_algorithm_t algo, \
                               uint bits)";
     standard
+      ~optional:true
       "const ztstr gnutls_sec_param_get_name (gnutls_sec_param_t param)";
 
 
@@ -617,12 +627,16 @@ let functions =
     [ "key", `Out, "str_datum";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
 
     standard
+      ~optional:true
       "error_code gnutls_session_ticket_enable_client \
            (gnutls_session_t session)";
     standard
+      ~optional:true
       "error_code gnutls_session_ticket_enable_server \
            (gnutls_session_t session, str_datum_p key)";
 
@@ -654,17 +668,22 @@ let functions =
       "cb", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
 
     (**********************************************************************)
     (* Elliptic curves                                                    *)
     (**********************************************************************)
 
     standard
+      ~optional:true
       "const ztstr gnutls_ecc_curve_get_name (gnutls_ecc_curve_t curve)";
     standard
+      ~optional:true
       "int gnutls_ecc_curve_get_size (gnutls_ecc_curve_t curve)";
     standard
+      ~optional:true
       "gnutls_ecc_curve_t gnutls_ecc_curve_get(gnutls_session_t session)";
 
     (**********************************************************************)
@@ -774,7 +793,9 @@ let functions =
       "algo", `Out, "gnutls_sign_algorithm_t";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
 
 
     standard
@@ -804,6 +825,7 @@ let functions =
     [ `Post("net_gnutls_error_check(RESULT);") ];
     
     standard
+      ~optional:true
       "bool gnutls_safe_renegotiation_status (gnutls_session_t session)";
     standard
       "const ztstr gnutls_supplemental_get_name \
@@ -821,7 +843,9 @@ let functions =
       "key_size", `In, "uint";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
 
     standard
       ~ask_for_size:true
@@ -1042,6 +1066,7 @@ let functions =
     (**********************************************************************)
 
     standard
+      ~optional:true
       "error_code gnutls_certificate_get_issuer \
            (gnutls_certificate_credentials_t sc, \
             gnutls_x509_crt_t cert, OUT gnutls_x509_crt_t issuer, \
@@ -1264,15 +1289,18 @@ let functions =
             OUT ubool critical)";
     standard
       ~ask_for_size:true
+      ~optional:true
       "error_code gnutls_x509_crt_get_subject_unique_id \
            (gnutls_x509_crt_t crt, \
             1 stringbuf output_data, 1 stringbuf_size output_data_size)";
     standard
       ~ask_for_size:true
+      ~optional:true
       "error_code gnutls_x509_crt_get_issuer_unique_id \
            (gnutls_x509_crt_t crt, \
             1 stringbuf output_data, 1 stringbuf_size output_data_size)";
     standard
+      ~optional:true
       "error_code gnutls_x509_crt_get_authority_info_access \
            (gnutls_x509_crt_t crt, \
             uint seq, gnutls_info_access_what_t what, \
@@ -1323,6 +1351,7 @@ let functions =
     
     standard
       ~ask_for_size:true
+      ~optional:true
       "error_code/gnutls_x509_subject_alt_name_t \
        gnutls_x509_crt_get_issuer_alt_name \
            (gnutls_x509_crt_t cert, \
@@ -1339,6 +1368,7 @@ let functions =
 
     standard
       ~ask_for_size:true
+      ~optional:true
       "error_code/gnutls_x509_subject_alt_name_t \
        gnutls_x509_crt_get_issuer_alt_othername_oid \
            (gnutls_x509_crt_t cert, \
@@ -1447,6 +1477,24 @@ let functions =
   ]
 
 
+let optional_functions =
+  (* also generate checks for these *)
+  [ "gnutls_transport_set_pull_timeout_function";
+    "gnutls_certificate_set_verify_function";
+    "gnutls_x509_crl_list_import";
+    
+  ]
+
+
+let optional_types =
+  [ "gnutls_sec_param_t";
+    "gnutls_channel_binding_t";
+    "gnutls_ecc_curve_t";
+    "gnutls_info_access_what_t";
+    "gnutls_privkey_type_t";
+  ]
+
+
 let () =
   generate 
     ~c_file:"gnutls.c"
@@ -1455,6 +1503,8 @@ let () =
     ~modname:"nettls_gnutls_bindings"
     ~types
     ~functions
+    ~optional_functions
+    ~optional_types
     ~free: [ "str_datum"; "str_datum_p" ]
     ~hashes:[ "Certificate";
               "Srp_client";

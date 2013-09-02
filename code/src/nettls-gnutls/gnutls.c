@@ -5,6 +5,8 @@
 #include <gnutls/x509.h>
 #include <errno.h>
 
+#include "./config.h"
+
 typedef int error_code;
 typedef unsigned int gnutls_init_flags;
 typedef unsigned int key_usage;
@@ -391,7 +393,9 @@ static void attach_session_callbacks (gnutls_session_t s) {
     gnutls_db_set_ptr(s, cb);
     gnutls_transport_set_push_function(s, &push_callback);
     gnutls_transport_set_pull_function(s, &pull_callback);
+#ifdef HAVE_FUN_gnutls_transport_set_pull_timeout_function
     gnutls_transport_set_pull_timeout_function(s, &pull_timeout_callback);
+#endif
     /*
     gnutls_db_set_retrieve_function: see net_b_set_db_callbacks
     gnutls_db_set_remove_function: see net_b_set_db_callbacks
@@ -433,12 +437,16 @@ CAMLprim value net_b_set_pull_callback(value sv, value fun) {
 
 
 CAMLprim value net_b_set_pull_timeout_callback(value sv, value fun) {
+#ifdef HAVE_FUN_gnutls_transport_set_pull_timeout_function
     gnutls_session_t s;
     b_session_callbacks_t cb;
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     caml_modify_generational_global_root(&(cb->pull_timeout_fun), fun);
     return Val_unit;
+#else
+    invalid_argument("b_set_pull_timeout_callback");
+#endif
 }
 
 
@@ -453,12 +461,16 @@ CAMLprim value net_b_set_push_callback(value sv, value fun) {
 
 
 CAMLprim value net_b_set_verify_callback(value sv, value fun) {
+#ifdef HAVE_FUN_gnutls_certificate_set_verify_function
     gnutls_session_t s;
     b_session_callbacks_t cb;
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     caml_modify_generational_global_root(&(cb->verify_fun), fun);
     return Val_unit;
+#else
+    invalid_argument("b_set_verify_callback");
+#endif
 }
 
 
@@ -492,8 +504,10 @@ CAMLprim value net_gnutls_credentials_set(value sess, value creds) {
         cert = unwrap_gnutls_certificate_credentials_t(Field(creds,1));
         error_code = 
             gnutls_credentials_set(s, GNUTLS_CRD_CERTIFICATE, cert);
+#ifdef HAVE_FUN_gnutls_certificate_set_verify_function
         if (error_code == 0) 
             gnutls_certificate_set_verify_function(cert, &verify_callback);
+#endif
         break;
         }
     case H_Srp_client:
@@ -596,6 +610,7 @@ CAMLprim value net_gnutls_x509_crt_list_import(value datav, value formatv,
 
 CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv, 
                                                value flagsv) {
+#ifdef HAVE_FUN_net_gnutls_x509_crl_list_import
     gnutls_datum data;
     gnutls_x509_crt_fmt_t format;
     unsigned int flags;
@@ -632,4 +647,7 @@ CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv,
         stat_free(certs);
     net_gnutls_error_check(code);
     CAMLreturn(array);
+#else
+    invalid_argument("gnutls_x509_crl_list_import");
+#endif
 }

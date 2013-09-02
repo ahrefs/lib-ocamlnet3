@@ -4,8 +4,12 @@ PRE = 1
 PKGNAME = nettls_gnutls
 GENERATE = META nettls_gnutls_bindings.ml
 
-nettls_gnutls_bindings.ml: gnutls.descr gnutls.c gnutls.ml gnutls.mli $(TOP_DIR)/tools/stubgen.ml
-	ocaml -I $(TOP_DIR)/tools gnutls.descr
+CLEAN_LIST += netsys_gnutls_bindings.ml \
+              netsys_gnutls_bindings.mli \
+              netsys_gnutls_bindings_stubs.c \
+              config.log \
+              config.h \
+              config_checks.sh
 
 
 include $(TOP_DIR)/Makefile.rules

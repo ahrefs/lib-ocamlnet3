@@ -55,11 +55,13 @@ let abstract_ptr abs_free_fn =
 (* Abstract_enum                                                      *)
 (**********************************************************************)
 
-let gen_abstract_enum c mli ml tyname =
+let gen_abstract_enum c mli ml tyname ~optional =
   fprintf mli "type %s\n" tyname;
   fprintf ml "type %s\n" tyname;
 
   fprintf c "/************** %s *************/\n\n" tyname;
+  if optional then
+    fprintf c "#ifdef HAVE_TY_%s\n" tyname;
   fprintf c "struct enumstruct_%s { %s value; long oid; };\n\n" tyname tyname;
   fprintf c "#define enumstructptr_%s_val(v) \
              ((struct enumstruct_%s *) (Data_custom_val(v)))\n" tyname tyname;
@@ -97,7 +99,12 @@ let gen_abstract_enum c mli ml tyname =
   fprintf c "  enumstructptr_%s_val(v)->value = x;\n" tyname;
   fprintf c "  enumstructptr_%s_val(v)->oid = enum_%s_oid++;\n" tyname tyname;
   fprintf c "  return v;\n";
-  fprintf c "}\n\n";
+  fprintf c "}\n";
+
+  if optional then
+    fprintf c "#endif\n";
+
+  fprintf c "\n";
 
   ()
 
@@ -113,11 +120,13 @@ let gen_abstract_enum c mli ml tyname =
    auxiliary values whose lifetime must exceed the custom block
  *)
 
-let gen_abstract_ptr c mli ml tyname abs =
+let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf mli "type %s\n" tyname;
   fprintf ml "type %s\n" tyname;
 
   fprintf c "/************** %s *************/\n\n" tyname;
+  if optional then
+    fprintf c "#ifdef HAVE_TY_%s\n" tyname;
   fprintf c "struct absstruct_%s { %s value; long oid; };\n\n" tyname tyname;
   fprintf c "#define absstructptr_%s_val(v) \
              ((struct absstruct_%s *) (Data_custom_val(v)))\n" tyname tyname;
@@ -176,7 +185,12 @@ let gen_abstract_ptr c mli ml tyname abs =
   fprintf c "  Field(h,1) = Field(v,1);\n";
   fprintf c "  Store_field(v,1,h);\n";
   fprintf c "  CAMLreturn0;\n";
-  fprintf c "}\n\n";
+  fprintf c "}\n";
+
+  if optional then
+    fprintf c "#endif\n";
+
+  fprintf c "\n";
 
   ()
 
@@ -185,11 +199,14 @@ let gen_abstract_ptr c mli ml tyname abs =
 (**********************************************************************)
 
 let vert_re = Str.regexp "[|]"
+let qmark_re = Str.regexp "[?]"
 
 let c_name_of_enum n =
-  Str.replace_first vert_re "" n
+  Str.replace_first qmark_re ""
+    (Str.replace_first vert_re "" n)
 
-let ml_name_of_enum n =
+let ml_name_of_enum n0 =
+  let n = Str.replace_first qmark_re "" n0 in
   try
     let l = String.length n in
     let p = String.index n '|' in
@@ -199,7 +216,11 @@ let ml_name_of_enum n =
          String.capitalize (String.lowercase n)
 
 
-let gen_enum c mli ml tyname cases =
+let is_opt_case n =
+  n.[0] = '?'
+
+
+let gen_enum c mli ml tyname cases ~optional =
   List.iter
     (fun f ->
        fprintf f "type %s =\n" tyname;
@@ -217,17 +238,24 @@ let gen_enum c mli ml tyname cases =
     [ mli; ml ];
 
   fprintf c "/************** %s *************/\n\n" tyname;
+  if optional then
+    fprintf c "#ifdef HAVE_TY_%s\n" tyname;
   fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
   fprintf c "  switch (x) {\n";
   List.iter
     (fun case ->
+       let opt = is_opt_case case in
        let n1 = c_name_of_enum case in
        let n2 = ml_name_of_enum case in
        let h = Btype.hash_variant n2 in
-       fprintf c "    case %s: return Val_long(%d);\n"
-               n1 h;
+       if opt then
+         fprintf c "#ifdef HAVE_ENUM_%s\n" n1;
+       fprintf c "    case %s: return Val_long(%d);\n" n1 h;
+       if opt then
+         fprintf c "#endif\n"
     )
     cases;
+  fprintf c "    default: break;\n";
   fprintf c "  };\n";
   fprintf c "  failwith(\"wrap_%s: unexpected value\");\n" tyname;
   fprintf c "}\n\n";
@@ -236,24 +264,33 @@ let gen_enum c mli ml tyname cases =
   fprintf c "  switch (Long_val(v)) {\n";
   List.iter
     (fun case ->
+       let opt = is_opt_case case in
        let n1 = c_name_of_enum case in
        let n2 = ml_name_of_enum case in
        let h = Btype.hash_variant n2 in
-       fprintf c "    case %d: return %s;\n"
-               h n1;
+       if opt then
+         fprintf c "#ifdef HAVE_ENUM_%s\n" n1;
+       fprintf c "    case %d: return %s;\n" h n1;
+       if opt then
+         fprintf c "#endif\n"
     )
     cases;
+  fprintf c "    default: invalid_argument(\"unwrap_%s\");\n" tyname;
   fprintf c "  };\n";
   fprintf c "  failwith(\"unwrap_%s: unexpected value\");\n" tyname;
-  fprintf c "}\n\n";
+  fprintf c "}\n";
 
+  if optional then
+    fprintf c "#endif\n";
+
+  fprintf c "\n";
   ()
 
 (**********************************************************************)
 (* Flags                                                              *)
 (**********************************************************************)
 
-let gen_flags c mli ml tyname cases =
+let gen_flags c mli ml tyname cases ~optional =
   List.iter
     (fun f ->
        fprintf f "type %s_flag =\n" tyname;
@@ -272,21 +309,28 @@ let gen_flags c mli ml tyname cases =
     [ mli; ml ];
 
   fprintf c "/************** %s *************/\n\n" tyname;
+  if optional then
+    fprintf c "#ifdef HAVE_TY_%s\n" tyname;
   fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
   fprintf c "  CAMLparam0();\n";
   fprintf c "  CAMLlocal2(v,u);\n";
   fprintf c "  v = Val_long(0);\n";
   List.iter
     (fun case ->
+       let opt = is_opt_case case in
        let n1 = c_name_of_enum case in
        let n2 = ml_name_of_enum case in
        let h = Btype.hash_variant n2 in
+       if opt then
+         fprintf c "#ifdef HAVE_ENUM_%s\n" n1;
        fprintf c "  if (x & %s) {\n" n1;
        fprintf c "    u = caml_alloc(2,0);\n";
        fprintf c "    Field(u, 0) = Val_long(%d);\n" h;
        fprintf c "    Field(u, 1) = v;\n";
        fprintf c "    v = u;\n";
        fprintf c "  };\n";
+       if opt then
+         fprintf c "#endif\n";
     )
     cases;
   fprintf c "  CAMLreturn(v);\n";
@@ -298,19 +342,28 @@ let gen_flags c mli ml tyname cases =
   fprintf c "    switch (Long_val(Field(v,0))) {\n";
   List.iter
     (fun case ->
+       let opt = is_opt_case case in
        let n1 = c_name_of_enum case in
        let n2 = ml_name_of_enum case in
        let h = Btype.hash_variant n2 in
+       if opt then
+         fprintf c "#ifdef HAVE_ENUM_%s\n" n1;
        fprintf c "      case %d: x |= %s; break;\n"
                h n1;
+       if opt then
+         fprintf c "#endif\n";
     )
     cases;
   fprintf c "    };\n";
   fprintf c "    v = Field(v,1);\n";
   fprintf c "  };\n";
   fprintf c "  return x;\n";
-  fprintf c "}\n\n";
+  fprintf c "}\n";
 
+  if optional then
+    fprintf c "#endif\n";
+
+  fprintf c "\n";
   ()
 
 (**********************************************************************)
@@ -461,6 +514,7 @@ let rec after_first n l =
 let result_re = Str.regexp "RESULT"
 
 let gen_fun c mli ml name args directives free =
+  let optional = List.mem `Optional directives in
   let input_args =
     List.filter
       (fun (n,kind,ty) -> kind = `In || kind = `In_ignore || kind = `In_out)
@@ -807,6 +861,8 @@ let gen_fun c mli ml name args directives free =
   done;
 
   fprintf c "value net_%s(%s) {\n" name input_ml_args_as_c;
+  if optional then
+    fprintf c "#ifdef HAVE_FUN_%s\n" name;
   List.iter
     (fun d -> fprintf c "  %s\n" d)
     (List.rev !c_decls);
@@ -903,6 +959,12 @@ let gen_fun c mli ml name args directives free =
            fprintf c "  CAMLreturn(%s);\n" r;
   );
 
+  if optional then (
+    fprintf c "#else\n";
+    fprintf c "  invalid_argument(\"%s\");\n" name;
+    fprintf c "#endif\n";
+  );
+
   fprintf c "}\n\n";
 
   if List.length trans_input_ml_args > 5 then (
@@ -921,6 +983,27 @@ let gen_fun c mli ml name args directives free =
   );
   
   ()
+
+
+(**********************************************************************)
+
+let cfg_cases cfg cases =
+  List.iter
+    (fun case ->
+       if is_opt_case case then (
+         let cname = c_name_of_enum case in
+         fprintf cfg "check_enum HAVE_ENUM_%s %s\n" cname cname
+       )
+    )
+    cases
+
+
+let cfg_fun cfg name =
+  fprintf cfg "check_fun HAVE_FUN_%s %s\n" name name
+
+
+let cfg_type cfg name =
+  fprintf cfg "check_type HAVE_TY_%s %s\n" name name
 
 
 (**********************************************************************)
@@ -957,12 +1040,16 @@ let gen_c_head2 c =
              \n"
 
 
-let generate ?c_file ?ml_file ?mli_file ~modname ~types ~functions ~free
+let generate ?c_file ?ml_file ?mli_file
+             ?(optional_functions = [])
+             ?(optional_types = [])
+             ~modname ~types ~functions ~free
              ~hashes
              () =
   let c_name = modname ^ "_stubs.c" in
   let ml_name = modname ^ ".ml" in
   let mli_name = modname ^ ".mli" in
+  let cfg_name = "config_checks.sh" in
   let to_close = ref [] in
   try
     let c = open_out c_name in
@@ -971,6 +1058,8 @@ let generate ?c_file ?ml_file ?mli_file ~modname ~types ~functions ~free
     to_close := (fun () -> close_out_noerr ml) :: !to_close;
     let mli = open_out mli_name in
     to_close := (fun () -> close_out_noerr mli) :: !to_close;
+    let cfg = open_out cfg_name in
+    to_close := (fun () -> close_out_noerr cfg) :: !to_close;
 
     List.iter
       (fun h ->
@@ -998,16 +1087,23 @@ let generate ?c_file ?ml_file ?mli_file ~modname ~types ~functions ~free
     gen_c_head2 c;
 
     List.iter
+      (fun name -> cfg_type cfg name)
+      optional_types;
+
+    List.iter
       (fun (tyname,tydecl) ->
+         let optional = List.mem tyname optional_types in
          match tydecl with
            | `Abstract_enum ->
-                gen_abstract_enum c mli ml tyname
+                gen_abstract_enum c mli ml tyname ~optional
            | `Abstract_ptr abs ->
-                gen_abstract_ptr c mli ml tyname abs
+                gen_abstract_ptr c mli ml tyname abs ~optional
            | `Enum cases ->
-                gen_enum c mli ml tyname cases
+                cfg_cases cfg cases;
+                gen_enum c mli ml tyname cases ~optional
            | `Flags cases ->
-                gen_flags c mli ml tyname cases
+                cfg_cases cfg cases;
+                gen_flags c mli ml tyname cases ~optional
            | `Same_as old_tyname ->
                 gen_same_as c mli ml old_tyname tyname 
            | `Manual(ocaml_decl ) ->
@@ -1018,16 +1114,23 @@ let generate ?c_file ?ml_file ?mli_file ~modname ~types ~functions ~free
 
     List.iter
       (fun (name,args,directives) ->
+         if List.mem `Optional directives then
+           cfg_fun cfg name;
          gen_fun c mli ml name args directives free
       )
       functions;
+
+    List.iter
+      (fun name -> cfg_fun cfg name)
+      optional_functions;
 
     copy ml ml_file;
     copy mli mli_file;
 
     close_out c;
     close_out ml;
-    close_out mli
+    close_out mli;
+    close_out cfg
   with
     | error ->
          List.iter
