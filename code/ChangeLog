@@ -1,3 +1,18 @@
+2013-09-09  Gerd Stolpmann  <gerd@zotac>
+
+	* Netconversion: adding support for three ASN.1 encodings
+	* Netconversion: adding UTF-32
+	* Netconversion: adding BOM option for UTF-8
+
+	* Netoid: new module for OID handling
+
+	* Netdn: new module for parsing/printing distinguished names
+
+	* Netasn1: adding parser for ASN.1 BER encoding
+
+Development of OCamlnet-4 starts
+======================================================================
+
 2013-08-19  Gerd Stolpmann  <gerd@e130>
 
 	* Netsys_sem: fix for systems that don't have
