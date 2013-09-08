@@ -29,9 +29,9 @@ DOBJECTS = netsys.mli netsys_posix.mli netsys_pollset.mli netlog.mli \
 	   netsys_sem.mli netsys_pmanage.mli
 LINK_OPTIONS = $(NETSYS_LINK_OPTIONS)
 
-ALL_EXTRA = netsys_oothr.cma
+ALL_EXTRA = netsys_oothr.cma $(OOH_OBJECT)
 ALLMT_EXTRA = netsys_oothr_mt.cma netsys_oothr_mt_init.cmo
-OPT_EXTRA = netsys_oothr.cmxa netsys_c_gprof.o
+OPT_EXTRA = netsys_oothr.cmxa netsys_c_gprof.o $(OOH_OBJECT)
 OPTP_EXTRA = netsys_oothr.p.cmxa netsys_gprof_init.cmx
 OPTMT_EXTRA = netsys_oothr_mt.cmxa netsys_oothr_mt_init.cmx
 OPTMTP_EXTRA = netsys_oothr_mt.p.cmxa netsys_oothr_mt_init.cmx
@@ -48,12 +48,14 @@ OCAMLOPT_OPTIONS_FOR_netsys_oothr_mt_init.ml = $(THREAD)
 OCAMLC_OPTIONS_FOR_netsys_c_xdr.c = -ccopt -O
 
 OCAMLC_OPTIONS_FOR_netsys_posix.ml = \
-  -package "camlp4.macro" -syntax camlp4o -ppopt "$(DEF_O_SHARE_DELETE)"
+  -package "camlp4.macro" -syntax camlp4o \
+  -ppopt "$(DEF_O_SHARE_DELETE)" \
+  -ppopt "$(DEF_O_CLOEXEC)"
 OCAMLOPT_OPTIONS_FOR_netsys_posix.ml = $(OCAMLC_OPTIONS_FOR_netsys_posix.ml)
 
 OCAMLDEP_OPTIONS = -package "camlp4.macro" -syntax camlp4o
 
-INSTALL_EXTRA += netsys_c_event.h
+INSTALL_EXTRA += netsys_c_event.h $(OOH_OBJECT)
 
 include $(TOP_DIR)/Makefile.rules
 
