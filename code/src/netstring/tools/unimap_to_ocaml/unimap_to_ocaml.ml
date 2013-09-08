@@ -19,6 +19,11 @@ let read_unimap_format_a ?(fmt=Normal) fname f =
    * Returns a list of pairs (localcode, unicode).
    *)
   
+  let ios s =
+    try int_of_string s
+    with _ ->
+      failwith("Bad integer: " ^ s) in
+
   let read_unimap_line() =
     let s = input_line f in    (* may raise End_of_file *)
     let s' = Str.global_replace comment_re "" s in
@@ -26,25 +31,25 @@ let read_unimap_format_a ?(fmt=Normal) fname f =
     match words with
 	[] -> raise Not_found
       | [ localcode; unicode ] when fmt=Normal ->
-	  int_of_string localcode, int_of_string unicode
+	  ios localcode, ios unicode
       | [ localcode; unicode ] when fmt=Jis0212 ->
-	  let local = int_of_string localcode in
+	  let local = ios localcode in
 	  let row = (local lsr 8) - 0x20 in
 	  let col = (local land 255) - 0x20 in
 	  assert (row >= 1 && row <= 94 && col >= 1 && col <= 94);
-	  (row * 96 + col, int_of_string unicode)
+	  (row * 96 + col, ios unicode)
       | [ _; localcode; unicode ] when fmt=Jis0208 ->
-	  let local = int_of_string localcode in
+	  let local = ios localcode in
 	  let row = (local lsr 8) - 0x20 in
 	  let col = (local land 255) - 0x20 in
 	  assert (row >= 1 && row <= 94 && col >= 1 && col <= 94);
-	  (row * 96 + col, int_of_string unicode)
+	  (row * 96 + col, ios unicode)
       | [ localcode; unicode ] when fmt=Ks1001 ->
-	  let local = int_of_string localcode in
+	  let local = ios localcode in
 	  let row = (local lsr 8) - 0x20 in
 	  let col = (local land 255) - 0x20 in
 	  assert (row >= 1 && row <= 94 && col >= 1 && col <= 94);
-	  (row * 96 + col, int_of_string unicode)
+	  (row * 96 + col, ios unicode)
       | _ ->
 	  failwith ("File " ^ fname ^ ": Do not know what to do with:\n" ^ s')
   in
@@ -171,7 +176,7 @@ let print_bijection f name m_to_unicode m_from_unicode =
 ;;
 
 
-let print_ocaml_file out unimaps =
+let print_ocaml_file ?(no_disable_netdb=false) out unimaps =
   (* Compute all bijections: *)
   let bijections =
     List.map
@@ -202,7 +207,11 @@ let print_ocaml_file out unimaps =
 	           mapname mapname;
     )
     (List.rev bijections);
-  fprintf out "Netdb.disable_file_db();;\n";
+  if not no_disable_netdb then 
+    fprintf out "Netdb.disable_file_db();;\n"
+  else
+    fprintf out "();;\n";
+  fprintf out "let init() = ();;\n"
 ;;
 
 
@@ -281,6 +290,7 @@ let main() =
   let outch = ref (lazy stdout) in
   let pmap = ref false in
   let netdb = ref false in
+  let no_disable_netdb = ref false in
   Arg.parse
       [ "-o", Arg.String (fun s -> outch := lazy (open_out s)),
            " <file>   Redirect stdout to this file";
@@ -288,6 +298,8 @@ let main() =
 	      "       Write in pmap format (portable maps)";
 	"-netdb", Arg.Set netdb,
 	       "      Write netdb files (non-portable maps)";
+        "-no-disable-netdb", Arg.Set no_disable_netdb,
+        "  Do not generate 'Netdb.disable_file_db' call";
       ]
       (fun s -> files := !files @ [s])
       "usage: unimap_to_ocaml file.unimap ... file.pmap ...";
@@ -354,7 +366,7 @@ let main() =
     write_portable_file out unimaps
   end
   else begin
-    print_ocaml_file out unimaps
+    print_ocaml_file ~no_disable_netdb:!no_disable_netdb out unimaps
   end;
 
   close_out out

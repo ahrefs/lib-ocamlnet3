@@ -9,7 +9,8 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netmime.cmo netsendmail.cmo nethttp.cmo \
 	   netpagebuffer.cmo netfs.cmo netglob_lex.cmo netglob.cmo \
 	   netauth.cmo netnumber.cmo rtypes.cmo xdr_mstring.cmo xdr.cmo \
-	   netasn1.cmo
+	   netasn1.cmo netoid.cmo netdn.cmo \
+           netmappings_asn1.cmo
 
 PKGNAME  = netstring
 
@@ -17,6 +18,7 @@ REQUIRES = $(REGEXP_PROVIDER_MAKE) bigarray
 INCLUDES += $(INC_NETSYS)
 INCLUDES += -I ../netstring-pcre
 
+ASN1_MAPPINGS  = mappings/asn1_*.unimap
 ISO_MAPPINGS   = mappings/iso*.unimap
 JP_MAPPINGS    = mappings/jis*.*map
 KR_MAPPINGS    = mappings/ks*.*map
@@ -26,12 +28,15 @@ OTHER_MAPPINGS = mappings/cp*.unimap \
                  mappings/mac*.unimap \
                  mappings/windows*.unimap
 
-PMAP = netmappings_iso.pmap netmappings_other.pmap netmappings_jp.pmap netmappings_kr.pmap
+PMAP = netmappings_iso.pmap netmappings_other.pmap netmappings_jp.pmap netmappings_kr.pmap netmappings_asn1.pmap
 
 # netconversion.cmx, netbuffer.cmx: 
 # Allow cross-library inlining for these modules
 
 OCAMLOPT_OPTIONS_FOR_netbuffer.ml = -inline 10
+
+# NB. netmappings_asn1.cmo is directly linked in because some core functions
+# expect it. So no table lookup here.
 
 INSTALL_EXTRA_CMO = netmappings_iso netmappings_jp netmappings_kr \
 		    netmappings_other netmappings_min \
@@ -54,7 +59,8 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netmappings.mli netaux.mli nethttp.mli netpagebuffer.mli \
 	netfs.mli netglob.mli netauth.mli netsockaddr.mli \
         netnumber.mli rtypes.mli xdr_mstring.mli xdr.mli \
-	netcompression.mli netunichar.mli netasn1.mli \
+	netcompression.mli netunichar.mli netasn1.mli netoid.mli \
+	netdn.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 
@@ -90,6 +96,14 @@ netmappings_iso.pmap: tools_done
 netmappings_iso.ml: netmappings_iso.pmap netdb.cmi
 	tools/unimap_to_ocaml/unimap_to_ocaml \
 		-o netmappings_iso.ml netmappings_iso.pmap
+
+netmappings_asn1.pmap: tools_done
+	test ! -d mappings || tools/unimap_to_ocaml/unimap_to_ocaml \
+		-o netmappings_asn1.pmap -pmap $(ASN1_MAPPINGS)
+
+netmappings_asn1.ml: netmappings_asn1.pmap netdb.cmi
+	tools/unimap_to_ocaml/unimap_to_ocaml \
+		-o netmappings_asn1.ml -no-disable-netdb netmappings_asn1.pmap
 
 netmappings_jp.pmap: tools_done
 	test ! -d mappings || tools/unimap_to_ocaml/unimap_to_ocaml \

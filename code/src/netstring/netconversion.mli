@@ -154,9 +154,10 @@
  * {b UTF-8:} The UTF-8 representation can have one to four bytes. Malformed 
  *   byte sequences are always rejected, even those that want to cheat the
  *   reader like "0xc0 0x80" for the code point 0. There is special support
- *   for the Java variant of UTF-8 ([`Enc_java]). UTF-8 strings must not
+ *   for the Java variant of UTF-8 ([`Enc_java]). [`Enc_utf8] strings must not
  *   have a byte order mark (it would be interpreted as "zero-width space"
- *   character).
+ *   character). However, the Unicode standard allows byte order marks
+ *   at the very beginning of texts; use [`Enc_utf8_opt_bom] in this case.
  *
  * {b UTF-16:} When reading from a string encoded as [`Enc_utf16], a byte
  *   order mark is expected at the beginning. The detected variant 
@@ -171,6 +172,9 @@
  *
  *   Some code points are represented by pairs of 16 bit values, these
  *   are the so-called "surrogate pairs". They can only occur in UTF-16.
+ *
+ * {b UTF-32:} This is very much the same as for UTF-16. There is a little
+ *   endian version [`Enc_utf32_le] and a big endian version [`Enc_utf32_be].
  *
  * {2:subsets Subsets of Unicode}
  *
@@ -209,7 +213,7 @@
  * are built-in and always supported:
  *
  * - Unicode: [`Enc_utf8], [`Enc_java], [`Enc_utf16], [`Enc_utf16_le], 
-     [`Enc_utf16_be]
+     [`Enc_utf16_be], [`Enc_utf32], [`Enc_utf32_le], [`Enc_utf32_be]
  * - Other: [`Enc_usascii], [`Enc_iso88591], [`Enc_empty]
  *
  * The lookup tables for the other encodings are usually loaded at
@@ -276,11 +280,16 @@ exception Cannot_represent of int
 
 (** The polymorphic variant enumerating the supported encodings. We have:
  * - [`Enc_utf8]: UTF-8
+ * - [`Enc_utf8_opt_bom]: UTF-8 with an optional byte order mark at the
+ *   beginning of the text
  * - [`Enc_java]: The UTF-8 variant used by Java (the only difference is
  *   the representation of NUL)
  * - [`Enc_utf16]: UTF-16 with unspecified endianess (restricted)
  * - [`Enc_utf16_le]: UTF-16 little endian
  * - [`Enc_utf16_be]: UTF-16 big endian
+ * - [`Enc_utf32]: UTF-32 with unspecified endianess (restricted)
+ * - [`Enc_utf32_le]: UTF-32 little endian
+ * - [`Enc_utf32_be]: UTF-32 big endian
  * - [`Enc_usascii]: US-ASCII (7 bits)
  * - [`Enc_iso8859]{i n}: ISO-8859-{i n}
  * - [`Enc_koi8r]: KOI8-R
@@ -299,10 +308,14 @@ exception Cannot_represent of int
  *)
 type encoding =
   [  `Enc_utf8       (* UTF-8 *)
+  |  `Enc_utf8_opt_bom
   |  `Enc_java       (* The variant of UTF-8 used by Java *)
   |  `Enc_utf16      (* UTF-16 with unspecified endianess (restricted usage) *)
   |  `Enc_utf16_le   (* UTF-16 little endian *)
   |  `Enc_utf16_be   (* UTF-16 big endian *)
+  |  `Enc_utf32      (* UTF-32 with unspecified endianess (restricted usage) *)
+  |  `Enc_utf32_le   (* UTF-32 little endian *)
+  |  `Enc_utf32_be   (* UTF-32 big endian *)
   |  `Enc_usascii    (* US-ASCII (only 7 bit) *)
   |  `Enc_iso88591   (* ISO-8859-1 *)
   |  `Enc_iso88592   (* ISO-8859-2 *)
@@ -330,6 +343,10 @@ type encoding =
   |  `Enc_sjis
 *)
   |  `Enc_euckr      (* EUC-KR (includes US-ASCII, KS-X-1001) *)
+    (* Older standards: *)
+  |  `Enc_asn1_iso646     (* only the language-neutral subset - "IA5String" *)
+  |  `Enc_asn1_T61        (* ITU T.61 ("Teletex") *)
+  |  `Enc_asn1_printable  (* ASN.1 Printable *)
     (* Microsoft: *)
   |  `Enc_windows1250  (* WINDOWS-1250 *)
   |  `Enc_windows1251  (* WINDOWS-1251 *)
@@ -407,6 +424,9 @@ type charset =
   |  `Set_jis0208    (* JIS-X-0208 *)
   |  `Set_jis0212    (* JIS-X-0212 *)
   |  `Set_ks1001     (* KS-X-1001 *)
+  |  `Set_asn1_iso646
+  |  `Set_asn1_T61
+  |  `Set_asn1_printable
     (* Microsoft: *)
   |  `Set_windows1250  (* WINDOWS-1250 *)
   |  `Set_windows1251  (* WINDOWS-1251 *)
@@ -544,7 +564,7 @@ val makechar : encoding -> int -> string
    * [enc]. Raises [Not_found] if the character is legal but cannot be 
    * represented in [enc].
    * 
-   * Possible encodings: everything but [`Enc_utf16].
+   * Possible encodings: everything but [`Enc_utf16] and [`Enc_utf32]
    *
    * Evaluation hints:
    * - PRE_EVAL(encoding)
@@ -560,7 +580,7 @@ val ustring_of_uchar : encoding -> int -> string
    * [enc]. Raises [Cannot_represent i] if the character is legal but cannot be 
    * represented in [enc].
    * 
-   * Possible encodings: everything but [`Enc_utf16].
+   * Possible encodings: everything but [`Enc_utf16] and [`Enc_utf32].
    *
    * Evaluation hints:
    * - PRE_EVAL(encoding)
@@ -923,7 +943,7 @@ val create_cursor : ?range_pos:int -> ?range_len:int ->
    * and the cursor is intially positioned at the beginning of the string.
    * The {b range} is the part of the string the cursor can move within.
    *
-   * {b Special behaviour for [`Enc_utf16]:} UTF-16 with unspecified
+   * {b Special behaviour for [`Enc_utf16]/[`Enc_utf32]:} UTF with unspecified
    * endianess is handled specially. First, this encoding is only
    * accepted when [initial_rel_pos=0]. Second, the first two bytes
    * must be a byte order mark (BOM) (if the string has a length of two
@@ -934,6 +954,13 @@ val create_cursor : ?range_pos:int -> ?range_len:int ->
    * changed to either [`Enc_utf16_le] or [`Enc_utf16_be] according
    * to the BOM. The encoding changes back to [`Enc_utf16] when the
    * cursor is moved back to the initial position.
+   *
+   * {b Special behavior for [`Enc_utf8_opt_bom]:} Here, a byte order mark
+   * at the beginning of the text is recognized, and [uchar_at] will
+   * raise [Byte_order_mark]. Unlike in the UTF-16 and 32 cases, the BOM
+   * is optional. The function [cursor_encoding] returns [`Enc_utf8]
+   * if the cursor is moved away from the BOM, and changes back to
+   * [`Enc_utf8_opt_bom] if moved back to the first character.
    *
    * @param range_pos Restricts the range of the cursor to a substring.
    *   The argument [range_pos] is the byte position of the beginning
@@ -1110,13 +1137,16 @@ val cursor_blit_positions : cursor -> int array -> int -> int -> int
  *
  * Of course, the BOM is only used for external representations like
  * files, as the endianess is always known for in-memory representations
- * by the running program. This module has three encoding identifiers:
+ * by the running program. This module has six encoding identifiers:
  * - [`Enc_utf16]: UTF-16 where the endianess is unknown
  * - [`Enc_utf16_le]: UTF-16 little endian
  * - [`Enc_utf16_be]: UTF-16 big endian
+ * - [`Enc_utf32]: UTF-32 where the endianess is unknown
+ * - [`Enc_utf32_le]: UTF-32 little endian
+ * - [`Enc_utf32_be]: UTF-32 big endian
  *
  * When a file is read, the endianess is unknown at the beginning.
- * This is expressed by [`Enc_utf16]. When the BOM is read, the encoding
+ * This is expressed by e.g. [`Enc_utf16]. When the BOM is read, the encoding
  * is refined to either [`Enc_utf16_le] or [`Enc_utf16_be], whatever
  * the BOM says. This works as follows: The BOM is the representation
  * of the code point 0xfeff as little or big endian, i.e. as byte sequences
@@ -1125,18 +1155,19 @@ val cursor_blit_positions : cursor -> int array -> int -> int -> int
  * the endianess.
  *
  * There is one problem, though. Unfortunately, the code point 0xfeff
- * is also used for the "zero width non-breakable space" character.
+ * is also used for the normal "zero width non-breakable space" character.
  * When this code point occurs later in the text, it is interpreted as
  * this character. Of course, this means that one must know whether
  * there is a BOM at the beginning, and if not, one must know the
  * endianess. One cannot program in the style "well, let's see what is
  * coming and guess".
  *
- * Furthermore, the BOM is only used for encodings where one can specify
- * the endianess. It must not be used for UTF-8, for example, as the
- * byte order is fixed for this encoding. When a UTF-8 text begins with
- * the code point 0xfeff, it is always the "zero width non-breakable space"
- * character.
+ * Unicode also allows a BOM for UTF-8 although it is meaningless to specify
+ * the endianess. If you create the cursor with the encoding [`Enc_utf8]
+ * nothing is done about this, and you get the BOM as normal character.
+ * If you create the cursor with [`Enc_utf8_opt_bom], the BOM is treated
+ * specially like in the UTF-16 and -32 cases (with the only difference
+ * that it is optional for UTF-8).
  *
  * The functions of this module can all deal with BOMs when reading
  * encoded text. In most cases, the BOM is hidden from the caller,
