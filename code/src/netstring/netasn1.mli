@@ -51,8 +51,8 @@ module Value : sig
     | Null
     | Seq of value list
     | Set of value list
-    | Tagptr of tag_class * int * pc * int * int
-    | Tag of tag_class * int * value
+    | Tagptr of tag_class * int * pc * string * int * int
+    | Tag of tag_class * int * pc * value
     | OID of int array
     | ROID of int array
     | ObjectDescriptor of string
@@ -119,6 +119,15 @@ module Value : sig
           resolutions than that are truncated.
         - This function is restricted to the time formats occurring in DER
      *)
+
+  val equal : value -> value -> bool
+    (** Checks for equality. Notes:
+
+          - [Tag] and [Tagptr] are considered different
+          - [Tagptr] is checked by comparing the equality of the substring
+          - [Set] is so far not compared as set, but as sequence (i.e. order
+            matters)
+     *)
 end
 
 
@@ -137,7 +146,7 @@ val decode_ber :
       The function returns the number of interpreted bytes, and the value.
       It is not considered as an error if less than [len] bytes are consumed.
 
-      The returned value represents tagged values as
+      The returned value represents implicitly tagged values as
       [Tagptr(class,tag,pc,pos,len)]. [pos] and [len] denote the substring
       containting the contents. Use {!Netasn1.decode_ber_contents} to
       further decode the value. You can use [Tag] to put the
@@ -167,13 +176,16 @@ val decode_ber_contents :
       It is not considered as an error if less than [len] bytes are consumed.
 
       You need to use this function to recursively decode tagged values.
-      If you get a [Tagptr(class,tag,pc,pos,len)] value, it depends on the
+      If you get a [Tagptr(class,tag,pc,s,pos,len)] value, it depends on the
       kind of the tag how to proceed:
 
       - For explicit tags just invoke {!Netasn1.decode_ber} again with
         the given [pos] and [len] parameters.
       - For implicit tags you need to know the type of the field. Now
         call {!Netasn1.decode_ber_contents} with the right type name.
+
+      The BER encoding doesn't include whether the tag is implicit or
+      explicit, so the decode cannot do by itself the right thing here.
    *)
 
       

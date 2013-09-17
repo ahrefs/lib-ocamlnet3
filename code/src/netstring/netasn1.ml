@@ -48,8 +48,8 @@ module Value = struct
     | Null
     | Seq of value list
     | Set of value list
-    | Tagptr of tag_class * int * pc * int * int
-    | Tag of tag_class * int * value
+    | Tagptr of tag_class * int * pc * string * int * int
+    | Tag of tag_class * int * pc * value
     | OID of int array
     | ROID of int array
     | ObjectDescriptor of string
@@ -77,6 +77,29 @@ module Value = struct
    and real_value = string
    and bitstring_value = string
    and time_value = U of string | G of string
+
+  let rec equal v1 v2 =
+    match (v1, v2) with
+      | (Seq s1, Seq s2) ->
+           List.length s1 = List.length s2 &&
+             List.for_all2 equal s1 s2
+      | (Set s1, Set s2) ->
+           (* FIXME: compare the set *)
+           List.length s1 = List.length s2 &&
+             List.for_all2 equal s1 s2
+      | (Tag(c1,t1,pc1,sub1), Tag(c2,t2,pc2,sub2)) ->
+           c1=c2 && t1=t2 && pc1=pc2 && equal sub1 sub2
+      | (Tagptr(c1,t1,pc1,s1,pos1,len1), Tagptr(c2,t2,pc2,s2,pos2,len2)) ->
+           c1=c2 && t1=t2 && pc1=pc2 && 
+             String.sub s1 pos1 len1 = String.sub s2 pos2 len2
+      | (External s1, External s2) ->
+           List.length s1 = List.length s2 &&
+             List.for_all2 equal s1 s2
+      | (Embedded_PDV s1, Embedded_PDV s2) ->
+           List.length s1 = List.length s2 &&
+             List.for_all2 equal s1 s2
+      | _ ->
+           v1 = v2
 
 
   let get_int_str v = v
@@ -454,7 +477,8 @@ let rec decode_ber ?pos ?len s =
             | None -> 
                 decode_ber_length ~pos ~len:(pos_end - pos) s - hdr_len - 2
             | Some n -> n in
-        let value = Value.Tagptr(tc, tag, pc, pos+hdr_len, content_len) in
+        let value =
+          Value.Tagptr(tc, tag, pc, s, pos+hdr_len, content_len) in
         (content_len + hdr_len, value)
 
 

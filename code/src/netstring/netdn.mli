@@ -28,7 +28,7 @@ module type AT_LOOKUP = sig
 end
 
 
-module DN_string (L : AT_LOOKUP) : sig
+module type DN_string = sig
   (** For a given attribute lookup module [L] this module provides parser
       and printer for distinguished names in string format (RFC 4514).
 
@@ -45,4 +45,16 @@ module DN_string (L : AT_LOOKUP) : sig
 
   val print : dn -> string
     (** Prints the DN (cannot fail), using UTF-8 encoding *)
-end
+  end
+
+
+module DN_string_generic (L : AT_LOOKUP) : DN_string
+  (** For a given attribute lookup module [L] this module provides parser
+      and printer for distinguished names in string format (RFC 4514).
+   *)
+
+
+(**/**)
+
+val directory_string_from_ASN1 : Netasn1.Value.value -> string
+  (* See Netx509, where this function is exported officially *)

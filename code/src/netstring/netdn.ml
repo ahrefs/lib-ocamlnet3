@@ -12,8 +12,52 @@ module type AT_LOOKUP = sig
   val lookup_attribute_type_by_name : string -> oid * string * string list
 end
 
+module type DN_string = sig
+  val parse : string -> dn
+  val print : dn -> string
+end
 
-module DN_string(L : AT_LOOKUP) = struct
+
+let directory_string_from_ASN1 value =
+  let fail_enc() =
+    failwith "Netx509.directory_string_from_ASN1: bad input encoding" in
+  match value with
+    | Netasn1.Value.UTF8String s ->
+         ( try Netconversion.verify `Enc_utf8 s
+           with Netconversion.Malformed_code_at _ -> fail_enc()
+         );
+         s
+    | Netasn1.Value.PrintableString s ->
+         ( try Netconversion.convert 
+                 ~in_enc:`Enc_asn1_printable ~out_enc:`Enc_utf8 s
+           with Netconversion.Malformed_code -> fail_enc()
+         )
+    | Netasn1.Value.IA5String s ->
+         ( try Netconversion.convert 
+                 ~in_enc:`Enc_usascii ~out_enc:`Enc_utf8 s
+           with Netconversion.Malformed_code -> fail_enc()
+         )
+    | Netasn1.Value.TeletexString s ->
+         ( try Netconversion.convert 
+                 ~in_enc:`Enc_asn1_T61 ~out_enc:`Enc_utf8 s
+           with Netconversion.Malformed_code -> fail_enc()
+         )
+    | Netasn1.Value.BMPString s ->
+         ( try Netconversion.convert 
+                 ~in_enc:`Enc_utf16_be ~out_enc:`Enc_utf8 s
+           with Netconversion.Malformed_code -> fail_enc()
+         )
+    | Netasn1.Value.UniversalString s ->
+         ( try Netconversion.convert 
+                 ~in_enc:`Enc_utf32_be ~out_enc:`Enc_utf8 s
+           with Netconversion.Malformed_code -> fail_enc()
+         )
+    | _ ->
+         failwith "Netx509.directory_string_from_ASN1: \
+                   unsupported ASN.1 value type"
+
+
+module DN_string_generic(L : AT_LOOKUP) = struct
   type token =
     | Space
     | Quote
@@ -207,46 +251,7 @@ module DN_string(L : AT_LOOKUP) = struct
         if l = [] then raise Not_found;
         List.hd l
       with Not_found -> Netoid.to_string oid in
-    let u =
-      match value with
-        | Netasn1.Value.UTF8String s ->
-            ( try Netconversion.verify `Enc_utf8 s
-              with Netconversion.Malformed_code_at _ ->
-                failwith "Netdn.DN_string.print: bad input encoding"
-            );
-            s
-        | Netasn1.Value.PrintableString s ->
-            ( try Netconversion.convert 
-                    ~in_enc:`Enc_asn1_printable ~out_enc:`Enc_utf8 s
-              with Netconversion.Malformed_code ->
-                failwith "Netdn.DN_string.print: bad input encoding"
-            )
-        | Netasn1.Value.IA5String s ->
-            ( try Netconversion.convert 
-                    ~in_enc:`Enc_asn1_iso646 ~out_enc:`Enc_utf8 s
-              with Netconversion.Malformed_code ->
-                failwith "Netdn.DN_string.print: bad input encoding"
-            )
-        | Netasn1.Value.TeletexString s ->
-            ( try Netconversion.convert 
-                    ~in_enc:`Enc_asn1_T61 ~out_enc:`Enc_utf8 s
-              with Netconversion.Malformed_code ->
-                failwith "Netdn.DN_string.print: bad input encoding"
-            )
-        | Netasn1.Value.BMPString s ->
-            ( try Netconversion.convert 
-                    ~in_enc:`Enc_utf16_be ~out_enc:`Enc_utf8 s
-              with Netconversion.Malformed_code ->
-                failwith "Netdn.DN_string.print: bad input encoding"
-            )
-        | Netasn1.Value.UniversalString s ->
-            ( try Netconversion.convert 
-                    ~in_enc:`Enc_utf32_be ~out_enc:`Enc_utf8 s
-              with Netconversion.Malformed_code ->
-                failwith "Netdn.DN_string.print: bad input encoding"
-            )
-        | _ ->
-            failwith "Netdn.DN_string.print: unsupported ASN.1 value type" in
+    let u = directory_string_from_ASN1 value in
     let b = Buffer.create 80 in
     Buffer.add_string b oid_str;
     Buffer.add_char b '=';
@@ -286,43 +291,3 @@ module DN_string(L : AT_LOOKUP) = struct
 
 
 end
-
-
-(* Test: *)
-
-module AT = struct
-  let at k = [| 2; 5; 4; k |]
-
-  let at_name = at 41
-  let at_surname = at 4 
-  let at_givenName = at 42
-  let at_initials = at 43
-  let at_generationQualifier = at 44
-
-
-  let attribute_types =
-    [ at_name, "name", [ "name" ];
-      at_surname, "surname", [ "sn"; "surname" ];
-      at_givenName, "givenName", [ "gn"; "givenName" ];
-      at_initials, "initials", [ "initials" ];
-      at_generationQualifier, "generationQualifier", [ "generationQualifier" ]
-    ]
-
-  let attribute_types_lc =
-    List.map
-      (fun (oid, name, l) -> (oid, name, List.map String.lowercase l))
-      attribute_types
-
-  let lookup_attribute_type_by_oid oid =
-    let (_, n, l) =
-      List.find (fun (o,_,_) -> o = oid) attribute_types in
-    (n,l)
-
-  let lookup_attribute_type_by_name n =
-    let lc = String.lowercase n in
-    List.find
-      (fun (_,_,l) -> List.mem lc l)
-      attribute_types_lc
-
-end
-
