@@ -130,6 +130,6 @@ EOF
 
 echo "Generating stubs"
 echo "$ ocaml -I ../../tools gnutls.descr" >>$log
-ocaml -I ../../tools gnutls.descr
+ocaml -I ../../tools gnutls.descr || exit 1
 
 . ./config_checks.sh

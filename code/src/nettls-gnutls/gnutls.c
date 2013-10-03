@@ -32,6 +32,8 @@ static void
            attach_gnutls_session_t(value v, value aux);
 static gnutls_certificate_credentials_t 
            unwrap_gnutls_certificate_credentials_t(value v);
+static void
+           attach_gnutls_certificate_credentials_t(value v, value aux);
 static gnutls_srp_client_credentials_t 
            unwrap_gnutls_srp_client_credentials_t(value v);
 static gnutls_srp_server_credentials_t 
@@ -125,7 +127,7 @@ struct b_session_callbacks_st {
     gnutls_session_t session;
     value pull_fun;            /* memory -> int unix_code */
     value pull_timeout_fun;    /* int -> int unix_code */
-    value push_fun;            /* memory -> int unix_code */
+    value push_fun;            /* memory -> int -> int unix_code */
     value verify_fun;          /* unit -> bool */
     /* value params_fun; */
     value db_retrieve_fun;     /* string -> string */
@@ -164,7 +166,7 @@ static ssize_t push_callback(gnutls_transport_ptr_t cb_ptr, const void *data,
     if (Is_block(cb->push_fun)) {
         flags = CAML_BA_UINT8 | CAML_BA_C_LAYOUT | CAML_BA_EXTERNAL;
         ba = caml_ba_alloc_dims(flags, 1, (void *) data, (intnat) size);
-        r = caml_callback_exn(cb->push_fun, ba);
+        r = caml_callback2_exn(cb->push_fun, ba, Val_long(size));
         if (Is_exception_result(r)) {
             r = Extract_exception(r);
             gnutls_transport_set_errno(cb->session, EPERM);

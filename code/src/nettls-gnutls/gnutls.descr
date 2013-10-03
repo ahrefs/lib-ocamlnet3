@@ -23,7 +23,7 @@ let types =
 
     "gnutls_priority_t",         abstract_ptr "gnutls_priority_deinit";
 
-    (* "gnutls_x509_privkey_t",     `Abstract_ptr; (* in x509.h *) *)
+    "gnutls_x509_privkey_t",     abstract_ptr "gnutls_x509_privkey_deinit"; 
     "gnutls_x509_crl_t",         abstract_ptr "gnutls_x509_crl_deinit";
     "gnutls_x509_crt_t",         abstract_ptr "gnutls_x509_crt_deinit";
     (* "gnutls_x509_crq_t",         `Abstract_ptr; (* in x509.h *) *)
@@ -354,6 +354,14 @@ let types =
                           "?GNUTLS_E_|ILLEGAL_PARAMETER";
                           "GNUTLS_E_|UNIMPLEMENTED_FEATURE";
                         ];
+    "gnutls_pkcs_encrypt_flags_t",
+                   `Flags [ "GNUTLS_PKCS_|PLAIN";
+                            "GNUTLS_PKCS_|USE_PKCS12_3DES";
+                            "GNUTLS_PKCS_|USE_PKCS12_ARCFOUR";
+                            "GNUTLS_PKCS_|USE_PKCS12_RC2_40";
+                            "GNUTLS_PKCS_|USE_PBES2_3DES";
+                          ];
+
     "empty_flags", `Flags [ "DUMMY" ];
     "str_datum", `Manual("type str_datum = string");
     "str_datum_p", `Manual("type str_datum_p = string");
@@ -380,7 +388,7 @@ let types =
    Output values are not deallocated by the generated wrapper code.
  *)
 
-let standard ?(ask_for_size=false) ?(optional=false) decl =
+let standard ?(ask_for_size=false) ?(optional=false) ?(options=[]) decl =
   let (name, result, params) = parse decl in
   let params1 =
     List.map 
@@ -409,7 +417,8 @@ let standard ?(ask_for_size=false) ?(optional=false) decl =
     else
       []
    ) @
-   (if optional then [ `Optional ] else [])
+   (if optional then [ `Optional ] else []) @
+   options
   )
 
 
@@ -490,8 +499,14 @@ let functions =
     standard
       "error_code gnutls_rehandshake (gnutls_session_t session)";
     standard
+      ~options: [
+        `Pre("if (data_size < 0 || \
+                  data_size > caml_ba_byte_size(Caml_ba_array_val(data))) \
+                      invalid_argument(\"gnutls_record_send\");"
+            )
+      ]
       "error_code/uint gnutls_record_send \
-          (gnutls_session_t session, 1 bigarray data, 1 bigarray_size data_size)";
+          (gnutls_session_t session, 1 bigarray data, int data_size)";
     standard
       "error_code/uint gnutls_record_recv \
           (gnutls_session_t session, 1 bigarray data, 1 bigarray_size data_size)";
@@ -811,20 +826,19 @@ let functions =
       "error_code gnutls_record_set_max_size \
            (gnutls_session_t session, uint size)";
     standard
-      "int gnutls_server_name_set \
+      "error_code gnutls_server_name_set \
            (gnutls_session_t session, \
             gnutls_server_name_type_t type, \
-            1 bigarray name, 1 bigarray_size name_length)";
+            1 stringbuf name, 1 stringbuf_size name_length)";
     
-    "gnutls_server_name_get",
-    [ "session", `In, "gnutls_session_t";
-      "data", `In, "1 bigarray";
-      "data_length", `In_out, "1 bigarray_size";
-      "ty", `Out, "gnutls_server_name_type_t";
-      "indx", `In, "uint";
-      "result",  `Return_ignore, "error_code";
-    ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_server_name_get \
+           (gnutls_session_t session, \
+            1 stringbuf data, \
+            1 stringbuf_size data_length, \
+            OUT gnutls_server_name_type_t ty, \
+            uint indx)";
     
     standard
       ~optional:true
@@ -910,28 +924,25 @@ let functions =
             str_datum_p p12blob, \
             gnutls_x509_crt_fmt_t type, \
             ztstr password)";
-(*
     standard
       "error_code gnutls_certificate_set_x509_key \
            (gnutls_certificate_credentials_t res, \
             gnutls_x509_crt_t array cert_list, \
-            array_size cert_list_size, \
+            cert_list array_size cert_list_size, \
             gnutls_x509_privkey_t key)";
- *)
-(*
+       (* NB: certs and key are copied by this function *)
     standard
-      "error_code gnutls_certificate_set_x509_trust \
+      "error_code/int gnutls_certificate_set_x509_trust \
            (gnutls_certificate_credentials_t res, \
             gnutls_x509_crt_t array ca_list, \
-            array_size ca_list_size)";
- *)
-(*
+            ca_list array_size ca_list_size)";
+       (* NB: certs are copied by this function *)
     standard
-      "error_code gnutls_certificate_set_x509_crl \
+      "error_code/int gnutls_certificate_set_x509_crl \
            (gnutls_certificate_credentials_t res, \
             gnutls_x509_crl_t array crl_list, \
-            array_size crl_list_size)";
- *)
+            crl_list array_size crl_list_size)";
+       (* NB: crls are copied by this function *)
 (*
     "gnutls_certificate_get_openpgp_keyring",
     [ "sc", `In, "gnutls_certificate_credentials_t";
@@ -1257,7 +1268,7 @@ let functions =
  *)
 
     standard
-      "error_code gnutls_x509_crt_check_hostname \
+      "bool gnutls_x509_crt_check_hostname \
            (gnutls_x509_crt_t cert, const ztstr hostname)";
     standard
       "error_code/gnutls_sign_algorithm_t \
@@ -1476,6 +1487,48 @@ let functions =
             int indx, \
             1 stringbuf output_data, 1 stringbuf_size output_data_size, \
             OUT ubool critical)";
+
+
+    (**********************************************************************)
+    (* X509 private keys                                                  *)
+    (**********************************************************************)
+
+    "gnutls_x509_privkey_init",
+    [ "cert", `Out, "gnutls_x509_privkey_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_x509_privkey_import \
+           (gnutls_x509_privkey_t key, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format)";            
+
+    standard
+      "error_code gnutls_x509_privkey_import_pkcs8 \
+           (gnutls_x509_privkey_t key, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format, \
+            ztstr password, \
+            gnutls_pkcs_encrypt_flags_t flags);";
+
+    (**********************************************************************)
+    (* X509 CRLs                                                          *)
+    (**********************************************************************)
+
+    "gnutls_x509_crl_init",
+    [ "cert", `Out, "gnutls_x509_crl_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_x509_crl_import \
+           (gnutls_x509_crl_t key, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format)";            
+
   ]
 
 

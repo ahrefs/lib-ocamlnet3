@@ -138,14 +138,14 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "static int abs_%s_compare(value v1, value v2) {\n" tyname;
   fprintf c "  struct absstruct_%s *p1;\n" tyname;
   fprintf c "  struct absstruct_%s *p2;\n" tyname;
-  fprintf c "  p1 = absstructptr_%s_val(Field(v1,0));\n" tyname;
-  fprintf c "  p2 = absstructptr_%s_val(Field(v2,0));\n" tyname;
+  fprintf c "  p1 = absstructptr_%s_val(v1);\n" tyname;
+  fprintf c "  p2 = absstructptr_%s_val(v2);\n" tyname;
   fprintf c "  return p1->oid - p2->oid;\n";
   fprintf c "}\n\n";
 
   fprintf c "static void abs_%s_finalize(value v1) {\n" tyname;
   fprintf c "  struct absstruct_%s *p1;\n" tyname;
-  fprintf c "  p1 = absstructptr_%s_val(Field(v1,0));\n" tyname;
+  fprintf c "  p1 = absstructptr_%s_val(v1);\n" tyname;
   fprintf c "  %s(p1->value);\n" abs.abs_free_fn;
   fprintf c "}\n\n";
 
@@ -488,7 +488,8 @@ let is_size ty =
   let (is_const, ty_list) = split_type ty in
   match ty_list with
     | [ id; "bigarray_size" ] -> true
-    | [ "array_size" ] -> true
+    | [ id; "array_size" ] -> true
+    | [ id; "stringbuf_size" ] -> true
     | _ -> false
 
 

@@ -29,7 +29,7 @@ val b_set_pull_callback :
    *)
 
 val b_set_push_callback : 
-  gnutls_session_t -> (memory -> int) -> unit
+  gnutls_session_t -> (memory -> int -> int) -> unit
   (** Sets the function for writing data. The function must return the number
       of written bytes (like [Unix.write]). The function can raise [Unix_error].
       Only the codes [EINTR], [EAGAIN], [EWOULDBLOCK], and [EMSGSIZE] are

@@ -32,7 +32,7 @@ external net_b_set_pull_callback :
   = "net_b_set_pull_callback" "net_b_set_pull_callback"
 
 external net_b_set_push_callback : 
-  gnutls_session_t -> (memory -> int unix_code) -> unit
+  gnutls_session_t -> (memory -> int -> int unix_code) -> unit
   = "net_b_set_push_callback" "net_b_set_push_callback"
 
 external net_b_set_pull_timeout_callback : 
@@ -67,7 +67,7 @@ let b_set_pull_callback s f =
 
 
 let b_set_push_callback s f =
-  net_b_set_push_callback s (protect f)
+  net_b_set_push_callback s (fun buf size -> protect (f buf) size)
 
 
 let b_set_pull_timeout_callback s f =
@@ -90,8 +90,8 @@ external b_set_db_callbacks :
 let set_fd s fd =
   let recv mem =
     Netsys_mem.mem_recv fd mem 0 (Bigarray.Array1.dim mem) [] in
-  let send mem =
-    Netsys_mem.mem_send fd mem 0 (Bigarray.Array1.dim mem) [] in
+  let send mem size =
+    Netsys_mem.mem_send fd mem 0 size [] in
   let timeout ms =
     Netsys_posix.poll_single fd true false false (0.001 *. float ms) in
   b_set_pull_callback s recv;

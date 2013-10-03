@@ -6,7 +6,7 @@ include Makefile.conf
 PKGNAME  = netsys
 OBJECTS  = netsys_conf.cmo netsys_types.cmo \
            netlog.cmo netexn.cmo netsys_impl_util.cmo \
-	   netsys_signal.cmo \
+	   netsys_signal.cmo netsys_crypto_types.cmo \
 	   netsys_posix.cmo netsys_win32.cmo netsys.cmo \
 	   netsys_rng.cmo \
 	   netsys_pollset.cmo netsys_pollset_posix.cmo \
@@ -24,7 +24,7 @@ DOBJECTS = netsys.mli netsys_posix.mli netsys_pollset.mli netlog.mli \
            netexn.mli netsys_win32.mli netsys_pollset_posix.mli \
            netsys_pollset_win32.mli netsys_pollset_generic.mli \
            netsys_signal.mli netsys_oothr.mli netsys_xdr.mli \
-	   netsys_rng.mli \
+	   netsys_rng.mli netsys_crypto_types.mli \
 	   netsys_types.mli netsys_mem.mli netsys_tmp.mli \
 	   netsys_sem.mli netsys_pmanage.mli
 LINK_OPTIONS = $(NETSYS_LINK_OPTIONS)

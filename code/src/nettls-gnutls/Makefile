@@ -14,7 +14,7 @@ LINK_OPTIONS = -lgnutls
 
 CC_OPTIONS_FOR_nettls_gnutls_bindings_stubs.c = -ccopt -Wno-unused-function
 
-INCLUDES = $(INC_NETSYS)
+INCLUDES = $(INC_NETSYS) $(INC_NETSTRING)
 
 include $(TOP_DIR)/Makefile.rules
 
