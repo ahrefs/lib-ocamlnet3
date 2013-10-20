@@ -6,10 +6,7 @@ module type TLS_PROVIDER =
     type credentials
     type endpoint
     type error_code
-    type direction = [ `R | `W ]
 
-    exception EAGAIN of direction
-    exception EINTR
     exception Switch_request
     exception Error of error_code
     exception Warning of error_code
@@ -26,6 +23,8 @@ module type TLS_PROVIDER =
     val create_config :
           ?algorithms : string ->
           ?dh_params : dh_params ->
+          ?verify : (endpoint -> bool) ->
+          ?peer_name : string ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
           unit ->
@@ -58,9 +57,14 @@ module type TLS_PROVIDER =
           config ->
             endpoint
 
+    type state =
+        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
+          | `End ]
+
+    val get_state : endpoint -> state
     val hello : endpoint -> unit
-    val bye : endpoint -> [`W | `RW] -> unit
-    val verify : endpoint -> string -> unit
+    val bye : endpoint -> Unix.shutdown_command -> unit
+    val verify : endpoint -> unit
     val get_endpoint_crt : endpoint -> string
     val get_peer_crt_list : endpoint -> string list
     val switch : endpoint -> config -> bool
@@ -85,8 +89,24 @@ module type TLS_PROVIDER =
   end
 
 
+module type TLS_CONFIG =
+  sig
+    module TLS : TLS_PROVIDER
+    val config : TLS.config
+  end
+
+
 module type TLS_ENDPOINT =
   sig
     module TLS : TLS_PROVIDER
     val endpoint : TLS.endpoint
+  end
+
+
+module type FILE_TLS_ENDPOINT =
+  sig
+    module TLS : TLS_PROVIDER
+    val endpoint : TLS.endpoint
+    val rd_file : Unix.file_descr
+    val wr_file : Unix.file_descr
   end

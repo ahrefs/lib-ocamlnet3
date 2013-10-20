@@ -39,20 +39,11 @@ module TLS : GNUTLS_PROVIDER =
     type error_code =
         G.error_code
 
-    type direction = [ `R | `W ]
-
     type dh_params =
       [ `PKCS3_PEM_file of string
       | `PKCS3_DER of string
       | `Generate of int
       ]
-
-    type config =
-        { priority : G.gnutls_priority_t;
-          dh_params : G.gnutls_dh_params_t option;
-          peer_auth : [ `None | `Optional | `Required ];
-          credentials : credentials;
-        }
           
     type crt_list =
         [`PEM_file of string | `DER of string list]
@@ -71,16 +62,28 @@ module TLS : GNUTLS_PROVIDER =
 
     type server_name = [ `Domain of string ]
 
+    type state =
+        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
+          | `End ]
+
     type endpoint =
         { role : [ `Server | `Client ];
           recv : (Netsys_types.memory -> int);
           send : (Netsys_types.memory -> int -> int);
           config : config;
           session : G.gnutls_session_t;
+          mutable state : state;
         }
 
-    exception EAGAIN of direction
-    exception EINTR
+      and config =
+        { priority : G.gnutls_priority_t;
+          dh_params : G.gnutls_dh_params_t option;
+          peer_auth : [ `None | `Optional | `Required ];
+          credentials : credentials;
+          verify : endpoint -> bool;
+          peer_name : string option;
+        }
+
     exception Switch_request
     exception Error of error_code
     exception Warning of error_code
@@ -119,7 +122,8 @@ module TLS : GNUTLS_PROVIDER =
       "-----END " ^ header_tag ^ "-----\n"
 
 
-    let create_config ?(algorithms="NORMAL") ?dh_params ~peer_auth 
+    let create_config ?(algorithms="NORMAL") ?dh_params ?(verify=fun _ -> true)
+                      ?peer_name ~peer_auth 
                       ~credentials () =
       let f() =
         let priority = G.gnutls_priority_init algorithms in
@@ -143,7 +147,9 @@ module TLS : GNUTLS_PROVIDER =
         { priority;
           dh_params = dhp_opt;
           peer_auth;
-          credentials
+          credentials;
+          verify;
+          peer_name
         } in
       trans_exn f ()
 
@@ -271,20 +277,24 @@ module TLS : GNUTLS_PROVIDER =
           recv;
           send;
           config;
-          session
+          session;
+          state = `Start;
         } in
       trans_exn f ()
           
+    let get_state ep = ep.state
+
     let endpoint_exn ?(warnings=false) ep f arg =
       try
         f arg
       with
         | G.Error `Again -> 
-            let dir =
-              if G.gnutls_record_get_direction ep.session then `W else `R in
-            raise (EAGAIN dir)
+            if G.gnutls_record_get_direction ep.session then
+              raise Netsys_types.EAGAIN_WR
+            else
+              raise Netsys_types.EAGAIN_RD
         | G.Error `Interrupted ->
-            raise EINTR
+            raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""))
         | G.Error `Rehandshake ->
             raise Switch_request
         | G.Error code ->
@@ -293,25 +303,42 @@ module TLS : GNUTLS_PROVIDER =
             else
               raise(Error code)
 
+    let unexpected_state() =
+      failwith "Nettls_gnutls: the endpoint is in an unexpected state"
+
     let hello ep =
+      if ep.state <> `Start && ep.state <> `Switching then
+        unexpected_state();
+      ep.state <- `Handshake;
       endpoint_exn
         ~warnings:true
         ep
         G.gnutls_handshake
-        ep.session
+        ep.session;
+      ep.state <- `Data_rw
 
     let bye ep how =
-      let ghow =
-        match how with
-          | `W -> `Wr
-          | `RW  -> `Rdwr in
-      endpoint_exn
-        ~warnings:true
-        ep
-        (G.gnutls_bye ep.session)
-        ghow
+      if ep.state <> `Data_rw && ep.state <> `Data_r && ep.state <> `Data_w
+      then 
+        unexpected_state();
+      if how <> Unix.SHUTDOWN_RECEIVE then (
+        let ghow, new_state =
+          match how with
+            | Unix.SHUTDOWN_SEND ->
+                 `Wr, (if ep.state = `Data_w then `End else `Data_r)
+            | Unix.SHUTDOWN_ALL ->
+                 `Rdwr, `End
+            | Unix.SHUTDOWN_RECEIVE ->
+                 assert false in
+        endpoint_exn
+          ~warnings:true
+          ep
+          (G.gnutls_bye ep.session)
+          ghow;
+        ep.state <- new_state
+      )
 
-    let verify ep peer_name =
+    let verify ep =
       let f() =
         let status_l = G.gnutls_certificate_verify_peers2 ep.session in
         if status_l <> [] then
@@ -320,13 +347,22 @@ module TLS : GNUTLS_PROVIDER =
                         (List.map 
                            G.string_of_verification_status_flag
                            status_l)));
-        let der_peer_certs = G.gnutls_certificate_get_peers ep.session in
-        assert(der_peer_certs <> [| |]);
-        let peer_cert = G.gnutls_x509_crt_init() in
-        G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
-        let ok = G.gnutls_x509_crt_check_hostname peer_cert peer_name in
-        if not ok then
-          failwith "Certificate verification failed with codes: BAD_HOSTNAME";
+        ( match ep.config.peer_name with
+            | None -> ()
+            | Some pn ->
+                 let der_peer_certs = 
+                   G.gnutls_certificate_get_peers ep.session in
+                 assert(der_peer_certs <> [| |]);
+                 let peer_cert = G.gnutls_x509_crt_init() in
+                 G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
+                 let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
+                 if not ok then
+                   failwith "Certificate verification failed with codes: \
+                             BAD_HOSTNAME";
+        );
+        if not (ep.config.verify ep) then
+          failwith "Certificate verification failed with codes: \
+                    FAILED_USER_CHECK";
         () in
       trans_exn f ()
 
@@ -341,6 +377,8 @@ module TLS : GNUTLS_PROVIDER =
     let refuse_switch _ = assert false
 
     let send ep buf n =
+      if ep.state <> `Data_rw && ep.state <> `Data_w then
+        unexpected_state();
       endpoint_exn
         ~warnings:true
         ep
@@ -348,11 +386,17 @@ module TLS : GNUTLS_PROVIDER =
         n
 
     let recv ep buf =
-      endpoint_exn
-        ~warnings:true
-        ep
-        (G.gnutls_record_recv ep.session)
-        buf
+      if ep.state <> `Data_rw && ep.state <> `Data_r then
+        unexpected_state();
+      let n =
+        endpoint_exn
+          ~warnings:true
+          ep
+          (G.gnutls_record_recv ep.session)
+          buf in
+      if Bigarray.Array1.dim buf > 0 && n=0 then
+        ep.state <- (if ep.state = `Data_rw then `Data_w else `End);
+      n
 
     let recv_will_not_block ep =
       let f() =
@@ -437,7 +481,9 @@ let downcast p =
     | _ -> raise Not_found
 
 let init() =
-  Nettls_gnutls_bindings.gnutls_global_init()
+  Nettls_gnutls_bindings.gnutls_global_init();
+  Netsys_crypto.set_current_tls
+    (module TLS : Netsys_crypto_types.TLS_PROVIDER)
 
 
 let () =

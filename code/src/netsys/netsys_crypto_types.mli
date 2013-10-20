@@ -8,21 +8,6 @@ module type TLS_PROVIDER =
     type credentials
     type endpoint
     type error_code
-    type direction = [ `R | `W ]
-
-    exception EAGAIN of direction
-      (** A read or write cannot be done because the descriptor is in
-          non-blocking mode and would block. This corresponds to the
-          [Unix.EAGAIN] error but includes whether it was a read or write.
-
-          When the read or write is possible, the interrupted function should
-          simply be again called.
-       *)
-
-    exception EINTR
-      (** Interrupted system call. Corresponds to [Unix.EINTR]. The interrupted
-          function should be again called.
-       *)
 
     exception Switch_request
       (** The server requested a rehandshake *)
@@ -61,6 +46,8 @@ module type TLS_PROVIDER =
     val create_config :
           ?algorithms : string ->
           ?dh_params : dh_params ->
+          ?verify : (endpoint -> bool) ->
+          ?peer_name : string ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
           unit ->
@@ -74,6 +61,9 @@ module type TLS_PROVIDER =
             implementation-defined.
           - [dh_params]: parameters for Diffie-Hellman key exchange (used for
             DH-based authentication, but only on the server side)
+          - [peer_name]: The expected name of the peer (i.e. the subject
+            of the peer certificate = normally the DNS name). {b This is
+            strongly recommended to set for clients!}
           - [peer_auth]: controls whether the peer is requested to authenticate.
             This can be set to [`None] meaning not to request authentication
             and to ignore credentials, or to [`Optional] meaning not to request
@@ -84,6 +74,9 @@ module type TLS_PROVIDER =
             [`Required].
           - [credentials] describes our own credentials, and the accepted
             credentials of the peer.
+          - [verify] is a function called to verify the peer certificate
+            in addition to the actions of [peer_auth]. The function must
+            return [true] in order to be successful.
 
           A configuration is read-only once created, and can be used for
           several endpoints. In particular, it does not cache TLS sessions.
@@ -172,6 +165,22 @@ module type TLS_PROVIDER =
           [Unix.EINTR] are specially interpreted.
        *)
 
+    type state =
+        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
+          | `End ]
+      (** The state of a session:
+
+          - [`Start]: Before the session is started
+          - [`Handshake]: The handshake is being done
+          - [`Data_rw]: The connection exists, and is read/write
+          - [`Data_r]: The connection exists, and is read-only
+          - [`Data_w]: The connection exists, and is write-only
+          - [`Switching]: A rehandshake is being negotiated
+          - [`End]: After finishing the session
+       *)
+
+    val get_state : endpoint -> state
+      (** Return the recorded state *)
 
     val hello : endpoint -> unit
       (** Performs the initial handshake (exchanges credentials and establishes
@@ -179,37 +188,45 @@ module type TLS_PROVIDER =
 
           [hello] doesn't verify the peer. Use [verify] for that.
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
-    val bye : endpoint -> [`W | `RW] -> unit
+    val bye : endpoint -> Unix.shutdown_command -> unit
       (** Performs the final handshake (exchanges close requests).
 
-          If [`W] is set, the close request is sent to the peer, and
+          If [SHUTDOWN_SEND] is set, the close request is sent to the peer, and
           the TLS tunnel is considered as closed for writing. The application
           can receive further data until [recv] returns zero bytes meaning
           that the peer responded with another close request.
 
-          If [`RW] is passed, it is additionally waited until the peer
+          If [SHUTDOWN_ALL] is passed, it is additionally waited until the peer
           responds with a close request.
+
+          A simple [SHUTDOWN_RECEIVE] is unimplemented and ignored.
 
           In no case the underlying transport is closed or shut down!
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
-    val verify : endpoint -> string -> unit
+    val verify : endpoint -> unit
       (** [verify ep peer_name]: Checks that:
            - there is a trust chain for the peer's certificate
            - that [peer_name] is the common name of the certificate subject,
              or an alternate name
 
-          {b No checks are performed if [peer_auth=`None] is set in the
+          {b These checks are not performed if [peer_auth=`None] is set in the
           configuration!}
 
-          You can get the certificate of the peer and perform further checks.
+          Additionally, the [verify] function in the endpoint configuration
+          is called back, and a failure is indicated if this function returns
+          [false]. This callback is useful to get the certificate of the peer
+          and to perform further checks.
 
-          This function will raise [Failure] on failed checks (and [Error]
+          The [verify] function will raise [Failure] on failed checks
+          (and [Error]
           for internal processing errors).
        *)
 
@@ -238,27 +255,31 @@ module type TLS_PROVIDER =
           [accept_switch] if it accepts the handshake, or [refuse_switch] if
           not.
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
     val accept_switch : endpoint -> config -> unit
       (** On the client: Enter another handshake round with new configuration
           data.
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
     val refuse_switch : endpoint -> unit
       (** On the client: Refuse a handshake
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
     val send : endpoint -> Netsys_types.memory -> int -> int
       (** [send ep buffer n]: Sends the first [n] bytes in the buffer over
           the endpoint, and returns the actual number of processed bytes.
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
     val recv : endpoint -> Netsys_types.memory -> int
@@ -268,7 +289,8 @@ module type TLS_PROVIDER =
           the tunnel properly this request should be responded by another
           close request with [bye] (unless this has already been done).
 
-          May raise [EAGAIN], [EINTR], [Error] or [Warning].
+          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          [Unix_error(EINTR,_,_)], [Error] or [Warning].
 
           The exception [Switch_request] can only occur on the client
           side, and should be responded by [accept_switch] or [refuse_switch].
@@ -325,8 +347,24 @@ module type TLS_PROVIDER =
   end
 
 
+module type TLS_CONFIG =
+  sig
+    module TLS : TLS_PROVIDER
+    val config : TLS.config
+  end
+
+
 module type TLS_ENDPOINT =
   sig
     module TLS : TLS_PROVIDER
     val endpoint : TLS.endpoint
+  end
+
+
+module type FILE_TLS_ENDPOINT =
+  sig
+    module TLS : TLS_PROVIDER
+    val endpoint : TLS.endpoint
+    val rd_file : Unix.file_descr
+    val wr_file : Unix.file_descr
   end
