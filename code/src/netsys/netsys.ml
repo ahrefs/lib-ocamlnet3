@@ -88,6 +88,7 @@ type fd_style =
     | `W32_process
     | `W32_input_thread
     | `W32_output_thread
+    | `TLS of Netsys_crypto_types.file_tls_endpoint
     ]
 
 
@@ -173,6 +174,7 @@ let string_of_fd_style =
     | `W32_process -> "W32_process" 
     | `W32_input_thread -> "W32_input_thread"
     | `W32_output_thread -> "W32_output_thread"
+    | `TLS _ -> "TLS"
 
 let string_of_fd fd =
   let st = get_fd_style fd in
@@ -231,6 +233,14 @@ let wait_until_readable fd_style fd tmo =
       | `W32_process
       | `W32_output_thread ->
 	  sleep tmo; false (* never *)
+      | `TLS ep ->
+          let module Endpoint = 
+            (val ep : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+          Endpoint.TLS.recv_will_not_block Endpoint.endpoint || (
+	    let l,_,_ = 
+              restart_tmo (Unix.select [Endpoint.rd_file] [] []) tmo in
+	    l <> []
+          )
       | _ ->
 	  let l,_,_ = restart_tmo (Unix.select [fd] [] []) tmo in
 	  l <> []
@@ -261,6 +271,11 @@ let wait_until_writable fd_style fd tmo =
       | `W32_input_thread 
       | `W32_process ->
 	  sleep tmo; false (* never *)
+      | `TLS ep ->
+          let module Endpoint = 
+            (val ep : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+	  let l,_,_ = restart_tmo (Unix.select [] [Endpoint.wr_file] []) tmo in
+	  l <> []
       | _ ->
 	  let _,l,_ = restart_tmo (Unix.select [] [fd] []) tmo in
 	  l <> []
@@ -297,6 +312,30 @@ let is_writable fd_style fd = wait_until_writable fd_style fd 0.0
 let is_prird fd_style fd = wait_until_prird fd_style fd 0.0
 
 
+let rec restart_wait mode fd_style fd f arg =
+  try
+    f arg
+  with
+    | Unix.Unix_error(Unix.EINTR,_,_) ->
+	restart_wait mode fd_style fd f arg
+    | Unix.Unix_error(Unix.EAGAIN,_,_)
+    | Unix.Unix_error(Unix.EWOULDBLOCK,_,_) ->
+        (match mode with
+           | `R -> 
+                ignore(wait_until_readable fd_style fd (-1.0));
+                restart_wait mode fd_style fd f arg
+           | `W -> 
+                ignore(wait_until_writable fd_style fd (-1.0));
+                restart_wait mode fd_style fd f arg
+        )
+    | Netsys_types.EAGAIN_RD ->
+         ignore(wait_until_readable fd_style fd (-1.0));
+         restart_wait mode fd_style fd f arg
+    | Netsys_types.EAGAIN_WR ->
+         ignore(wait_until_writable fd_style fd (-1.0));
+         restart_wait mode fd_style fd f arg
+
+
 let gwrite fd_style fd s pos len =
   dlogr (fun () -> sprintf "gwrite fd=%Ld len=%d"
 	   (int64_of_file_descr fd) len);
@@ -322,6 +361,8 @@ let gwrite fd_style fd s pos len =
     | `W32_output_thread ->
 	let othr = Netsys_win32.lookup_output_thread fd in
 	Netsys_win32.output_thread_write othr s pos len
+    | `TLS endpoint ->
+        Netsys_tls.send endpoint s pos len
 
 
 let rec really_gwrite fd_style fd s pos len =
@@ -332,8 +373,12 @@ let rec really_gwrite fd_style fd s pos len =
   with
     | Unix.Unix_error(Unix.EINTR, _, _) ->
 	really_gwrite fd_style fd s pos len
-    | Unix.Unix_error( (Unix.EAGAIN | Unix.EWOULDBLOCK), _, _) ->
+    | Unix.Unix_error( (Unix.EAGAIN | Unix.EWOULDBLOCK), _, _)
+    | Netsys_types.EAGAIN_WR ->
 	ignore(wait_until_writable fd_style fd (-1.0));
+	really_gwrite fd_style fd s pos len
+    | Netsys_types.EAGAIN_RD ->
+	ignore(wait_until_readable fd_style fd (-1.0));
 	really_gwrite fd_style fd s pos len
 
 
@@ -362,6 +407,8 @@ let gread fd_style fd s pos len =
     | `W32_input_thread ->
 	let ithr = Netsys_win32.lookup_input_thread fd in
 	Netsys_win32.input_thread_read ithr s pos len
+    | `TLS endpoint ->
+        Netsys_tls.recv endpoint s pos len
 
 let blocking_gread fd_style fd s pos len =
   let rec loop pos len p =
@@ -375,8 +422,12 @@ let blocking_gread fd_style fd s pos len =
       with
 	| Unix.Unix_error(Unix.EINTR, _, _) ->
 	    loop pos len p
-	| Unix.Unix_error( (Unix.EAGAIN | Unix.EWOULDBLOCK), _, _) ->
+	| Unix.Unix_error( (Unix.EAGAIN | Unix.EWOULDBLOCK), _, _)
+        | Netsys_types.EAGAIN_RD ->
 	    ignore(wait_until_readable fd_style fd (-1.0));
+	    loop pos len p
+        | Netsys_types.EAGAIN_WR ->
+	    ignore(wait_until_writable fd_style fd (-1.0));
 	    loop pos len p
     else
       p
@@ -479,6 +530,8 @@ let gshutdown fd_style fd cmd =
 	  let othr = Netsys_win32.lookup_output_thread fd in
 	  Netsys_win32.close_output_thread othr
 	)
+    | `TLS endpoint ->
+        Netsys_tls.end_tls endpoint cmd
     | _ ->
 	raise Shutdown_not_supported
 
@@ -569,7 +622,21 @@ let gclose fd_style fd =
 	  "Unix.close" fd_detail
 	  Unix.close fd;
 	Netsys_win32.unregister fd
-
+    | `TLS endpoint ->
+        Netsys_tls.end_tls endpoint Unix.SHUTDOWN_ALL;
+        let module Endpoint =
+          (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+	catch_exn
+	  "Unix.close" fd_detail
+	  Unix.close Endpoint.rd_file;
+        if Endpoint.wr_file <> Endpoint.rd_file then
+	  catch_exn
+	    "Unix.close" fd_detail
+	    Unix.close Endpoint.wr_file;
+        if fd <> Endpoint.rd_file then
+	  catch_exn
+	    "Unix.close" fd_detail
+	    Unix.close fd
 
 
 external unix_error_of_code : int -> Unix.error = "netsys_unix_error_of_code"

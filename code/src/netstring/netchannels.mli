@@ -802,6 +802,7 @@ class buffered_raw_out_channel :
 class input_descr :
   ?blocking:bool ->
   ?start_pos_in:int ->
+  ?fd_style:Netsys.fd_style ->
   Unix.file_descr ->
     raw_in_channel
   (** Creates a [raw_in_channel] for the passed file descriptor, which must
@@ -819,12 +820,15 @@ class input_descr :
    * possible to read from the (non-blocking) descriptor. Defaults to [true].
    * @param start_pos_in The position to which [pos_in] is initialized when
    * the channel is created, by default 0
+   * @param fd_style The descriptor style. If omitted, it is automatically
+   * determined if possible.
    *)
 
 
 class output_descr :
   ?blocking:bool ->
   ?start_pos_out:int ->
+  ?fd_style:Netsys.fd_style ->
   Unix.file_descr ->
     raw_out_channel
   (** Creates a [raw_out_channel] for the passed file descriptor, which must
@@ -842,12 +846,15 @@ class output_descr :
    * possible to write to the (non-blocking) descriptor. Defaults to [true].
    * @param start_pos_out The position to which [pos_out] is initialized when
    * the channel is created, by default 0
+   * @param fd_style The descriptor style. If omitted, it is automatically
+   * determined if possible.
    *)
 
 class socket_descr :
   ?blocking:bool ->
   ?start_pos_in:int ->
   ?start_pos_out:int ->
+  ?fd_style:Netsys.fd_style ->
   Unix.file_descr ->
     raw_io_channel
   (** Creates a [raw_io_channel] for the passed socket descriptor, which must
@@ -868,6 +875,8 @@ class socket_descr :
    * the channel is created, by default 0
    * @param start_pos_out The position to which [pos_out] is initialized when
    * the channel is created, by default 0
+   * @param fd_style The descriptor style. If omitted, it is automatically
+   * determined if possible.
    *)
 
 

@@ -1,5 +1,20 @@
 (* $Id$ *)
 
+open Printf
+
+
+module Debug = struct
+  let enable = ref false
+end
+
+let dlog = Netlog.Debug.mk_dlog "Netsys_tls" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Netsys_tls" Debug.enable
+
+let () =
+  Netlog.Debug.register_module "Netsys_tls" Debug.enable
+
+
+
 exception Error of string * string
 
 type dh_params =
@@ -44,6 +59,12 @@ let translate_exn endpoint exn =
   trans_exn (module P) exn
 
 
+let debug_backtrace fn exn bt =
+  dlog (sprintf "Exception in function Netsys_tls.%s: %s - backtrace: %s"
+                fn (Netexn.to_string exn) bt
+       )
+
+
 
 let create_x509_config
       ?algorithms ?dh_params ?(verify = fun _ -> true) 
@@ -67,7 +88,10 @@ let create_x509_config
     end in
     (module Config : Netsys_crypto_types.TLS_CONFIG)
   with
-    | exn -> raise(trans_exn tls exn)
+    | exn -> 
+         if !Debug.enable then 
+           debug_backtrace "create_x509_config" exn (Printexc.get_backtrace());
+         raise(trans_exn tls exn)
 
 
 let create_file_endpoint ~role ~rd_file ~wr_file config =
@@ -87,7 +111,11 @@ let create_file_endpoint ~role ~rd_file ~wr_file config =
     end in
     (module Endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT)
   with
-    | exn -> raise(trans_exn (module P) exn)
+    | exn -> 
+         if !Debug.enable then 
+           debug_backtrace "create_file_endpoint" 
+                           exn (Printexc.get_backtrace());
+         raise(trans_exn (module P) exn)
 
 
 let start_tls endpoint =
@@ -101,7 +129,10 @@ let start_tls endpoint =
       P.verify Endpoint.endpoint
     )
   with
-    | exn -> raise(trans_exn (module P) exn)
+    | exn -> 
+         if !Debug.enable then
+           debug_backtrace "start_tls" exn (Printexc.get_backtrace());
+         raise(trans_exn (module P) exn)
 
 
 let mem_recv endpoint buf pos len =
@@ -117,7 +148,10 @@ let mem_recv endpoint buf pos len =
   try
     P.recv Endpoint.endpoint buf'
   with
-    | exn -> raise(trans_exn (module P) exn)
+    | exn ->
+         if !Debug.enable then
+           debug_backtrace "mem_recv" exn (Printexc.get_backtrace());
+         raise(trans_exn (module P) exn)
 
 
 let recv endpoint buf pos len =
@@ -141,7 +175,10 @@ let mem_send endpoint buf pos len =
   try
     P.send Endpoint.endpoint buf' len
   with
-    | exn -> raise(trans_exn (module P) exn)
+    | exn ->
+         if !Debug.enable then
+           debug_backtrace "mem_send" exn (Printexc.get_backtrace());
+         raise(trans_exn (module P) exn)
 
 
 let send endpoint buf pos len =
@@ -159,4 +196,7 @@ let end_tls endpoint how =
   try
     P.bye Endpoint.endpoint how
   with
-    | exn -> raise(trans_exn (module P) exn)
+    | exn ->
+         if !Debug.enable then
+           debug_backtrace "end_tls" exn (Printexc.get_backtrace());
+         raise(trans_exn (module P) exn)

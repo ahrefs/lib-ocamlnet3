@@ -1340,8 +1340,39 @@ let lift_out ?(buffered=true) ?buffer_size ?pass_through (x : lift_out_arg) =
 
 (************************* raw channels *******************************)
 
-class input_descr_prelim ?(blocking=true) ?(start_pos_in = 0) fd =
-  let fd_style = Netsys.get_fd_style fd in
+
+let norestart _ _ _ f arg =
+  try
+    f arg
+  with
+    | Unix.Unix_error(Unix.EAGAIN,_,_)
+    | Unix.Unix_error(Unix.EWOULDBLOCK,_,_)
+    | Netsys_types.EAGAIN_RD
+    | Netsys_types.EAGAIN_WR ->
+         0
+
+
+let shutdown_fd mode fd_style fd =
+  try
+    ignore
+      (Netsys.restart_wait mode fd_style fd
+         (fun () ->
+            Netsys.gshutdown fd_style fd Unix.SHUTDOWN_ALL; 0
+         )
+         ()
+      )
+  with
+    | Netsys.Shutdown_not_supported -> ()
+    | Unix.Unix_error(Unix.EPERM, _, _) -> ()
+
+
+class input_descr_prelim ?(blocking=true) ?(start_pos_in = 0) ?fd_style fd =
+  let fd_style =
+    match fd_style with
+      | None -> Netsys.get_fd_style fd
+      | Some st -> st in
+  let wrapper =
+    if blocking then Netsys.restart_wait else norestart in
 object (self)
   val fd_in = fd
   val mutable pos_in = start_pos_in
@@ -1352,26 +1383,20 @@ object (self)
 
   method input buf pos len =
     if closed_in then self # complain_closed();
-    try
-      let n = Netsys.gread fd_style fd_in buf pos len in
-      pos_in <- pos_in + n;
-      if n=0 && len>0 then raise End_of_file;
-      n
-    with
-	Unix.Unix_error(Unix.EINTR,_,_) ->
-	  self # input buf pos len
-      | Unix.Unix_error(Unix.EAGAIN,_,_)
-      | Unix.Unix_error(Unix.EWOULDBLOCK,_,_) ->
-	  if blocking then (
-	    let _  = Netsys.restart 
-	      (Netsys.wait_until_readable fd_style fd) (-1.0) in
-	    self # input buf pos len
-	  )
-	  else 0
+    wrapper `R fd_style fd
+      (fun () ->
+         let n = Netsys.gread fd_style fd_in buf pos len in
+         pos_in <- pos_in + n;
+         if n=0 && len>0 then raise End_of_file;
+         n
+      )
+      ()
 	  
   
   method close_in () =
     if not closed_in then (
+      (* The gshutdown call only exists because of TLS: *)
+      shutdown_fd `R fd_style fd;
       Netsys.gclose fd_style fd_in; 
       closed_in <- true
     )
@@ -1383,13 +1408,18 @@ end
 ;;
 
 
-class input_descr ?blocking ?start_pos_in fd : raw_in_channel = 
-  input_descr_prelim ?blocking ?start_pos_in fd
+class input_descr ?blocking ?start_pos_in ?fd_style fd : raw_in_channel = 
+  input_descr_prelim ?blocking ?start_pos_in ?fd_style fd
 ;;
 
 
-class output_descr_prelim ?(blocking=true) ?(start_pos_out = 0) fd =
-  let fd_style = Netsys.get_fd_style fd in
+class output_descr_prelim ?(blocking=true) ?(start_pos_out = 0) ?fd_style fd =
+  let fd_style =
+    match fd_style with
+      | None -> Netsys.get_fd_style fd
+      | Some st -> st in
+  let wrapper =
+    if blocking then Netsys.restart_wait else norestart in
 object (self)
   val fd_out = fd
   val mutable pos_out = start_pos_out
@@ -1400,41 +1430,22 @@ object (self)
 
   method output buf pos len =
     if closed_out then self # complain_closed();
-    try
-      let n = Netsys.gwrite fd_style fd_out buf pos len in
-      pos_out <- pos_out + n;
-      n
-    with
-	Unix.Unix_error(Unix.EINTR,_,_) ->
-	  self # output buf pos len
-      | Unix.Unix_error(Unix.EAGAIN,_,_)
-      | Unix.Unix_error(Unix.EWOULDBLOCK,_,_) ->
-	  if blocking then (
-	    let _  = Netsys.restart 
-	      (Netsys.wait_until_writable fd_style fd) (-1.0) in
-	    self # output buf pos len
-	  )
-	  else
-	    0
+    wrapper `W fd_style fd
+      (fun () ->
+         let n = Netsys.gwrite fd_style fd_out buf pos len in
+         pos_out <- pos_out + n;
+         n
+      )
+      ()
   
   method close_out () =
     if not closed_out then (
-      ( try
-	  Netsys.gshutdown fd_style fd Unix.SHUTDOWN_SEND
-	with
-	  | Netsys.Shutdown_not_supported -> ()
-	  | Unix.Unix_error(Unix.EAGAIN, _, _) ->
-	      (* FIXME. We block here even when non-blocking semantics
-               is requested. We do this because most programmers would
-               be surprised to get EAGAIN when closing a channel.
-               Actually, this only affects Win32 output threads.
-	       *)
-	      let _  = Netsys.restart 
-		(Netsys.wait_until_writable fd_style fd) (-1.0) in
-	      Netsys.gshutdown fd_style fd Unix.SHUTDOWN_SEND
-	  | Unix.Unix_error(Unix.EPERM, _, _) ->
-	      ()
-      );
+      (* FIXME. We block here even when non-blocking semantics
+         is requested. We do this because most programmers would
+         be surprised to get EAGAIN when closing a channel.
+         Actually, this only affects Win32 output threads and TLS.
+       *)
+      shutdown_fd `W fd_style fd;
       Netsys.gclose fd_style fd_out; 
       closed_out <- true
     )
@@ -1449,35 +1460,34 @@ end
 ;;
 
 
-class output_descr ?blocking ?start_pos_out fd : raw_out_channel =
-  output_descr_prelim ?blocking ?start_pos_out fd 
+class output_descr ?blocking ?start_pos_out ?fd_style fd : raw_out_channel =
+  output_descr_prelim ?blocking ?start_pos_out ?fd_style fd 
 ;;
 
 
-class socket_descr ?blocking ?(start_pos_in = 0) ?(start_pos_out = 0) fd 
+class socket_descr ?blocking ?(start_pos_in = 0) ?(start_pos_out = 0) 
+                   ?fd_style fd 
       : raw_io_channel =
-  let fd_style = Netsys.get_fd_style fd in
+  let fd_style =
+    match fd_style with
+      | None -> Netsys.get_fd_style fd
+      | Some st -> st in
   let () =
     match fd_style with
       | `Recv_send _
       | `Recv_send_implied
-      | `W32_pipe -> ()
+      | `W32_pipe
+      | `TLS _ -> ()
       | _ ->
 	  failwith "Netchannels.socket_descr: This type of descriptor is \
                     unsupported"
   in
 object (self)
-  inherit input_descr_prelim ?blocking ~start_pos_in fd
-  inherit output_descr_prelim ?blocking ~start_pos_out fd 
+  inherit input_descr_prelim ?blocking ~start_pos_in ~fd_style fd
+  inherit output_descr_prelim ?blocking ~start_pos_out ~fd_style fd 
   
   method private gen_close cmd =
-    ( try
-	Netsys.gshutdown fd_style fd cmd
-      with
-	| Netsys.Shutdown_not_supported -> ()
-	| Unix.Unix_error(Unix.EAGAIN, _, _) -> assert false
-	| Unix.Unix_error(Unix.EPERM, _, _) -> ()
-    );
+    shutdown_fd `W fd_style fd;
     if cmd = Unix.SHUTDOWN_ALL then
       Netsys.gclose fd_style fd
 

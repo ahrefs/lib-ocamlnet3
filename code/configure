@@ -48,6 +48,7 @@ set_defaults () {
     enable_zip=0
     enable_crypto=0
     enable_apache=0
+    enable_gnutls=0
     enable_pcre=0
     enable_full_pcre=0
     compat_pcre=0
@@ -62,6 +63,8 @@ set_defaults () {
     apache=""
     cpp=cpp
     cpp_set=0
+    gnutls_cflags=""
+    gnutls_libs=""
 }
 
 ocamlc=`get_path ocamlc`
@@ -78,6 +81,7 @@ ehelp_gtk="Enable/disable parts that depend on lablgtk"
 ehelp_gtk2="Enable/disable parts that depend on lablgtk2"
 ehelp_tcl="Enable/disable parts that depend on tcl/tk"
 ehelp_ssl="Enable/disable parts that depend on SSL"
+ehelp_gnutls="Enable/disable parts that depend on GnuTLS"
 ehelp_zip="Enable/disable parts that depend on camlzip"
 ehelp_crypto="Enable/disable parts that depend on cryptokit"
 ehelp_apache="Enable/disable Apache mod connector (EXPERIMENTAL)"
@@ -87,7 +91,7 @@ whelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 whelp_rpc_auth_dh="Enable/disable support for SecureRPC (Diffie-Hellman auth)"
 
 # Which options exist? eoptions for enable/disable, woptions for with/without:
-eoptions="pcre full_pcre gtk gtk2 tcl ssl zip crypto apache"
+eoptions="pcre full_pcre gtk gtk2 tcl ssl gnutls zip crypto apache"
 woptions="nethttpd rpc_auth_dh"
 
 # Packages to include anyway:
@@ -157,6 +161,12 @@ print_options () {
 	if [ -n "$apache" ]; then
 	    echo "    -apache $apache"
 	fi
+        if [ -n "gnutls_cflags" ]; then
+            echo "    -gnutls-cflags $gnutls_cflags"
+        fi
+        if [ -n "gnutls_libs" ]; then
+            echo "    -gnutls-libs $gnutls_libs"
+        fi
         echo "    -cpp $cpp"
 }
 
@@ -204,6 +214,12 @@ _EOF_
 
 -apache /path/to/apache
         Set which apache executable to use for -enable-apache
+
+-gnutls-cflags <opts>
+        Flags for the C compiler for GnuTLS
+
+-gnutls-libs <opts>
+        Libraries for GnuTLS
 
 -prefer-netcgi2
         This option is ignored for compatibility with older versions
@@ -310,6 +326,16 @@ while [ "$#" -gt 0 ]; do
                         ;;
                 -apache)
                         apache="$2"
+                        shift
+                        shift
+                        ;;
+                -gnutls-cflags)
+                        gnutls_cflags="$2"
+                        shift
+                        shift
+                        ;;
+                -gnutls-libs)
+                        gnutls_libs="$2"
                         shift
                         shift
                         ;;
@@ -767,6 +793,23 @@ if [ $enable_ssl -gt 0 ]; then
 fi
 
 ######################################################################
+# GnuTLS
+
+with_gnutls=0
+
+if [ $enable_gnutls -gt 0 ]; then
+    ( cd src/nettls-gnutls
+      GNUTLS_CFLAGS="$gnutls_cflags" GNUTLS_LIBS="$gnutls_libs" ./configure
+    )
+    if [ $? -eq 0 ]; then
+        with_gnutls=1
+    else
+        echo "Required library GnuTLS not found!"
+        exit 1
+    fi
+fi
+
+######################################################################
 # Check camlzip
 
 with_netzip=0
@@ -915,7 +958,7 @@ echo
 
 pkglist="netsys netshm netstring equeue shell netgssapi rpc-generator rpc rpc-auth-local pop smtp netclient netcgi2 netplex netcgi2-plex"
 
-full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 equeue-ssl rpc-ssl rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache netmech-scram"
+full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 equeue-ssl rpc-ssl rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache netmech-scram nettls-gnutls"
 
 if [ $enable_camlbox -gt 0 ]; then
     pkglist="$pkglist netcamlbox"
@@ -950,6 +993,10 @@ fi
 
 if [ $with_crypto -gt 0 ]; then
     pkglist="$pkglist netmech-scram"
+fi
+
+if [ $enable_gnutls -gt 0 ]; then
+    pkglist="$pkglist nettls-gnutls"
 fi
 
 if [ $with_nethttpd -gt 0 ]; then

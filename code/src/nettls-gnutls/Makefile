@@ -21,4 +21,16 @@ include $(TOP_DIR)/Makefile.rules
 .PHONY: cobjects
 cobjects: $(COBJECTS)
 
+nettls_gnutls_bindings.ml: done_reconfigure
+	@:
+
+nettls_gnutls_bindings.mli: done_reconfigure
+	@:
+
+nettls_gnutls_bindings_stubs.c: done_reconfigure
+	@:
+
+done_reconfigure: gnutls.descr gnutls.c gnutls.ml gnutls.mli
+	./reconfigure
+
 include depend

@@ -110,3 +110,9 @@ module type FILE_TLS_ENDPOINT =
     val rd_file : Unix.file_descr
     val wr_file : Unix.file_descr
   end
+
+
+type tls_provider = (module TLS_PROVIDER)
+type tls_config = (module TLS_CONFIG)
+type tls_endpoint = (module TLS_ENDPOINT)
+type file_tls_endpoint = (module FILE_TLS_ENDPOINT)

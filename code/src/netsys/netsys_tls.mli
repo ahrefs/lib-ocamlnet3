@@ -245,3 +245,7 @@ val translate_exn : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
   (** Translates an internal exception raised by the TLS provider
       into [Error].
    *)
+
+module Debug : sig
+  val enable : bool ref
+end

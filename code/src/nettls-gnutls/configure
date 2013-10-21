@@ -5,6 +5,8 @@
 # GNUTLS_LIBS
 # PKG_CONFIG
 
+have_gnutls=0
+
 if [ -z "$PKG_CONFIG" ]; then
     PKG_CONFIG="pkg-config"
 fi
@@ -17,7 +19,7 @@ fi
 
 stdlib=`ocamlc -where`
 
-rm -f config.h
+rm -f config.h config.sh
 ulimit -c 0          # no coredumps
 
 compiler="ocamlc -custom"
@@ -47,44 +49,24 @@ call_ocamlc () {
 }
 
 
-check_enum () {
-    macro="$1"
-    enum="$2"
-
-    echo "Checking enum $enum"
-    echo "# ENUM $enum" >> $log
-
-    cat <<EOF >testdir/test.c
-#include <gnutls/gnutls.h>
-#include <gnutls/openpgp.h>
-#include <gnutls/x509.h>
-int main (int argc, char *argv[], char *envp[]) {
-  int n;
-  n = $enum;
-  return 0;
-}
-EOF
-
-    if call_ocamlc -c test.c; then
-        echo "#define $macro" >>$out
-    else
-        echo "#undef $macro" >>$out
-    fi
-}
-
-
 check_fun() {
     macro="$1"
     fun="$2"
 
-    echo "Checking function $fun"
-    echo "# FUN $fun" >> $log
+}
 
-    cat <<EOF >testdir/main.ml
+######################################################################
+
+
+printf "Checking for GnuTLS... "
+fun=gnutls_global_init
+echo "# FUN $fun" >> $log
+
+cat <<EOF >testdir/main.ml
 let () = ()
 EOF
 
-    cat <<EOF >testdir/test.c
+cat <<EOF >testdir/test.c
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
@@ -94,42 +76,19 @@ int main (int argc, char *argv[], char *envp[]) {
 }
 EOF
 
-    if call_ocamlc -o test test.c main.ml; then
-        echo "#define $macro" >>$out
-    else
-        echo "#undef $macro" >>$out
-    fi
-}
-
-check_type() {
-    macro="$1"
-    ty="$2"
-
-    echo "Checking type $ty"
-    echo "# TYPE $ty" >> $log
-
-    cat <<EOF >testdir/test.c
-#include <gnutls/gnutls.h>
-#include <gnutls/openpgp.h>
-#include <gnutls/x509.h>
-int main (int argc, char *argv[], char *envp[]) {
-  $ty x;
-  return 0;
-}
-EOF
-
-    if call_ocamlc -c test.c; then
-        echo "#define $macro" >>$out
-    else
-        echo "#undef $macro" >>$out
-    fi
-}
+if call_ocamlc -o test test.c main.ml; then
+    echo "found"
+    have_gnutls=1    
+else
+    echo "not found"
+    have_gnutls=0
+fi
 
 
-######################################################################
+if [ $have_gnutls -gt 0 ]; then
+    echo "PKG_CONFIG='$PKG_CONFIG'" >>config.sh
+    echo "GNUTLS_CFLAGS='$GNUTLS_CFLAGS'" >>config.sh
+    echo "GNUTLS_LIBS='$GNUTLS_LIBS'" >>config.sh
 
-echo "Generating stubs"
-echo "$ ocaml -I ../../tools gnutls.descr" >>$log
-ocaml -I ../../tools gnutls.descr || exit 1
-
-. ./config_checks.sh
+    ./reconfigure
+fi

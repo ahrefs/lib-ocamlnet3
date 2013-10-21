@@ -259,6 +259,7 @@ module TLS : GNUTLS_PROVIDER =
            G.gnutls_certificate_set_x509_key gcred (Array.of_list gcrts) gpkey
         )
         keys;
+      G.gnutls_certificate_set_verify_flags gcred [];
       { gcred = `Certificate gcred }
 
     let create_x509_credentials ?(trust=[]) ?(revoke=[]) ?(keys=[]) () =
@@ -271,6 +272,7 @@ module TLS : GNUTLS_PROVIDER =
         let flags = [ (role :> G.gnutls_init_flags_flag) ] in
         let session = G.gnutls_init flags in
         G.gnutls_credentials_set session config.credentials.gcred;
+        G.gnutls_priority_set session config.priority;
         G.b_set_pull_callback session recv;
         G.b_set_push_callback session send;
         { role;
@@ -318,24 +320,26 @@ module TLS : GNUTLS_PROVIDER =
       ep.state <- `Data_rw
 
     let bye ep how =
-      if ep.state <> `Data_rw && ep.state <> `Data_r && ep.state <> `Data_w
-      then 
-        unexpected_state();
-      if how <> Unix.SHUTDOWN_RECEIVE then (
-        let ghow, new_state =
-          match how with
-            | Unix.SHUTDOWN_SEND ->
-                 `Wr, (if ep.state = `Data_w then `End else `Data_r)
-            | Unix.SHUTDOWN_ALL ->
-                 `Rdwr, `End
-            | Unix.SHUTDOWN_RECEIVE ->
-                 assert false in
-        endpoint_exn
-          ~warnings:true
-          ep
-          (G.gnutls_bye ep.session)
-          ghow;
-        ep.state <- new_state
+      if ep.state <> `End then (
+        if ep.state <> `Data_rw && ep.state <> `Data_r && ep.state <> `Data_w
+        then 
+          unexpected_state();
+        if how <> Unix.SHUTDOWN_RECEIVE then (
+          let ghow, new_state =
+            match how with
+              | Unix.SHUTDOWN_SEND ->
+                   `Wr, (if ep.state = `Data_w then `End else `Data_r)
+              | Unix.SHUTDOWN_ALL ->
+                   `Rdwr, `End
+              | Unix.SHUTDOWN_RECEIVE ->
+                   assert false in
+          endpoint_exn
+            ~warnings:true
+            ep
+            (G.gnutls_bye ep.session)
+            ghow;
+          ep.state <- new_state
+        )
       )
 
     let verify ep =

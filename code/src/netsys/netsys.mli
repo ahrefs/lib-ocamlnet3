@@ -25,6 +25,7 @@ type fd_style =
     | `W32_process
     | `W32_input_thread
     | `W32_output_thread
+    | `TLS of Netsys_crypto_types.file_tls_endpoint
     ]
   (** Some information what kind of operations are reasonable for descriptors:
       - [`Read_write]: The descriptor is neither a socket not one of the
@@ -60,6 +61,12 @@ type fd_style =
         Win32-specific output thread
         as returned by
         {!Netsys_win32.create_output_thread}. 
+      - [`TLS endpoint]: A TLS tunnel is running over the descriptor. The
+        details of the tunnel can be found in [endpoint]. Note that it is
+        allowed that the endpoint uses a second descriptor for either
+        reading or writing (i.e. reading and writing go via different
+        descriptors). In this case, it is sufficient that one of these
+        descriptors is accompanied with [`TLS endpoint].
 
       Win32: For the exact meaning of proxy descriptors, please see 
       {!Netsys_win32}. In short, a proxy descriptor is an abstract handle
@@ -71,7 +78,11 @@ type fd_style =
    *)
 
 val get_fd_style : Unix.file_descr -> fd_style
-  (** Get the file descriptor style *)
+  (** Get the file descriptor style.
+
+      The following styles cannot be determined automatically:
+       - [`TLS]
+   *)
 
 val gread : fd_style -> Unix.file_descr -> string -> int -> int -> int
   (** [gread fd_style fd s pos len]: Reads up to [len] bytes from 
@@ -178,6 +189,9 @@ val gshutdown : fd_style -> Unix.file_descr -> Unix.shutdown_command -> unit
          buffer contents, the underlying descriptor (not [fd]!) will be
          closed. The shutdown operation is non-blocking. If it is not
          possible at the moment of calling, the error [EAGAIN] is reported.
+       - [`TLS]: The shutdown only affects the tunnel as such, but not the
+         underlying connection. [SHUTDOWN_SEND] and [SHUTDOWN_ALL] are
+         supported. [SHUTDOWN_RECEIVE] is ignored.
        - Other styles raise [Shutdown_not_supported].
    *)
 
@@ -198,6 +212,8 @@ val is_prird : fd_style -> Unix.file_descr -> bool
       On Win32, the tests are limited to sockets, named pipes and
       event objects. (The latter two only in the form provided by
       {!Netsys_win32}, see there.)
+
+      For [`TLS] fd styles, the functions are "best effort" only.
 
       Generally, if the blocking status cannot be determined for
       a class of I/O operations, the functions return [true], in
@@ -223,6 +239,8 @@ val wait_until_prird : fd_style -> Unix.file_descr -> float -> bool
       On Win32, waiting is limited to sockets, named pipes and
       event objects. (The latter two only in the form provided by
       {!Netsys_win32}, see there.)
+
+      For [`TLS] fd styles, the functions are "best effort" only.
 
       Generally, if waiting is not supported for
       a class of I/O operations, the functions return immediately [true], in
@@ -340,6 +358,21 @@ val restarting_select :
       version of [Unix.select] includes some support for other types
       of descriptors than sockets.
    *)
+
+val restart_wait :
+      [ `R | `W ] -> fd_style -> Unix.file_descr -> ('a -> 'b) -> 'a -> 'b
+  (** [restart_wait mode fd_style fd f arg]: Calls [f arg], and handles
+      the following exceptions:
+       - [Unix_error(EINTR,_,_)]: Just calls [f] again
+       - [Unix_error(EAGAIN,_,_)]: waits until [fd] is readable or writable
+         as designated by [mode], and calls [f] again
+       - [Unix_error(EWOUDLBLOCK,_,_)]: same
+       - {!Netsys_types.EAGAIN_RD}: waits until [fd] is readable, and calls
+         [f] again
+       - {!Netsys_types.EAGAIN_WR}: waits until [fd] is writable, and calls
+         [f] again
+   *)
+
 
 val sleep : float -> unit
 val restarting_sleep : float -> unit

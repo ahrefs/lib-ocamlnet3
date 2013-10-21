@@ -2,15 +2,28 @@ TOP_DIR=../..
 
 PRE = 1
 PKGNAME = nettls_gnutls
-GENERATE = META nettls_gnutls_bindings.ml
+GENERATE = META nettls_gnutls_bindings.ml nettls_gnutls_bindings.mli \
+           nettls_gnutls_bindings_stubs.c done_reconfigure
+
+include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += netsys_gnutls_bindings.ml \
               netsys_gnutls_bindings.mli \
               netsys_gnutls_bindings_stubs.c \
               config.log \
-              config.h \
-              config_checks.sh
+              config_checks.sh \
+              done_reconfigure
 
+nettls_gnutls_bindings.ml: done_reconfigure
+	@:
 
-include $(TOP_DIR)/Makefile.rules
+nettls_gnutls_bindings.mli: done_reconfigure
+	@:
+
+nettls_gnutls_bindings_stubs.c: done_reconfigure
+	@:
+
+done_reconfigure: gnutls.descr gnutls.c gnutls.ml gnutls.mli
+	./reconfigure
+
 

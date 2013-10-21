@@ -5,14 +5,14 @@ include Makefile.conf
 
 PKGNAME  = netsys
 OBJECTS  = netsys_conf.cmo netsys_types.cmo \
-           netlog.cmo netexn.cmo netsys_impl_util.cmo \
+           netlog.cmo netexn.cmo netsys_impl_util.cmo netsys_mem.cmo \
 	   netsys_signal.cmo netsys_crypto_types.cmo netsys_crypto.cmo \
-	   netsys_posix.cmo netsys_win32.cmo netsys.cmo \
+	   netsys_posix.cmo netsys_win32.cmo netsys_tls.cmo netsys.cmo \
 	   netsys_rng.cmo \
 	   netsys_pollset.cmo netsys_pollset_posix.cmo \
 	   netsys_pollset_win32.cmo netsys_pollset_generic.cmo \
-	   netsys_mem.cmo netsys_xdr.cmo netsys_tmp.cmo \
-	   netsys_sem.cmo netsys_pmanage.cmo netsys_tls.cmo
+	   netsys_xdr.cmo netsys_tmp.cmo \
+	   netsys_sem.cmo netsys_pmanage.cmo
 COBJECTS = netsys_c.o netsys_c_poll.o netsys_c_fadvise.o \
 	   netsys_c_fallocate.o netsys_c_ioprio.o netsys_c_locale.o \
            netsys_c_multicast.o netsys_c_sem.o netsys_c_shm.o \
