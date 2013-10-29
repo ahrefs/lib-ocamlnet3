@@ -362,7 +362,7 @@ let gwrite fd_style fd s pos len =
 	let othr = Netsys_win32.lookup_output_thread fd in
 	Netsys_win32.output_thread_write othr s pos len
     | `TLS endpoint ->
-        Netsys_tls.send endpoint s pos len
+        Netsys_tls.send (Netsys_tls.endpoint endpoint) s pos len
 
 
 let rec really_gwrite fd_style fd s pos len =
@@ -408,7 +408,7 @@ let gread fd_style fd s pos len =
 	let ithr = Netsys_win32.lookup_input_thread fd in
 	Netsys_win32.input_thread_read ithr s pos len
     | `TLS endpoint ->
-        Netsys_tls.recv endpoint s pos len
+        Netsys_tls.recv (Netsys_tls.endpoint endpoint) s pos len
 
 let blocking_gread fd_style fd s pos len =
   let rec loop pos len p =
@@ -531,7 +531,7 @@ let gshutdown fd_style fd cmd =
 	  Netsys_win32.close_output_thread othr
 	)
     | `TLS endpoint ->
-        Netsys_tls.end_tls endpoint cmd
+        Netsys_tls.end_tls (Netsys_tls.endpoint endpoint) cmd
     | _ ->
 	raise Shutdown_not_supported
 
@@ -623,7 +623,7 @@ let gclose fd_style fd =
 	  Unix.close fd;
 	Netsys_win32.unregister fd
     | `TLS endpoint ->
-        Netsys_tls.end_tls endpoint Unix.SHUTDOWN_ALL;
+        Netsys_tls.end_tls (Netsys_tls.endpoint endpoint) Unix.SHUTDOWN_ALL;
         let module Endpoint =
           (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
 	catch_exn

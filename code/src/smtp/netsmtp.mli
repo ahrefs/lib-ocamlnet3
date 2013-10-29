@@ -29,14 +29,19 @@ class client :
 object
 
   method helo : ?host:string -> unit -> string list
-    (** Sends an HELLO command to the server.  the optionnal argument [?host]
+    (** Sends an EHLO command to the server.  The optional argument [?host]
      * defaults to the default hostname of the machine.  This function returns
      * the ESMTP lines returned by the server.
+     *
+     * If EHLO is not supported, the method automatically falls back to
+     * HELO.
+     *
+     * EHLO is specified in RFC 1869.
      *)
 
   method mail : string -> unit
-    (** Performs a MAIL FROM command.  the [string] argument is the mail address
-     * (without < >) that sends the mail.
+    (** Performs a MAIL FROM command. The [string] argument is the mail address
+     * (without < >) of the sender.
      *)
 
   method rcpt : string -> unit
@@ -72,14 +77,41 @@ object
   method quit : unit -> unit
     (** Requests the server to end this session. *)
 
+  method starttls : Netsys_crypto_types.tls_config -> unit
+    (** Sends STARTTLS, and negotiates a secure connection. This should
+        only be done after EHLO, and only if "STARTTLS" is among the returned
+        strings.
+
+        STARTTLS is specified in RFC 3207.
+
+        Note that it is meaningful to submit EHLO again after STARTTLS,
+        as the server may now enable more options.
+     *)
+
+  method command : string -> int * string list
+    (** Sends this command, and returns the status code and the status texts.
+     *)
+
+  method tls_endpoint : Netsys_crypto_types.tls_endpoint option
+    (** Returns the TLS endpoint (after [STARTTLS]) *)
+
 end
 
-(* ======================================================================
- * History:
- * 
- * $Log$
- * Revision 1.2  2005/05/23 10:49:08  mad_coder
- * add doc to netsmtp
- *
- *
- *)
+
+class connect : ?proxy:#Uq_engines.client_endpoint_connector ->
+                Uq_engines.connect_address ->
+                float ->
+                  client
+  (** [connect addr timeout]: Connects with the server at [addr], and
+      configure that I/O operations time out after [timeout] seconds of
+      waiting.
+
+      Example:
+{[
+  let addr =
+    `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "www.domain.com", 25),
+            Uq_engines.default_connect_options) in
+  let client =
+    new Netsmtp.connect addr 60.0
+]}
+   *)

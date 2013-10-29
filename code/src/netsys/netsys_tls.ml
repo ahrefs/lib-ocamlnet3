@@ -54,7 +54,7 @@ let trans_exn tls exn =
 
 let translate_exn endpoint exn =
   let module Endpoint = 
-    (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
   trans_exn (module P) exn
 
@@ -94,20 +94,20 @@ let create_x509_config
          raise(trans_exn tls exn)
 
 
-let create_file_endpoint ~role ~rd_file ~wr_file config =
+let create_file_endpoint ~role ~rd ~wr config =
   let module Config = (val config : Netsys_crypto_types.TLS_CONFIG) in
   let module P = Config.TLS in
   try
     let recv buf =
-      Netsys_mem.mem_recv rd_file buf 0 (Bigarray.Array1.dim buf) [] in
+      Netsys_mem.mem_recv rd buf 0 (Bigarray.Array1.dim buf) [] in
     let send buf size =
-      Netsys_mem.mem_send wr_file buf 0 size [] in
+      Netsys_mem.mem_send wr buf 0 size [] in
     let ep = P.create_endpoint ~role ~recv ~send Config.config in
     let module Endpoint = struct
       module TLS = P
       let endpoint = ep
-      let rd_file = rd_file
-      let wr_file = wr_file
+      let rd_file = rd
+      let wr_file = wr
     end in
     (module Endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT)
   with
@@ -118,9 +118,15 @@ let create_file_endpoint ~role ~rd_file ~wr_file config =
          raise(trans_exn (module P) exn)
 
 
+let endpoint ep =
+  let module File_endpoint = 
+    (val ep : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+  (module File_endpoint : Netsys_crypto_types.TLS_ENDPOINT)
+
+
 let start_tls endpoint =
   let module Endpoint = 
-    (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
   try
     let state = P.get_state Endpoint.endpoint in
@@ -137,7 +143,7 @@ let start_tls endpoint =
 
 let mem_recv endpoint buf pos len =
   let module Endpoint = 
-    (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
   start_tls endpoint;
   let buf' =
@@ -164,7 +170,7 @@ let recv endpoint buf pos len =
 
 let mem_send endpoint buf pos len =
   let module Endpoint = 
-    (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
   start_tls endpoint;
   let buf' =
@@ -190,7 +196,7 @@ let send endpoint buf pos len =
 
 let end_tls endpoint how =
   let module Endpoint = 
-    (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
   start_tls endpoint;
   try

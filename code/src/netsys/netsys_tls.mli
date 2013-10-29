@@ -153,29 +153,39 @@ val create_x509_config :
           password must be given.
    *)
 
+(* TODO:
+   - peer_auth:`None should trust any cert of the peer
+   - Clients should fail if peer_auth<>`None and there is no peer_name
+ *)
+
 
 val create_file_endpoint : 
        role : [ `Server | `Client ] ->
-       rd_file:Unix.file_descr ->
-       wr_file:Unix.file_descr ->
+       rd:Unix.file_descr ->
+       wr:Unix.file_descr ->
        (module Netsys_crypto_types.TLS_CONFIG) ->
          (module Netsys_crypto_types.FILE_TLS_ENDPOINT)
-  (** [create_file_endpoint ~role ~rd_file ~wr_file tls_config]:
+  (** [create_file_endpoint ~role ~rd ~wr tls_config]:
       Creates a new TLS endpoint (encapsulated as module, together with
       the provider) for the case that the data flows over file descriptors.
-      [rd_file] is used for reading data, and [wr_file] for writing (of
+      [rd] is used for reading data, and [wr] for writing (of
       course, both descriptors may be identical).
    *)
 
 
-val start_tls : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) -> unit
+val endpoint : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+               (module Netsys_crypto_types.TLS_ENDPOINT)
+  (** Coercion *)
+
+
+val start_tls : (module Netsys_crypto_types.TLS_ENDPOINT) -> unit
   (** Procedes the TLS protocol until payload data can be exchanged.
       This includes the initial handshake (if not yet done), and the
       verification.
    *)
 
 
-val recv : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+val recv : (module Netsys_crypto_types.TLS_ENDPOINT) ->
            string -> int -> int -> int
   (** [recv endpoint buffer pos len]: Receives data from [endpoint],
       and puts the received bytes into [buffer] at byte position [pos].
@@ -194,11 +204,11 @@ val recv : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
    *)
 
 
-val mem_recv : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+val mem_recv : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                Netsys_types.memory -> int -> int -> int
   (** Same for a memory-backed buffer *)
 
-val send : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+val send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
            string -> int -> int -> int
   (** [send endpoint buffer pos len]: Sends data via [endpoint],
       and takes the emitted bytes from [buffer] at byte position [pos].
@@ -217,11 +227,11 @@ val send : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
       [Unix_error(EINTR,_,_)], and [Error].
    *)
 
-val mem_send : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+val mem_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                Netsys_types.memory -> int -> int -> int
   (** Same for a memory-backed buffer *)
 
-val end_tls : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+val end_tls : (module Netsys_crypto_types.TLS_ENDPOINT) ->
               Unix.shutdown_command -> unit
   (** Ends the TLS encapsulation of data:
 
@@ -240,7 +250,7 @@ val end_tls : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
       [Unix_error(EINTR,_,_)], and [Error].
    *)
 
-val translate_exn : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+val translate_exn : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                     exn -> exn
   (** Translates an internal exception raised by the TLS provider
       into [Error].

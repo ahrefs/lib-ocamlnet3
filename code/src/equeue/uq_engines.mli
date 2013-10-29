@@ -1244,6 +1244,8 @@ val connector : ?proxy:#client_socket_connector ->
    * [`Error(Uq_resolver.Host_not_found name)]. This is {b new since
    * Ocamlnet-3.3} - before this version, the exception was simply
    * [Not_found].
+   *
+   * {b New code should use {!Uq_client.connect_e} instead!}
    *)
 
 (** {b Example} of using [connector]: This engine [e] connects to the

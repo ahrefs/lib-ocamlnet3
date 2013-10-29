@@ -82,6 +82,11 @@ type in_bdevice =
 
 type inout_device = [ in_device | out_device ]
 
+type io_device =
+    [ `Polldescr of Netsys.fd_style * Unix.file_descr * Unixqueue.event_system
+    | `Multiplex of Uq_engines.multiplex_controller
+    ]
+
 
 
 exception Line_too_long
@@ -667,6 +672,102 @@ let rec inactivate0 d =
 
 let inactivate d =
   inactivate0 (d :> inout_device)
+
+
+let run_with_timeout tmo e1 =
+  let e2 = Uq_engines.timeout_engine tmo Uq_engines.Timeout e1 in
+  Unixqueue.run e1 # event_system;
+  match e2#state with
+    | `Done n -> n
+    | `Error err -> raise err
+    | `Aborted -> failwith "Aborted"
+    | `Working _ -> assert false
+
+let in_obj_channel_1 (dev : in_device) tmo =
+  let run e = run_with_timeout tmo e in
+  let ch =
+    ( object(self)
+        method input s pos len =
+          run(input_e dev (`String s) pos len)
+        method close_in() =
+          run(shutdown_e dev)
+      end
+    ) in
+  let buffered =
+    match dev with
+      | `Buffer_in _ -> false
+      | _ -> true in
+  Netchannels.lift_in ~buffered (`Rec ch)
+
+
+let in_obj_channel dev tmo =
+    in_obj_channel_1 (dev :> in_device) tmo
+
+
+let out_obj_channel_1 (dev : out_device) tmo =
+  let run e = run_with_timeout tmo e in
+  let ch =
+    ( object(self)
+        method output s pos len =
+          run(output_e dev (`String s) pos len)
+        method flush() =
+          run(flush_e dev)
+        method close_out() =
+          ignore(run(write_eof_e dev));
+          run(shutdown_e dev)
+      end
+    ) in
+  let buffered =
+    match dev with
+      | `Buffer_out _ -> false
+      | _ -> true in
+  Netchannels.lift_out ~buffered (`Rec ch)
+
+
+let out_obj_channel dev tmo =
+    out_obj_channel_1 (dev :> out_device) tmo
+
+
+let io_obj_channel_1 ?(start_pos_in = 0) ?(start_pos_out = 0)
+                     (dev : io_device) tmo =
+  let run e = run_with_timeout tmo e in
+  let in_eof = ref false in
+  let out_eof = ref false in
+  let pos_in = ref start_pos_in in
+  let pos_out = ref start_pos_out in                            
+  let ch =
+    ( object(self)
+        method input s pos len =
+          let n = run(input_e dev (`String s) pos len) in
+          pos_in := !pos_in + n;
+          n
+        method close_in() =
+          if not !in_eof then (
+            in_eof := true;
+            if !out_eof then run(shutdown_e dev)
+          )
+        method output s pos len =
+          let n = run(output_e dev (`String s) pos len) in
+          pos_out := !pos_out + n;
+          n
+        method flush() =
+          run(flush_e dev)
+        method close_out() =
+          if not !out_eof then (
+            out_eof := true;
+            ignore(run(write_eof_e dev));
+            if !in_eof then run(shutdown_e dev)
+          )
+        method pos_in = !pos_in
+        method pos_out = !pos_out
+      end
+    ) in
+  ch
+
+
+let io_obj_channel ?start_pos_in ?start_pos_out dev tmo =
+  io_obj_channel_1 ?start_pos_in ?start_pos_out (dev :> io_device) tmo
+
 
 let mem_obj_buffer small_buffer =
   let psize = 

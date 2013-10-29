@@ -50,9 +50,12 @@ let ignore_answer ic = ignore (handle_answer ic)
 (* class *)
 
 class client
-  (ic : in_obj_channel)
-  (oc : out_obj_channel) =
+  (ic0 : in_obj_channel)
+  (oc0 : out_obj_channel) =
 object (self)
+  val mutable ic = ic0
+  val mutable oc = oc0
+  val mutable tls_endpoint = None
 
   initializer
     ignore_answer ic
@@ -63,13 +66,24 @@ object (self)
     oc # flush ()
 
   method helo ?host () =
-    oc # output_string "EHLO ";
-    self # smtp_cmd (
-      match host with
-        | None -> (Uq_resolver.get_host_by_name (gethostname ())).h_name
-        | Some s -> s
-    );
-    snd (handle_answer ic)
+    try
+      oc # output_string "EHLO ";
+      self # smtp_cmd (
+        match host with
+          | None -> (Uq_resolver.get_host_by_name (gethostname ())).h_name
+          | Some s -> s
+      );
+      snd (handle_answer ic)
+    with
+      | Permanent_error _ ->
+          oc # output_string "HELO ";
+          self # smtp_cmd (
+            match host with
+              | None -> (Uq_resolver.get_host_by_name (gethostname ())).h_name
+              | Some s -> s
+          );
+          snd (handle_answer ic)
+
 
   method mail email =
     self # smtp_cmd (Printf.sprintf "MAIL FROM: <%s>" email);
@@ -120,4 +134,49 @@ object (self)
     self # smtp_cmd "QUIT";
     ignore_answer ic
  
+  method command cmd =
+    self # smtp_cmd cmd;
+    handle_answer ic
+
+  method starttls (tls_config : Netsys_crypto_types.tls_config) =
+    if tls_endpoint <> None then
+      failwith "Netsmtp: TLS already negotiated";
+    self # smtp_cmd "STARTTLS";
+    ignore_answer ic;
+    let tls_ch =
+      new Netchannels.tls_layer
+        ~role:`Client
+        ~rd:(ic0 :> Netchannels.raw_in_channel)
+        ~wr:(oc0 :> Netchannels.raw_out_channel)
+        tls_config in
+    tls_endpoint <- Some tls_ch#tls_endpoint;
+    tls_ch # flush();   (* This enforces the TLS handshake *)
+    ic <- Netchannels.lift_in (`Raw (tls_ch :> Netchannels.raw_in_channel));
+    oc <- Netchannels.lift_out (`Raw (tls_ch :> Netchannels.raw_out_channel))
+
+
+  method tls_endpoint = tls_endpoint
+
+
 end
+
+
+class connect ?proxy addr timeout =
+  let st = Uq_client.connect ?proxy addr timeout in
+  let bi = Uq_client.client_channel st timeout in
+  let ic = Netchannels.lift_in (`Raw (bi :> Netchannels.raw_in_channel)) in
+  let oc = Netchannels.lift_out (`Raw (bi :> Netchannels.raw_out_channel)) in
+  client ic oc
+
+
+(*
+#use "topfind";;
+#require "smtp,nettls-gnutls";;
+let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "localhost", 25), Uq_engines.default_connect_options);;
+let tls = Netsys_crypto.current_tls();;
+let tc = Netsys_tls.create_x509_config ~trust:[`PEM_file "/etc/ssl/certs/ca-certificates.crt" ] ~peer_auth:`None tls;;
+let c  = new Netsmtp.connect addr 300.0;;
+c#helo();;
+c#starttls tc;;
+
+ *)

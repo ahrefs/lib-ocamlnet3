@@ -256,6 +256,14 @@ class type raw_io_channel = object
   inherit raw_out_channel
 end
 
+(** A TLS channel is a layer on top of a normal channel that adds TLS
+    encryption.
+ *)
+class type tls_channel = object
+  inherit raw_io_channel
+  method tls_endpoint : Netsys_crypto_types.tls_endpoint
+end
+
 (** Further methods usually supported by ocamlnet channel implementations.
  * These methods are only reasonable when the channel is of blocking type,
  * i.e. waits for input when not enough data are available to perform an
@@ -877,6 +885,35 @@ class socket_descr :
    * the channel is created, by default 0
    * @param fd_style The descriptor style. If omitted, it is automatically
    * determined if possible.
+   *)
+
+
+(** {1:tls TLS} *)
+
+class tls_layer :
+  ?start_pos_in:int ->
+  ?start_pos_out:int ->
+  role:[ `Client | `Server ] ->
+  rd:raw_in_channel ->
+  wr:raw_out_channel ->
+  Netsys_crypto_types.tls_config ->
+    tls_channel
+  (** Adds TLS security to an already established connection, here made
+      available as separate channels for input and output.
+
+      The TLS handshake is done on the first I/O activity (call [flush]
+      to enforce it).
+   *)
+
+class tls_endpoint :
+  ?start_pos_in:int ->
+  ?start_pos_out:int ->
+  role:[ `Client | `Server ] ->
+  Unix.file_descr ->
+  Netsys_crypto_types.tls_config ->
+    tls_channel
+  (** This class is slightly more efficient than [tls_layer], and to preferred
+      if you have direct access to the file descriptors.
    *)
 
 
