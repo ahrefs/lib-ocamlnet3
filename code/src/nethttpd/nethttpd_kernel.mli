@@ -561,6 +561,8 @@ object
 
   method shutdown : unit -> unit
     (** Shuts the socket down. Note: the descriptor is not closed.
+
+        TLS: You need to further [cycle] until XXX.
      *)
 
   method timeout : unit -> unit
@@ -583,6 +585,11 @@ object
 
   method do_output : bool
     (** Returns [true] iff the protocol engine has data to output to the socket *)
+
+  method resp_queue_filled : bool
+    (** Whether there is data to send in the internal output queue. If
+        TLS is enabled, this is not always the same as [do_output].
+     *)
 
   method need_linger : bool
     (** Returns [true] when a lingering close operation is needed to reliably shut
