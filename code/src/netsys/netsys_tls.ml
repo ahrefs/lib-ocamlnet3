@@ -68,7 +68,7 @@ let debug_backtrace fn exn bt =
 
 let create_x509_config
       ?algorithms ?dh_params ?(verify = fun _ -> true) 
-      ?peer_name ?trust ?revoke ?keys 
+      ?peer_name ?peer_name_unchecked ?trust ?revoke ?keys 
       ~peer_auth tls =
   let module P = (val tls : Netsys_crypto_types.TLS_PROVIDER) in
   let verify ep =
@@ -81,7 +81,8 @@ let create_x509_config
     let credentials = P.create_x509_credentials ?trust ?revoke ?keys () in
     let config =
       P.create_config
-        ?algorithms ?dh_params ~verify ?peer_name ~peer_auth ~credentials () in
+        ?algorithms ?dh_params ~verify ?peer_name ?peer_name_unchecked
+        ~peer_auth ~credentials () in
     let module Config = struct
       module TLS = P
       let config = config
@@ -117,6 +118,19 @@ let create_file_endpoint ~role ~rd ~wr config =
                            exn (Printexc.get_backtrace());
          raise(trans_exn (module P) exn)
 
+let at_transport_eof ep =
+  let module Endpoint = 
+    (val ep : Netsys_crypto_types.TLS_ENDPOINT) in
+  let module P = Endpoint.TLS in
+  try
+    P.at_transport_eof Endpoint.endpoint
+  with
+    | exn -> 
+         if !Debug.enable then
+           debug_backtrace "at_transport_eof" exn (Printexc.get_backtrace());
+         raise(trans_exn (module P) exn)
+  
+
 
 let endpoint ep =
   let module File_endpoint = 
@@ -134,7 +148,7 @@ let start_tls endpoint =
       P.hello Endpoint.endpoint;
       P.verify Endpoint.endpoint
     )
-  with
+   with
     | exn -> 
          if !Debug.enable then
            debug_backtrace "start_tls" exn (Printexc.get_backtrace());

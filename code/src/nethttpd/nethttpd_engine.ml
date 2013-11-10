@@ -725,7 +725,7 @@ object(self)
     self # enable_input (enabled_input_flow && proto#do_input);
     self # enable_output proto#do_output;
     (* Check whether the HTTP connection is processed and can be closed: *)
-    if eof_seen && not proto#do_output then (
+    if eof_seen && not proto#resp_queue_filled then (
       if proto # need_linger then (
 	(* FIXME: It is strange to check here for a lingering close. This
 	   should never be necessary after getting an EOF from the client

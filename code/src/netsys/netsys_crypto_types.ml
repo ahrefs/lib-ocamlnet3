@@ -25,6 +25,7 @@ module type TLS_PROVIDER =
           ?dh_params : dh_params ->
           ?verify : (endpoint -> bool) ->
           ?peer_name : string ->
+          ?peer_name_unchecked : bool ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
           unit ->
@@ -62,6 +63,7 @@ module type TLS_PROVIDER =
           | `End ]
 
     val get_state : endpoint -> state
+    val at_transport_eof : endpoint -> bool
     val hello : endpoint -> unit
     val bye : endpoint -> Unix.shutdown_command -> unit
     val verify : endpoint -> unit

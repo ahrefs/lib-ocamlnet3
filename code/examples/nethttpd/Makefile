@@ -1,5 +1,5 @@
 all: easy_daemon easy_reactor easy_engine proxy_engine file_reactor \
-     file_mt_reactor file_engine netplex netplex_auth
+     file_mt_reactor file_engine netplex netplex_auth netplex_tls
 
 easy_daemon: easy_daemon.ml
 	ocamlfind ocamlc -o easy_daemon -package "netstring,unix,nethttpd,netcgi2" \
@@ -47,9 +47,12 @@ netplex: netplex.ml
 netplex_auth: netplex_auth.ml
 	ocamlfind ocamlc -o netplex_auth -package "netstring,netcgi2,unix,nethttpd-for-netcgi2,netplex" \
 		-thread netplex_auth.ml -linkpkg -g
+netplex_tls: enable_tls.ml netplex.ml
+	ocamlfind ocamlc -o netplex_tls -package "netstring,netcgi2,unix,nethttpd-for-netcgi2,netplex,nettls-gnutls" \
+		-thread enable_tls.ml netplex.ml -linkpkg -g -custom
 
 clean:
 	rm -f *.cmi *.cmo *.cmx *.o
 	rm -f test_acceptor easy_daemon easy_reactor easy_engine easy_engine.opt
 	rm -f proxy_engine proxy_engine.opt file_reactor file_mt_reactor 
-	rm -f file_mt_reactor.opt file_engine netplex netplex_auth
+	rm -f file_mt_reactor.opt file_engine netplex netplex_auth netplex_tls

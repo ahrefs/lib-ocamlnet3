@@ -744,14 +744,22 @@ let gen_fun c mli ml name args directives free =
                            failwith ("array needs array_size, fn: " ^  name) in
                   let i1 = new_local() in
                   c_decls := sprintf "long %s;" i1 :: !c_decls;
+                  (* for simplicity we return an empty error in case of a
+                     NULL pointer. Let's hope this is right.
+                   *)
                   let code =
-                    [ sprintf "if (%s == NULL) failwith(\"%s: NULL pointer\");"
+                    [ (* sprintf "if (%s == NULL) failwith(\"%s: NULL pointer\");"
                               n1 name;
-                      sprintf "%s = caml_alloc(%s__c,0);" n n_size;
-                      sprintf "for (%s = 0; %s < %s__c; %s++) {" 
+                       *)
+                      sprintf "if (%s == NULL)" n1;
+                      sprintf "  %s = caml_alloc(0,0);" n;
+                      sprintf "else {";
+                      sprintf "  %s = caml_alloc(%s__c,0);" n n_size;
+                      sprintf "  for (%s = 0; %s < %s__c; %s++) {" 
                               i1 i1 n_size i1;
-                      sprintf "  Store_field(%s, %s, %s(%s[%s]));"
+                      sprintf "    Store_field(%s, %s, %s(%s[%s]));"
                               n i1 to_ml n1 i1;
+                      sprintf "  };";
                       sprintf "};"
                     ] in
                   c_code_post := List.rev code @ !c_code_post;

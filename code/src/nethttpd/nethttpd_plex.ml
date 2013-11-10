@@ -239,7 +239,8 @@ let default_services =
 
 
 let create_processor hooks config_cgi handlers services log_error log_access 
-                     error_response processor_factory encap ctrl_cfg cfg addr =
+                     error_response processor_factory encap tls_provider
+                     ctrl_cfg cfg addr =
 
   let req_str_param = cfg_req_str_param cfg in
   let opt_str_param = cfg_opt_str_param cfg in
@@ -400,7 +401,7 @@ let create_processor hooks config_cgi handlers services log_error log_access
   in
 
   cfg # restrict_subsections addr
-    [ "host"; "uri"; "method"; "service" ];
+    [ "host"; "uri"; "method"; "service"; "tls" ];
   cfg # restrict_parameters addr
     [ "type"; "timeout"; "timeout_next_request"; "access_log"; 
       "suppress_broken_pipe"
@@ -422,6 +423,12 @@ let create_processor hooks config_cgi handlers services log_error log_access
       | Some "debug" -> (true,true)
       | _ -> failwith "Bad parameter 'access_log'" in
   let suppress_broken_pipe = bool_param addr "suppress_broken_pipe" in
+
+  let config_tls =
+    Netplex_config.read_tls_config
+      cfg
+      addr
+      tls_provider in
 
   let mk_config container =
     let cle = log_error container in
@@ -445,6 +452,7 @@ let create_processor hooks config_cgi handlers services log_error log_access
        method config_limit_pipeline_size = 65536
        method config_announce_server = `Ocamlnet (* TODO *)
        method config_suppress_broken_pipe = suppress_broken_pipe
+       method config_tls = config_tls
      end
     ) in
 
@@ -465,12 +473,17 @@ let nethttpd_factory ?(name = "nethttpd")
 		       ?(log_access = std_log_access)
                        ?(error_response = std_error_response)
 		       ?processor_factory
+                       ?tls
 		       () : processor_factory =
 object
   method name = name
   method create_processor ctrl_cfg cfg addr =
+    let tls_provider =
+      match tls with
+        | Some t -> Some t
+        | None -> Netsys_crypto.current_tls_opt() in
     create_processor 
       hooks config_cgi handlers services log_error log_access error_response
-      processor_factory encap
+      processor_factory encap tls_provider
       ctrl_cfg cfg addr
 end

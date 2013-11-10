@@ -48,6 +48,7 @@ module type TLS_PROVIDER =
           ?dh_params : dh_params ->
           ?verify : (endpoint -> bool) ->
           ?peer_name : string ->
+          ?peer_name_unchecked : bool ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
           unit ->
@@ -64,6 +65,9 @@ module type TLS_PROVIDER =
           - [peer_name]: The expected name of the peer (i.e. the subject
             of the peer certificate = normally the DNS name). {b This is
             strongly recommended to set for clients!}
+          - [peer_name_unchecked]: If you do not want to check the peer name
+            although authentication is enabled, you can set this option.
+            (Normally, it is an error just to omit [peer_name].)
           - [peer_auth]: controls whether the peer is requested to authenticate.
             This can be set to [`None] meaning not to request authentication
             and to ignore credentials, or to [`Optional] meaning not to request
@@ -181,6 +185,14 @@ module type TLS_PROVIDER =
 
     val get_state : endpoint -> state
       (** Return the recorded state *)
+
+    val at_transport_eof : endpoint -> bool
+    (** Whether the underlying transport channel has seen the end of
+        input. Use this after [recv] or [mem_recv] returned 0 to
+        check whether only the TLS enf-of-input message has been read,
+       or the underlying channel (usually the file descriptor) has
+        indicated EOF.
+     *)
 
     val hello : endpoint -> unit
       (** Performs the initial handshake (exchanges credentials and establishes

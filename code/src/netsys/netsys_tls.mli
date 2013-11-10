@@ -101,6 +101,7 @@ val create_x509_config :
       ?dh_params : dh_params ->
       ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
       ?peer_name : string ->
+      ?peer_name_unchecked : bool ->
       ?trust : crt_list list ->
       ?revoke : crl_list list ->
       ?keys : (crt_list * private_key * string option) list ->
@@ -119,6 +120,9 @@ val create_x509_config :
           - [peer_name]: The expected name of the peer (i.e. the subject
             of the peer certificate = normally the DNS name). {b This is
             strongly recommended to set for clients!}
+          - [peer_name_unchecked]: If you do not want to check the peer name
+            although authentication is enabled, you can set this option.
+            (Normally, it is an error just to omit [peer_name].)
           - [peer_auth]: controls whether the peer is requested to authenticate.
             This can be set to [`None] meaning not to request authentication
             and to ignore credentials, or to [`Optional] meaning not to request
@@ -248,6 +252,14 @@ val end_tls : (module Netsys_crypto_types.TLS_ENDPOINT) ->
 
       May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
       [Unix_error(EINTR,_,_)], and [Error].
+   *)
+
+val at_transport_eof : (module Netsys_crypto_types.TLS_ENDPOINT) -> bool
+  (** Whether the underlying transport channel has seen the end of
+      input. Use this after [recv] or [mem_recv] returned 0 to
+      check whether only the TLS enf-of-input message has been read,
+      or the underlying channel (usually the file descriptor) has
+      indicated EOF.
    *)
 
 val translate_exn : (module Netsys_crypto_types.TLS_ENDPOINT) ->

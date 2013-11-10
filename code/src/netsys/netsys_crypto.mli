@@ -8,6 +8,8 @@ val current_tls : unit -> (module Netsys_crypto_types.TLS_PROVIDER)
       of the provider, e.g. {!Nettls_gnutls.init}.
    *)
 
+val current_tls_opt : unit -> (module Netsys_crypto_types.TLS_PROVIDER) option
+  (** Same as [current_tls] but it returns [None] if TLS is unavailable *)
 
 
 (**/**)

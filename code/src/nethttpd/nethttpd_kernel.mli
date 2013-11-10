@@ -42,6 +42,7 @@ type fatal_error =
     | `Message_too_long
     | `Timeout
     | `Unix_error of Unix.error
+    | `TLS_error of string * string
     | `Server_error
     ]
     (** These are the serious protocol violations after that the daemon stops
@@ -58,6 +59,9 @@ type fatal_error =
       * Fatal server errors can happen when exceptions are not properly handled.
       * As last resort the HTTP daemon closes the connection without notifying
       * the client.
+      *
+      * [`TLS_error] means any error on the TLS level. The two strings identify
+      * the problem as for {!Netsys_tls.Error}.
      *)
 
 val string_of_fatal_error : fatal_error -> string
@@ -394,6 +398,8 @@ object
       * [`Broken_pipe_ignore] is reported.
      *)
 
+  method config_tls : Netsys_crypto_types.tls_config option
+    (** If set, the server enables TLS with the arugment config *)
 end
 
 
@@ -406,6 +412,7 @@ val default_http_protocol_config : http_protocol_config
       - [config_limit_pipeline_size = 65536]
       - [config_announce_server = `Ocamlnet]
       - [config_suppress_broken_pipe = false]
+      - [config_tls = None]
    *)
 
 class modify_http_protocol_config : 
@@ -416,6 +423,7 @@ class modify_http_protocol_config :
         ?config_limit_pipeline_size:int ->
         ?config_announce_server:announcement ->
         ?config_suppress_broken_pipe:bool ->
+        ?config_tls:Netsys_crypto_types.tls_config option ->
         http_protocol_config -> http_protocol_config 
   (** Modifies the passed config object as specified by the optional
       arguments

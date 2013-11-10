@@ -44,6 +44,7 @@ type fatal_error =
     | `Message_too_long
     | `Timeout
     | `Unix_error of Unix.error
+    | `TLS_error of string * string
     | `Server_error
     ]
 
@@ -54,6 +55,7 @@ let string_of_fatal_error =
     | `Message_too_long -> "Nethttpd: Message too long, dropping it"
     | `Timeout -> "Nethttpd: Connection timed out"
     | `Unix_error ue -> ("Nethttpd: System error: " ^ Unix.error_message ue)
+    | `TLS_error(code,msg) -> ("Nethttpd: TLS error code " ^ code ^ ": " ^ msg)
     | `Server_error -> "Nethttpd: Terminating connection because of internal error"
 	
 
@@ -888,10 +890,10 @@ object(self)
           override_dir <- Some `W
       | Unix.Unix_error(Unix.EINTR,_,_) ->
 	  dlogr (fun () -> sprintf "FD %Ld: start_tls EINTR" fdi)
-      | Netsys_tls.Error _ as e ->
+      | Netsys_tls.Error(code,msg) as e ->
 	  dlogr (fun () -> sprintf "FD %Ld: start_tls TLS_ERROR %s" fdi
                                    (Netexn.to_string e));
-          self # abort XXX
+          self # abort(`TLS_error(code,msg))
 
 
   method private do_tls_shutdown() =
@@ -911,10 +913,10 @@ object(self)
           override_dir <- Some `W
       | Unix.Unix_error(Unix.EINTR,_,_) ->
 	  dlogr (fun () -> sprintf "FD %Ld: start_tls EINTR" fdi)
-      | Netsys_tls.Error _ as e ->
+      | Netsys_tls.Error(code,msg) as e ->
 	  dlogr (fun () -> sprintf "FD %Ld: start_tls TLS_ERROR %s" fdi
                                    (Netexn.to_string e));
-          self # abort XXX
+          self # abort (`TLS_error(code,msg))
 
 
   (* ---- Process received data ---- *)
@@ -958,7 +960,7 @@ object(self)
                       recv_fd_eof <- true;
                       need_linger <- false
                   | Some t ->
-                      recv_fd_eof <- XXX;
+                      recv_fd_eof <- Netsys_tls.at_transport_eof t;
                       tls_shutdown <- true;
               );
 	      dlog (sprintf "FD %Ld: got EOF (fd_eof=%B)" 
@@ -990,10 +992,11 @@ object(self)
         | Netsys_types.EAGAIN_WR ->
             (* Currently impossible *)
             assert false
-        | Netsys_tls.Error _ as e ->
+        | Netsys_tls.Error(code,msg) as e ->
 	    dlogr (fun () -> sprintf "FD %Ld: rev TLS_ERROR %s" fdi
                                      (Netexn.to_string e));
-          self # abort XXX
+            self # abort(`TLS_error(code,msg));
+            false
     in
     if continue then 
       self # accept_loop()
@@ -1478,7 +1481,7 @@ object(self)
 	| Send_queue_empty ->
 	    ()    (* nothing to do *)
 	| Unix.Unix_error((Unix.EAGAIN | Unix.EWOULDBLOCK),_,_)
-        | Netsys_tls.EAGAIN_WR ->
+        | Netsys_types.EAGAIN_WR ->
 	    ()    (* socket not ready *)
 	| Unix.Unix_error(Unix.EINTR,_,_) ->
 	    ()    (* Signal happened, try later again *)
@@ -1490,12 +1493,12 @@ object(self)
 	    resp # set_state `Error;
 	    ignore(Queue.take resp_queue);
 	    self # abort (`Unix_error e)
-        | Netsys_tls.EAGAIN_WR ->
+        | Netsys_types.EAGAIN_RD ->
             assert false   (* not possible here *)
-        | Netsys_tls.Error _ as e ->
+        | Netsys_tls.Error(code,msg) as e ->
 	    dlogr (fun () -> sprintf "FD %Ld: rev TLS_ERROR %s" fdi
                                      (Netexn.to_string e));
-          self # abort XXX
+            self # abort (`TLS_error(code,msg))
 
   method private drop_remaining_responses() =
     (* Set the state to [`Dropped] for all responses in the [resp_queue]: *)
@@ -1704,6 +1707,7 @@ let default_http_protocol_config =
       method config_limit_pipeline_size = 65536
       method config_announce_server = `Ocamlnet
       method config_suppress_broken_pipe = false
+      method config_tls = None
     end
   )
 
@@ -1720,6 +1724,7 @@ class modify_http_protocol_config
         ?config_limit_pipeline_size
         ?config_announce_server
         ?config_suppress_broken_pipe 
+        ?config_tls
         (config : http_protocol_config) : http_protocol_config =
   let config_max_reqline_length = 
     override config#config_max_reqline_length config_max_reqline_length in
@@ -1735,6 +1740,8 @@ class modify_http_protocol_config
     override config#config_announce_server config_announce_server in
   let config_suppress_broken_pipe =
     override config#config_suppress_broken_pipe config_suppress_broken_pipe in
+  let config_tls =
+    override config#config_tls config_tls in
 object
   method config_max_reqline_length = config_max_reqline_length
   method config_max_header_length = config_max_header_length
@@ -1743,4 +1750,5 @@ object
   method config_limit_pipeline_size = config_limit_pipeline_size
   method config_announce_server = config_announce_server
   method config_suppress_broken_pipe = config_suppress_broken_pipe
+  method config_tls = config_tls
 end

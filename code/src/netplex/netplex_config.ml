@@ -2,6 +2,7 @@
 
 open Netplex_types
 open Genlex
+open Printf
 
 exception Config_error of string
 
@@ -19,6 +20,13 @@ let is_win32 =
   match Sys.os_type with
     | "Win32" -> true
     | _ -> false;;
+
+
+let mk_absolute dir path =
+  if Netsys.is_absolute path then
+    path
+  else
+    Filename.concat dir path
 
 
 let parse_config_file filename =
@@ -152,8 +160,10 @@ let rec iter_config_tree f prefix cnt (tree : ext_config_tree) =
 ;;	
 
 
-class repr_config_file filename simple_tree : Netplex_types.config_file =
+class repr_config_file filename0 simple_tree : Netplex_types.config_file =
   let tree = ext_config_tree simple_tree in
+  let filename =
+    mk_absolute (Unix.getcwd()) filename0 in
 object(self)
   val addresses = Hashtbl.create 100
 
@@ -363,13 +373,6 @@ let inet6_binding =
 
 let host_binding =
   Netstring_str.regexp "^\\(.*\\):\\([0-9]+\\)$" ;;
-
-let mk_absolute dir path =
-  if Netsys.is_absolute path then
-    path
-  else
-    Filename.concat dir path
-
 
 let extract_address socket_dir service_name proto_name cf addraddr =
   let typ =
@@ -734,5 +737,139 @@ let read_netplex_config ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
   with
     | Failure msg ->
 	raise (Config_error(cf#filename ^ ": " ^ msg))
-;;
 
+
+let read_pem (cf:config_file) pname addr =
+  let basedir = Filename.dirname cf#filename in
+  try
+    `PEM_file(mk_absolute
+                basedir
+                (cf # string_param (cf # resolve_parameter addr pname)))
+  with
+    | Not_found ->
+         failwith ("Bad section: " ^ cf # print addr)
+
+
+let read_key (cf:config_file) addr =
+  let basedir = Filename.dirname cf#filename in
+  let cert =
+    read_pem cf "crt_file" addr in
+  let key =
+    read_pem cf "key_file" addr in
+  let pw_opt =
+    try
+      Some(cf # string_param (cf # resolve_parameter addr "password"))
+    with
+      | Not_found ->
+           try
+             let name = cf # string_param 
+                               (cf # resolve_parameter addr "password_file") in
+             let name = mk_absolute basedir name in
+             let ch = open_in name in
+             let pw = try input_line ch with End_of_file -> "" in
+             close_in ch;
+             Some pw
+           with
+             | Not_found ->
+                  None in
+  (cert, key, pw_opt)
+
+
+let read_x509_config (cf:config_file) a_x509 =
+  let trust =
+    List.map
+      (read_pem cf "crt_file")
+      (cf # resolve_section a_x509 "trust") in
+  let revoke =
+    List.map
+      (read_pem cf "crl_file")
+      (cf # resolve_section a_x509 "revoke") in
+  let keys =
+    List.map
+      (read_key cf)
+      (cf # resolve_section a_x509 "key") in
+  (trust, revoke, keys)
+
+
+let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
+  let basedir = Filename.dirname cf#filename in
+  match cf#resolve_section addr "tls" with
+    | [] ->
+         None
+    | [a_tls] ->
+         ( match tls_opt with
+             | None ->
+                  failwith ("No TLS provider available, but config section " ^ 
+                              cf # print addr ^ " exists")
+             | Some tls ->
+                  let algorithms =
+                    try Some(cf # string_param
+                                    (cf # resolve_parameter a_tls "algorithms"))
+                    with Not_found -> None in
+                  let dh_params =
+                    match cf#resolve_section a_tls "dh_params" with
+                      | [] -> None
+                      | [a_dh] ->
+                           ( try
+                               Some(`PKCS3_PEM_file
+                                     (mk_absolute basedir
+                                        (cf # string_param
+                                           (cf # resolve_parameter
+                                                a_dh "pkcs3_file"))))
+                             with
+                               | Not_found ->
+                                    try
+                                      Some(`Generate
+                                            (cf # int_param
+                                              (cf # resolve_parameter 
+                                                      a_dh "bits")))
+                                    with
+                                      | Not_found ->
+                                           failwith("Bad section: " ^ 
+                                                      cf # print a_dh)
+                           )
+                      | _ ->
+                           failwith ("Several sections: " ^ 
+                                       cf#print a_tls ^ ".dh_params") in
+                  let peer_name =
+                    try Some(cf # string_param
+                                    (cf # resolve_parameter a_tls "peer_name"))
+                    with Not_found -> None in
+                  let peer_auth =
+                    try
+                      match cf # string_param
+                                   (cf # resolve_parameter a_tls "peer_auth")
+                      with
+                        | "none" -> `None
+                        | "optional" -> `Optional
+                        | "required" -> `Required
+                        | s ->
+                             failwith ("Bad parameter: " ^ cf # print a_tls ^ 
+                                         ".peer_auth")
+                    with Not_found -> `None in
+                  ( match cf # resolve_section a_tls "x509" with
+                      | [] ->
+                           failwith ("Missing section: " ^ cf # print a_tls ^
+                                       ".x509")
+                      | [a_x509] ->
+                           let (trust, revoke, keys) =
+                             read_x509_config cf a_x509 in
+eprintf "#keys=%d\n%!" (List.length keys);
+                           Some(Netsys_tls.create_x509_config
+                                  ?algorithms
+                                  ?dh_params
+                                  ?verify
+                                  ?peer_name
+                                  ?peer_name_unchecked
+                                  ~trust
+                                  ~revoke
+                                  ~keys
+                                  ~peer_auth
+                                  tls)
+                      | _ ->
+                           failwith ("Several sections: " ^ cf#print a_tls ^ 
+                                       ".x509")
+                  )
+         )
+    | _ ->
+         failwith ("Several sections: " ^ cf#print addr ^ ".tls")

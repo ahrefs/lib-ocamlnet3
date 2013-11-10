@@ -73,6 +73,7 @@ module TLS : GNUTLS_PROVIDER =
           config : config;
           session : G.gnutls_session_t;
           mutable state : state;
+          mutable trans_eof : bool;
         }
 
       and config =
@@ -82,6 +83,7 @@ module TLS : GNUTLS_PROVIDER =
           credentials : credentials;
           verify : endpoint -> bool;
           peer_name : string option;
+          peer_name_unchecked : bool;
         }
 
     exception Switch_request
@@ -123,7 +125,7 @@ module TLS : GNUTLS_PROVIDER =
 
 
     let create_config ?(algorithms="NORMAL") ?dh_params ?(verify=fun _ -> true)
-                      ?peer_name ~peer_auth 
+                      ?peer_name ?(peer_name_unchecked=false) ~peer_auth 
                       ~credentials () =
       let f() =
         let priority = G.gnutls_priority_init algorithms in
@@ -144,12 +146,16 @@ module TLS : GNUTLS_PROVIDER =
                 let dhp = G.gnutls_dh_params_init() in
                 G.gnutls_dh_params_generate2 dhp bits;
                 Some dhp in
+        if peer_name=None && not peer_name_unchecked && peer_auth <> `None then
+          failwith "TLS configuration error: authentication required, \
+                    but no peer_name set";
         { priority;
           dh_params = dhp_opt;
           peer_auth;
           credentials;
           verify;
-          peer_name
+          peer_name;
+          peer_name_unchecked
         } in
       trans_exn f ()
 
@@ -271,20 +277,30 @@ module TLS : GNUTLS_PROVIDER =
       let f() =
         let flags = [ (role :> G.gnutls_init_flags_flag) ] in
         let session = G.gnutls_init flags in
+        let ep =
+          { role;
+            recv;
+            send;
+            config;
+            session;
+            state = `Start;
+            trans_eof = false;
+          } in
+        let recv1 mem =
+          let n = recv mem in
+          if Bigarray.Array1.dim mem > 0 && n=0 then ep.trans_eof <- true;
+          n in
         G.gnutls_credentials_set session config.credentials.gcred;
         G.gnutls_priority_set session config.priority;
-        G.b_set_pull_callback session recv;
+        G.b_set_pull_callback session recv1;
         G.b_set_push_callback session send;
-        { role;
-          recv;
-          send;
-          config;
-          session;
-          state = `Start;
-        } in
+        ep
+      in
       trans_exn f ()
           
     let get_state ep = ep.state
+
+    let at_transport_eof ep = ep.trans_eof
 
     let endpoint_exn ?(warnings=false) ep f arg =
       try
@@ -309,7 +325,8 @@ module TLS : GNUTLS_PROVIDER =
       failwith "Nettls_gnutls: the endpoint is in an unexpected state"
 
     let hello ep =
-      if ep.state <> `Start && ep.state <> `Switching then
+      if ep.state <> `Start && ep.state <> `Handshake && 
+           ep.state <> `Switching then
         unexpected_state();
       ep.state <- `Handshake;
       endpoint_exn
@@ -344,30 +361,38 @@ module TLS : GNUTLS_PROVIDER =
 
     let verify ep =
       let f() =
-        let status_l = G.gnutls_certificate_verify_peers2 ep.session in
-        if status_l <> [] then
-          failwith(sprintf "Certificate verification failed with codes: " ^ 
-                     (String.concat ", " 
-                        (List.map 
-                           G.string_of_verification_status_flag
-                           status_l)));
-        ( match ep.config.peer_name with
-            | None -> ()
-            | Some pn ->
-                 let der_peer_certs = 
-                   G.gnutls_certificate_get_peers ep.session in
-                 assert(der_peer_certs <> [| |]);
-                 let peer_cert = G.gnutls_x509_crt_init() in
-                 G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
-                 let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
-                 if not ok then
-                   failwith "Certificate verification failed with codes: \
-                             BAD_HOSTNAME";
-        );
-        if not (ep.config.verify ep) then
-          failwith "Certificate verification failed with codes: \
-                    FAILED_USER_CHECK";
-        () in
+        if G.gnutls_certificate_get_peers ep.session = [| |] then (
+          if ep.config.peer_auth <> `None then
+            raise(Error `No_certificate_found)
+        )
+        else (
+          if ep.config.peer_auth <> `None then (
+            let status_l = G.gnutls_certificate_verify_peers2 ep.session in
+            if status_l <> [] then
+              failwith(sprintf "Certificate verification failed with codes: " ^ 
+                         (String.concat ", " 
+                            (List.map 
+                               G.string_of_verification_status_flag
+                               status_l)));
+            if not ep.config.peer_name_unchecked then ( 
+              match ep.config.peer_name with
+                | None -> ()
+                | Some pn ->
+                     let der_peer_certs = 
+                       G.gnutls_certificate_get_peers ep.session in
+                     assert(der_peer_certs <> [| |]);
+                     let peer_cert = G.gnutls_x509_crt_init() in
+                     G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
+                     let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
+                     if not ok then
+                       failwith "Certificate verification failed with codes: \
+                                 BAD_HOSTNAME";
+            );
+            if not (ep.config.verify ep) then
+              failwith "Certificate verification failed with codes: \
+                        FAILED_USER_CHECK";
+          )
+        ) in
       trans_exn f ()
 
     let get_endpoint_crt ep =

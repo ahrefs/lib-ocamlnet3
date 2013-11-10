@@ -167,6 +167,7 @@ val nethttpd_factory :
       ?log_access:(?debug:bool -> Netplex_types.container -> config_log_access) ->
       ?error_response:config_error_response -> 
       ?processor_factory:httpd_factory ->
+      ?tls:(module Netsys_crypto_types.TLS_PROVIDER) ->
       unit ->
         Netplex_types.processor_factory
   (** Factory for a web server component.
@@ -295,4 +296,6 @@ val nethttpd_factory :
     *   responses. Defaults to {!Nethttpd_plex.std_error_response}.
     * - [processor_factory]: the function creating the processor.
     *   Default is [nethttpd_processor].
+    * - [tls]: the TLS provider to use. By default, 
+    *   {!Netsys_crypto.current_tls_opt} is used.
    *)

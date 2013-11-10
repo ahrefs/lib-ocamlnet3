@@ -9,5 +9,7 @@ let current_tls() =
     | Some p ->
          p
 
+let current_tls_opt() = !tls
+
 let set_current_tls p =
   tls := Some p

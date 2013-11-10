@@ -662,7 +662,7 @@ object(self)
     (* Ensure that all written data are actually transmitted: *)
     dlogr (fun () -> 
 	     sprintf "FD %Ld: synch loop" (Netsys.int64_of_file_descr fd));
-    while proto # do_output do
+    while proto # resp_queue_filled do
       self # cycle();
     done;
     dlogr (fun () -> 
@@ -1065,7 +1065,12 @@ let process_connection config fd (stage1 : 'a http_service) =
       fetch_requests reactor
     with
 	err ->
-	  let msg = Netexn.to_string err in
+          let bt = Printexc.get_backtrace() in
+	  let msg1 = Netexn.to_string err in
+          let msg =
+            msg1 ^ 
+              (if Printexc.backtrace_status() then " (backtrace: " ^ bt ^ ")" 
+               else "") in
 	  dlogr (fun () ->
 		   sprintf "Exception forwarding to error log: %s" msg);
 	  config # config_log_error no_info
@@ -1075,7 +1080,12 @@ let process_connection config fd (stage1 : 'a http_service) =
       reactor # close()
     with
 	err ->
-	  let msg = Netexn.to_string err in
+          let bt = Printexc.get_backtrace() in
+	  let msg1 = Netexn.to_string err in
+          let msg =
+            msg1 ^ 
+              (if Printexc.backtrace_status() then " (backtrace: " ^ bt ^ ")" 
+               else "") in
 	  dlogr (fun () ->
 		   sprintf "Exception forwarding to error log: %s" msg);
 	  config # config_log_error no_info

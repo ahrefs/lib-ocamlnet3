@@ -1,3 +1,28 @@
+TLS:
+ - Also add `PEM_data to TLS config. Support that in Netplex parser.
+ - document Netplex config for TLS
+ - implement alert support
+ - session cache
+     * Netplex_cache. Like Netplex_sharedvar, but only strings, and
+       with a timeout
+ - Nethttpd_types.tls_props
+     * peer cert
+     * own cert
+     * session ID
+     * my name
+     * peer name
+ - Nethttpd_kernel: export tls_props
+ - fill cgi env
+     * HTTPS
+     * other props (check what Apache uses and keep compatible)
+     * Nethttpd_reactor.http_environment
+ - Nethttpd: check that Host header and the service name included in TLS
+   are identical
+ - check that https redirects work
+ - config: TLS name as user name
+ - document new Netplex directives in netplex_admin.txt
+
+
 out-of-heap values: implement this better
 
 - Bug: Rpc_proxy + authenticated request + message timeout. 
