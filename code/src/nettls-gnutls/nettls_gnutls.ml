@@ -86,6 +86,11 @@ module TLS : GNUTLS_PROVIDER =
           peer_name_unchecked : bool;
         }
 
+    type raw_credentials =
+      [ `X509 of string
+      | `Anonymous
+      ]
+
     exception Switch_request
     exception Error of error_code
     exception Warning of error_code
@@ -93,6 +98,26 @@ module TLS : GNUTLS_PROVIDER =
     let error_message code = G.gnutls_strerror code
 
     let error_name code = G.gnutls_strerror_name code
+
+    let () =
+      Netexn.register_printer
+        (Error `Success)
+        (function
+          | Error code ->
+               sprintf "Nettls_gnutls.TLS.Error(%s)" (error_name code)
+          | _ ->
+               assert false
+        )
+
+    let () =
+      Netexn.register_printer
+        (Warning `Success)
+        (function
+          | Warning code ->
+               sprintf "Nettls_gnutls.TLS.Warning(%s)" (error_name code)
+          | _ ->
+               assert false
+        )
 
     let trans_exn f arg =
       try
@@ -395,11 +420,46 @@ module TLS : GNUTLS_PROVIDER =
         ) in
       trans_exn f ()
 
-    let get_endpoint_crt ep =
-      trans_exn G.gnutls_certificate_get_ours ep.session
+    let get_endpoint_creds ep =
+      (* So far only X509... *)
+      trans_exn
+        (fun () ->
+           try
+             `X509 (G.gnutls_certificate_get_ours ep.session)
+           with
+             | G.Null_pointer -> `Anonymous
+        )
+        ()
 
-    let get_peer_crt_list ep =
-      Array.to_list(trans_exn G.gnutls_certificate_get_peers ep.session)
+    let get_peer_creds ep =
+      (* So far only X509... *)
+      trans_exn
+        (fun () ->
+           try
+             let certs = G.gnutls_certificate_get_peers ep.session in
+             if certs = [| |] then
+               `Anonymous
+             else
+               `X509 certs.(0)
+           with
+             | G.Null_pointer -> `Anonymous
+        )
+        ()
+
+    let get_peer_creds_list ep =
+      (* So far only X509... *)
+      trans_exn
+        (fun () ->
+           try
+             let certs = G.gnutls_certificate_get_peers ep.session in
+             if certs = [| |] then
+               [ `Anonymous ]
+             else
+               List.map (fun c -> `X509 c) (Array.to_list certs)
+           with
+             | G.Null_pointer -> [ `Anonymous ]
+        )
+        ()
 
     let switch _ = assert false
     let accept_switch _ = assert false
@@ -431,6 +491,24 @@ module TLS : GNUTLS_PROVIDER =
       let f() =
         G.gnutls_record_check_pending ep.session > 0 in
       trans_exn f ()
+
+    let get_session_id ep =
+      (* Session IDs are up to 32 bytes *)
+      trans_exn
+        (fun () ->
+           let sz = 32 in
+           let buf = 
+             Bigarray.Array1.create Bigarray.char Bigarray.c_layout sz in
+           let act_sz = G.gnutls_session_get_id ep.session buf sz in
+           assert(act_sz <= sz);
+           let s = String.create act_sz in
+           Netsys_mem.blit_memory_to_string buf 0 s 0 act_sz;
+           s
+        )
+        ()
+
+    let get_cipher_suite_type ep =
+      "X509"  (* so far only this is supported *)
 
     let get_cipher_algo ep =
       let f() =

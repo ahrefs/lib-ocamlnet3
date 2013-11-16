@@ -854,7 +854,6 @@ let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
                       | [a_x509] ->
                            let (trust, revoke, keys) =
                              read_x509_config cf a_x509 in
-eprintf "#keys=%d\n%!" (List.length keys);
                            Some(Netsys_tls.create_x509_config
                                   ?algorithms
                                   ?dh_params

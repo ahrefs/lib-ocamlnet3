@@ -373,7 +373,7 @@ class http_async_environment config ues group
                              fd_addr peer_addr
 
                              in_ch_async in_cnt out_ch_async output_state
-                             resp reqrej fdi =
+                             resp reqrej fdi tls_props =
   let in_ch = 
     Netchannels.lift_in ~buffered:false 
                         (`Raw (in_ch_async :> Netchannels.raw_in_channel)) in
@@ -396,6 +396,7 @@ object (self)
   			     fd_addr peer_addr
                              in_ch in_cnt out_ch output_state resp 
 			     out_ch_async#close_after_send_file reqrej fdi
+                             tls_props
 			     as super
 
   method input_ch_async = (in_ch_async :> Uq_engines.async_in_channel)
@@ -417,7 +418,7 @@ end
 
 
 class http_request_manager config ues group req_line req_hdr expect_100_continue 
-                           fd_addr peer_addr resp fdi =
+                           fd_addr peer_addr resp fdi tls_props =
   let f_access = ref (fun () -> ()) in  (* set below *)
   let in_cnt = ref 0L in
   let reqrej = ref false in
@@ -431,7 +432,7 @@ class http_request_manager config ues group req_line req_hdr expect_100_continue
   let env = new http_async_environment 
 	      config ues group req_line req_hdr fd_addr peer_addr 
 	      in_ch in_cnt
-	      out_ch output_state resp reqrej fdi in
+	      out_ch output_state resp reqrej fdi tls_props in
      (* may raise Standard_response! *)
 
   let () =
@@ -779,11 +780,13 @@ object(self)
 
 	    let f_access = ref (fun () -> ()) in
 
+            let tls_props = proto # tls_session_props in
+
 	    ( try
 		let rm = new http_request_manager    (* or Standard_response *)
 			   config ues group
 			   req_line req_hdr expect_100_continue 
-			   fd_addr peer_addr resp fdi in
+			   fd_addr peer_addr resp fdi tls_props in
 		
 		f_access := rm # log_access;
 		cur_request_manager <- Some rm;

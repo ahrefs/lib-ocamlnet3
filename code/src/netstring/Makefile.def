@@ -10,7 +10,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netpagebuffer.cmo netfs.cmo netglob_lex.cmo netglob.cmo \
 	   netauth.cmo netnumber.cmo rtypes.cmo xdr_mstring.cmo xdr.cmo \
 	   netasn1.cmo netoid.cmo netdn.cmo netx509.cmo \
-           netmappings_asn1.cmo netascii_armor.cmo
+           netmappings_asn1.cmo netascii_armor.cmo nettls_support.cmo
 
 PKGNAME  = netstring
 
@@ -60,7 +60,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netfs.mli netglob.mli netauth.mli netsockaddr.mli \
         netnumber.mli rtypes.mli xdr_mstring.mli xdr.mli \
 	netcompression.mli netunichar.mli netasn1.mli netoid.mli \
-	netdn.mli netx509.mli netascii_armor.mli \
+	netdn.mli netx509.mli netascii_armor.mli nettls_support.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 

@@ -394,9 +394,12 @@ let standard ?(ask_for_size=false) ?(optional=false) ?(options=[]) decl =
     List.map 
       (fun (n,tag,ty) -> 
          if ask_for_size && 
-              (ty = "1 bigarray_size" || ty = "1 stringbuf_size") then
+              (ty = "1 bigarray_size" ||
+               ty = "1 stringbuf_size" ||
+               ty = "1 ztstringbuf_size") then
            (n, `Out_ignore, ty)
-         else if ask_for_size && ty = "1 stringbuf" then
+         else if ask_for_size && (ty = "1 stringbuf" || ty = "1 ztstringbuf")
+         then
            (n, `Out, ty)
          else
            (n,  tag, ty)
@@ -835,8 +838,8 @@ let functions =
       ~ask_for_size:true
       "error_code gnutls_server_name_get \
            (gnutls_session_t session, \
-            1 stringbuf data, \
-            1 stringbuf_size data_length, \
+            1 ztstringbuf data, \
+            1 ztstringbuf_size data_length, \
             OUT gnutls_server_name_type_t ty, \
             uint indx)";
     

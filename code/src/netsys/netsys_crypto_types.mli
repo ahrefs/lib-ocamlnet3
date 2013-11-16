@@ -186,6 +186,15 @@ module type TLS_PROVIDER =
     val get_state : endpoint -> state
       (** Return the recorded state *)
 
+    type raw_credentials =
+      [ `X509 of string
+      | `Anonymous
+      ]
+      (** The encoded credentials:
+           - [`X509 s]: The X509 certificate in DER encoding
+           - [`Anonymous]: no certificate or other key is available
+       *)
+
     val at_transport_eof : endpoint -> bool
     (** Whether the underlying transport channel has seen the end of
         input. Use this after [recv] or [mem_recv] returned 0 to
@@ -242,14 +251,18 @@ module type TLS_PROVIDER =
           for internal processing errors).
        *)
 
-    val get_endpoint_crt : endpoint -> string
-      (** Get the cert that was actually used in the handshake, in DER
-          format. Raise [Not_found] if not applicable.
+    val get_endpoint_creds : endpoint -> raw_credentials
+      (** Get the credentials that was actually used in the handshake, in raw
+          format.
        *)
 
-    val get_peer_crt_list : endpoint -> string list
-      (** Get the cert chain that was actually used in the handshake, in DER
-          format. Raise [Not_found] if not applicable.
+    val get_peer_creds : endpoint -> raw_credentials
+      (** Get the credentials of the peer, in raw format. Raises [Not_found]
+          if not applicable/no credentials present.
+       *)
+
+    val get_peer_creds_list : endpoint -> raw_credentials list
+      (** Get the chain that was actually used in the handshake.
        *)
 
     val switch : endpoint -> config -> bool
@@ -313,6 +326,22 @@ module type TLS_PROVIDER =
           [recv] is guaranteed not to block or raise [EAGAIN].
        *)
 
+    val get_session_id : endpoint -> string
+      (** The (non-printable) session ID *)
+
+    val get_cipher_suite_type : endpoint -> string
+      (** The type of the cipher suite:
+         - "X509": X509 certificates are used
+         - "OPENPGP": OpenPGP certificates are used
+         - "ANON": anonymous credentials
+         - "SRP": SRP credentials
+         - "PSK": PSK credentials
+       *)
+
+    (* TODO: get_cipher_suite_id : endpoint -> int * int
+       = get the two bytes identifying the cipher suite
+     *)
+
     val get_cipher_algo : endpoint -> string
       (** Get the name of the cipher *)
 
@@ -335,7 +364,8 @@ module type TLS_PROVIDER =
 
     val get_addressed_servers : endpoint -> server_name list
       (** To be used in servers: The client can address one of several virtual
-          servers, and this function returns which was requested. Raises
+          servers with the SNI extension, and this function returns which
+          was requested. Raises
           [Not_found] if there is nothing appropriate. This information is
           only available after a handshake, and if the client submitted it.
        *)

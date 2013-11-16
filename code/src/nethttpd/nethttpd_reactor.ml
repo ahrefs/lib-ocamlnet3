@@ -101,6 +101,10 @@ let logged_error_response fd_addr peer_addr req_meth_uri_opt
     ( object
 	method server_socket_addr = fd_addr
 	method remote_socket_addr = peer_addr
+        method tls_session_props =
+          match env_opt with
+            | None -> None
+            | Some env -> env # tls_session_props
 	method request_method = fst(unopt req_meth_uri_opt)
 	method request_uri = snd(unopt req_meth_uri_opt)
 	method input_header = (unopt env_opt) # input_header
@@ -138,6 +142,7 @@ let no_info =
   ( object
       method server_socket_addr = raise Not_found
       method remote_socket_addr = raise Not_found
+      method tls_session_props = None
       method request_method = raise Not_found
       method request_uri = raise Not_found
       method input_header = raise Not_found
@@ -153,6 +158,7 @@ class http_environment (proc_config : #http_processor_config)
                        in_ch in_cnt 
                        out_ch output_state resp after_send_file
 		       reqrej fdi
+                       tls_props
                       : internal_environment =
 
   (* Decode important input header fields: *)
@@ -201,27 +207,30 @@ object(self)
     in_channel <- in_ch;
     out_channel <- out_ch;
     protocol <- req_version;
-    properties <- [ "GATEWAY_INTERFACE", "Nethttpd/0.0";
-		  "SERVER_SOFTWARE",   "Nethttpd/0.0";
-		  "SERVER_NAME",       in_host;
-		  "SERVER_PROTOCOL",   string_of_protocol req_version;
-		  "REQUEST_METHOD",    req_meth;
-		  "SCRIPT_NAME",       script_name;
-		  (* "PATH_INFO",         ""; *)
-		  (* "PATH_TRANSLATED",   ""; *)
-		  "QUERY_STRING",      query_string;
-		  (* "REMOTE_HOST",       ""; *)
-		  "REMOTE_ADDR",       fst(get_this_host peer_addr);
-		  (* "AUTH_TYPE",         ""; *)
-		  (* "REMOTE_USER",       ""; *)
-		  (* "REMOTE_IDENT",      ""; *)
-		  "HTTPS",             "off";
-		  "REQUEST_URI",       req_uri;
-		  ] @
-                  ( match in_port_opt with
-		      | Some p -> [ "SERVER_PORT", string_of_int p ]
-		      | None   -> [] );
-    logged_props <- properties
+    properties <- 
+      [ "GATEWAY_INTERFACE",   "Nethttpd/0.0";
+	"SERVER_SOFTWARE",     "Nethttpd/0.0";
+	"SERVER_NAME",         in_host;
+	"SERVER_PROTOCOL",     string_of_protocol req_version;
+	"REQUEST_METHOD",      req_meth;
+	"SCRIPT_NAME",         script_name;
+	(* "PATH_INFO",        ""; *)
+	(* "PATH_TRANSLATED",  ""; *)
+	"QUERY_STRING",        query_string;
+	(* "REMOTE_HOST",      ""; *)
+	"REMOTE_ADDR",         fst(get_this_host peer_addr);
+	(* "AUTH_TYPE",        ""; *)
+	(* "REMOTE_USER",      ""; *)
+	(* "REMOTE_IDENT",     ""; *)
+	"HTTPS",               (if tls_props = None then "off" else "on");
+	"REQUEST_URI",         req_uri;
+      ] @
+        ( match in_port_opt with
+	    | Some p -> [ "SERVER_PORT", string_of_int p ]
+	    | None   -> []
+        );
+    logged_props <- properties;
+    tls_session_props <- tls_props;
   )
 
   method unlock() =
@@ -285,6 +294,7 @@ object(self)
 	  method input_header = req_hdr
 	  method cgi_properties = logged_props
 	  method input_body_size = !in_cnt
+          method tls_session_props = tls_props
 	end
       ) in
     proc_config # config_log_error info s
@@ -311,7 +321,8 @@ object(self)
 	    method request_body_rejected = !reqrej
 	    method output_header = sent_resp_hdr
 	    method output_body_size = resp#body_size
-	  end
+            method tls_session_props = tls_props
+ 	  end
 	) in
       proc_config # config_log_access full_info;
       access_logged <- true
@@ -733,6 +744,7 @@ object(self)
 			      lifted_output_ch output_state
 			      resp after_send_file reqrej
 			      (Netsys.int64_of_file_descr fd)
+                              proto#tls_session_props
 	      in
 	      env_opt := Some env;
 	      let req_obj = new http_reactive_request_impl 

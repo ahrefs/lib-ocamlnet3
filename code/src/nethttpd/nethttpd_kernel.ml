@@ -1607,6 +1607,7 @@ object(self)
 	     sprintf "FD %Ld: abort %s" fdi (string_of_fatal_error err));
     need_linger <- false;
     self # shutdown();
+    tls_shutdown_done <- true; (* don't do the TLS shutdown protocol *)
     let err' =
       if err=`Broken_pipe && config#config_suppress_broken_pipe then
 	`Broken_pipe_ignore
@@ -1653,6 +1654,18 @@ object(self)
        data stream
      *)
     tls = None && need_linger
+
+
+  method tls_session_props =
+    match tls with
+      | None -> 
+           None
+      | Some t ->
+           if tls_handshake then
+             None
+           else (
+             Some(Nettls_support.get_tls_session_props t)
+           )
 
 end
 

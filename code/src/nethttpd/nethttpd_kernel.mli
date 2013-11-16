@@ -605,6 +605,11 @@ object
       * See the class [lingering_close] below.
      *)
 
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** If TLS is enabled, this returns the session properties. These
+        are first available after the TLS handshake.
+     *)
+
   method config : http_protocol_config
     (** Just returns the configuration *)
 

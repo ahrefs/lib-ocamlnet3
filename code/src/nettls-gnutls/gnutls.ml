@@ -133,3 +133,13 @@ let () =
     (Short_memory_buffer 0)
 
 
+let () =
+  Netexn.register_printer
+    (Error `Success)
+    (function
+      | Error code ->
+           Printf.sprintf
+             "Nettls_gnutls_bindings.Error(%s)" (gnutls_strerror_name code)
+      | _ ->
+           assert false
+    )

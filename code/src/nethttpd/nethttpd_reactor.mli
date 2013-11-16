@@ -196,6 +196,7 @@ class http_environment : #http_processor_config ->
                          Netchannels.out_obj_channel -> output_state ref -> 
                          Nethttpd_kernel.http_response -> (unit -> unit) ->
                          bool ref -> int64 ->
+                         Nettls_support.tls_session_props option ->
                            internal_environment
   (** For private use only *)
 

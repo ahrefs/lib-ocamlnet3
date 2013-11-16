@@ -406,6 +406,8 @@ let rec translate_type_to_ml name ty =
     | [ id; "bigarray_size" ] -> "int"
     | [ id; "stringbuf" ] -> "string"
     | [ id; "stringbuf_size" ] -> "int"
+    | [ id; "ztstringbuf" ] -> "string"
+    | [ id; "ztstringbuf_size" ] -> "int"
     | [ "bigarray_datum" ] -> "Netsys_mem.memory"
     | [ "str_datum" ] -> "string"
     | [ "file_descr" ] -> "Unix.file_descr"
@@ -459,6 +461,10 @@ let rec translate_type_to_c name ty =
            "void *", `Stringbuf id
       | [ id; "stringbuf_size" ] -> 
            "size_t", `Stringbuf_size id
+      | [ id; "ztstringbuf" ] -> 
+           "void *", `ZTStringbuf id
+      | [ id; "ztstringbuf_size" ] -> 
+           "size_t", `ZTStringbuf_size id
 (*
       | [ "bigarray_datum" ] -> 
            "gnutls_datum_t", `Bigarray_datum
@@ -490,6 +496,7 @@ let is_size ty =
     | [ id; "bigarray_size" ] -> true
     | [ id; "array_size" ] -> true
     | [ id; "stringbuf_size" ] -> true
+    | [ id; "ztstringbuf_size" ] -> true
     | _ -> false
 
 
@@ -696,6 +703,12 @@ let gen_fun c mli ml name args directives free =
                     [ sprintf "%s = caml_string_length(%s);"
                               n1 n_array ] in
                   c_code_pre := List.rev code1 @ !c_code_pre;
+
+             | `ZTStringbuf id ->
+                  failwith ("ztstringbuf is incompatible with `In")
+
+             | `ZTStringbuf_size id ->
+                  failwith ("ztstringbuf_size is incompatible with `In")
                   
              | _ ->
                   failwith ("Unsupported arg: " ^ n ^ ", fn " ^ name)
@@ -789,6 +802,18 @@ let gen_fun c mli ml name args directives free =
                     [ sprintf "%s = Val_long(%s);" n n1 ] in
                   c_code_post := List.rev code1 @ !c_code_post;
 
+             | `ZTStringbuf id ->
+                  if kind = `In_out then
+                    failwith ("ZTStringbuf unsupported as `In_out: " ^ name);
+                  if not (List.mem `GNUTLS_ask_for_size directives) then
+                    failwith ("ZTStringbuf needs GNUTLS_ask_for_size: " ^ name);
+                  ()
+
+             | `ZTStringbuf_size id ->
+                  let code1 =
+                    [ sprintf "%s = Val_long(%s);" n n1 ] in
+                  c_code_post := List.rev code1 @ !c_code_post;
+
              | _ ->
                   failwith ("Unsupported arg: " ^ n ^ ", fn " ^ name)
          );
@@ -797,6 +822,7 @@ let gen_fun c mli ml name args directives free =
            (* don't put a "&" before the arg even if it is an output *)
            match tag with
              | `Stringbuf _ -> true
+             | `ZTStringbuf _ -> true
              | `Bigarray _ -> true
              | _ -> false in
 
@@ -892,30 +918,48 @@ let gen_fun c mli ml name args directives free =
     )
     directives;
 
+  let emit_call() =
+    ( match !c_act_ret with
+        | None -> ()
+        | Some var -> fprintf c "%s = " var
+    );
+    fprintf c "%s(%s);\n" name (String.concat "," (List.rev !c_act_args)); in
+
   if List.mem `GNUTLS_ask_for_size directives then (
     (* Call the function twice: once to get the size of the string buffer,
        and a second time to fill the buffer
      *)
-    let (n_strbuf,_,_,_,_) =
+    let (n_strbuf,_,_,_,tag) =
       try
         List.find
-          (fun (_,_,_,_,tag) -> tag = `Stringbuf "1")
+          (fun (_,_,_,_,tag) ->
+             tag = `Stringbuf "1" || tag = `ZTStringbuf "1"
+          )
           c_args
       with
         | Not_found ->
              failwith ("GNUTLS_ask_for_size needs '1 stringbuf', fn: " ^ 
                          name) in
-    let (n_strbuf_size,_,_,_,_) =
+    let (n_strbuf_size,_,_,_,tag_size) =
       try
         List.find
-          (fun (_,_,_,_,tag) -> tag = `Stringbuf_size "1")
+          (fun (_,_,_,_,tag_size) -> 
+             tag_size = `Stringbuf_size "1" || tag_size = `ZTStringbuf_size "1"
+          )
           c_args
       with
         | Not_found ->
              failwith ("GNUTLS_ask_for_size needs '1 stringbuf_size', fn: " ^ 
                          name) in
+    let zt =
+      match tag, tag_size with
+        | `ZTStringbuf _, `ZTStringbuf_size _ -> true
+        | `Stringbuf _, `Stringbuf_size _ -> false
+        | _ ->
+             failwith ("Mixed use of Stringbuf/ZTStringbuf, fn: " ^ name) in
+
     fprintf c "  %s__c = NULL;\n" n_strbuf;
-    fprintf c "  %s__c = 1;\n" n_strbuf_size;
+    fprintf c "  %s__c = 0;\n" n_strbuf_size;
     fprintf c "  %s = caml_alloc_string(0);\n" n_strbuf;
     (* "pre call" *)
     fprintf c "  ";
@@ -925,20 +969,41 @@ let gen_fun c mli ml name args directives free =
         | Some var -> var in
     fprintf c "%s = " ret_var;
     fprintf c "%s(%s);\n" name (String.concat "," (List.rev !c_act_args));
-    fprintf c "  if (%s == 0 || %s == GNUTLS_E_SHORT_MEMORY_BUFFER) {\n" 
-            ret_var ret_var;
-    fprintf c "    %s = caml_alloc_string(%s__c);\n"
-            n_strbuf n_strbuf_size;
-    fprintf c "    %s__c = String_val(%s);\n" n_strbuf n_strbuf;
-    fprintf c "  };\n";
-  );
 
-  fprintf c "  ";
-  ( match !c_act_ret with
-      | None -> ()
-      | Some var -> fprintf c "%s = " var
+    if zt then (
+      (* Be very conservative: allocate one more byte for the terminating
+         null. The returned ocaml string will not include any null bytes
+       *)
+      fprintf c "  if (%s == 0 || %s == GNUTLS_E_SHORT_MEMORY_BUFFER) {\n" 
+              ret_var ret_var;
+      fprintf c "    long n__stub;\n";
+      fprintf c "    %s__c++;\n" n_strbuf_size;
+      fprintf c "    n__stub = %s__c;\n" n_strbuf_size;
+      fprintf c "    %s__c = stat_alloc(%s__c+1);\n" n_strbuf n_strbuf_size;
+      fprintf c "    ";
+      emit_call();
+      fprintf c "    if (%s == 0) {\n" ret_var;
+      fprintf c "      ((char *) %s__c)[n__stub] = 0;\n" n_strbuf;
+      fprintf c "      %s = caml_copy_string(%s__c);\n" n_strbuf n_strbuf;
+      fprintf c "    };\n";
+      fprintf c "    stat_free(%s__c);\n" n_strbuf;
+      fprintf c "  };\n";      
+    )
+    else (
+      fprintf c "  if (%s == 0 || %s == GNUTLS_E_SHORT_MEMORY_BUFFER) {\n" 
+              ret_var ret_var;
+      fprintf c "    %s = caml_alloc_string(%s__c);\n"
+              n_strbuf n_strbuf_size;
+      fprintf c "    %s__c = String_val(%s);\n" n_strbuf n_strbuf;
+      fprintf c "    ";
+      emit_call();
+      fprintf c "  };\n";
+    )
+  )
+  else (
+    fprintf c "  ";
+    emit_call();
   );
-  fprintf c "%s(%s);\n" name (String.concat "," (List.rev !c_act_args));
 
   List.iter
     (fun stmt -> fprintf c "  %s\n" stmt)

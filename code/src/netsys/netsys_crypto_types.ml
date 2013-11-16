@@ -43,7 +43,6 @@ module type TLS_PROVIDER =
         | `PKCS8 of string
         | `PKCS8_encrypted of string
         ]
-
     val create_x509_credentials :
           ?trust : crt_list list ->
           ?revoke : crl_list list ->
@@ -63,18 +62,27 @@ module type TLS_PROVIDER =
           | `End ]
 
     val get_state : endpoint -> state
+
+    type raw_credentials =
+      [ `X509 of string
+      | `Anonymous
+      ]
+
     val at_transport_eof : endpoint -> bool
     val hello : endpoint -> unit
     val bye : endpoint -> Unix.shutdown_command -> unit
     val verify : endpoint -> unit
-    val get_endpoint_crt : endpoint -> string
-    val get_peer_crt_list : endpoint -> string list
+    val get_endpoint_creds : endpoint -> raw_credentials
+    val get_peer_creds : endpoint -> raw_credentials
+    val get_peer_creds_list : endpoint -> raw_credentials list
     val switch : endpoint -> config -> bool
     val accept_switch : endpoint -> config -> unit
     val refuse_switch : endpoint -> unit
     val send : endpoint -> Netsys_types.memory -> int -> int
     val recv : endpoint -> Netsys_types.memory -> int
     val recv_will_not_block : endpoint -> bool
+    val get_session_id : endpoint -> string
+    val get_cipher_suite_type : endpoint -> string
     val get_cipher_algo : endpoint -> string
     val get_kx_algo : endpoint -> string
     val get_mac_algo : endpoint -> string

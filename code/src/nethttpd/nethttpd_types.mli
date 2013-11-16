@@ -111,6 +111,9 @@ object
         - [`End]: The response (for a single request) has been fully sent
      *)
 
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** The TLS session properties if TLS is active *)
+
 end
 
 
@@ -138,6 +141,7 @@ object
   val mutable properties : (string * string) list
   val mutable in_channel : Netchannels.in_obj_channel
   val mutable out_channel : Netchannels.out_obj_channel
+  val mutable tls_session_props : Nettls_support.tls_session_props option
 end
   (** This class implements an environment with defined internal containers.
     * These containers are empty, but fully functional.
@@ -220,6 +224,8 @@ object
     (** The distilled CGI properties *)
   method input_body_size : int64
     (** The size of the input body. May raise [Not_found] *)
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** The TLS properties *)
 end
 
 
