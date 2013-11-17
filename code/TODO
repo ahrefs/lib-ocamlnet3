@@ -13,6 +13,18 @@ TLS:
      * HTTPS - DONE
      * other props (check what Apache uses and keep compatible)
        in Nethttpd_reactor.http_environment
+       Missing:
+       SSL_SESSION_RESUMED
+       SSL_SECURE_RENEG
+       SSL_COMPRESS_METHOD
+       <cert>_M_VERSION
+       <cert>_V_REMAIN
+       <cert>_A_SIG
+       <cert>_A_KEY
+       <cert>_CERT
+       SSL_TLS_SNI
+       suffixes: T,I,G,S,D,UID
+       numeric suffixies when several components exist (or use only the first)
  - Nethttpd: check that Host header and the service name included in TLS
    are identical
  - check that https redirects work - DONE
@@ -25,10 +37,11 @@ TLS:
      * server: check that SNI name and "Host" header are identical
      * client: just set the right hostname
  - implement renegotiation for nethttpd
+ - OCSP support ?
 
 
 cleanup of all hex digit routines
-
+  - should go to Netencoding
 
 out-of-heap values: implement this better
 
