@@ -197,6 +197,25 @@ object(self)
 end
 
 
+let lookup_dn_ava (dn:directory_name) oid =
+  let rel_dn =
+    List.find
+      (fun rel_dn ->
+         match rel_dn with
+           | [ oid1, v ] -> oid1 = oid
+           | _ -> false
+      )
+      dn#name in
+  match rel_dn with
+    | [ _, v ] -> v
+    | _ -> assert false
+
+
+let lookup_dn_ava_utf8 dn oid =
+  let v = lookup_dn_ava dn oid in
+  Netdn.directory_string_from_ASN1 v
+
+
 let map_opt f =
   function
   | None -> None

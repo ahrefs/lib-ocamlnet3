@@ -76,6 +76,17 @@ object
         environment whenever the properties are updated. This is done by
         all [Nethttpd] modules.
      *)
+
+  method config_tls_cert_props : bool
+    (** Whether to include certificate properties in the cgi environment.
+        (If set to false, the certificates needs not to be parsed again.)
+     *)
+
+  method config_tls_remote_user : bool
+    (* Whether to set the REMOTE_USER variable to the subject of the
+       client certificate.
+     *)
+
 end
 
 
@@ -89,6 +100,8 @@ val default_http_processor_config : http_processor_config
        - [config_log_error]: Uses {!Nethttpd_util.std_error_log_string}
          to write a log message via {!Netlog}.
        - [config_log_access]: is a no-op
+       - [config_tls_cert_props]: is true
+       - [config_tls_remote_user]: is true
    *)
 
 class modify_http_processor_config :
@@ -101,6 +114,8 @@ class modify_http_processor_config :
         ?config_error_response:(error_response_params -> string) ->
         ?config_log_error:(request_info -> string -> unit) ->
         ?config_log_access:(full_info -> unit) ->
+        ?config_tls_cert_props:bool ->
+        ?config_tls_remote_user:bool ->
         http_processor_config -> http_processor_config
   (** Modifies the passed config object as specified by the optional
       arguments.

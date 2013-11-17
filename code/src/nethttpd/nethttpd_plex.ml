@@ -404,7 +404,7 @@ let create_processor hooks config_cgi handlers services log_error log_access
     [ "host"; "uri"; "method"; "service"; "tls" ];
   cfg # restrict_parameters addr
     [ "type"; "timeout"; "timeout_next_request"; "access_log"; 
-      "suppress_broken_pipe"
+      "suppress_broken_pipe"; "tls_cert_props"; "tls_remote_user";
     ];
 
   let srv =
@@ -423,6 +423,8 @@ let create_processor hooks config_cgi handlers services log_error log_access
       | Some "debug" -> (true,true)
       | _ -> failwith "Bad parameter 'access_log'" in
   let suppress_broken_pipe = bool_param addr "suppress_broken_pipe" in
+  let tls_cert_props =  not(bool_param addr "tls_no_cert_props") in
+  let tls_remote_user =  not(bool_param addr "tls_no_remote_user") in
 
   let config_tls =
     Netplex_config.read_tls_config
@@ -453,6 +455,8 @@ let create_processor hooks config_cgi handlers services log_error log_access
        method config_announce_server = `Ocamlnet (* TODO *)
        method config_suppress_broken_pipe = suppress_broken_pipe
        method config_tls = config_tls
+       method config_tls_cert_props = tls_cert_props
+       method config_tls_remote_user = tls_remote_user
      end
     ) in
 

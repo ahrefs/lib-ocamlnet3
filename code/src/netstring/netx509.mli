@@ -137,6 +137,12 @@ module X509_DN_string : Netdn.DN_string
   (** Parser/printer for distnguished names as they may occur in X.509
       certificates
    *)
+ 
+val lookup_dn_ava : directory_name -> oid -> Netasn1.Value.value
+  (** Find the first relative DN setting this OID (or [Not_found]) *)
+
+val lookup_dn_ava_utf8 : directory_name -> oid -> string
+  (** Same as [lookup_dn_ava], but additionally converts the value to UTF-8 *)
 
 
 (** {2 Parsers} *)

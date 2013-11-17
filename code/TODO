@@ -1,6 +1,6 @@
 TLS:
  - use ztstringbuf for all the other functions returning zero-terminated
-   strings
+   strings - DONE
  - Also add `PEM_data to TLS config. Support that in Netplex parser.
  - document Netplex config for TLS
  - implement alert support
@@ -25,6 +25,9 @@ TLS:
      * server: check that SNI name and "Host" header are identical
      * client: just set the right hostname
  - implement renegotiation for nethttpd
+
+
+cleanup of all hex digit routines
 
 
 out-of-heap values: implement this better

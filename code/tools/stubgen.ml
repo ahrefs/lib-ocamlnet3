@@ -705,10 +705,29 @@ let gen_fun c mli ml name args directives free =
                   c_code_pre := List.rev code1 @ !c_code_pre;
 
              | `ZTStringbuf id ->
-                  failwith ("ztstringbuf is incompatible with `In")
+                  let code1 =
+                    [ sprintf "%s = String_val(%s);" n1 n ] in
+                  c_code_pre := List.rev code1 @ !c_code_pre;
 
              | `ZTStringbuf_size id ->
-                  failwith ("ztstringbuf_size is incompatible with `In")
+                  (* sole difference to Stringbuf_size: the length includes
+                     the trailing null byte
+                   *)
+                  let (n_array,_,_,_,_) =
+                    try
+                      List.find
+                        (fun (_,_,_,_,tag) -> 
+                           tag = `ZTStringbuf id
+                        )
+                        c_args
+                    with
+                      | Not_found ->
+                           failwith ("ztstringbuf_size needs ztstringbuf, fn: "
+                                     ^  name) in
+                  let code1 =
+                    [ sprintf "%s = caml_string_length(%s)+1;"
+                              n1 n_array ] in
+                  c_code_pre := List.rev code1 @ !c_code_pre;
                   
              | _ ->
                   failwith ("Unsupported arg: " ^ n ^ ", fn " ^ name)

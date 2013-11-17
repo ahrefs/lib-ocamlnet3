@@ -832,7 +832,7 @@ let functions =
       "error_code gnutls_server_name_set \
            (gnutls_session_t session, \
             gnutls_server_name_type_t type, \
-            1 stringbuf name, 1 stringbuf_size name_length)";
+            1 ztstringbuf name, 1 ztstringbuf_size name_length)";
     
     standard
       ~ask_for_size:true
@@ -1237,12 +1237,12 @@ let functions =
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_issuer_dn \
            (gnutls_x509_crt_t cert, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
     standard
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_issuer_dn_oid \
            (gnutls_x509_crt_t cert, int indx, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
 
 (*
   int gnutls_x509_crt_get_issuer_dn_by_oid (gnutls_x509_crt_t cert,
@@ -1256,13 +1256,13 @@ let functions =
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_dn \
            (gnutls_x509_crt_t cert, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
 
     standard
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_dn_oid \
            (gnutls_x509_crt_t cert, int indx, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
 (*
   int gnutls_x509_crt_get_dn_by_oid (gnutls_x509_crt_t cert,
                                      const char *oid, int indx,
@@ -1348,7 +1348,7 @@ let functions =
        gnutls_x509_crt_get_subject_alt_name \
            (gnutls_x509_crt_t cert, \
             uint seq, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
             OUT ubool critical)";
 (*
   int gnutls_x509_crt_get_subject_alt_name2 (gnutls_x509_crt_t cert,
@@ -1363,7 +1363,7 @@ let functions =
        gnutls_x509_crt_get_subject_alt_othername_oid \
            (gnutls_x509_crt_t cert, \
             uint seq, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
     
     standard
       ~ask_for_size:true
@@ -1372,7 +1372,7 @@ let functions =
        gnutls_x509_crt_get_issuer_alt_name \
            (gnutls_x509_crt_t cert, \
             uint seq,\
-            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
             OUT ubool critical)";
 (*
   int gnutls_x509_crt_get_issuer_alt_name2 (gnutls_x509_crt_t cert,
@@ -1389,7 +1389,7 @@ let functions =
        gnutls_x509_crt_get_issuer_alt_othername_oid \
            (gnutls_x509_crt_t cert, \
             uint seq, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
 
     standard
       "error_code gnutls_x509_crt_get_ca_status \
@@ -1406,7 +1406,7 @@ let functions =
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_extension_oid \
            (gnutls_x509_crt_t cert, int indx, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
 (*
     standard
       ~ask_for_size:true
@@ -1419,7 +1419,7 @@ let functions =
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_extension_info \
            (gnutls_x509_crt_t cert, int indx, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
             OUT ubool critical)";
     standard
       ~ask_for_size:true
@@ -1488,7 +1488,7 @@ let functions =
       "error_code gnutls_x509_crt_get_key_purpose_oid \
            (gnutls_x509_crt_t cert, \
             int indx, \
-            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
             OUT ubool critical)";
 
 

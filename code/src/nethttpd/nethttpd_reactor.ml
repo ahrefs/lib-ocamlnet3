@@ -49,6 +49,8 @@ object
   method config_error_response : error_response_params -> string
   method config_log_error : request_info -> string -> unit
   method config_log_access : full_info -> unit
+  method config_tls_cert_props : bool
+  method config_tls_remote_user : bool
 end
 
 class type http_reactor_config =
@@ -152,6 +154,39 @@ let no_info =
   )
 
 
+let cert_atts =
+  [ Netx509.DN_attributes.at_commonName, "_CN";
+    Netx509.DN_attributes.at_emailAddress, "_Email";    
+    Netx509.DN_attributes.at_organizationName, "_O";
+    Netx509.DN_attributes.at_organizationalUnitName, "_OU";
+    Netx509.DN_attributes.at_countryName, "_C";
+    Netx509.DN_attributes.at_stateOrProvinceName, "_SP";
+    Netx509.DN_attributes.at_localityName, "_L";
+  ]
+
+
+let gen_dn_props dn prefix =
+  let p = prefix ^ "_DN" in
+  (p, dn#string) ::
+    List.flatten
+      (List.map
+         (fun (oid, suffix) ->
+            try
+              let s = Netx509.lookup_dn_ava_utf8 dn oid in
+              [ p ^ suffix, s ]
+            with Not_found -> []
+         )
+         cert_atts
+      )
+
+
+let gen_cert_props cert prefix =
+  [ prefix ^ "_M_SERIAL", Netencoding.to_hex (cert#serial_number);
+    prefix ^ "_V_START", Netdate.mk_internet_date ~zone:0 cert#valid_not_before;
+    prefix ^ "_V_END", Netdate.mk_internet_date ~zone:0 cert#valid_not_after;
+  ]
+
+
 class http_environment (proc_config : #http_processor_config)
                        req_meth req_uri req_version req_hdr 
                        fd_addr peer_addr
@@ -228,6 +263,55 @@ object(self)
         ( match in_port_opt with
 	    | Some p -> [ "SERVER_PORT", string_of_int p ]
 	    | None   -> []
+        ) @
+        ( match tls_props with
+            | None -> []
+            | Some (p:Nettls_support.tls_session_props) ->
+                 (* see http://httpd.apache.org/docs/2.4/mod/mod_ssl.html
+                    for a reference. Not everything is supported here, though.
+                  *)
+                 [ "SSL_PROTOCOL", p#protocol;
+                   "SSL_VERSION_LIBRARY", "Nethttpd/0.0";
+                   "SSL_CIPHER", p#kx_algo ^ "-" ^ p#cipher_algo ^ "-" ^ 
+                                   p#mac_algo;
+                   "SSL_SESSION_ID", Netencoding.to_hex p#id
+                 ] 
+                 @
+                 (if proc_config # config_tls_remote_user then
+                    match p # peer_credentials with
+                      | `X509 cert ->
+                           ( try
+                               let cn =
+                                 Netx509.lookup_dn_ava_utf8
+                                   cert#subject
+                                   Netx509.DN_attributes.at_commonName in
+                               [ "REMOTE_USER", cn ]
+                             with Not_found -> []
+                           )
+                      | _ -> []
+
+                  else
+                    []
+                 )
+                 @
+                 (if proc_config # config_tls_cert_props then
+                    ( match p # endpoint_credentials with
+                        | `X509 cert ->
+                             gen_dn_props cert#subject "SSL_SERVER_S"
+                             @ gen_dn_props cert#issuer "SSL_SERVER_I"
+                             @ gen_cert_props cert "SSL_SERVER"
+                        | _ -> []
+                    ) @
+                    ( match p # peer_credentials with
+                        | `X509 cert ->
+                             gen_dn_props cert#subject "SSL_CLIENT_S"
+                             @ gen_dn_props cert#issuer "SSL_CLIENT_I"
+                             @ gen_cert_props cert "SSL_CLIENT"
+                        | _ -> []
+                    )
+                  else
+                    []
+                 )
         );
     logged_props <- properties;
     tls_session_props <- tls_props;
@@ -1118,6 +1202,8 @@ let default_http_processor_config =
 	let s = Nethttpd_util.std_error_log_string p msg in
 	Netlog.log `Err s
       method config_log_access p = ()
+      method config_tls_cert_props = true
+      method config_tls_remote_user = true
     end
   )
 
@@ -1136,6 +1222,8 @@ class modify_http_processor_config
       ?config_error_response
       ?config_log_error
       ?config_log_access
+      ?config_tls_cert_props
+      ?config_tls_remote_user
       (config : http_processor_config) : http_processor_config =
   let config_timeout_next_request =
     override config#config_timeout_next_request config_timeout_next_request in
@@ -1149,6 +1237,10 @@ class modify_http_processor_config
     override config#config_log_error config_log_error in
   let config_log_access =
     override config#config_log_access config_log_access in
+  let config_tls_cert_props =
+    override config#config_tls_cert_props config_tls_cert_props in
+  let config_tls_remote_user =
+    override config#config_tls_remote_user config_tls_remote_user in
 object
   inherit modify_http_protocol_config (m1 (config:>http_protocol_config))
   method config_timeout_next_request = config_timeout_next_request
@@ -1157,6 +1249,8 @@ object
   method config_error_response = config_error_response
   method config_log_error = config_log_error
   method config_log_access = config_log_access
+  method config_tls_cert_props = config_tls_cert_props
+  method config_tls_remote_user = config_tls_remote_user
 end
 
 

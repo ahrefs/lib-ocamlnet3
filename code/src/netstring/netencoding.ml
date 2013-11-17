@@ -3,6 +3,22 @@
  *
  *)
 
+let hexdigit =
+  [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
+     '8'; '9'; 'A'; 'B'; 'C'; 'D'; 'E'; 'F'; |]
+
+
+let to_hex s =
+  let l = String.length s in
+  let u = String.create (2*l) in
+  for k = 0 to l-1 do
+    let c = String.unsafe_get s k in
+    let j = k lsl 1 in
+    String.unsafe_set u j     hexdigit.(Char.code c lsr 4);
+    String.unsafe_set u (j+1) hexdigit.(Char.code c land 15);
+  done;
+  u
+
 
 module Base64 = struct
   let b64_pattern plus slash =
@@ -517,10 +533,6 @@ module QuotedPrintable = struct
     let t_len = count !line_length 0 0 in
     let t = String.create t_len in
     
-    let hexdigit =
-      [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
-	 '8'; '9'; 'A'; 'B'; 'C'; 'D'; 'E'; 'F'; |] in
-
     let k = ref 0 in
 
     let add_quoted c =
@@ -795,10 +807,6 @@ module Q = struct
     let l = count 0 0 in
     let t = String.create l in
     
-    let hexdigit =
-      [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
-	 '8'; '9'; 'A'; 'B'; 'C'; 'D'; 'E'; 'F'; |] in
-
     let k = ref 0 in
 
     let add_quoted c =
