@@ -49,12 +49,31 @@ class nethttpd_processor ?(hooks = new Netplex_kit.empty_processor_hooks())
 object(self)
   inherit Netplex_kit.processor_hooks_delegation hooks
 
+  method post_add_hook _ ctrl =
+    ctrl # add_plugin Netplex_sharedvar.plugin
+
   method process ~when_done (container : Netplex_types.container) fd proto =
     let config = mk_config container in
+    let config_hooks hooks =
+      let store key value =
+        let name = "nethttpd.tls_cache." ^ Netencoding.to_hex key in
+        let _ex = Netplex_sharedvar.create_var ~own:true ~timeout:300.0 name in
+        ignore(Netplex_sharedvar.set_value name value) in
+      let remove key =
+        let name = "nethttpd.tls_cache." ^ Netencoding.to_hex key in
+        ignore(Netplex_sharedvar.delete_var name) in
+      let retrieve key =
+        let name = "nethttpd.tls_cache." ^ Netencoding.to_hex key in
+        match Netplex_sharedvar.get_value name with
+          | Some value -> value
+          | None -> raise Not_found in
+      hooks # tls_set_cache
+        ~store ~remove ~retrieve  
+    in
     match encap with
       | `Reactor ->
 	  ( try
-	      Nethttpd_reactor.process_connection config fd srv
+	      Nethttpd_reactor.process_connection ~config_hooks config fd srv
 	    with
 	      | err ->
 		  container # log `Err ("Exception caught by HTTP server: " ^ 
@@ -66,6 +85,7 @@ object(self)
 	    new Nethttpd_engine.buffering_engine_processing_config in
 	  let ctx =
 	    Nethttpd_engine.process_connection
+              ~config_hooks
 	      config engine_config fd container#event_system srv in
 	  Uq_engines.when_state 
 	    ~is_done:(fun () -> 

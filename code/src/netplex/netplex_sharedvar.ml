@@ -30,7 +30,7 @@ let x_plugin =
       method required = []
 
       method program =
-	Netplex_ctrl_aux.program_Sharedvar'V1
+	Netplex_ctrl_aux.program_Sharedvar'V2
 
       method ctrl_added _ = ()
 
@@ -44,56 +44,56 @@ let x_plugin =
       method ctrl_receive_call ctrl cid procname arg reply =
 	match procname with
 	  | "ping" ->
-	      reply(Some(Netplex_ctrl_aux._of_Sharedvar'V1'ping'res ()))
+	      reply(Some(Netplex_ctrl_aux._of_Sharedvar'V2'ping'res ()))
 
 	  | "create_var" ->
-	      let (var_name, own_flag, ro_flag, ty) =
-		Netplex_ctrl_aux._to_Sharedvar'V1'create_var'arg arg in
+	      let (var_name, own_flag, ro_flag, ty, tmo) =
+		Netplex_ctrl_aux._to_Sharedvar'V2'create_var'arg arg in
 	      let success =
-		self # create_var ctrl cid var_name own_flag ro_flag ty in
+		self # create_var ctrl cid var_name own_flag ro_flag ty tmo in
 	      reply(
-		Some(Netplex_ctrl_aux._of_Sharedvar'V1'create_var'res success))
+		Some(Netplex_ctrl_aux._of_Sharedvar'V2'create_var'res success))
 
 	  | "set_value" ->
 	      let (var_name, var_value, ty) =
-		Netplex_ctrl_aux._to_Sharedvar'V1'set_value'arg arg in
+		Netplex_ctrl_aux._to_Sharedvar'V2'set_value'arg arg in
 	      let code =
 		self # set_value ctrl cid var_name var_value ty in
 	      reply(
-		Some(Netplex_ctrl_aux._of_Sharedvar'V1'set_value'res code))
+		Some(Netplex_ctrl_aux._of_Sharedvar'V2'set_value'res code))
 
 	  | "get_value" ->
 	      let (var_name, ty) =
-		Netplex_ctrl_aux._to_Sharedvar'V1'get_value'arg arg in
+		Netplex_ctrl_aux._to_Sharedvar'V2'get_value'arg arg in
 	      let valopt =
 		self # get_value ctrl var_name ty in
 	      reply(
-		Some(Netplex_ctrl_aux._of_Sharedvar'V1'get_value'res valopt))
+		Some(Netplex_ctrl_aux._of_Sharedvar'V2'get_value'res valopt))
 
 	  | "delete_var" ->
 	      let (var_name) =
-		Netplex_ctrl_aux._to_Sharedvar'V1'delete_var'arg arg in
+		Netplex_ctrl_aux._to_Sharedvar'V2'delete_var'arg arg in
 	      let success =
 		self # delete_var ctrl cid var_name in
 	      reply(
-		Some(Netplex_ctrl_aux._of_Sharedvar'V1'delete_var'res success))
+		Some(Netplex_ctrl_aux._of_Sharedvar'V2'delete_var'res success))
 
 	  | "wait_for_value" ->
 	      let (var_name, ty) =
-		Netplex_ctrl_aux._to_Sharedvar'V1'wait_for_value'arg arg in
+		Netplex_ctrl_aux._to_Sharedvar'V2'wait_for_value'arg arg in
 	      self # wait_for_value ctrl cid var_name ty
 		(fun r -> 
 		   reply
 		     (Some
-			(Netplex_ctrl_aux._of_Sharedvar'V1'wait_for_value'res 
+			(Netplex_ctrl_aux._of_Sharedvar'V2'wait_for_value'res 
 			   r)))
 
 	  | "dump" ->
 	      let (var_name, levstr) =
-		Netplex_ctrl_aux._to_Sharedvar'V1'dump'arg arg in
+		Netplex_ctrl_aux._to_Sharedvar'V2'dump'arg arg in
 	      self # dump var_name levstr;
 	      reply
-		(Some(Netplex_ctrl_aux._of_Sharedvar'V1'dump'res ()))
+		(Some(Netplex_ctrl_aux._of_Sharedvar'V2'dump'res ()))
 
 	  | _ ->
 	      failwith ("Netplex_sharedvar: unknown proc " ^ procname)
@@ -111,11 +111,12 @@ let x_plugin =
 	)
 
 
-      method private create_var ctrl cid var_name own_flag ro_flag ty =
+      method private create_var ctrl cid var_name own_flag ro_flag ty tmo =
 	let ssn = cid#socket_service_name in
 	if Hashtbl.mem variables (ctrl,var_name) then
 	  `shvar_exists
 	else (
+          let g_tmo = ref None in
 	  Hashtbl.add 
 	    variables 
 	    (ctrl,var_name)
@@ -123,6 +124,8 @@ let x_plugin =
 	     (if own_flag then Some ssn else None),
 	     ro_flag,
              ty,
+             tmo,
+             g_tmo,
 	     false,
 	     Queue.create(),
 	     ref 0
@@ -132,20 +135,40 @@ let x_plugin =
 	      try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
 	    Hashtbl.replace owns (ctrl,ssn) (var_name :: ovars)
 	  );
+          self # restart_timer ctrl var_name g_tmo tmo;
 	  `shvar_ok
 	)
-	  
+
+      method private restart_timer ctrl var_name g_tmo tmo =
+        ( match !g_tmo with
+            | None -> ()
+            | Some g -> Unixqueue.clear ctrl#event_system g
+        );
+        if tmo >= 0.0 then (
+          let g = Unixqueue.new_group ctrl#event_system in
+          g_tmo := Some g;
+          Unixqueue.weak_once ctrl#event_system g tmo
+            (fun () -> 
+               ignore(self # delete_var_force ctrl var_name)
+            )
+        )
+        else
+          g_tmo := None
 
       method private delete_var ctrl cid var_name =
 	let ssn = cid#socket_service_name in
 	try
-	  let (_, owner, _, _, _, q, _) = 
+	  let (_, owner, _, _, _, g_tmo, _, q, _) = 
 	    Hashtbl.find variables (ctrl,var_name) in
 	  ( match owner with
 	      | None -> ()
 	      | Some ssn' -> if ssn <> ssn' then raise Not_found
 	  );
 	  Hashtbl.remove variables (ctrl,var_name);
+          ( match !g_tmo with
+              | None -> ()
+              | Some g -> Unixqueue.clear ctrl#event_system g
+          );
 	  if owner <> None then (
 	    let ovars =
 	       try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
@@ -164,10 +187,38 @@ let x_plugin =
 	      `shvar_notfound
 
 
+      method private delete_var_force ctrl var_name =
+	try
+	  let (_, owner, _, _, _, g_tmo, _, q, _) = 
+	    Hashtbl.find variables (ctrl,var_name) in
+	  Hashtbl.remove variables (ctrl,var_name);
+          ( match !g_tmo with
+              | None -> ()
+              | Some g -> Unixqueue.clear ctrl#event_system g
+          );
+	  ( match owner with
+              | None -> ()
+              | Some ssn ->
+	           let ovars =
+	             try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
+	           let nvars =
+	             List.filter (fun n -> n <> var_name) ovars in
+	           Hashtbl.replace owns (ctrl,ssn) nvars
+	  );
+	  Queue.iter
+	    (fun f ->
+	       self # schedule_callback ctrl f `shvar_notfound
+	    )
+	    q;
+	with
+	  | Not_found ->
+               ()
+
+
       method private set_value ctrl cid var_name var_value ty =
 	let ssn = cid#socket_service_name in
 	try
-	  let (_, owner, ro, vty, _, q, count) = 
+	  let (_, owner, ro, vty, tmo, g_tmo, _, q, count) = 
 	    Hashtbl.find variables (ctrl,var_name) in
 	  incr count;
 	  ( match owner with
@@ -180,7 +231,8 @@ let x_plugin =
 	  Hashtbl.replace
 	    variables
 	    (ctrl,var_name)
-	    (var_value, owner, ro, vty, true, q, count);
+	    (var_value, owner, ro, vty, tmo, g_tmo, true, q, count);
+          self # restart_timer ctrl var_name g_tmo tmo;
 	  Queue.iter
 	    (fun f ->
 	       self # schedule_callback ctrl f (`shvar_ok var_value)
@@ -198,20 +250,22 @@ let x_plugin =
 
       method get_value ctrl var_name ty =
 	try
-	  let (v, _, _, vty, _, _, count) = 
+	  let (v, _, _, vty, tmo, g_tmo, _, _, count) = 
 	    Hashtbl.find variables (ctrl,var_name) in
 	  incr count;
 	  if ty <> vty then 
 	    `shvar_badtype
-	  else
+	  else (
+            self # restart_timer ctrl var_name g_tmo tmo;
 	    `shvar_ok v
+          )
 	with
 	  | Not_found -> 
 	      `shvar_notfound
 
       method private wait_for_value ctrl cid var_name ty emit =
 	try
-	  let (v, _, _, vty, is_set, q, count) = 
+	  let (v, _, _, vty, _, _, is_set, q, count) = 
 	    Hashtbl.find variables (ctrl,var_name) in
 	  incr count;
 	  if vty <> ty then
@@ -236,7 +290,7 @@ let x_plugin =
 	let lev =
 	  Netlog.level_of_string levstr in
 	Hashtbl.iter
-	  (fun (_, n) (_, _, _, _, _, _, count) ->
+	  (fun (_, n) (_, _, _, _, _, _, _, _, count) ->
 	     if var_name ="*" || var_name = n then (
 	       Netlog.logf lev
 		 "Netplex_sharedvar.dump: name=%s count=%d"
@@ -260,30 +314,31 @@ let () =
      end
     )
 
-let create_var ?(own=false) ?(ro=false) ?(enc=false) var_name =
+let create_var ?(own=false) ?(ro=false) ?(enc=false) ?(timeout = -1.0)
+               var_name =
   let cont = Netplex_cenv.self_cont() in
   let ty = if enc then "encap" else "string" in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V1'create_var'res
+    Netplex_ctrl_aux._to_Sharedvar'V2'create_var'res
       (cont # call_plugin plugin "create_var"
-	 (Netplex_ctrl_aux._of_Sharedvar'V1'create_var'arg 
-	    (var_name,own,ro,ty))) in
+	 (Netplex_ctrl_aux._of_Sharedvar'V2'create_var'arg 
+	    (var_name,own,ro,ty,timeout))) in
   code = `shvar_ok
       
 let delete_var var_name =
   let cont = Netplex_cenv.self_cont() in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V1'delete_var'res
+    Netplex_ctrl_aux._to_Sharedvar'V2'delete_var'res
       (cont # call_plugin plugin "delete_var"
-	 (Netplex_ctrl_aux._of_Sharedvar'V1'delete_var'arg var_name)) in
+	 (Netplex_ctrl_aux._of_Sharedvar'V2'delete_var'arg var_name)) in
   code = `shvar_ok
 
 let set_value var_name var_value =
   let cont = Netplex_cenv.self_cont() in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V1'set_value'res
+    Netplex_ctrl_aux._to_Sharedvar'V2'set_value'res
       (cont # call_plugin plugin "set_value"
-	 (Netplex_ctrl_aux._of_Sharedvar'V1'set_value'arg 
+	 (Netplex_ctrl_aux._of_Sharedvar'V2'set_value'arg 
 	    (var_name,var_value,"string"))) in
   match code with
     | `shvar_ok -> true
@@ -297,9 +352,9 @@ let set_enc_value var_name (var_value:encap) =
   let str_value =
     Marshal.to_string var_value [] in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V1'set_value'res
+    Netplex_ctrl_aux._to_Sharedvar'V2'set_value'res
       (cont # call_plugin plugin "set_value"
-	 (Netplex_ctrl_aux._of_Sharedvar'V1'set_value'arg 
+	 (Netplex_ctrl_aux._of_Sharedvar'V2'set_value'arg 
 	    (var_name,str_value,"encap"))) in
   match code with
     | `shvar_ok -> true
@@ -312,9 +367,9 @@ let get_value var_name =
   let r =
     match Netplex_cenv.self_obj() with
       | `Container cont ->
-	  Netplex_ctrl_aux._to_Sharedvar'V1'get_value'res
+	  Netplex_ctrl_aux._to_Sharedvar'V2'get_value'res
 	    (cont # call_plugin plugin "get_value"
-	       (Netplex_ctrl_aux._of_Sharedvar'V1'get_value'arg 
+	       (Netplex_ctrl_aux._of_Sharedvar'V2'get_value'arg 
 		  (var_name,"string"))) 
       | `Controller ctrl ->
 	  x_plugin # get_value ctrl var_name "string" in
@@ -330,9 +385,9 @@ let get_enc_value var_name =
   let r =
     match Netplex_cenv.self_obj() with
       | `Container cont ->
-	  Netplex_ctrl_aux._to_Sharedvar'V1'get_value'res
+	  Netplex_ctrl_aux._to_Sharedvar'V2'get_value'res
 	    (cont # call_plugin plugin "get_value"
-	       (Netplex_ctrl_aux._of_Sharedvar'V1'get_value'arg 
+	       (Netplex_ctrl_aux._of_Sharedvar'V2'get_value'arg 
 		  (var_name,"encap"))) 
       | `Controller ctrl ->
 	  x_plugin # get_value ctrl var_name "encap" in
@@ -349,9 +404,9 @@ let get_enc_value var_name =
 let wait_for_value var_name =
   let cont = Netplex_cenv.self_cont() in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V1'wait_for_value'res
+    Netplex_ctrl_aux._to_Sharedvar'V2'wait_for_value'res
       (cont # call_plugin plugin "wait_for_value"
-	 (Netplex_ctrl_aux._of_Sharedvar'V1'wait_for_value'arg 
+	 (Netplex_ctrl_aux._of_Sharedvar'V2'wait_for_value'arg 
 	    (var_name, "string"))) in
   match code with
     | `shvar_ok s -> (Some s)
@@ -363,9 +418,9 @@ let wait_for_value var_name =
 let wait_for_enc_value var_name =
   let cont = Netplex_cenv.self_cont() in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V1'wait_for_value'res
+    Netplex_ctrl_aux._to_Sharedvar'V2'wait_for_value'res
       (cont # call_plugin plugin "wait_for_value"
-	 (Netplex_ctrl_aux._of_Sharedvar'V1'wait_for_value'arg 
+	 (Netplex_ctrl_aux._of_Sharedvar'V2'wait_for_value'arg 
 	    (var_name, "encap"))) in
   match code with
     | `shvar_ok s -> 
@@ -405,7 +460,7 @@ let dump var_name lev =
     | `Container cont ->
 	ignore
 	  (cont # call_plugin plugin "dump"
-	     (Netplex_ctrl_aux._of_Sharedvar'V1'dump'arg 
+	     (Netplex_ctrl_aux._of_Sharedvar'V2'dump'arg 
 		(var_name,levstr))) 
     | `Controller ctrl ->
 	x_plugin # dump var_name levstr

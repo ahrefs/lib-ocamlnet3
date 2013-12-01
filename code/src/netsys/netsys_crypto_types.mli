@@ -375,7 +375,15 @@ module type TLS_PROVIDER =
           before the handshake
        *)
 
-    (* TODO: session resumption *)
+    val set_session_cache : store:(string -> string -> unit) ->
+                            remove:(string -> unit) ->
+                            retrieve:(string -> string) ->
+                            endpoint ->
+                            unit
+      (** Sets the three callbacks for storing, removing and retrieving
+          sessions
+       *)
+
     (* TODO: DTLS *)
     (* TODO: get channel binding token *)
 

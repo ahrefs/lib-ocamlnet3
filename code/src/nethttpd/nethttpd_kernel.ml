@@ -600,6 +600,15 @@ object
 end
 
 
+class type http_protocol_hooks =
+object
+  method tls_set_cache : store:(string -> string -> unit) ->
+                         remove:(string -> unit) ->
+                         retrieve:(string -> string) ->
+                            unit
+end
+
+
 let http_find_line_start s pos len =
   try Mimestring.find_line_start s pos len
   with Not_found -> raise Buffer_exceeded
@@ -709,6 +718,20 @@ class http_protocol (config : #http_protocol_config) (fd : Unix.file_descr) =
                  (Netsys_tls.create_file_endpoint 
                     ~role:`Server ~rd:fd ~wr:fd tc))
   in
+
+  let hooks =
+    ( object
+        method tls_set_cache ~store ~remove ~retrieve =
+          match tls with
+            | None ->
+                 ()
+            | Some ep ->
+                 let module Endpoint = 
+                   (val ep : Netsys_crypto_types.TLS_ENDPOINT) in
+                 Endpoint.TLS.set_session_cache
+                   ~store ~remove ~retrieve Endpoint.endpoint
+      end
+    ) in
 object(self)
   val mutable override_dir = None
     (* For TLS: can be set to [Some `R] or [Some `W] if the descriptor needs
@@ -771,6 +794,8 @@ object(self)
     recv_cont <- self # accept_header 0;
     Unix.set_nonblock fd
   )
+
+  method hooks = hooks
 
   method cycle ?(block=0.0) () = 
     override_dir <- None;

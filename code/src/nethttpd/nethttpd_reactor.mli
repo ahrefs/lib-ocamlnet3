@@ -268,7 +268,8 @@ end
 (** The [http_reactor] allows one to pull the next request from a connected
   * client, and to deliver the response to the protocol engine.
  *)
-class http_reactor : #http_reactor_config -> Unix.file_descr ->
+class http_reactor : ?config_hooks:(Nethttpd_kernel.http_protocol_hooks -> unit) ->
+                     #http_reactor_config -> Unix.file_descr ->
 object
   method next_request : unit -> http_reactive_request option
     (** Tries to read the next request. When the header of the request is successfully
@@ -312,6 +313,7 @@ end
 
 
 val process_connection : 
+      ?config_hooks:(Nethttpd_kernel.http_protocol_hooks -> unit) ->
       #http_reactor_config -> Unix.file_descr -> 'a http_service -> unit
   (** Processes all HTTP requests in turn arriving at the file descriptor, and
     * calls the service provider for every request. Finally, the descriptor is

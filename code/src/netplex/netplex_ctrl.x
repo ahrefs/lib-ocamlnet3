@@ -368,11 +368,11 @@ union shvar_get switch(shvar_enum d) {
 
 
 program Sharedvar {
-    version V1 {
+    version V2 {
 	void ping(void) = 0;
 
-	shvar_code create_var(longstring, bool, bool, longstring) = 1;
-	/* create_var(var_name, own_flag, ro_flag, ty): Creates the variable 
+	shvar_code create_var(longstring, bool, bool, longstring, double) = 1;
+	/* create_var(var_name, own_flag, ro_flag, ty,tmo): Creates the variable 
            with
            an empty string
            as value. It is an error if the variable has already been created.
@@ -388,6 +388,8 @@ program Sharedvar {
            ro_flag: if true, only the owner can set the value
 
            ty: the type identifier ("string", or "exn")
+
+           tmo: If non-negative, the timeout
 	*/
 
 	shvar_code set_value(longstring, longstring, longstring) = 2;
@@ -424,6 +426,6 @@ program Sharedvar {
 	   the stringified log level
 	*/
 
-    } = 1;
+    } = 2;
 } = 5;
 

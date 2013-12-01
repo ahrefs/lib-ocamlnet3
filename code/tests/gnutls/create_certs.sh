@@ -39,6 +39,26 @@ certtool \
   --template certs/server.templ \
   --outfile certs/x509-server.pem
 
+### Second server key
+
+certtool --generate-privkey > certs/x509-server2-key.pem
+
+cat <<EOF > certs/server2.templ
+cn = 'otherhost'
+tls_www_server
+encryption_key
+signing_key
+dns_name = otherhost
+EOF
+
+certtool \
+  --generate-certificate \
+  --load-privkey certs/x509-server2-key.pem \
+  --load-ca-certificate certs/x509-ca.pem \
+  --load-ca-privkey certs/x509-ca-key.pem \
+  --template certs/server2.templ \
+  --outfile certs/x509-server2.pem
+
 ### Client key
 
 certtool --generate-privkey > certs/x509-client-key.pem

@@ -32,10 +32,15 @@ TLS:
     * check client authentication
  - document new Netplex directives in netplex_admin.txt
  - SNI:
-     * server: probably need to select the cert to send in the server.
+     * server: probably need to select the cert to send.
        Figure out how to do that. (Maybe look at mod_gnutls?)
+       THIS IS AUTOMATICALLY DONE BY GNUTLS! JUST ADD SEVERAL CERTS
+       TO THE SESSION!
      * server: check that SNI name and "Host" header are identical
      * client: just set the right hostname
+ - Info:
+   Since GnuTLS-3.1.2 session tickets are automatically enabled.
+   Also do something automatically for pre-3.1.2 versions?
  - implement renegotiation for nethttpd
  - OCSP support ?
 

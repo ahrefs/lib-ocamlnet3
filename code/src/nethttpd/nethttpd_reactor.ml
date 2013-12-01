@@ -660,7 +660,8 @@ end
 
 
 
-class http_reactor (config : #http_reactor_config) fd =
+class http_reactor ?(config_hooks = fun _ -> ())
+                   (config : #http_reactor_config) fd =
   (* note that "new http_reactor" can already raise exceptions, e.g.
      Unix.ENOTCONN
    *)
@@ -675,7 +676,8 @@ object(self)
       ~descr:(sprintf "HTTP %s->%s"
 		(Netsys.string_of_sockaddr peer_addr)
 		(Netsys.string_of_sockaddr fd_addr))
-      fd
+      fd;
+    config_hooks proto#hooks
   )
 
   method private cycle() =
@@ -954,7 +956,7 @@ type x_reaction =
     ]
 
 
-let process_connection config fd (stage1 : 'a http_service) =
+let process_connection ?config_hooks config fd (stage1 : 'a http_service) =
 
   let fd_addr_str =
     try Netsys.string_of_sockaddr (Unix.getsockname fd)
@@ -1145,7 +1147,7 @@ let process_connection config fd (stage1 : 'a http_service) =
   
   let reactor = 
     try
-      new http_reactor config fd 
+      new http_reactor ?config_hooks config fd 
     with
 	err ->
 	  (* An exception means here that getsockname or getpeername failed.

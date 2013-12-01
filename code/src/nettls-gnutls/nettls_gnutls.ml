@@ -562,6 +562,9 @@ module TLS : GNUTLS_PROVIDER =
         )
         l
 
+    let set_session_cache ~store ~remove ~retrieve ep =
+      G.b_set_db_callbacks ep.session store remove retrieve
+
     let gnutls_credentials c = c.gcred
     let gnutls_session ep = ep.session
   end

@@ -94,6 +94,11 @@ module type TLS_PROVIDER =
 
     val get_addressed_servers : endpoint -> server_name list
     val set_addressed_servers : endpoint -> server_name list -> unit
+    val set_session_cache : store:(string -> string -> unit) ->
+                            remove:(string -> unit) ->
+                            retrieve:(string -> string) ->
+                            endpoint ->
+                            unit
     val implementation_name : string
     val implementation : unit -> exn
   end

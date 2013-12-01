@@ -400,6 +400,7 @@ object
 
   method config_tls : Netsys_crypto_types.tls_config option
     (** If set, the server enables TLS with the arugment config *)
+
 end
 
 
@@ -428,6 +429,17 @@ class modify_http_protocol_config :
   (** Modifies the passed config object as specified by the optional
       arguments
    *)
+
+(** Allows it to set hooks for {!Nethttpd_kernel.http_protocol} *)
+class type http_protocol_hooks =
+object
+  method tls_set_cache : store:(string -> string -> unit) ->
+                         remove:(string -> unit) ->
+                         retrieve:(string -> string) ->
+                            unit
+    (** Sets the functions for accessing the session cache *)
+end
+
 
 (** The core event loop of the HTTP daemon *)
 class http_protocol : #http_protocol_config -> Unix.file_descr ->
@@ -506,6 +518,9 @@ object
     * This token contains a [http_response] object that must be filled with a
     * 400 error response.
    *)
+
+  method hooks : http_protocol_hooks
+    (** Set hooks *)
 
   method cycle : ?block:float -> unit -> unit
     (** Looks at the file descriptor. If there is data to read from the descriptor,
@@ -609,7 +624,7 @@ object
     (** If TLS is enabled, this returns the session properties. These
         are first available after the TLS handshake.
      *)
-
+   
   method config : http_protocol_config
     (** Just returns the configuration *)
 
