@@ -747,6 +747,9 @@ object(self)
   val mutable tls_shutdown_done = false
     (* Whether the TLS shutdown (for sending) is over *)
 
+  val mutable tls_session_props = None
+    (* Session properties (available after handshake) *)
+
   val mutable resp_queue = Queue.create()
     (* The queue of [http_response] objects. The first is currently being transmitted *)
 
@@ -903,9 +906,10 @@ object(self)
       ( match tls with
           | None -> ()
           | Some t ->
-              Netsys_tls.start_tls t
-      );
-      tls_handshake <- false
+              Netsys_tls.start_tls t;
+              tls_handshake <- false;
+              tls_session_props <- Some (Nettls_support.get_tls_session_props t)
+      )
     with
       | Netsys_types.EAGAIN_RD ->
 	  dlogr (fun () -> sprintf "FD %Ld: start_tls EAGAIN_RD" fdi);
@@ -1144,6 +1148,24 @@ object(self)
 	with Failure _ -> 
 	  IFDEF Testing THEN self # case "accept_header/5" ELSE () END;
 	  raise(Bad_request `Bad_header) in
+      (* TLS: check whether Host header (if set) equals the SNI host name *)
+      ( match tls_session_props with
+          | None ->
+               ()
+          | Some props ->
+               ( try
+                   let host_hdr =
+                     match req_h # multiple_field "host" with
+                       | [ host_hdr ] -> host_hdr
+                       | [] -> raise Not_found
+                       | _ -> raise(Bad_request (`Bad_header_field "Host")) in
+                   if not (Nettls_support.is_addressed_host host_hdr props)
+                   then
+                     raise(Bad_request (`Bad_header_field "Host"))
+                 with Not_found ->  (* No "Host" header => no checks *)
+                   ()
+               )
+      );
       (* (5) *)
       let close = 
 	match req_version with
@@ -1682,16 +1704,7 @@ object(self)
 
 
   method tls_session_props =
-    match tls with
-      | None -> 
-           None
-      | Some t ->
-           if tls_handshake then
-             None
-           else (
-             Some(Nettls_support.get_tls_session_props t)
-           )
-
+    tls_session_props
 end
 
 

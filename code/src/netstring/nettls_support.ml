@@ -89,3 +89,57 @@ let get_tls_session_props (ep:Netsys_crypto_types.tls_endpoint)
       method protocol = protocol
     end
   )
+
+
+let dot_re = Netstring_str.regexp "[.]"
+
+
+let match_hostname n1 n2 =
+  (* n1 may contain "*" as domain component patterns *)
+  let l1 = Netstring_str.split dot_re n1 in
+  let l2 = Netstring_str.split dot_re n2 in
+  List.length l1 = List.length l2 &&
+    List.for_all2
+      (fun dc1 dc2 ->
+         dc1 = "*" || String.uppercase dc1 = String.uppercase dc2
+      )
+      l1
+      l2
+  
+
+let is_dns_name =
+  function `DNS_name _ -> true | _ -> false
+
+let is_this_dns_name n1 =
+  function `DNS_name n2 -> match_hostname n2 n1 | _ -> false
+
+let is_addressed_host name (props : tls_session_props) =
+  match props#addressed_server with
+    | Some n ->
+         match_hostname n name
+    | None ->
+         ( match props # endpoint_credentials with
+             | `X509 cert ->
+                  ( try
+                      let data, _ =
+                        Netx509.find_extension 
+                          Netx509.CE.ce_subject_alt_name cert#extensions in
+                      let san = Netx509.parse_subject_alt_name data in
+                      (* if there is any DNS alternate name, one of these
+                         names must match
+                       *)
+                      if not(List.exists is_dns_name san) then
+                        raise Not_found;
+                      List.exists (is_this_dns_name name) san
+                    with
+                      | Netx509.Extension_not_found _ 
+                      | Not_found ->
+                           let subj = cert#subject in
+                           let cn = 
+                             Netx509.lookup_dn_ava_utf8
+                               subj Netx509.DN_attributes.at_commonName in
+                           match_hostname cn name
+                  )
+             | `Anonymous ->
+                  true   (* anonymous can be anybody *)
+         )

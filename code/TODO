@@ -6,7 +6,7 @@ TLS:
  - implement alert support
  - session cache
      * Netplex_cache. Like Netplex_sharedvar, but only strings, and
-       with a timeout
+       with a timeout - DONE
  - Nethttpd_types.tls_props - DONE
  - Nethttpd_kernel: export tls_props - DONE
  - fill cgi env
@@ -26,7 +26,7 @@ TLS:
        suffixes: T,I,G,S,D,UID
        numeric suffixies when several components exist (or use only the first)
  - Nethttpd: check that Host header and the service name included in TLS
-   are identical
+   are identical - DONE
  - check that https redirects work - DONE
  - config: TLS name as user name
     * check client authentication
@@ -36,7 +36,7 @@ TLS:
        Figure out how to do that. (Maybe look at mod_gnutls?)
        THIS IS AUTOMATICALLY DONE BY GNUTLS! JUST ADD SEVERAL CERTS
        TO THE SESSION!
-     * server: check that SNI name and "Host" header are identical
+     * server: check that SNI name and "Host" header are identical - DONE
      * client: just set the right hostname
  - Info:
    Since GnuTLS-3.1.2 session tickets are automatically enabled.
