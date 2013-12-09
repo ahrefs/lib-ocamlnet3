@@ -63,8 +63,9 @@ module TLS : GNUTLS_PROVIDER =
     type server_name = [ `Domain of string ]
 
     type state =
-        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
-          | `End ]
+        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Data_rs
+        | `Switching | `Accepting | `Refusing | `End
+        ]
 
     type raw_credentials =
       [ `X509 of string
@@ -75,7 +76,7 @@ module TLS : GNUTLS_PROVIDER =
         { role : [ `Server | `Client ];
           recv : (Netsys_types.memory -> int);
           send : (Netsys_types.memory -> int -> int);
-          config : config;
+          mutable config : config;
           session : G.gnutls_session_t;
           mutable our_cert : raw_credentials option;
           mutable state : state;
@@ -98,6 +99,7 @@ module TLS : GNUTLS_PROVIDER =
         }
 
     exception Switch_request
+    exception Switch_response of bool
     exception Error of error_code
     exception Warning of error_code
 
@@ -333,6 +335,8 @@ module TLS : GNUTLS_PROVIDER =
           
     let get_state ep = ep.state
 
+    let get_config ep = ep.config
+
     let at_transport_eof ep = ep.trans_eof
 
     let endpoint_exn ?(warnings=false) ep f arg =
@@ -347,7 +351,18 @@ module TLS : GNUTLS_PROVIDER =
         | G.Error `Interrupted ->
             raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""))
         | G.Error `Rehandshake ->
-            raise Switch_request
+            if ep.state = `Switching then
+              raise (Switch_response true)
+            else
+              raise Switch_request
+        | G.Error (`Warning_alert_received as code) ->
+            if G.gnutls_alert_get ep.session = `No_renegotiation then
+              raise (Switch_response false)
+            else
+              if warnings then
+                raise(Warning code)
+              else
+                raise(Error code)
         | G.Error code ->
             if warnings && not(G.gnutls_error_is_fatal code) then
               raise(Warning code)
@@ -483,9 +498,47 @@ module TLS : GNUTLS_PROVIDER =
         )
         ()
 
-    let switch _ = assert false
-    let accept_switch _ = assert false
-    let refuse_switch _ = assert false
+    let switch ep conf =
+      if ep.state <> `Data_rw && ep.state <> `Data_w && ep.state <> `Switching
+      then
+        unexpected_state();
+      ep.state <- `Switching;
+      ep.config <- conf;
+      endpoint_exn
+        ~warnings:true
+        ep
+        G.gnutls_rehandshake
+        ep.session;
+      ep.state <- `Data_rs
+
+
+    let accept_switch ep conf =
+      if ep.state <> `Data_rw && ep.state <> `Data_w && ep.state <> `Accepting 
+      then
+        unexpected_state();
+      ep.state <- `Accepting;
+      ep.config <- conf;
+      endpoint_exn
+        ~warnings:true
+        ep
+        G.gnutls_handshake
+        ep.session;
+      update_our_cert ep;
+      ep.state <- `Data_rw
+
+
+    let refuse_switch ep =
+      if ep.state <> `Data_rw && ep.state <> `Data_w && ep.state <> `Refusing 
+      then
+        unexpected_state();
+      ep.state <- `Refusing;
+      endpoint_exn
+        ~warnings:true
+        ep
+        (G.gnutls_alert_send ep.session `Warning)
+        `No_renegotiation;
+      ep.state <- `Data_rw
+
 
     let send ep buf n =
       if ep.state <> `Data_rw && ep.state <> `Data_w then
@@ -497,7 +550,8 @@ module TLS : GNUTLS_PROVIDER =
         n
 
     let recv ep buf =
-      if ep.state <> `Data_rw && ep.state <> `Data_r then
+      if ep.state <> `Data_rw && ep.state <> `Data_r && ep.state <> `Data_rs 
+      then
         unexpected_state();
       let n =
         endpoint_exn

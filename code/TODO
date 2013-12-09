@@ -4,6 +4,8 @@ TLS:
  - Also add `PEM_data to TLS config. Support that in Netplex parser.
  - document Netplex config for TLS
  - implement alert support
+     * DONE partially: peers always accept rehandshakes with identical config
+     * Open: request rehandshakes
  - session cache
      * Netplex_cache. Like Netplex_sharedvar, but only strings, and
        with a timeout - DONE
@@ -41,9 +43,13 @@ TLS:
        the "Host" header with the selected server cert.
      * client: just set the right hostname
  - Info:
-   Since GnuTLS-3.1.2 session tickets are automatically enabled.
+   Since GnuTLS-3.1.2 session tickets are automatically enabled in the client.
    Also do something automatically for pre-3.1.2 versions?
  - implement renegotiation for nethttpd
+    - i.e. some request needs a certificate
+    - figure out how to do it. Idea: output a redirect to the same page,
+      and request the rehandshake immediately after sending the 300
+      response. That way the rehandshake is a special response message.
  - OCSP support ?
 
 

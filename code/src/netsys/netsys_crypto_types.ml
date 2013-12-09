@@ -8,6 +8,7 @@ module type TLS_PROVIDER =
     type error_code
 
     exception Switch_request
+    exception Switch_response of bool
     exception Error of error_code
     exception Warning of error_code
 
@@ -58,8 +59,9 @@ module type TLS_PROVIDER =
             endpoint
 
     type state =
-        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
-          | `End ]
+        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Data_rs
+        | `Switching | `Accepting | `Refusing | `End
+        ]
 
     val get_state : endpoint -> state
 
@@ -72,10 +74,11 @@ module type TLS_PROVIDER =
     val hello : endpoint -> unit
     val bye : endpoint -> Unix.shutdown_command -> unit
     val verify : endpoint -> unit
+    val get_config : endpoint -> config
     val get_endpoint_creds : endpoint -> raw_credentials
     val get_peer_creds : endpoint -> raw_credentials
     val get_peer_creds_list : endpoint -> raw_credentials list
-    val switch : endpoint -> config -> bool
+    val switch : endpoint -> config -> unit
     val accept_switch : endpoint -> config -> unit
     val refuse_switch : endpoint -> unit
     val send : endpoint -> Netsys_types.memory -> int -> int

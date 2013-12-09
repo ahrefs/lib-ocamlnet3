@@ -138,28 +138,46 @@ let endpoint ep =
   (module File_endpoint : Netsys_crypto_types.TLS_ENDPOINT)
 
 
-let start_tls endpoint =
+let state_driven_action endpoint =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
   try
-    let state = P.get_state Endpoint.endpoint in
-    if state = `Start || state = `Handshake then (
-      P.hello Endpoint.endpoint;
-      P.verify Endpoint.endpoint
-    )
+    match P.get_state Endpoint.endpoint with
+      | `Start | `Handshake ->
+           P.hello Endpoint.endpoint;
+           P.verify Endpoint.endpoint
+      | `Accepting ->
+           P.accept_switch Endpoint.endpoint (P.get_config Endpoint.endpoint)
+      | `Refusing ->
+           P.refuse_switch Endpoint.endpoint
+      | `Switching ->
+           P.switch Endpoint.endpoint;
+           P.hello Endpoint.endpoint;
+           P.verify Endpoint.endpoint
+      | _ -> 
+           ()
    with
     | exn -> 
          if !Debug.enable then
-           debug_backtrace "start_tls" exn (Printexc.get_backtrace());
+           debug_backtrace "state_driven_action" exn (Printexc.get_backtrace());
          raise(trans_exn (module P) exn)
+
+
+let start_tls endpoint =
+  let module Endpoint = 
+    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
+  let module P = Endpoint.TLS in
+  let state = P.get_state Endpoint.endpoint in
+  if state = `Start || state = `Handshake then
+    state_driven_action endpoint
 
 
 let mem_recv endpoint buf pos len =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
-  start_tls endpoint;
+  state_driven_action endpoint;
   let buf' =
     if pos=0 && len=Bigarray.Array1.dim buf then
       buf
@@ -168,6 +186,9 @@ let mem_recv endpoint buf pos len =
   try
     P.recv Endpoint.endpoint buf'
   with
+    | P.Switch_request ->
+         P.accept_switch Endpoint.endpoint (P.get_config Endpoint.endpoint);
+         raise Netsys_types.EAGAIN_RD
     | exn ->
          if !Debug.enable then
            debug_backtrace "mem_recv" exn (Printexc.get_backtrace());
@@ -186,7 +207,7 @@ let mem_send endpoint buf pos len =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
-  start_tls endpoint;
+  state_driven_action endpoint;
   let buf' =
     if pos=0 then
       buf
@@ -212,7 +233,7 @@ let end_tls endpoint how =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
-  start_tls endpoint;
+  state_driven_action endpoint;
   try
     P.bye Endpoint.endpoint how
   with

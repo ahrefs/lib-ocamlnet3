@@ -10,7 +10,14 @@ module type TLS_PROVIDER =
     type error_code
 
     exception Switch_request
-      (** The server requested a rehandshake *)
+      (** The server requested a rehandshake (this exception is thrown
+          in the client)
+       *)
+
+    exception Switch_response of bool
+      (** The client accepted or denied a rehandshake (this exception is thrown
+          in the server). [true] means acceptance.
+       *)
 
     exception Error of error_code
       (** A fatal error occurred (i.e. the session needs to be terminated) *)
@@ -170,16 +177,26 @@ module type TLS_PROVIDER =
        *)
 
     type state =
-        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
-          | `End ]
+        [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Data_rs
+        | `Switching | `Accepting | `Refusing | `End
+        ]
       (** The state of a session:
 
           - [`Start]: Before the session is started
-          - [`Handshake]: The handshake is being done
+          - [`Handshake]: The handshake is being done (and [hello] needs to
+            be called again)
           - [`Data_rw]: The connection exists, and is read/write
           - [`Data_r]: The connection exists, and is read-only
           - [`Data_w]: The connection exists, and is write-only
-          - [`Switching]: A rehandshake is being negotiated
+          - [`Data_rs]: The connection exists, and data can be read.
+            There was a switch request (initiated by us), and a response
+            is awaited. No data can be sent in the moment.
+          - [`Switching]: A rehandshake is being negotiated (and [switch]
+            needs to be called again)
+          - [`Accepting]: A rehandshake is being accepted (and [accept_switch]
+            needs to be called again)
+          - [`Refusing]: A rehandshake is being refused (and [refuse_switch]
+            needs to be called again)
           - [`End]: After finishing the session
        *)
 
@@ -251,6 +268,10 @@ module type TLS_PROVIDER =
           for internal processing errors).
        *)
 
+    val get_config : endpoint -> config
+      (** Get the current config (possibly modified because of a rehandshake)
+       *)
+
     val get_endpoint_creds : endpoint -> raw_credentials
       (** Get the credentials that was actually used in the handshake, in raw
           format.
@@ -265,15 +286,12 @@ module type TLS_PROVIDER =
       (** Get the chain that was actually used in the handshake.
        *)
 
-    val switch : endpoint -> config -> bool
+    val switch : endpoint -> config -> unit
       (** The server can use this to request a rehandshake and to use the
           new configuration for cert verification. This function sends the
-          request, and expects an immediate response from the client
-          (i.e. there must not be any other payload data in between). If
-          the function returns [true], the server can go on and call
-          [hello] to perform the handshake. If it returns [false], the
-          switch was refused by the client. (If payload data is received
-          instead of a response the function will raise [Error].)
+          request, and expects a soon response from the client. The
+          state enters [`Data_rs] meaning that we can still read data,
+          and at some point [recv] will raise [Switch_response].
 
           On the client side, the request will by returned as exception
           [Switch_request] by [recv]. The client should respond with
@@ -319,6 +337,9 @@ module type TLS_PROVIDER =
 
           The exception [Switch_request] can only occur on the client
           side, and should be responded by [accept_switch] or [refuse_switch].
+
+          The exception [Switch_response] can only occur on the server
+          side.
        *)
 
     val recv_will_not_block : endpoint -> bool
