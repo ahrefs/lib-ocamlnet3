@@ -322,10 +322,11 @@ module TLS : GNUTLS_PROVIDER =
           let n = recv mem in
           if Bigarray.Array1.dim mem > 0 && n=0 then ep.trans_eof <- true;
           n in
-        G.gnutls_credentials_set session config.credentials.gcred;
-        G.gnutls_priority_set session config.priority;
         G.b_set_pull_callback session recv1;
         G.b_set_push_callback session send;
+
+        G.gnutls_priority_set session config.priority;
+        G.gnutls_credentials_set session config.credentials.gcred;
         ep
       in
       trans_exn f ()
