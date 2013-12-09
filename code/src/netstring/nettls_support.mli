@@ -85,14 +85,16 @@ val get_tls_session_props : Netsys_crypto_types.tls_endpoint ->
    *)
 
 
-val is_addressed_host : string -> tls_session_props -> bool
-  (** [is_addressed_host name props]: checks whether [name] is the
-      selected SNI name ([addressed_server]). If SNI is unused it
-      is instead looked for an DNS alternate name, and if this is
-      finally not found the [cn] of the [endpoint_credentials] is
-      checked.
+val is_endpoint_host : string -> tls_session_props -> bool
+  (** [is_endpoint_host name props]: checks whether [name] matches
+      the certificate of the endpoint in [props].
 
-      The certificate name can use wildcards.
+      In particular, this function checks the DNS alternate name,
+      and the common name of the subject. The certificate name can
+      use wildcards.
 
       Returns true if [name] could be verified this way.
+
+      NB. This doesn't check SNI ([addressed_server]), because this is the
+      peer's task.
    *)

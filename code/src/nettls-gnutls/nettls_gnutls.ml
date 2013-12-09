@@ -66,12 +66,18 @@ module TLS : GNUTLS_PROVIDER =
         [ `Start | `Handshake | `Data_rw | `Data_r | `Data_w | `Switching
           | `End ]
 
+    type raw_credentials =
+      [ `X509 of string
+      | `Anonymous
+      ]
+
     type endpoint =
         { role : [ `Server | `Client ];
           recv : (Netsys_types.memory -> int);
           send : (Netsys_types.memory -> int -> int);
           config : config;
           session : G.gnutls_session_t;
+          mutable our_cert : raw_credentials option;
           mutable state : state;
           mutable trans_eof : bool;
         }
@@ -86,10 +92,10 @@ module TLS : GNUTLS_PROVIDER =
           peer_name_unchecked : bool;
         }
 
-    type raw_credentials =
-      [ `X509 of string
-      | `Anonymous
-      ]
+    type serialized_session =
+        { ser_data : string;    (* GnuTLS packed session *)
+          ser_our_cert : raw_credentials option;
+        }
 
     exception Switch_request
     exception Error of error_code
@@ -307,6 +313,7 @@ module TLS : GNUTLS_PROVIDER =
             recv;
             send;
             config;
+            our_cert = None;
             session;
             state = `Start;
             trans_eof = false;
@@ -349,6 +356,25 @@ module TLS : GNUTLS_PROVIDER =
     let unexpected_state() =
       failwith "Nettls_gnutls: the endpoint is in an unexpected state"
 
+    let update_our_cert ep =
+      (* our_cert: if the session is resumed, our_cert should already be
+         filled in by the [retrieve] callback (because GnuTLS omit this
+         certificate in its own serialization format)
+       *)
+      if ep.our_cert = None then
+        (* So far only X509... *)
+        trans_exn
+          (fun () ->
+             ep.our_cert <- 
+               Some (try
+                        `X509 (G.gnutls_certificate_get_ours ep.session)
+                      with
+                        | G.Null_pointer -> `Anonymous
+                    )
+          )
+          ()
+
+
     let hello ep =
       if ep.state <> `Start && ep.state <> `Handshake && 
            ep.state <> `Switching then
@@ -359,6 +385,7 @@ module TLS : GNUTLS_PROVIDER =
         ep
         G.gnutls_handshake
         ep.session;
+      update_our_cert ep;
       ep.state <- `Data_rw
 
     let bye ep how =
@@ -421,15 +448,9 @@ module TLS : GNUTLS_PROVIDER =
       trans_exn f ()
 
     let get_endpoint_creds ep =
-      (* So far only X509... *)
-      trans_exn
-        (fun () ->
-           try
-             `X509 (G.gnutls_certificate_get_ours ep.session)
-           with
-             | G.Null_pointer -> `Anonymous
-        )
-        ()
+      match ep.our_cert with
+        | Some c -> c
+        | None -> failwith "get_endpoint_creds: unavailable"
 
     let get_peer_creds ep =
       (* So far only X509... *)
@@ -563,7 +584,20 @@ module TLS : GNUTLS_PROVIDER =
         l
 
     let set_session_cache ~store ~remove ~retrieve ep =
-      G.b_set_db_callbacks ep.session store remove retrieve
+      let g_store key data =
+        update_our_cert ep;
+        let r =
+          { ser_data = data;
+            ser_our_cert = ep.our_cert
+          } in
+        store key (Marshal.to_string r []) in
+      let g_retrieve key =
+        let s = retrieve key in
+        let r = (Marshal.from_string s 0 : serialized_session) in
+        (* HACK: *)
+        ep.our_cert <- r.ser_our_cert;
+        r.ser_data in
+      G.b_set_db_callbacks ep.session g_store remove g_retrieve
 
     let gnutls_credentials c = c.gcred
     let gnutls_session ep = ep.session

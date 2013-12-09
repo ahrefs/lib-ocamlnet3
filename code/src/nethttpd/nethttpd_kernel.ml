@@ -908,7 +908,6 @@ object(self)
           | Some t ->
               Netsys_tls.start_tls t;
               tls_handshake <- false;
-              tls_session_props <- Some (Nettls_support.get_tls_session_props t)
       )
     with
       | Netsys_types.EAGAIN_RD ->
@@ -1149,7 +1148,7 @@ object(self)
 	  IFDEF Testing THEN self # case "accept_header/5" ELSE () END;
 	  raise(Bad_request `Bad_header) in
       (* TLS: check whether Host header (if set) equals the SNI host name *)
-      ( match tls_session_props with
+      ( match self#tls_session_props with
           | None ->
                ()
           | Some props ->
@@ -1159,7 +1158,10 @@ object(self)
                        | [ host_hdr ] -> host_hdr
                        | [] -> raise Not_found
                        | _ -> raise(Bad_request (`Bad_header_field "Host")) in
-                   if not (Nettls_support.is_addressed_host host_hdr props)
+                   let host_name, _ =
+                     try Nethttp.split_host_port host_hdr
+                     with _ -> host_hdr, None in
+                   if not (Nettls_support.is_endpoint_host host_name props)
                    then
                      raise(Bad_request (`Bad_header_field "Host"))
                  with Not_found ->  (* No "Host" header => no checks *)
@@ -1704,6 +1706,14 @@ object(self)
 
 
   method tls_session_props =
+    if not tls_handshake && tls_session_props = None then (
+      match tls with
+        | Some t ->
+             tls_session_props <- 
+               Some (Nettls_support.get_tls_session_props t)
+        | None ->
+             ()
+    );
     tls_session_props
 end
 

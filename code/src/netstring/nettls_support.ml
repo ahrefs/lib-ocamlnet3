@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+open Printf
+
 type credentials =
   [ `X509 of Netx509.x509_certificate
   | `Anonymous
@@ -113,33 +115,28 @@ let is_dns_name =
 let is_this_dns_name n1 =
   function `DNS_name n2 -> match_hostname n2 n1 | _ -> false
 
-let is_addressed_host name (props : tls_session_props) =
-  match props#addressed_server with
-    | Some n ->
-         match_hostname n name
-    | None ->
-         ( match props # endpoint_credentials with
-             | `X509 cert ->
-                  ( try
-                      let data, _ =
-                        Netx509.find_extension 
-                          Netx509.CE.ce_subject_alt_name cert#extensions in
-                      let san = Netx509.parse_subject_alt_name data in
-                      (* if there is any DNS alternate name, one of these
+let is_endpoint_host name (props : tls_session_props) =
+  match props # endpoint_credentials with
+    | `X509 cert ->
+         ( try
+             let data, _ =
+               Netx509.find_extension 
+                 Netx509.CE.ce_subject_alt_name cert#extensions in
+             let san = Netx509.parse_subject_alt_name data in
+             (* if there is any DNS alternate name, one of these
                          names must match
-                       *)
-                      if not(List.exists is_dns_name san) then
-                        raise Not_found;
-                      List.exists (is_this_dns_name name) san
-                    with
-                      | Netx509.Extension_not_found _ 
-                      | Not_found ->
-                           let subj = cert#subject in
-                           let cn = 
-                             Netx509.lookup_dn_ava_utf8
-                               subj Netx509.DN_attributes.at_commonName in
-                           match_hostname cn name
-                  )
-             | `Anonymous ->
-                  true   (* anonymous can be anybody *)
+              *)
+             if not(List.exists is_dns_name san) then
+               raise Not_found;
+             List.exists (is_this_dns_name name) san
+           with
+             | Netx509.Extension_not_found _ 
+             | Not_found ->
+                  let subj = cert#subject in
+                  let cn = 
+                    Netx509.lookup_dn_ava_utf8
+                      subj Netx509.DN_attributes.at_commonName in
+                  match_hostname cn name
          )
+    | `Anonymous ->
+         true   (* anonymous can be anybody *)
