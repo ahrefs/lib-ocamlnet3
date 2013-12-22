@@ -1577,7 +1577,7 @@ class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ~role ~rd ~wr config =
         if not in_closed then (
           in_closed <- true;
           if out_closed then (
-            Netsys_tls.end_tls endpoint Unix.SHUTDOWN_ALL;
+            Netsys_tls.shutdown endpoint Unix.SHUTDOWN_ALL;
             wr # close_out();
             rd # close_in();
           )
@@ -1600,18 +1600,18 @@ class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ~role ~rd ~wr config =
          
       method flush () =
         if out_closed then raise Closed_channel;
-        Netsys_tls.start_tls endpoint
+        Netsys_tls.handshake endpoint
 
       method close_out() =
         if not out_closed then (
           out_closed <- true;
           if in_closed then (
-            Netsys_tls.end_tls endpoint Unix.SHUTDOWN_ALL;
+            Netsys_tls.shutdown endpoint Unix.SHUTDOWN_ALL;
             wr # close_out();
             rd # close_in();            
           )
           else
-            Netsys_tls.end_tls endpoint Unix.SHUTDOWN_SEND
+            Netsys_tls.shutdown endpoint Unix.SHUTDOWN_SEND
         )
 
       method pos_out = pos_out
@@ -1629,7 +1629,7 @@ class tls_endpoint ?(start_pos_in=0) ?(start_pos_out=0) ~role fd config =
       inherit socket_descr ~fd_style fd as super
   
       method flush() =
-        Netsys_tls.start_tls (Netsys_tls.endpoint endpoint);
+        Netsys_tls.handshake (Netsys_tls.endpoint endpoint);
         super # flush()
 
 

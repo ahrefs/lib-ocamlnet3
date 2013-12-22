@@ -152,7 +152,7 @@ let state_driven_action endpoint =
       | `Refusing ->
            P.refuse_switch Endpoint.endpoint
       | `Switching ->
-           P.switch Endpoint.endpoint;
+           P.switch Endpoint.endpoint (P.get_config Endpoint.endpoint);
            P.hello Endpoint.endpoint;
            P.verify Endpoint.endpoint
       | _ -> 
@@ -164,7 +164,7 @@ let state_driven_action endpoint =
          raise(trans_exn (module P) exn)
 
 
-let start_tls endpoint =
+let handshake endpoint =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
@@ -173,7 +173,7 @@ let start_tls endpoint =
     state_driven_action endpoint
 
 
-let mem_recv endpoint buf pos len =
+let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in
@@ -187,7 +187,10 @@ let mem_recv endpoint buf pos len =
     P.recv Endpoint.endpoint buf'
   with
     | P.Switch_request ->
-         P.accept_switch Endpoint.endpoint (P.get_config Endpoint.endpoint);
+         if on_rehandshake endpoint then
+           P.accept_switch Endpoint.endpoint (P.get_config Endpoint.endpoint)
+         else
+           P.refuse_switch Endpoint.endpoint;
          raise Netsys_types.EAGAIN_RD
     | exn ->
          if !Debug.enable then
@@ -195,10 +198,10 @@ let mem_recv endpoint buf pos len =
          raise(trans_exn (module P) exn)
 
 
-let recv endpoint buf pos len =
+let recv ?on_rehandshake endpoint buf pos len =
   let mem = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
   let mem_len = min len (Bigarray.Array1.dim mem) in
-  let n = mem_recv endpoint mem 0 mem_len in
+  let n = mem_recv ?on_rehandshake endpoint mem 0 mem_len in
   Netsys_mem.blit_memory_to_string mem 0 buf pos n;
   n
 
@@ -229,7 +232,7 @@ let send endpoint buf pos len =
   mem_send endpoint mem 0 mem_len
 
 
-let end_tls endpoint how =
+let shutdown endpoint how =
   let module Endpoint = 
     (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
   let module P = Endpoint.TLS in

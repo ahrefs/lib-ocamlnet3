@@ -182,14 +182,16 @@ val endpoint : (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
   (** Coercion *)
 
 
-val start_tls : (module Netsys_crypto_types.TLS_ENDPOINT) -> unit
+val handshake : (module Netsys_crypto_types.TLS_ENDPOINT) -> unit
   (** Procedes the TLS protocol until payload data can be exchanged.
       This includes the initial handshake (if not yet done), and the
       verification.
    *)
 
 
-val recv : (module Netsys_crypto_types.TLS_ENDPOINT) ->
+val recv : ?on_rehandshake:
+             ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
+           (module Netsys_crypto_types.TLS_ENDPOINT) ->
            string -> int -> int -> int
   (** [recv endpoint buffer pos len]: Receives data from [endpoint],
       and puts the received bytes into [buffer] at byte position [pos].
@@ -198,8 +200,14 @@ val recv : (module Netsys_crypto_types.TLS_ENDPOINT) ->
 
       If the TLS protocol is not yet at the stage where data can be
       received, the protocol is proceeded until this point (i.e.
-      [start_tls] is "included"). Also, renegotiation alerts are interpreted.
+      [handshake] is "included"). Also, renegotiation alerts are interpreted.
       Both phenomenons can cause that data needs to be written first.
+
+      on_rehandshake: returns whether renegotiations are allowed. Defaults to
+      [true]. Also, this function is guaranteed to be called when a
+      renegotiation request arrives. In this case, [recv] will raise
+      an exception such as {!Netsys_types.EAGAIN_RD} or
+      {!Netsys_types.EAGAIN_WR}, but never return normally.
 
       If interrupted the function can be safely invoked again.
 
@@ -208,7 +216,9 @@ val recv : (module Netsys_crypto_types.TLS_ENDPOINT) ->
    *)
 
 
-val mem_recv : (module Netsys_crypto_types.TLS_ENDPOINT) ->
+val mem_recv : ?on_rehandshake:
+                 ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
+               (module Netsys_crypto_types.TLS_ENDPOINT) ->
                Netsys_types.memory -> int -> int -> int
   (** Same for a memory-backed buffer *)
 
@@ -221,7 +231,7 @@ val send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
 
       If the TLS protocol is not yet at the stage where data can be
       received, the protocol is proceeded until this point (i.e.
-      [start_tls] is "included"). Also, renegotiation alerts are interpreted.
+      [handshake] is "included"). Also, renegotiation alerts are interpreted.
       Both phenomenons can cause that data needs to be received as well
       as sent.
 
@@ -235,7 +245,7 @@ val mem_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                Netsys_types.memory -> int -> int -> int
   (** Same for a memory-backed buffer *)
 
-val end_tls : (module Netsys_crypto_types.TLS_ENDPOINT) ->
+val shutdown : (module Netsys_crypto_types.TLS_ENDPOINT) ->
               Unix.shutdown_command -> unit
   (** Ends the TLS encapsulation of data:
 

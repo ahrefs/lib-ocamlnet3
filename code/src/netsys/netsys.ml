@@ -531,7 +531,7 @@ let gshutdown fd_style fd cmd =
 	  Netsys_win32.close_output_thread othr
 	)
     | `TLS endpoint ->
-        Netsys_tls.end_tls (Netsys_tls.endpoint endpoint) cmd
+        Netsys_tls.shutdown (Netsys_tls.endpoint endpoint) cmd
     | _ ->
 	raise Shutdown_not_supported
 
@@ -623,7 +623,7 @@ let gclose fd_style fd =
 	  Unix.close fd;
 	Netsys_win32.unregister fd
     | `TLS endpoint ->
-        Netsys_tls.end_tls (Netsys_tls.endpoint endpoint) Unix.SHUTDOWN_ALL;
+        Netsys_tls.shutdown (Netsys_tls.endpoint endpoint) Unix.SHUTDOWN_ALL;
         let module Endpoint =
           (val endpoint : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
 	catch_exn

@@ -906,20 +906,20 @@ object(self)
       ( match tls with
           | None -> ()
           | Some t ->
-              Netsys_tls.start_tls t;
+              Netsys_tls.handshake t;
               tls_handshake <- false;
       )
     with
       | Netsys_types.EAGAIN_RD ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls EAGAIN_RD" fdi);
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_RD" fdi);
           override_dir <- Some `R
       | Netsys_types.EAGAIN_WR ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls EAGAIN_WR" fdi);
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_WR" fdi);
           override_dir <- Some `W
       | Unix.Unix_error(Unix.EINTR,_,_) ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls EINTR" fdi)
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EINTR" fdi)
       | Netsys_tls.Error(code,msg) as e ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls TLS_ERROR %s" fdi
+	  dlogr (fun () -> sprintf "FD %Ld: handshake TLS_ERROR %s" fdi
                                    (Netexn.to_string e));
           self # abort(`TLS_error(code,msg))
 
@@ -929,20 +929,20 @@ object(self)
       ( match tls with
           | None -> ()
           | Some t ->
-              Netsys_tls.end_tls t Unix.SHUTDOWN_SEND
+              Netsys_tls.shutdown t Unix.SHUTDOWN_SEND
       );
       tls_shutdown_done <- true
     with
       | Netsys_types.EAGAIN_RD ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls EAGAIN_RD" fdi);
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_RD" fdi);
           override_dir <- Some `R
       | Netsys_types.EAGAIN_WR ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls EAGAIN_WR" fdi);
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_WR" fdi);
           override_dir <- Some `W
       | Unix.Unix_error(Unix.EINTR,_,_) ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls EINTR" fdi)
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EINTR" fdi)
       | Netsys_tls.Error(code,msg) as e ->
-	  dlogr (fun () -> sprintf "FD %Ld: start_tls TLS_ERROR %s" fdi
+	  dlogr (fun () -> sprintf "FD %Ld: handshake TLS_ERROR %s" fdi
                                    (Netexn.to_string e));
           self # abort (`TLS_error(code,msg))
 
