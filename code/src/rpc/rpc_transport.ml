@@ -361,7 +361,7 @@ let datagram_rpc_multiplex_controller ?(close_inactive_descr=true)
       | _ ->
 	  (`Implied, Some `Implied) in
   let mplex = 
-    Uq_engines.create_multiplex_controller_for_datagram_socket
+    Uq_multiplex.create_multiplex_controller_for_datagram_socket
       ~close_inactive_descr ~preclose
       fd esys in
   new datagram_rpc_multiplex_controller 
@@ -891,7 +891,7 @@ let stream_rpc_multiplex_controller ?(close_inactive_descr=true)
     with
       | Unix.Unix_error(_,_,_) -> `Implied in
   let mplex = 
-    Uq_engines.create_multiplex_controller_for_connected_socket
+    Uq_multiplex.create_multiplex_controller_for_connected_socket
       ~close_inactive_descr ~preclose
       fd esys in
   new stream_rpc_multiplex_controller 

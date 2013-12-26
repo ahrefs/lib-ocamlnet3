@@ -790,7 +790,7 @@ object(self)
 	    | _ ->
 		let ch = req_body # open_value_rd() in
 		let d = 
-		  `Async_in(new Uq_engines.pseudo_async_in_channel ch,esys) in
+		  `Async_in(new Uq_transfer.pseudo_async_in_channel ch,esys) in
 		req_handle <- Some d;
 		d
 
@@ -813,7 +813,7 @@ object(self)
 	      | _ ->
 		  let rbody = self#resp_body in
 		  let ch = rbody # open_value_wr() in
-		  `Async_out(new Uq_engines.pseudo_async_out_channel ch,esys) in
+		  `Async_out(new Uq_transfer.pseudo_async_out_channel ch,esys) in
 	  (* Check for maximum response length: *)
 	  let c = ref 0L in
 	  let c_max = self # max_response_body_length in
@@ -3283,7 +3283,7 @@ let proxy_connect_e esys fd fd_open host port options proxy_auth_handler_opt
      be opened.
    *)
   let mplex =
-    Uq_engines.create_multiplex_controller_for_connected_socket
+    Uq_multiplex.create_multiplex_controller_for_connected_socket
       ~supports_half_open_connection:true
       fd esys in
   (* N.B. No timeout here required because this activity is covered by the
@@ -3463,7 +3463,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 			     (`Socket(`Sock_inet(Unix.SOCK_STREAM,
 						 hop1_ip,
 						 hop1_port),
-				      Uq_engines.default_connect_options)))
+				      Uq_client.default_connect_options)))
 		  | _ -> None in
 	      let sockspec =
 		match peer with
@@ -3477,9 +3477,9 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 	      let cur_proxy_session = ref None in
 
 	      let rec tcp_real_connect_e () =
-		Uq_engines.connector 
+		Uq_client.connect_e
 		  ?proxy:proxy_opt
-		  (`Socket(sockspec, Uq_engines.default_connect_options))
+		  (`Socket(sockspec, Uq_client.default_connect_options))
 		  esys 
 		++ (function
 		      | `Socket(fd,_) ->
@@ -3571,7 +3571,7 @@ end
 let http_transport_channel_type : transport_channel_type =
   ( object(self)
       method continue fd cb tmo tmo_x host port esys =
-	Uq_engines.create_multiplex_controller_for_connected_socket
+	Uq_multiplex.create_multiplex_controller_for_connected_socket
 	  ~close_inactive_descr:true
 	  ~supports_half_open_connection:true
 	  ~timeout:( tmo, tmo_x )

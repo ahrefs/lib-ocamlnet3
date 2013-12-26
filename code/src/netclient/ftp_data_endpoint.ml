@@ -949,7 +949,7 @@ class ftp_data_receiver_impl
 	  new block_record_reader ~onclose ~ondata ~commit rec_ch
   in
 object (self)
-  inherit Uq_engines.receiver 
+  inherit Uq_transfer.receiver 
     ~src:descr ~dst ~close_src:false ~close_dst:true esys
 
   val mutable descr_state = (`Transfer_in_progress : descr_state)
@@ -1053,7 +1053,7 @@ class ftp_data_sender_impl
 	  new block_record_writer rec_ch
   in
 object (self)
-  inherit Uq_engines.sender
+  inherit Uq_transfer.sender
     ~src ~dst:descr ~close_src:true ~close_dst:false esys
 end ;;
 

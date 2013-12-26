@@ -1197,12 +1197,12 @@ object(self)
 		Uq_engines.timeout_engine
 		  timeout
 		  (FTP_timeout (sprintf "%s:%d" host port))
-		  (Uq_engines.connector ?proxy
+		  (Uq_client.connect_e ?proxy
 		     (`Socket(
 			`Sock_inet_byname(Unix.SOCK_STREAM,
 					  host,
 					  port),
-			Uq_engines.default_connect_options))
+			Uq_client.default_connect_options))
 		     event_system
 		  ) in
 	      Uq_engines.when_state
@@ -1320,12 +1320,12 @@ object(self)
 	      Uq_engines.timeout_engine
 		timeout
 		(FTP_timeout (sprintf "%s:%d" addr port))
-		(Uq_engines.connector ?proxy
+		(Uq_client.connect_e ?proxy
 		   (`Socket(
 		      `Sock_inet(Unix.SOCK_STREAM,
 				 Unix.inet_addr_of_string addr,
 				 port),
-		      Uq_engines.default_connect_options))
+		      Uq_client.default_connect_options))
 		   event_system
 		) in
 	    Uq_engines.when_state
@@ -2209,7 +2209,7 @@ object(self)
     proxy := Some(new Uq_socks5.proxy_client 
                     (`Socket(`Sock_inet_byname(Unix.SOCK_STREAM,
 					       h,p),
-                               Uq_engines.default_connect_options)))
+                               Uq_client.default_connect_options)))
 
   method reset() =
     match !pi_opt with

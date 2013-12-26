@@ -1077,7 +1077,7 @@ let filter_out_buffer ~max (p : Netchannels.io_obj_channel) d0 : out_buffer =
       buf # delete_hd n;
       (* Copy from p to d: *)
       let p_dev =
-	`Async_in(new Uq_engines.pseudo_async_in_channel p, esys) in
+	`Async_in(new Uq_transfer.pseudo_async_in_channel p, esys) in
       ( copy_e p_dev d
 	>> (function
 	      | `Done _ -> `Done ()
@@ -1093,7 +1093,7 @@ let filter_out_buffer ~max (p : Netchannels.io_obj_channel) d0 : out_buffer =
 	p # close_out();
 	q := 4;
 	let p_dev =
-	  `Async_in(new Uq_engines.pseudo_async_in_channel p, esys) in
+	  `Async_in(new Uq_transfer.pseudo_async_in_channel p, esys) in
 	copy_e p_dev d
 	>> (fun st -> 
 	      p#close_in();

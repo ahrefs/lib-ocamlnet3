@@ -1538,13 +1538,13 @@ let rec internal_create initial_xid
 			   | Tcp -> Unix.SOCK_STREAM 
 			   | Udp -> Unix.SOCK_DGRAM in
 		       let addr = `Sock_inet(stype, inetaddr, port) in
-		       let opts = Uq_engines.default_connect_options in
-		       Uq_engines.connector (`Socket(addr,opts)) esys
+		       let opts = Uq_client.default_connect_options in
+		       Uq_client.connect_e (`Socket(addr,opts)) esys
 		    )
 	  )
 
       | #Uq_engines.connect_address as addr ->
-	  Uq_engines.connector addr esys in
+	  Uq_client.connect_e addr esys in
 
   let track fd =
     Netlog.Debug.track_fd ~owner:"Rpc_client" ~descr:id_s fd in
@@ -1561,7 +1561,7 @@ let rec internal_create initial_xid
 	  dlogr  cl
 	    (fun () -> 
 	       "Non-blocking socket connect successful for " ^ id_s);
-	 let fd = Uq_engines.client_endpoint status in
+	 let fd = Uq_client.client_endpoint status in
 	 disable_nagle fd;
 	 track fd;
 	 conf # multiplexing ~close_inactive_descr:true prot fd esys
@@ -1576,7 +1576,7 @@ let rec internal_create initial_xid
 	  dlogr cl
 	    (fun () ->
 	       "Blocking socket connect successful for " ^ id_s);
-	  let fd = Uq_engines.client_endpoint status in
+	  let fd = Uq_client.client_endpoint status in
 	  disable_nagle fd;
 	  track fd;
 	  conf # multiplexing ~close_inactive_descr:true prot fd esys
@@ -1612,18 +1612,18 @@ let rec internal_create initial_xid
 	      | Inet (host,port) ->
 		  let saddr = `Sock_inet_byname(stype, host, port) in
 		  let addr = 
-		    `Socket(saddr, Uq_engines.default_connect_options) in
+		    `Socket(saddr, Uq_client.default_connect_options) in
 		  (prot, open_socket addr prot conf)
 	      | Internet (host,port) ->
 		  let saddr = `Sock_inet(stype, host, port) in
 		  let addr = 
-		    `Socket(saddr, Uq_engines.default_connect_options) in
+		    `Socket(saddr, Uq_client.default_connect_options) in
 		  (prot, open_socket addr prot conf)
 	      | Unix path ->
 		  let saddr = `Sock_unix(stype, path) in
 		  let addr = 
 		    `Socket(saddr, 
-			    Uq_engines.default_connect_options) in
+			    Uq_client.default_connect_options) in
 		  (prot, open_socket addr prot conf)
 	      | W32_pipe path ->
 		  if prot <> Rpc.Tcp then

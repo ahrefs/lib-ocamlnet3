@@ -310,7 +310,7 @@ object(self)
 		     sprintf "Container %d: Accepting on fd %Ld"
 		       (Oo.id self)
 		       (Netsys.int64_of_file_descr fd));
-		let acc = new Uq_engines.direct_acceptor fd esys in
+		let acc = new Uq_server.direct_acceptor fd esys in
 		let e = acc # accept() in
 		Uq_engines.when_state
 		  ~is_done:(fun (fd_slave,_) ->
@@ -900,7 +900,7 @@ object(self)
 	 sprintf "Container %d: Accepting on fd %Ld"
 	   (Oo.id self)
 	   (Netsys.int64_of_file_descr fd));
-    let acc = new Uq_engines.direct_acceptor fd esys in
+    let acc = new Uq_server.direct_acceptor fd esys in
     let e = acc # accept() in
     Uq_engines.when_state
       ~is_done:(fun (fd_slave,_) ->

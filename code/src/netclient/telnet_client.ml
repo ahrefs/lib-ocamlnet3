@@ -555,11 +555,11 @@ class telnet_session =
 	    let g1 = Unixqueue.new_group esys in
 
 	    let eng =
-	      Uq_engines.connector 
+	      Uq_client.connect_e
 		(`Socket(`Sock_inet_byname(Unix.SOCK_STREAM,
 					   hostname,
 					   port),
-			 Uq_engines.default_connect_options))
+			 Uq_client.default_connect_options))
 		esys in
 	    
 	    connecting <- Some eng;

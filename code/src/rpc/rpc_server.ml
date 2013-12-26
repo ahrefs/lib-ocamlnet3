@@ -167,7 +167,7 @@ type t =
 	mutable auth_methods : (string, t pre_auth_method) Hashtbl.t;
 	mutable auth_peekers : (auth_peeker * t pre_auth_method) list;
 	mutable connections : connection list;
-	mutable master_acceptor : server_socket_acceptor option;
+	mutable master_acceptor : server_endpoint_acceptor option;
 	mutable transport_timeout : float;
 	mutable nolog : bool;
 	mutable get_last_proc : unit->string;
@@ -1157,7 +1157,7 @@ let mplex_of_fd ~close_inactive_descr prot fd esys =
 
 class default_socket_config : socket_config = 
 object
-  method listen_options = default_listen_options
+  method listen_options = Uq_server.default_listen_options
 
   method multiplexing ~close_inactive_descr prot fd esys =
     let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
@@ -1382,7 +1382,7 @@ let create2_socket_server ?(config = default_socket_config)
 	);
 	if close_inactive_descr then track_server fd;	  
 	let acc = 
-	  new Uq_engines.direct_acceptor 
+	  new Uq_server.direct_acceptor 
 	    ~close_on_shutdown: close_inactive_descr
 	    ~preclose:(fun () -> Netlog.Debug.release_fd fd)
 	    fd esys in
