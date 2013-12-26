@@ -286,6 +286,23 @@ let gen_enum c mli ml tyname cases ~optional =
   fprintf c "\n";
   ()
 
+let gen_enum_of_string mli ml fun_name type_name cases =
+  fprintf ml "let %s name =\n" fun_name;
+  fprintf ml "  match name with\n";
+  List.iter
+    (fun case ->
+       let n1 = c_name_of_enum case in
+       let n2 = ml_name_of_enum case in
+       fprintf ml "  | %S -> `%s\n" n1 n2
+    )
+    cases;
+  fprintf ml "  | any -> failwith(\"%s: unknown error code\" ^ any)\n" fun_name;
+  fprintf ml "\n";
+
+  fprintf mli "val %s : string -> %s\n" fun_name type_name;
+
+  ()
+
 (**********************************************************************)
 (* Flags                                                              *)
 (**********************************************************************)
@@ -1136,6 +1153,7 @@ let gen_c_head2 c =
 let generate ?c_file ?ml_file ?mli_file
              ?(optional_functions = [])
              ?(optional_types = [])
+             ?(enum_of_string = [])
              ~modname ~types ~functions ~free
              ~hashes
              () =
@@ -1216,6 +1234,20 @@ let generate ?c_file ?ml_file ?mli_file
     List.iter
       (fun name -> cfg_fun cfg name)
       optional_functions;
+
+    List.iter
+      (fun (fun_name, type_name) ->
+         let tydef =
+           try List.assoc type_name types
+           with Not_found ->
+             failwith ("enum_of_string: type not found: " ^ type_name) in
+         match tydef with
+           | `Enum cases ->
+                gen_enum_of_string mli ml fun_name type_name cases
+           | _ ->
+                failwith ("enum_of_string: not an enum: " ^ type_name)
+      )
+      enum_of_string;
 
     copy ml ml_file;
     copy mli mli_file;

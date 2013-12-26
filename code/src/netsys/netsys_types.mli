@@ -22,3 +22,24 @@ exception EAGAIN_WR
 
       These two exceptions are preferred by TLS providers.
    *)
+
+exception TLS_switch_request
+  (** The server requested a rehandshake (this exception is thrown
+      in the client)
+   *)
+
+exception TLS_switch_response of bool
+      (** The client accepted or denied a rehandshake (this exception is thrown
+          in the server). [true] means acceptance.
+       *)
+
+exception TLS_error of string
+      (** A fatal error occurred (i.e. the session needs to be terminated).
+          The string is a symbol identifying the error.
+       *)
+
+exception TLS_warning of string
+      (** A non-fatal error occurred. The interrupted function should be
+          called again.
+          The string is a symbol identifying the warning.
+       *)

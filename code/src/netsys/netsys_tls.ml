@@ -15,8 +15,6 @@ let () =
 
 
 
-exception Error of string * string
-
 type dh_params =
   [ `PKCS3_PEM_file of string
   | `PKCS3_DER of string
@@ -39,31 +37,15 @@ type private_key =
   ]
 
 
-let trans_exn tls exn =
-  let module P = (val tls : Netsys_crypto_types.TLS_PROVIDER) in
-  match exn with
-    | P.Switch_request ->
-         Error("Switch_request", "A handshake has been requested")
-    | P.Error code ->
-         Error(P.error_name code, P.error_message code)
-    | P.Warning code ->
-         Error(P.error_name code, P.error_message code)
-    | _ ->
-         exn
-
-
-let translate_exn endpoint exn =
-  let module Endpoint = 
-    (val endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
-  let module P = Endpoint.TLS in
-  trans_exn (module P) exn
-
-
 let debug_backtrace fn exn bt =
   dlog (sprintf "Exception in function Netsys_tls.%s: %s - backtrace: %s"
                 fn (Netexn.to_string exn) bt
        )
 
+
+let error_message tls code =
+  let module P = (val tls : Netsys_crypto_types.TLS_PROVIDER) in
+  P.error_message code
 
 
 let create_x509_config
@@ -92,7 +74,7 @@ let create_x509_config
     | exn -> 
          if !Debug.enable then 
            debug_backtrace "create_x509_config" exn (Printexc.get_backtrace());
-         raise(trans_exn tls exn)
+         raise exn
 
 
 let create_file_endpoint ~role ~rd ~wr config =
@@ -116,7 +98,7 @@ let create_file_endpoint ~role ~rd ~wr config =
          if !Debug.enable then 
            debug_backtrace "create_file_endpoint" 
                            exn (Printexc.get_backtrace());
-         raise(trans_exn (module P) exn)
+         raise exn
 
 let at_transport_eof ep =
   let module Endpoint = 
@@ -128,7 +110,7 @@ let at_transport_eof ep =
     | exn -> 
          if !Debug.enable then
            debug_backtrace "at_transport_eof" exn (Printexc.get_backtrace());
-         raise(trans_exn (module P) exn)
+         raise exn
   
 
 
@@ -161,7 +143,7 @@ let state_driven_action endpoint =
     | exn -> 
          if !Debug.enable then
            debug_backtrace "state_driven_action" exn (Printexc.get_backtrace());
-         raise(trans_exn (module P) exn)
+         raise exn
 
 
 let handshake endpoint =
@@ -186,7 +168,7 @@ let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
   try
     P.recv Endpoint.endpoint buf'
   with
-    | P.Switch_request ->
+    | P.Exc.TLS_switch_request ->
          if on_rehandshake endpoint then
            P.accept_switch Endpoint.endpoint (P.get_config Endpoint.endpoint)
          else
@@ -195,7 +177,7 @@ let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
     | exn ->
          if !Debug.enable then
            debug_backtrace "mem_recv" exn (Printexc.get_backtrace());
-         raise(trans_exn (module P) exn)
+         raise exn
 
 
 let recv ?on_rehandshake endpoint buf pos len =
@@ -222,7 +204,7 @@ let mem_send endpoint buf pos len =
     | exn ->
          if !Debug.enable then
            debug_backtrace "mem_send" exn (Printexc.get_backtrace());
-         raise(trans_exn (module P) exn)
+         raise exn
 
 
 let send endpoint buf pos len =
@@ -243,4 +225,4 @@ let shutdown endpoint how =
     | exn ->
          if !Debug.enable then
            debug_backtrace "end_tls" exn (Printexc.get_backtrace());
-         raise(trans_exn (module P) exn)
+         raise exn

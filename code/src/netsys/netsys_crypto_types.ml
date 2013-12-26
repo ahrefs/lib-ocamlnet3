@@ -1,19 +1,24 @@
 (* $Id$ *)
 
+module type TLS_EXCEPTIONS =
+  sig
+    exception EAGAIN_RD
+    exception EAGAIN_WR
+    exception TLS_switch_request
+    exception TLS_switch_response of bool
+    exception TLS_error of string
+    exception TLS_warning of string
+  end
+
 module type TLS_PROVIDER =
   sig
     type config
     type credentials
     type endpoint
-    type error_code
 
-    exception Switch_request
-    exception Switch_response of bool
-    exception Error of error_code
-    exception Warning of error_code
+    module Exc : TLS_EXCEPTIONS
 
-    val error_message : error_code -> string
-    val error_name : error_code -> string
+    val error_message : string -> string
 
     type dh_params =
         [ `PKCS3_PEM_file of string

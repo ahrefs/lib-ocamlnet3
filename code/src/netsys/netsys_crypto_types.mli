@@ -2,37 +2,59 @@
 
 (** Types for crypto providers *)
 
+
+(** The exceptions the TLS provider may use (in addition to OCaml's built-in
+    exception). In Ocamlnet, these exceptions are actually defined in 
+    {!Netsys_types}.
+ *)
+module type TLS_EXCEPTIONS =
+  sig
+    exception EAGAIN_RD
+    exception EAGAIN_WR
+      (** A read or write cannot be done because the descriptor is in
+      non-blocking mode and would block. This corresponds to the
+      [Unix.EAGAIN] error but includes whether it was a read or write.
+
+      When the read or write is possible, the interrupted function should
+      simply be again called.
+
+      These two exceptions are preferred by TLS providers.
+      *)
+
+    exception TLS_switch_request
+      (** The server requested a rehandshake (this exception is thrown
+          in the client)
+       *)
+
+    exception TLS_switch_response of bool
+      (** The client accepted or denied a rehandshake (this exception is thrown
+          in the server). [true] means acceptance.
+       *)
+
+    exception TLS_error of string
+      (** A fatal error occurred (i.e. the session needs to be terminated).
+          The string is a symbol identifying the error.
+       *)
+
+    exception TLS_warning of string
+      (** A non-fatal error occurred. The interrupted function should be
+          called again.
+          The string is a symbol identifying the warning.
+       *)
+  end
+
 module type TLS_PROVIDER =
   sig
     type config
     type credentials
     type endpoint
-    type error_code
 
-    exception Switch_request
-      (** The server requested a rehandshake (this exception is thrown
-          in the client)
-       *)
+    module Exc : TLS_EXCEPTIONS
+      (** Access to exceptions *)
 
-    exception Switch_response of bool
-      (** The client accepted or denied a rehandshake (this exception is thrown
-          in the server). [true] means acceptance.
-       *)
-
-    exception Error of error_code
-      (** A fatal error occurred (i.e. the session needs to be terminated) *)
-
-    exception Warning of error_code
-      (** A non-fatal error occurred. The interrupted function should be
-          called again.
-       *)
-
-    val error_message : error_code -> string
-      (** Returns the message for humans (display, log files etc.) *)
-
-    val error_name : error_code -> string
-      (** Returns the name of the code (for programming; this is always
-          the same string for the same code w/o localization)
+    val error_message : string -> string
+      (** Returns the message for humans (display, log files etc.) when
+          called with an error or warning symbol.
        *)
 
     type dh_params =
@@ -226,7 +248,7 @@ module type TLS_PROVIDER =
 
           [hello] doesn't verify the peer. Use [verify] for that.
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
@@ -245,7 +267,7 @@ module type TLS_PROVIDER =
 
           In no case the underlying transport is closed or shut down!
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
@@ -291,14 +313,14 @@ module type TLS_PROVIDER =
           new configuration for cert verification. This function sends the
           request, and expects a soon response from the client. The
           state enters [`Data_rs] meaning that we can still read data,
-          and at some point [recv] will raise [Switch_response].
+          and at some point [recv] will raise [TLS_switch_response].
 
           On the client side, the request will by returned as exception
-          [Switch_request] by [recv]. The client should respond with
+          [TLS_switch_request] by [recv]. The client should respond with
           [accept_switch] if it accepts the handshake, or [refuse_switch] if
           not.
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
@@ -306,14 +328,14 @@ module type TLS_PROVIDER =
       (** On the client: Enter another handshake round with new configuration
           data.
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
     val refuse_switch : endpoint -> unit
       (** On the client: Refuse a handshake
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
@@ -321,7 +343,7 @@ module type TLS_PROVIDER =
       (** [send ep buffer n]: Sends the first [n] bytes in the buffer over
           the endpoint, and returns the actual number of processed bytes.
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
        *)
 
@@ -332,13 +354,13 @@ module type TLS_PROVIDER =
           the tunnel properly this request should be responded by another
           close request with [bye] (unless this has already been done).
 
-          May raise {!Netsys_types.EAGAIN_RD}, {!Netsys_types.EAGAIN_WR},
+          May raise [EAGAIN_RD], [EAGAIN_WR],
           [Unix_error(EINTR,_,_)], [Error] or [Warning].
 
-          The exception [Switch_request] can only occur on the client
+          The exception [TLS_switch_request] can only occur on the client
           side, and should be responded by [accept_switch] or [refuse_switch].
 
-          The exception [Switch_response] can only occur on the server
+          The exception [TLS_switch_response] can only occur on the server
           side.
        *)
 

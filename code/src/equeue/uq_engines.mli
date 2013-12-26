@@ -827,6 +827,12 @@ class poll_process_engine : ?period:float ->
 (**
   Pointers to other modules related to engines:
 
+  - {!Uq_client}
+  - {!Uq_server}
+  - {!Uq_multiplex}
+  - {!Uq_transfer}
+  - {!Uq_datagram}
+  - {!Uq_io}
   - RPC clients: The function {!Rpc_proxy.ManagedClient.rpc_engine} allows
     to call an RPC via an engine. When the call is done, the engine transitions
     to [`Done r], and [r] is the result of the remote call.

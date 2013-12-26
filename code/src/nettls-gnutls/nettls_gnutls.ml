@@ -5,7 +5,6 @@ open Printf
 module type GNUTLS_PROVIDER =
   sig
     include Netsys_crypto_types.TLS_PROVIDER
-            with type error_code = Nettls_gnutls_bindings.error_code
 
     val gnutls_session : endpoint -> Nettls_gnutls_bindings.gnutls_session_t
     val gnutls_credentials : credentials -> 
@@ -25,19 +24,17 @@ exception I of (module GNUTLS_PROVIDER)
 let self = ref Not_found
 
 
-module TLS : GNUTLS_PROVIDER =
+module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
   struct
     let implementation_name = "Nettls_gnutls.TLS"
     let implementation () = !self
 
+    module Exc = Exc
     module G = Nettls_gnutls_bindings
 
     type credentials =
         { gcred : G.gnutls_credentials;
         }
-
-    type error_code =
-        G.error_code
 
     type dh_params =
       [ `PKCS3_PEM_file of string
@@ -98,31 +95,26 @@ module TLS : GNUTLS_PROVIDER =
           ser_our_cert : raw_credentials option;
         }
 
-    exception Switch_request
-    exception Switch_response of bool
-    exception Error of error_code
-    exception Warning of error_code
+    let error_message code = 
+      G.gnutls_strerror (G.b_error_of_name code)
 
-    let error_message code = G.gnutls_strerror code
-
-    let error_name code = G.gnutls_strerror_name code
 
     let () =
       Netexn.register_printer
-        (Error `Success)
+        (Exc.TLS_error "")
         (function
-          | Error code ->
-               sprintf "Nettls_gnutls.TLS.Error(%s)" (error_name code)
+          | Exc.TLS_error code ->
+               sprintf "Nettls_gnutls.TLS.Error(%s)" code
           | _ ->
                assert false
         )
 
     let () =
       Netexn.register_printer
-        (Warning `Success)
+        (Exc.TLS_warning "")
         (function
-          | Warning code ->
-               sprintf "Nettls_gnutls.TLS.Warning(%s)" (error_name code)
+          | Exc.TLS_warning code ->
+               sprintf "Nettls_gnutls.TLS.Warning(%s)" code
           | _ ->
                assert false
         )
@@ -132,7 +124,7 @@ module TLS : GNUTLS_PROVIDER =
         f arg
       with
         | G.Error code ->
-            raise(Error code)
+            raise(Exc.TLS_error (G.gnutls_strerror_name code))
 
 
     let parse_pem ?(empty_ok=false) header_tags file f =
@@ -352,22 +344,24 @@ module TLS : GNUTLS_PROVIDER =
             raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""))
         | G.Error `Rehandshake ->
             if ep.state = `Switching then
-              raise (Switch_response true)
+              raise (Exc.TLS_switch_response true)
             else
-              raise Switch_request
+              raise Exc.TLS_switch_request
         | G.Error (`Warning_alert_received as code) ->
             if G.gnutls_alert_get ep.session = `No_renegotiation then
-              raise (Switch_response false)
+              raise (Exc.TLS_switch_response false)
             else
+              let code' = G.gnutls_strerror_name code in
               if warnings then
-                raise(Warning code)
+                raise(Exc.TLS_warning code')
               else
-                raise(Error code)
+                raise(Exc.TLS_error code')
         | G.Error code ->
+              let code' = G.gnutls_strerror_name code in
             if warnings && not(G.gnutls_error_is_fatal code) then
-              raise(Warning code)
+              raise(Exc.TLS_warning code')
             else
-              raise(Error code)
+              raise(Exc.TLS_error code')
 
     let unexpected_state() =
       failwith "Nettls_gnutls: the endpoint is in an unexpected state"
@@ -431,7 +425,7 @@ module TLS : GNUTLS_PROVIDER =
       let f() =
         if G.gnutls_certificate_get_peers ep.session = [| |] then (
           if ep.config.peer_auth <> `None then
-            raise(Error `No_certificate_found)
+            raise(Exc.TLS_error (G.gnutls_strerror_name `No_certificate_found))
         )
         else (
           if ep.config.peer_auth <> `None then (
@@ -657,6 +651,9 @@ module TLS : GNUTLS_PROVIDER =
     let gnutls_credentials c = c.gcred
     let gnutls_session ep = ep.session
   end
+
+
+module TLS = Make_TLS(Netsys_types)
 
 
 let tls = (module TLS : GNUTLS_PROVIDER)

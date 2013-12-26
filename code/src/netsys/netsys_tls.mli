@@ -37,11 +37,6 @@ let certificates =
     translated to [Error] with {!Netsys_tls.translate_exn}.
  *)
 
-exception Error of string * string
-  (** [Error(name,message)]: Any TLS error as string. [name] identifies
-      the error type in an implementation-defined way.
-   *)
-
 type dh_params =
   [ `PKCS3_PEM_file of string
   | `PKCS3_DER of string
@@ -95,6 +90,12 @@ type private_key =
             and is additionally encrypted.
    *)
 
+
+val error_message : (module Netsys_crypto_types.TLS_PROVIDER) -> 
+                    string -> string
+  (** Returns the message for humans (display, log files etc.) when
+      called with an error or warning symbol.
+   *)
 
 val create_x509_config :
       ?algorithms : string ->
@@ -270,12 +271,6 @@ val at_transport_eof : (module Netsys_crypto_types.TLS_ENDPOINT) -> bool
       check whether only the TLS enf-of-input message has been read,
       or the underlying channel (usually the file descriptor) has
       indicated EOF.
-   *)
-
-val translate_exn : (module Netsys_crypto_types.TLS_ENDPOINT) ->
-                    exn -> exn
-  (** Translates an internal exception raised by the TLS provider
-      into [Error].
    *)
 
 module Debug : sig

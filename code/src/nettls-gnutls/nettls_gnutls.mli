@@ -3,7 +3,6 @@
 module type GNUTLS_PROVIDER =
   sig
     include Netsys_crypto_types.TLS_PROVIDER
-            with type error_code = Nettls_gnutls_bindings.error_code
 
     val gnutls_session : endpoint -> Nettls_gnutls_bindings.gnutls_session_t
       (** Get the [gnutls_session] of the endpoint *)
@@ -21,8 +20,15 @@ module type GNUTLS_ENDPOINT =
   end
 
 
+module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER
+  (** The implementation of TLS backed by GnuTLS, here for an arbitrary
+      TLS_EXCEPTIONS module
+   *)
+
 module TLS : GNUTLS_PROVIDER
-  (** The implementation of TLS backed by GnuTLS *)
+  (** The implementation of TLS backed by GnuTLS, here using {!Netsys_types}
+      as TLS_EXCEPTIONS module
+   *)
 
 val tls : (module GNUTLS_PROVIDER)
   (** The implementation of TLS backed by GnuTLS, as value *)

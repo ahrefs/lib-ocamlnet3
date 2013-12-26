@@ -718,6 +718,12 @@ class http_protocol (config : #http_protocol_config) (fd : Unix.file_descr) =
                  (Netsys_tls.create_file_endpoint 
                     ~role:`Server ~rd:fd ~wr:fd tc))
   in
+  let tls_message code =
+    match config # config_tls with
+      | None -> code
+      | Some tc ->
+           let module Config = (val tc : Netsys_crypto_types.TLS_CONFIG) in
+           Config.TLS.error_message code in
 
   let hooks =
     ( object
@@ -918,10 +924,10 @@ object(self)
           override_dir <- Some `W
       | Unix.Unix_error(Unix.EINTR,_,_) ->
 	  dlogr (fun () -> sprintf "FD %Ld: handshake EINTR" fdi)
-      | Netsys_tls.Error(code,msg) as e ->
+      | Netsys_types.TLS_error code as e ->
 	  dlogr (fun () -> sprintf "FD %Ld: handshake TLS_ERROR %s" fdi
                                    (Netexn.to_string e));
-          self # abort(`TLS_error(code,msg))
+          self # abort(`TLS_error(code,tls_message code))
 
 
   method private do_tls_shutdown() =
@@ -941,10 +947,10 @@ object(self)
           override_dir <- Some `W
       | Unix.Unix_error(Unix.EINTR,_,_) ->
 	  dlogr (fun () -> sprintf "FD %Ld: handshake EINTR" fdi)
-      | Netsys_tls.Error(code,msg) as e ->
+      | Netsys_types.TLS_error code as e ->
 	  dlogr (fun () -> sprintf "FD %Ld: handshake TLS_ERROR %s" fdi
                                    (Netexn.to_string e));
-          self # abort (`TLS_error(code,msg))
+          self # abort (`TLS_error(code,tls_message code))
 
 
   (* ---- Process received data ---- *)
@@ -1020,10 +1026,10 @@ object(self)
         | Netsys_types.EAGAIN_WR ->
             (* Currently impossible *)
             assert false
-        | Netsys_tls.Error(code,msg) as e ->
+        | Netsys_types.TLS_error code as e ->
 	    dlogr (fun () -> sprintf "FD %Ld: rev TLS_ERROR %s" fdi
                                      (Netexn.to_string e));
-            self # abort(`TLS_error(code,msg));
+            self # abort(`TLS_error(code,tls_message code));
             false
     in
     if continue then 
@@ -1544,10 +1550,10 @@ object(self)
 	    self # abort (`Unix_error e)
         | Netsys_types.EAGAIN_RD ->
             assert false   (* not possible here *)
-        | Netsys_tls.Error(code,msg) as e ->
+        | Netsys_types.TLS_error code as e ->
 	    dlogr (fun () -> sprintf "FD %Ld: rev TLS_ERROR %s" fdi
                                      (Netexn.to_string e));
-            self # abort (`TLS_error(code,msg))
+            self # abort (`TLS_error(code,tls_message code))
 
   method private drop_remaining_responses() =
     (* Set the state to [`Dropped] for all responses in the [resp_queue]: *)

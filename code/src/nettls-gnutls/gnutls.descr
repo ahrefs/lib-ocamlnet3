@@ -1572,4 +1572,5 @@ let () =
               "Psk_client";
               "Psk_server"
             ]
+    ~enum_of_string:[ "b_error_of_name", "error_code" ]
     ()

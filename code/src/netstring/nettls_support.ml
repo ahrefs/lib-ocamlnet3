@@ -58,7 +58,7 @@ let get_tls_session_props (ep:Netsys_crypto_types.tls_endpoint)
   let id = TLS.get_session_id e1 in
   let sni_l =
     try TLS.get_addressed_servers e1
-    with TLS.Error code when TLS.error_name code = "" ->
+    with TLS.Exc.TLS_error ""  ->
       [] in
   let sni =
     match sni_l with
