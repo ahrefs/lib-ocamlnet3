@@ -503,8 +503,8 @@ let functions =
       "error_code gnutls_rehandshake (gnutls_session_t session)";
     standard
       ~options: [
-        `Pre("if (data_size < 0 || \
-                  data_size > caml_ba_byte_size(Caml_ba_array_val(data))) \
+        `Pre("if (data_size__c < 0 || \
+                  data_size__c > caml_ba_byte_size(Caml_ba_array_val(data))) \
                       invalid_argument(\"gnutls_record_send\");"
             )
       ]

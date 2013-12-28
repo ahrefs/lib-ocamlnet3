@@ -208,6 +208,7 @@ let mem_send endpoint buf pos len =
 
 
 let send endpoint buf pos len =
+  state_driven_action endpoint;
   let mem = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
   let mem_len = min len (Bigarray.Array1.dim mem) in
   Netsys_mem.blit_string_to_memory buf pos mem 0 mem_len;

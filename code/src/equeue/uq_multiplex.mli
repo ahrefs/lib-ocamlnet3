@@ -21,6 +21,11 @@ object
   method event_system : Unixqueue.event_system
     (** Returns the event system *)
 
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** If TLS is enabled, this returns the session properties. These
+        are first available after the TLS handshake.
+     *)
+
   method reading : bool
     (** True iff there is a reader *)
 

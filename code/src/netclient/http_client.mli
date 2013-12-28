@@ -28,6 +28,7 @@
  *  - Redirections can be followed automatically 
  *  - Compressed message bodies can be automatically decoded (gzip only,
  *    method [set_accept_encoding]) (1)
+ *  - Support for TLS-encrypted sessions (https)
  *
  * Left out:
  *  - multipart messages, including multipart/byterange
@@ -44,7 +45,6 @@
  *
  * Related modules/software:
  * - {!Http_fs} allows you to access HTTP servers in the style of filesystems
- * - {!Https_client} adds support for SSL (i.e. "https" URls)
  * - WebDAV: If you are looking for WebDAV there is an extension of this module:
  *   {{:http://oss.wink.com/webdav/} Webdav}, which is separately available.
  *)
@@ -245,7 +245,7 @@ type channel_binding_id = int
     (** A channel binding identifies a requirement for the transport
 	channel, especially whether plain HTTP is sufficient, or HTTPS
 	needs to be used, and if so, whether there are further requirements
-	for the SSL context. There are the predefined IDs:
+	for the TLS context. There are the predefined IDs:
 
 	- {!Http_client.http_cb_id} for HTTP connections
 	- {!Http_client.https_cb_id} for HTTPS connections without user
@@ -298,6 +298,11 @@ type http_options =
         (** The function for name resolution *)
       configure_socket : Unix.file_descr -> unit;
         (** A function to configure socket options *)
+      tls : Netsys_crypto_types.tls_config option;
+        (** The TLS configuration to use by default for https URLs.
+            (This can be overridden per request by using a different
+             [channel_binding_id].)
+         *)
       schemes : (string * Neturl.url_syntax * int option * channel_binding_id) 
                    list;
         (** The list of supported URL schemes. The tuples mean
@@ -1082,6 +1087,33 @@ val new_cb_id : unit -> channel_binding_id
 
 val http_transport_channel_type : transport_channel_type
   (** Transport via HTTP *)
+
+val https_transport_channel_type : 
+      Netsys_crypto_types.tls_config -> transport_channel_type
+  (** Create a new transport for HTTPS and this configuration.
+      As of OCamlnet-4, https is automatically enabled if 
+      {!Netsys_crypto.current_tls} returns something, i.e. if TLS
+      is globally initialized, so there is often no reason to
+      configure a special https transport with this function.
+      You still need it if you want to enable special configurations
+      per request:
+
+      {[
+        let my_cb_id = Http_client.new_cb_id()
+        let my_tct = Http_client.https_transport_channel_type my_tls_config
+        pipeline # configure_transport my_cb_id my_tct;
+      ]}
+
+      Now you can enable this special configuration for a request object
+      [call]:
+
+      {[
+        call # set_channel_binding my_cb_id
+      ]}
+
+      If you want to change the TLS configuration for the whole pipeline,
+      just set the [tls] field of {!Http_client.http_options}.
+   *)
 
 type proxy_type = [`Http_proxy | `Socks5 ] 
 

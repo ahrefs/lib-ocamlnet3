@@ -1,4 +1,6 @@
 TLS:
+ - ensure that clients use a safe default config that only accepts
+   approved CAs
  - use ztstringbuf for all the other functions returning zero-terminated
    strings - DONE
  - Also add `PEM_data to TLS config. Support that in Netplex parser.

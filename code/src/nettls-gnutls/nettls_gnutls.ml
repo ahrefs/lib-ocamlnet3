@@ -337,9 +337,9 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
       with
         | G.Error `Again -> 
             if G.gnutls_record_get_direction ep.session then
-              raise Netsys_types.EAGAIN_WR
+              raise Exc.EAGAIN_WR
             else
-              raise Netsys_types.EAGAIN_RD
+              raise Exc.EAGAIN_RD
         | G.Error `Interrupted ->
             raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""))
         | G.Error `Rehandshake ->

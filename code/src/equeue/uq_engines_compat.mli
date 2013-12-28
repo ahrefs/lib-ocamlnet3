@@ -422,6 +422,7 @@ object
   method alive : bool
   method mem_supported : bool
   method event_system : Unixqueue.event_system
+  method tls_session_props : Nettls_support.tls_session_props option
   method reading : bool
   method start_reading : 
     ?peek:(unit -> unit) ->

@@ -179,6 +179,7 @@ type http_options =
       handshake_timeout : float;
       resolver : resolver;
       configure_socket : Unix.file_descr -> unit;
+      tls : Netsys_crypto_types.tls_config option;
       schemes : (string * Neturl.url_syntax * int option * channel_binding_id)
 	         list;
       verbose_status : bool;
@@ -3583,6 +3584,26 @@ let http_transport_channel_type : transport_channel_type =
   )
 
 
+let https_transport_channel_type config : transport_channel_type =
+  ( object(self)
+      method continue fd cb tmo tmo_x host port esys =
+        let mplex1 =
+	  Uq_multiplex.create_multiplex_controller_for_connected_socket
+	    ~close_inactive_descr:true
+	    ~supports_half_open_connection:true
+	    ~timeout:( tmo, tmo_x )
+	    fd esys in
+        let mplex2 =
+          Uq_multiplex.tls_multiplex_controller ~role:`Client config mplex1 in
+        mplex2
+      method setup_e fd cb tmo tmo_x host port esys =
+	let mplex = self # continue fd cb tmo tmo_x host port esys in
+	eps_e (`Done mplex) esys
+    end
+  )
+
+
+
 (**********************************************************************)
 
 let fragile_pipeline 
@@ -4848,6 +4869,13 @@ class pipeline =
     val mutable open_connections = 0
 
     val options =
+      let tls =
+        match Netsys_crypto.current_tls_opt() with
+          | None -> None
+          | Some tls_provider ->
+               Some(Netsys_tls.create_x509_config
+                      ~peer_auth:`None
+                      tls_provider) in
       ref
 	{ (* Default values: *)
 	  synchronization = Pipeline 5;
@@ -4860,6 +4888,7 @@ class pipeline =
 	  handshake_timeout = 1.0;
 	  resolver = sync_resolver;
 	  configure_socket = (fun _ -> ());
+          tls;
 	  schemes = default_schemes;
 	  verbose_status = true;
 	  verbose_request_header = false;
@@ -4888,6 +4917,12 @@ class pipeline =
     initializer (
       Hashtbl.add transports http_cb_id http_transport_channel_type;
       Hashtbl.add transports proxy_only_cb_id http_transport_channel_type;
+      ( match (!options).tls with
+          | None -> ()
+          | Some config ->
+               let https_tct = https_transport_channel_type config in
+               Hashtbl.add transports https_cb_id https_tct
+      )
     )
 
     method event_system = esys
