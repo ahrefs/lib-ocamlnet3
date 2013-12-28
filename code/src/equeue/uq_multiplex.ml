@@ -700,3 +700,548 @@ let create_multiplex_controller_for_datagram_socket
       fd esys in
   (mplex :> datagram_multiplex_controller)
 ;;
+
+
+(* TLS support *)
+
+class type tls_adapter =
+object
+  method enable_recv : bool -> unit
+  method enable_send : bool -> unit
+  method recv : Netsys_mem.memory -> int
+  method send : Netsys_mem.memory -> int -> int
+  method send_size : int
+end
+
+
+let tls_adapter (mplex : multiplex_controller) on_input on_output 
+    : tls_adapter =
+  let en_recv = ref false in
+  let en_send = ref false in
+  let in_buf = 
+    if mplex#mem_supported then
+      `Memory (Netsys_mem.pool_alloc_memory Netsys_mem.default_pool)
+    else
+      `String (String.create Netsys_mem.default_block_size) in 
+  let in_size = ref 0 in
+  let in_exn = ref None in
+  let out_buf =
+    if mplex#mem_supported then
+      `Memory (Netsys_mem.pool_alloc_memory Netsys_mem.default_pool)
+    else
+      `String (String.create Netsys_mem.default_block_size) in 
+  let out_pos = ref 0 in
+  let out_size = ref 0 in
+  let out_exn = ref None in
+
+  let update_input() =
+    if !en_recv && !in_size = 0 then (
+      if not mplex#reading then
+        let when_done exn_opt p =
+          in_size := p;
+          in_exn := exn_opt;
+          if exn_opt <> Some Cancelled then on_input() in
+        match in_buf with
+          | `Memory mem ->
+               let n = Bigarray.Array1.dim mem in
+               mplex # start_mem_reading ~when_done mem 0 n
+          | `String str ->
+               let n = String.length str in
+               mplex # start_reading ~when_done str 0 n
+    )
+    else
+      mplex # cancel_reading() in
+
+  let rec update_output() =
+    if !en_send && !out_size > 0 then (
+      if not mplex#writing then
+        let when_done exn_opt p =
+          out_pos := !out_pos + p;
+          out_size := !out_size - p;
+          if !out_size = 0 then out_pos := 0;
+          out_exn := exn_opt;
+          if !out_size > 0 && !out_exn = None then update_output();
+          if exn_opt <> Some Cancelled then on_output() in
+        match out_buf with
+          | `Memory mem ->
+               mplex # start_mem_writing ~when_done mem !out_pos !out_size
+          | `String str ->
+               mplex # start_writing ~when_done str !out_pos !out_size
+    )
+    else
+      mplex # cancel_writing() in
+
+  ( object(self)
+      method enable_recv b =
+        en_recv := b;
+        update_input()
+
+      method enable_send b =
+        en_send := b;
+        update_output()
+
+      method recv mem =
+        if !in_size > 0 then (
+          let size = Bigarray.Array1.dim mem in
+          let n = min size !in_size in
+          ( match in_buf with
+              | `Memory mem_buf ->
+                   Bigarray.Array1.blit
+                     (Bigarray.Array1.sub mem_buf 0 n)
+                     (Bigarray.Array1.sub mem 0 n)
+              | `String str_buf ->
+                   Netsys_mem.blit_string_to_memory
+                     str_buf 0
+                     mem 0
+                     n
+          );
+          in_size := !in_size - n;
+          n
+        ) else (
+          match !in_exn with
+            | None ->
+                 raise Netsys_types.EAGAIN_RD
+            | Some End_of_file ->
+                 0
+            | Some exn ->
+                 raise exn
+        )
+
+      method send mem len =
+        ( match !out_exn with
+            | Some exn ->
+                 raise exn
+            | None ->
+               ()
+        );
+        if !out_size = 0 then (
+          out_pos := 0;
+          ( match out_buf with
+              | `Memory mem_buf ->
+                   let n = min len (Bigarray.Array1.dim mem_buf) in
+                   Bigarray.Array1.blit
+                     (Bigarray.Array1.sub mem 0 n)
+                     (Bigarray.Array1.sub mem_buf 0 n);
+                   out_size := n
+              | `String str_buf ->
+                   let n = min len (String.length str_buf) in
+                   Netsys_mem.blit_memory_to_string
+                     mem 0
+                     str_buf 0
+                     n;
+                   out_size := n
+          );
+          !out_size
+        )
+        else
+          raise Netsys_types.EAGAIN_WR
+
+      method send_size = !out_size
+
+    end
+  )
+
+
+let tls_endpoint ~role config mplex on_input on_output =
+  let module Config = (val config : Netsys_crypto_types.TLS_CONFIG) in
+  let module P = Config.TLS in
+  let adapter = tls_adapter mplex on_input on_output in
+  let ep = 
+    P.create_endpoint
+      ~role ~recv:adapter#recv ~send:adapter#send Config.config in
+  let module Endpoint = struct
+    module TLS = P
+    let endpoint = ep
+  end in
+  let ep_mod = (module Endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
+  (ep_mod, adapter)
+
+
+class tls_multiplex_controller ~role config mplex : multiplex_controller =
+  let on_input = ref (fun () -> ()) in
+  let on_output = ref (fun () -> ()) in
+  let ep_mod, adapter = 
+    tls_endpoint
+      ~role config mplex
+      (fun () -> !on_input())
+      (fun () -> !on_output()) in
+  let esys = mplex#event_system in
+  let g = Unixqueue.new_group esys in
+object(self)
+  val mutable alive = true
+  val mutable read_eof = false
+  val mutable wrote_eof = false
+  val mutable reading = `None
+  val mutable writing = `None
+  val mutable writing_eof = None
+  val mutable shutting_down = None
+  val mutable tls_handshake = None
+  val mutable tls_shutdown = None
+  val mutable out_notify = Queue.create()
+  val mutable fatal_exn = None
+
+  method alive = alive
+  method mem_supported = true
+  method reading = reading <> `None
+  method writing = writing <> `None || writing_eof <> None
+  method shutting_down = shutting_down <> None
+  method read_eof = read_eof
+  method wrote_eof = wrote_eof
+
+  method supports_half_open_connection = true
+
+  initializer
+    on_input := self#on_input;
+    on_output := self#on_output;
+    self # cont_handshake();
+
+
+  method start_reading ?(peek = fun ()->()) ~when_done s pos len =
+    if pos < 0 || len < 0 || pos > String.length s - len then
+      invalid_arg "#start_reading";
+    if reading <> `None then
+      failwith "#start_reading: already reading";
+    if shutting_down <> None then
+      failwith "#start_reading: already shutting down";
+    if not alive then
+      failwith "#start_reading: inactive connection";
+    reading <- `String(when_done, peek, s, pos, len);
+    self # update();
+    dlogr (fun () ->
+	     sprintf
+	       "start_reading tls_multiplex_controller mplex=%d"
+	       (Oo.id self))
+
+
+  method start_mem_reading ?(peek = fun ()->()) ~when_done m pos len =
+    if pos < 0 || len < 0 || pos > Bigarray.Array1.dim m - len then
+      invalid_arg "#start_mem_reading";
+    if reading <> `None then
+      failwith "#start_mem_reading: already reading";
+    if shutting_down <> None then
+      failwith "#start_mem_reading: already shutting down";
+    if not alive then
+      failwith "#start_mem_reading: inactive connection";
+    reading <- `Mem(when_done, peek, m, pos, len);
+    self # update();
+    dlogr (fun () ->
+	     sprintf
+	       "start_reading tls_multiplex_controller mplex=%d"
+	       (Oo.id self))
+
+
+  method cancel_reading () =
+    self # cancel_reading_with Cancelled
+
+  method private cancel_reading_with x =
+    match reading with
+      | `None ->
+	  ()
+      | `String(f_when_done, _, _, _, _) ->
+	  self # really_cancel_reading();
+	  f_when_done (Some x) 0
+      | `Mem(f_when_done, _, _, _, _) ->
+	  self # really_cancel_reading();
+	  f_when_done (Some x) 0
+
+  method private really_cancel_reading() =
+    reading <- `None;
+    self # update();
+    dlogr (fun () ->
+	   sprintf
+	     "cancel_reading tls_multiplex_controller mplex=%d"
+	     (Oo.id self))
+
+
+  method start_writing ~when_done s pos len =
+    if pos < 0 || len < 0 || pos > String.length s - len then
+      invalid_arg "#start_writing";
+    if writing <> `None || writing_eof <> None then
+      failwith "#start_writing: already writing";
+    if shutting_down <> None then
+      failwith "#start_writing: already shutting down";
+    if wrote_eof then
+      failwith "#start_writing: already past EOF";
+   if not alive then
+      failwith "#start_writing: inactive connection";
+    writing <- `String(when_done, s, pos, len);
+    self # update();
+    dlogr (fun () ->
+	     sprintf
+	       "start_writing tls_multiplex_controller mplex=%d"
+	       (Oo.id self))
+
+  method start_mem_writing ~when_done m pos len =
+    if pos < 0 || len < 0 || pos > Bigarray.Array1.dim m - len then
+      invalid_arg "#start_mem_writing";
+    if writing <> `None || writing_eof <> None then
+      failwith "#start_mem_writing: already writing";
+    if shutting_down <> None then
+      failwith "#start_mem_writing: already shutting down";
+    if wrote_eof then
+      failwith "#start_mem_writing: already past EOF";
+    if not alive then
+      failwith "#start_mem_writing: inactive connection";
+    writing <- `Mem(when_done, m, pos, len);
+    self # update();
+    dlogr (fun () ->
+	     sprintf
+	       "start_writing tls_multiplex_controller mplex=%d"
+	       (Oo.id self))
+
+  method start_writing_eof ~when_done () =
+    (* From here on we know fd is not a named pipe *)
+    if writing <> `None || writing_eof <> None then
+      failwith "#start_writing_eof: already writing";
+    if shutting_down <> None then
+      failwith "#start_writing_eof: already shutting down";
+    if wrote_eof then
+      failwith "#start_writing_eof: already past EOF";
+    if not alive then
+      failwith "#start_writing_eof: inactive connection";
+    writing_eof <- Some when_done;
+    self # update();
+    dlogr (fun () ->
+	     sprintf
+	       "start_writing_eof tls_multiplex_controller mplex=%d"
+	       (Oo.id self))
+
+
+  method cancel_writing () =
+    self # cancel_writing_with Cancelled
+
+  method private cancel_writing_with x =
+    match writing, writing_eof with
+      | `None, None ->
+	  ()
+      | (`String(f_when_done, _, _, _) | `Mem(f_when_done, _, _, _)), None ->
+	  self # really_cancel_writing();
+	  f_when_done (Some x) 0
+      | `None, Some f_when_done ->
+	  self # really_cancel_writing();
+	  f_when_done (Some x)
+      | _ ->
+	  assert false
+
+  method private really_cancel_writing() =
+    writing <- `None;
+    writing_eof <- None;
+    self # update();
+    dlogr (fun () ->
+	   sprintf
+	     "cancel_writing tls_multiplex_controller mplex=%d"
+	     (Oo.id self))
+
+
+  method start_shutting_down ?linger ~when_done () =
+    if reading <> `None || writing <> `None || writing_eof <> None then
+      failwith "#start_shutting_down: still reading or writing";
+    if shutting_down <> None then
+      failwith "#start_shutting_down: already shutting down";
+    if not alive then
+      failwith "#start_shutting_down: inactive connection";
+    shutting_down <- Some when_done;
+    tls_shutdown <- Some (if wrote_eof then `R else `W);
+    self # update();
+    dlogr (fun () ->
+	     sprintf
+	       "start_shutting_down tls_multiplex_controller mplex=%d"
+	       (Oo.id self))
+
+  method cancel_shutting_down () =
+    self # cancel_shutting_down_with Cancelled
+    
+  method private cancel_shutting_down_with x =
+    match shutting_down with
+      | None ->
+	  ()
+      | Some f_when_done ->
+	  self # really_cancel_shutting_down ();
+	  f_when_done (Some x)
+
+
+  method private really_cancel_shutting_down () =
+    shutting_down <- None;
+    self # update();
+    dlogr (fun () ->
+	   sprintf
+	     "cancel_shutting_down \
+              tls_multiplex_controller mplex=%d"
+	     (Oo.id self))
+
+
+  method private update() =
+    match fatal_exn with
+      | Some exn ->
+           (* a delayed exception from the handshake *)
+           self # cancel_reading_with exn;
+           self # cancel_writing_with exn
+
+      | None ->
+           let need_rd = 
+             reading <> `None
+             || tls_handshake = Some `R
+             || tls_shutdown = Some `R in
+           adapter # enable_recv need_rd;
+
+           if tls_handshake = Some `W then (
+             self # cont_handshake();
+             adapter # enable_send (adapter#send_size > 0)
+           )
+           else (
+             match shutting_down with
+               | Some when_done ->
+                    self # cont_shutdown when_done
+               | None ->
+                    self # update_rw()
+           )
+
+  method private update_rw () =
+    let report = ref (fun _ -> ()) in
+    try
+      ( match writing with
+          | `String(when_done, s, pos, len) ->
+               report := (fun exn -> when_done (Some exn) 0);
+               let n = Netsys_tls.send ep_mod s pos len in
+               Queue.add (fun () -> when_done None n) out_notify;
+               writing <- `None;
+               adapter # enable_send (adapter#send_size > 0);
+          | `Mem(when_done, mem, pos, len) ->
+               report := (fun exn -> when_done (Some exn) 0);
+               let n = Netsys_tls.mem_send ep_mod mem pos len in
+               Queue.add (fun () -> when_done None n) out_notify;
+               writing <- `None;
+               adapter # enable_send (adapter#send_size > 0);
+          | `None ->
+               ()
+      );
+      ( match writing_eof with
+          | Some when_done ->
+               report := (fun exn -> when_done (Some exn));
+               Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_SEND;
+               Queue.add (fun () -> when_done None) out_notify;
+               writing_eof <- None;
+               wrote_eof <- true;
+               adapter # enable_send (adapter#send_size > 0);                 
+          | None ->
+               ()
+      );
+    with
+      | Netsys_types.EAGAIN_RD ->
+           tls_handshake <- Some `R
+      | Netsys_types.EAGAIN_WR ->
+           (* There is a pending output operation. Some time in the future,
+              on_output will be called back, and we try then again
+            *)
+           ()
+      | other ->
+           !report other
+      
+  method private on_input() =
+    match tls_handshake with
+      | Some _ ->
+           self # cont_handshake()
+      | None ->
+           ( match shutting_down with
+               | Some when_done ->
+                    self # cont_shutdown when_done
+               | None ->
+                    self # on_input_rw()
+           )
+
+  method private on_input_rw() =
+    let notify when_done n =
+      if n=0 then (
+        read_eof <- true;
+        when_done (Some End_of_file) 0
+      )
+      else
+        when_done None n in
+    let report = ref (fun _ -> ()) in
+    try
+      ( match reading with
+          | `String(when_done, peek, s, pos, len) ->
+               report := (fun exn -> when_done (Some exn) 0);
+               peek();
+               let n = Netsys_tls.recv ep_mod s pos len in
+               reading <- `None;
+               notify when_done n
+          | `Mem(when_done, peek, mem, pos, len) ->
+               report := (fun exn -> when_done (Some exn) 0);
+               peek();
+               let n = Netsys_tls.mem_recv ep_mod mem pos len in
+               reading <- `None;
+               notify when_done n
+          | `None ->
+               ()
+      )
+    with
+      | Netsys_types.EAGAIN_RD ->
+           self # update();
+      | Netsys_types.EAGAIN_WR ->
+           tls_handshake <- Some `W;
+           self # update();
+      | other ->
+           !report other
+
+
+  method private on_output() =
+    self # update();
+    if Queue.length out_notify = 1 then
+      let f = Queue.take out_notify in
+      f()
+    else
+      while Queue.length out_notify > 0 do
+        let f = Queue.take out_notify in
+        Unixqueue.once esys g 0.0 f
+      done
+
+  method private cont_handshake() =
+    try
+      Netsys_tls.handshake ep_mod;
+      tls_handshake <- None;
+      self # update();
+    with
+      | Netsys_types.EAGAIN_RD ->
+           tls_handshake <- Some `R;
+           self # update();
+      | Netsys_types.EAGAIN_WR ->
+           tls_handshake <- Some `W;
+           self # update();
+      | other ->
+           if fatal_exn = None then
+             fatal_exn <- Some other;
+           self # update()
+
+  method private cont_shutdown when_done =
+    try
+      Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_ALL;
+      shutting_down <- None;
+      tls_shutdown <- None;
+      read_eof <- true;
+      wrote_eof <- true;
+      when_done None;
+      self # update();
+    with
+      | Netsys_types.EAGAIN_RD ->
+           tls_shutdown <- Some `R;
+           self # update();
+      | Netsys_types.EAGAIN_WR ->
+           tls_shutdown <- Some `W;
+           self # update();
+      | other ->
+           when_done (Some other)
+
+  method inactivate() =
+    alive <- false;
+    mplex # inactivate()
+
+  method event_system = esys
+
+
+end
+
+
+let tls_multiplex_controller ~role config mplex =
+  new tls_multiplex_controller ~role config mplex
+

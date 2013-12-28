@@ -255,3 +255,12 @@ val create_multiplex_controller_for_datagram_socket :
     * the connection times out. In this case, the operation returns the
     * exception [x].
    *)
+
+val tls_multiplex_controller :
+      role:[ `Server | `Client ] ->
+      (module Netsys_crypto_types.TLS_CONFIG) ->
+      multiplex_controller ->
+        multiplex_controller
+  (** Creates a new multiplex controller on top of an existing controller,
+      and configures the new controller for running the TLS protocol.
+   *)
