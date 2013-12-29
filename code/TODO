@@ -1,14 +1,4 @@
 TLS:
- - ensure that clients use a safe default config that only accepts
-   approved CAs
-    * support gnutls_certificate_set_x509_system_trust if defined
-    * create_x509_credentials ~system_trust:true
-    * check at configure time:
-        /etc/ssl/ca-bundle.pem \
-        /etc/ssl/certs/ca-certificates.crt \
-        /etc/pki/tls/cert.pem \
-        /usr/local/share/certs/ca-root-nss.crt \
-        /etc/ssl/cert.pem
 
  - Also add `PEM_data to TLS config. Support that in Netplex parser.
  - document Netplex config for TLS
@@ -39,8 +29,19 @@ TLS:
 
       For TLS: encapsulate the file_descr with tls_multiplex_controller,
       and wrap it as Uq_io.in_device. Use Uq_io.copy_e for copying the data.
+ - delete openssl support
 
 
+ - DONE: ensure that clients use a safe default config that only accepts
+   approved CAs
+    * support gnutls_certificate_set_x509_system_trust if defined
+    * create_x509_credentials ~system_trust:true
+    * check at configure time:
+        /etc/ssl/ca-bundle.pem \
+        /etc/ssl/certs/ca-certificates.crt \
+        /etc/pki/tls/cert.pem \
+        /usr/local/share/certs/ca-root-nss.crt \
+        /etc/ssl/cert.pem
  - use ztstringbuf for all the other functions returning zero-terminated
    strings - DONE
  - implement alert support
