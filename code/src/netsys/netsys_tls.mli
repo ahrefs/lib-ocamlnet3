@@ -102,6 +102,7 @@ val create_x509_config :
       ?dh_params : dh_params ->
       ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
       ?peer_name_unchecked : bool ->
+      ?system_trust:bool ->
       ?trust : crt_list list ->
       ?revoke : crl_list list ->
       ?keys : (crt_list * private_key * string option) list ->
@@ -131,6 +132,7 @@ val create_x509_config :
           - [verify] is a function called to verify the peer certificate
             in addition to the actions of [peer_auth]. The function must
             return [true] in order to be successful.
+          - [system_trust]: if set, the system certificates are trusted
           - [trust] specifies the CAs of peers to trust (default: empty)
           - [revoke] specifies CRLs for revocation of peer certificates
             (default: empty)

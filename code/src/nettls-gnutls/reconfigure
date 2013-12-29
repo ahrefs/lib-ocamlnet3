@@ -129,4 +129,47 @@ echo "$ ocaml -I ../../tools gnutls.descr" >>$log
 ocaml -I ../../tools gnutls.descr || exit 1
 
 . ./config_checks.sh
+
+if [ -n "$GNUTLS_SYSTEM_TRUST_FILE" ]; then
+    echo "System certificates: $GNUTLS_SYSTEM_TRUST_FILE"
+    cat <<EOF >nettls_gnutls_config.ml
+let system_trust = \`File "$GNUTLS_SYSTEM_TRUST_FILE"
+EOF
+else
+    if grep '#define HAVE_FUN_gnutls_certificate_set_x509_system_trust' \
+        config.h >/dev/null 2>/dev/null; then
+        echo "System certificates: from GnuTLS"
+        cat <<EOF >nettls_gnutls_config.ml
+let system_trust = \`Gnutls
+EOF
+    else
+        path=""
+        for p in \
+            /etc/ssl/ca-bundle.pem \
+            /etc/ssl/certs/ca-certificates.crt \
+            /etc/pki/tls/cert.pem \
+            /usr/local/share/certs/ca-root-nss.crt \
+            /etc/ssl/cert.pem; \
+        do
+            if [ -f "$p" ]; then 
+                path="$p"
+                break
+            fi
+        done
+        if [ -n "$path" ]; then
+            echo "System certificates: $path"
+            cat <<EOF >nettls_gnutls_config.ml
+let system_trust = \`File "$path"
+EOF
+        else
+            echo "System certificates: NOT FOUND"
+            echo "This is an error. Without system certificates, clients"
+            echo "will not be able to make TLS-secured connections."
+            echo "Set the -gnutls-system-trust-file configuration option manually!"
+            echo "ERROR"
+            exit 1
+        fi
+    fi
+fi
+
 touch done_reconfigure

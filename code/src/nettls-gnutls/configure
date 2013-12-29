@@ -4,6 +4,7 @@
 # GNUTLS_CFLAGS
 # GNUTLS_LIBS
 # PKG_CONFIG
+# GNUTLS_SYSTEM_TRUST_FILE
 
 have_gnutls=0
 
@@ -89,6 +90,7 @@ if [ $have_gnutls -gt 0 ]; then
     echo "PKG_CONFIG='$PKG_CONFIG'" >>config.sh
     echo "GNUTLS_CFLAGS='$GNUTLS_CFLAGS'" >>config.sh
     echo "GNUTLS_LIBS='$GNUTLS_LIBS'" >>config.sh
+    echo "GNUTLS_SYSTEM_TRUST_FILE='$GNUTLS_SYSTEM_TRUST_FILE'" >>config.sh
 
     ./reconfigure
 fi

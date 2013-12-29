@@ -49,6 +49,7 @@ module type TLS_PROVIDER =
         | `PKCS8_encrypted of string
         ]
     val create_x509_credentials :
+          ?system_trust:bool ->
           ?trust : crt_list list ->
           ?revoke : crl_list list ->
           ?keys : (crt_list * private_key * string option) list ->

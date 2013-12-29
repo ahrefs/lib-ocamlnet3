@@ -5,6 +5,7 @@ include $(TOP_DIR)/Makefile.conf
 
 PKGNAME  = nettls-gnutls
 OBJECTS  = nettls_gnutls_bindings.cmo \
+	   nettls_gnutls_config.cmo \
            nettls_gnutls.cmo
 COBJECTS = nettls_gnutls_bindings_stubs.o
 DOBJECTS = nettls_gnutls_bindings.mli
@@ -28,6 +29,9 @@ nettls_gnutls_bindings.mli: done_reconfigure
 	@:
 
 nettls_gnutls_bindings_stubs.c: done_reconfigure
+	@:
+
+nettls_gnutls_config.ml: done_reconfigure
 	@:
 
 done_reconfigure: gnutls.descr gnutls.c gnutls.ml gnutls.mli

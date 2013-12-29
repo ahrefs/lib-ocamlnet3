@@ -880,6 +880,11 @@ let functions =
     [ `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
+      ~optional:true
+      "error_code gnutls_certificate_set_x509_system_trust \
+           (gnutls_certificate_credentials_t cred)";
+
+    standard
       "error_code gnutls_certificate_set_x509_trust_file \
            (gnutls_certificate_credentials_t cred, \
             ztstr cafile, \

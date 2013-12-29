@@ -65,6 +65,7 @@ set_defaults () {
     cpp_set=0
     gnutls_cflags=""
     gnutls_libs=""
+    gnutls_system_trust_file=""
 }
 
 ocamlc=`get_path ocamlc`
@@ -161,11 +162,14 @@ print_options () {
 	if [ -n "$apache" ]; then
 	    echo "    -apache $apache"
 	fi
-        if [ -n "gnutls_cflags" ]; then
+        if [ -n "$gnutls_cflags" ]; then
             echo "    -gnutls-cflags $gnutls_cflags"
         fi
-        if [ -n "gnutls_libs" ]; then
+        if [ -n "$gnutls_libs" ]; then
             echo "    -gnutls-libs $gnutls_libs"
+        fi
+        if [ -n "$gnutls_system_trust_file" ]; then
+            echo "    -gnutls-system-trust-file $gnutls_system_trust_file"
         fi
         echo "    -cpp $cpp"
 }
@@ -220,6 +224,9 @@ _EOF_
 
 -gnutls-libs <opts>
         Libraries for GnuTLS
+
+-gnutls-system-trust-file /path/to/certificates.crt
+        File with the certificates that are trusted by default
 
 -prefer-netcgi2
         This option is ignored for compatibility with older versions
@@ -338,6 +345,10 @@ while [ "$#" -gt 0 ]; do
                         gnutls_libs="$2"
                         shift
                         shift
+                        ;;
+                -gnutls-system-trust-file)
+                        gnutls_system_trust_file="$2"
+                        shift 2
                         ;;
 	        -prefer-netcgi2)
 		        # ignore!
@@ -799,7 +810,7 @@ with_gnutls=0
 
 if [ $enable_gnutls -gt 0 ]; then
     ( cd src/nettls-gnutls
-      GNUTLS_CFLAGS="$gnutls_cflags" GNUTLS_LIBS="$gnutls_libs" ./configure
+      GNUTLS_CFLAGS="$gnutls_cflags" GNUTLS_LIBS="$gnutls_libs" GNUTLS_SYSTEM_TRUST_FILE="$gnutls_system_trust_file" ./configure
     )
     if [ $? -eq 0 ]; then
         with_gnutls=1

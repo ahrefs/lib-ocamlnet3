@@ -194,8 +194,21 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
       trans_exn f ()
 
 
-    let create_x509_credentials_1 ~trust ~revoke ~keys () =
+    let create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys () =
       let gcred = G.gnutls_certificate_allocate_credentials() in
+      if system_trust then (
+        match Nettls_gnutls_config.system_trust with
+          | `Gnutls ->
+               G.gnutls_certificate_set_x509_system_trust gcred
+          | `File path ->
+               let certs =
+                 parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] path snd in
+               List.iter
+                 (fun data ->
+                    G.gnutls_certificate_set_x509_trust_mem gcred data `Der
+                 )
+                 certs
+      );
       List.iter
         (fun crt_spec ->
            let der_crts =
@@ -302,9 +315,10 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
       G.gnutls_certificate_set_verify_flags gcred [];
       { gcred = `Certificate gcred }
 
-    let create_x509_credentials ?(trust=[]) ?(revoke=[]) ?(keys=[]) () =
+    let create_x509_credentials ?(system_trust=false) 
+                                ?(trust=[]) ?(revoke=[]) ?(keys=[]) () =
       trans_exn
-        (create_x509_credentials_1 ~trust ~revoke ~keys)
+        (create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys)
         ()
 
     let create_endpoint ~role ~recv ~send ~peer_name config =

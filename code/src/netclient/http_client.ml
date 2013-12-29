@@ -4983,7 +4983,8 @@ class pipeline =
           | None -> None
           | Some tls_provider ->
                Some(Netsys_tls.create_x509_config
-                      ~peer_auth:`None
+                      ~system_trust:true
+                      ~peer_auth:`Required
                       tls_provider) in
       ref
 	{ (* Default values: *)
@@ -5024,17 +5025,23 @@ class pipeline =
       }
 
     val transports = Hashtbl.create 5
+    val mutable transports_upd_https = true
 
     initializer (
       Hashtbl.add transports http_cb_id http_transport_channel_type;
       Hashtbl.add transports proxy_only_cb_id http_transport_channel_type;
-      ( match (!options).tls with
-          | None -> ()
+      self # update_https_transport()
+    )
+
+    method private update_https_transport() =
+      if transports_upd_https then
+        match (!options).tls with
+          | None ->
+               Hashtbl.remove transports https_cb_id
           | Some config ->
                let https_tct = https_transport_channel_type config in
-               Hashtbl.add transports https_cb_id https_tct
-      )
-    )
+               Hashtbl.replace transports https_cb_id https_tct
+
 
     method event_system = esys
 
@@ -5119,7 +5126,9 @@ class pipeline =
 
 
     method configure_transport (cb:int) (tp:transport_channel_type) =
-      Hashtbl.replace transports cb tp
+      Hashtbl.replace transports cb tp;
+      if cb = https_cb_id then
+        transports_upd_https <- false  (* never change this magically again *)
 
     method set_tls_cache c =
       tls_cache <- c
@@ -5447,7 +5456,17 @@ class pipeline =
     method get_options = !options
 
     method set_options p =
-      options := p
+      let old_opts = !options in
+      options := p;
+      (* Otherwise changing the tls config wouldn't have any effect: *)
+      let tls_changed =
+        match old_opts.tls, p.tls with
+          | None, Some _ -> true
+          | Some _, None -> true
+          | Some t1, Some t2 -> t1 != t2
+          | _ -> false in
+      if tls_changed then
+        self # update_https_transport()
 
     method number_of_open_messages = open_messages
 

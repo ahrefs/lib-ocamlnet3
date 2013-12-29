@@ -7,9 +7,10 @@ GENERATE = META nettls_gnutls_bindings.ml nettls_gnutls_bindings.mli \
 
 include $(TOP_DIR)/Makefile.rules
 
-CLEAN_LIST += netsys_gnutls_bindings.ml \
-              netsys_gnutls_bindings.mli \
-              netsys_gnutls_bindings_stubs.c \
+CLEAN_LIST += nettls_gnutls_bindings.ml \
+              nettls_gnutls_bindings.mli \
+              nettls_gnutls_bindings_stubs.c \
+	      nettls_gnutls_config.ml \
               config.log \
               config_checks.sh \
               done_reconfigure

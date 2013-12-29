@@ -50,7 +50,7 @@ let error_message tls code =
 
 let create_x509_config
       ?algorithms ?dh_params ?(verify = fun _ -> true) 
-      ?peer_name_unchecked ?trust ?revoke ?keys 
+      ?peer_name_unchecked ?system_trust ?trust ?revoke ?keys 
       ~peer_auth tls =
   let module P = (val tls : Netsys_crypto_types.TLS_PROVIDER) in
   let verify ep =
@@ -60,7 +60,8 @@ let create_x509_config
     end in
     verify (module EP : Netsys_crypto_types.TLS_ENDPOINT) in
   try
-    let credentials = P.create_x509_credentials ?trust ?revoke ?keys () in
+    let credentials = 
+      P.create_x509_credentials ?system_trust ?trust ?revoke ?keys () in
     let config =
       P.create_config
         ?algorithms ?dh_params ~verify ?peer_name_unchecked

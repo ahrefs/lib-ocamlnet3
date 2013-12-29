@@ -151,12 +151,14 @@ module type TLS_PROVIDER =
        *)
 
     val create_x509_credentials :
+          ?system_trust:bool ->
           ?trust : crt_list list ->
           ?revoke : crl_list list ->
           ?keys : (crt_list * private_key * string option) list ->
           unit ->
             credentials
       (** Create X.509 credentials from individual objects:
+           - [system_trust]: if set, the system certificates are trusted
            - [trust] specifies the CAs of peers to trust (default: empty)
            - [revoke] specifies CRLs for revocation of peer certificates
              (default: empty)

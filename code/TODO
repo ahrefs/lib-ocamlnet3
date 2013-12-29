@@ -1,10 +1,48 @@
 TLS:
  - ensure that clients use a safe default config that only accepts
    approved CAs
- - use ztstringbuf for all the other functions returning zero-terminated
-   strings - DONE
+    * support gnutls_certificate_set_x509_system_trust if defined
+    * create_x509_credentials ~system_trust:true
+    * check at configure time:
+        /etc/ssl/ca-bundle.pem \
+        /etc/ssl/certs/ca-certificates.crt \
+        /etc/pki/tls/cert.pem \
+        /usr/local/share/certs/ca-root-nss.crt \
+        /etc/ssl/cert.pem
+
  - Also add `PEM_data to TLS config. Support that in Netplex parser.
  - document Netplex config for TLS
+ - document new Netplex directives in netplex_admin.txt
+ - Rpc_ssl: integrate into main rpc lib
+    * need test case3
+ - Rpc_ssl: test DTLS
+ - pop: also basic TLS support (like smtp)
+ - telnet: add a "starttls" method (to be used by ftp client)
+    * run the handshake at starttls time
+    * don't allow rehandshake
+    * Unix.read -> tls_read etc. (think about using a netchannel)
+ - FTP: rfc4217
+   ftp_client_pi:
+    * AUTH TLS command
+    * add a START_TLS pseudo-command (following AUTH TLS)
+    * add a NEGOTIATE_TLS pseudo-command (AUTH + TLS neg + PBSZ + PROT)
+    * recognize TLS feature
+    * PBSZ 0 command
+    * PROT P command
+    * tls_session_props
+
+    connect_method: add tls option
+
+    add TLS to data endpoints
+    * "receiver": so far data is received on an file_descr and copied to
+      an async_out_channel.
+
+      For TLS: encapsulate the file_descr with tls_multiplex_controller,
+      and wrap it as Uq_io.in_device. Use Uq_io.copy_e for copying the data.
+
+
+ - use ztstringbuf for all the other functions returning zero-terminated
+   strings - DONE
  - implement alert support
      * DONE partially: peers always accept rehandshakes with identical config
      * Open: request rehandshakes
@@ -33,8 +71,7 @@ TLS:
    are identical - DONE
  - check that https redirects work - DONE
  - config: TLS name as user name
-    * check client authentication
- - document new Netplex directives in netplex_admin.txt
+    * check client authentication - DONE
  - SNI:
      * server: probably need to select the cert to send.
        Figure out how to do that. (Maybe look at mod_gnutls?)
