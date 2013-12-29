@@ -76,7 +76,6 @@ module type TLS_PROVIDER =
           ?algorithms : string ->
           ?dh_params : dh_params ->
           ?verify : (endpoint -> bool) ->
-          ?peer_name : string ->
           ?peer_name_unchecked : bool ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
@@ -91,9 +90,6 @@ module type TLS_PROVIDER =
             implementation-defined.
           - [dh_params]: parameters for Diffie-Hellman key exchange (used for
             DH-based authentication, but only on the server side)
-          - [peer_name]: The expected name of the peer (i.e. the subject
-            of the peer certificate = normally the DNS name). {b This is
-            strongly recommended to set for clients!}
           - [peer_name_unchecked]: If you do not want to check the peer name
             although authentication is enabled, you can set this option.
             (Normally, it is an error just to omit [peer_name].)
@@ -185,9 +181,24 @@ module type TLS_PROVIDER =
           role : [ `Server | `Client ] ->
           recv : (Netsys_types.memory -> int) ->
           send : (Netsys_types.memory -> int -> int) ->
+          peer_name : string option ->
           config ->
             endpoint
       (** Creates a new endpoint for this configuration.
+
+          [peer_name] is the expected common name or DNS name of the
+          peer.  [peer_name] has an option type as it is not always
+          required to pass it. However, keep in mind that clients
+          normally authenticate servers ([peer_auth=`Required]). In
+          order to do so, they need to check whether the name in the
+          server certificate equals the DNS name of the service they
+          are connected to. This check is done by comparing [peer_name]
+          with the name in the certificate.
+
+          [peer_name] is also used for the SNI extension.
+
+          Servers normally need not to set [peer_name]. You can also omit it
+          when there is no name-driven authentication at all.
 
           The endpoint will use the functions [recv] and [send] for I/O, which
           must be user-supplied. [recv buf] is expected to read data into the
@@ -196,6 +207,35 @@ module type TLS_PROVIDER =
 
           Both functions may raise [Unix_error]. The codes [Unix.EAGAIN] and
           [Unix.EINTR] are specially interpreted.
+       *)
+
+    val stash_endpoint : endpoint -> exn
+      (** The endpoint in "stashed" form, encapsulated as an exception.
+          This form is intended for keeping the session alive in RAM, but
+          without keeping references to the [recv] and [send] functions.
+
+          The endpoint passed in to [stash_endpoint] must no longer be used!
+       *)
+
+    val restore_endpoint : 
+          recv : (Netsys_types.memory -> int) ->
+          send : (Netsys_types.memory -> int -> int) ->
+          exn ->
+            endpoint
+      (** Reconnect the stashed endpoint with [recv] and [send] functions *)
+
+    val resume_client :
+          recv : (Netsys_types.memory -> int) ->
+          send : (Netsys_types.memory -> int -> int) ->
+          peer_name : string option ->
+          config ->
+          string ->
+            endpoint
+      (** Creates a new endpoint that will resume an old session. This implies
+          the client role.
+
+          The session data is passed as string, which must have been retrieved
+          with [get_session_data].
        *)
 
     type state =
@@ -372,6 +412,11 @@ module type TLS_PROVIDER =
     val get_session_id : endpoint -> string
       (** The (non-printable) session ID *)
 
+    val get_session_data : endpoint -> string
+      (** Get the (non-printable) marshalled session data, for later resumption
+          with [resume_client]
+       *)
+
     val get_cipher_suite_type : endpoint -> string
       (** The type of the cipher suite:
          - "X509": X509 certificates are used
@@ -413,18 +458,13 @@ module type TLS_PROVIDER =
           only available after a handshake, and if the client submitted it.
        *)
 
-    val set_addressed_servers : endpoint -> server_name list -> unit
-      (** For clients: Set the virtual server to address. This must be done
-          before the handshake
-       *)
-
     val set_session_cache : store:(string -> string -> unit) ->
                             remove:(string -> unit) ->
                             retrieve:(string -> string) ->
                             endpoint ->
                             unit
       (** Sets the three callbacks for storing, removing and retrieving
-          sessions
+          sessions (on the server side)
        *)
 
     (* TODO: DTLS *)

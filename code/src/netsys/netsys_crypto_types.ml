@@ -30,7 +30,6 @@ module type TLS_PROVIDER =
           ?algorithms : string ->
           ?dh_params : dh_params ->
           ?verify : (endpoint -> bool) ->
-          ?peer_name : string ->
           ?peer_name_unchecked : bool ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
@@ -60,7 +59,21 @@ module type TLS_PROVIDER =
           role : [ `Server | `Client ] ->
           recv : (Netsys_types.memory -> int) ->
           send : (Netsys_types.memory -> int -> int) ->
+          peer_name : string option ->
           config ->
+            endpoint
+    val stash_endpoint : endpoint -> exn
+    val restore_endpoint : 
+          recv : (Netsys_types.memory -> int) ->
+          send : (Netsys_types.memory -> int -> int) ->
+          exn ->
+            endpoint
+    val resume_client :
+          recv : (Netsys_types.memory -> int) ->
+          send : (Netsys_types.memory -> int -> int) ->
+          peer_name : string option ->
+          config ->
+          string ->
             endpoint
 
     type state =
@@ -90,6 +103,7 @@ module type TLS_PROVIDER =
     val recv : endpoint -> Netsys_types.memory -> int
     val recv_will_not_block : endpoint -> bool
     val get_session_id : endpoint -> string
+    val get_session_data : endpoint -> string
     val get_cipher_suite_type : endpoint -> string
     val get_cipher_algo : endpoint -> string
     val get_kx_algo : endpoint -> string
@@ -101,7 +115,6 @@ module type TLS_PROVIDER =
     type server_name = [ `Domain of string ]
 
     val get_addressed_servers : endpoint -> server_name list
-    val set_addressed_servers : endpoint -> server_name list -> unit
     val set_session_cache : store:(string -> string -> unit) ->
                             remove:(string -> unit) ->
                             retrieve:(string -> string) ->

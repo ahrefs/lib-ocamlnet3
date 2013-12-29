@@ -69,12 +69,15 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
       | `Anonymous
       ]
 
+    type role = [ `Server | `Client ]
+
     type endpoint =
-        { role : [ `Server | `Client ];
+        { role : role;
           recv : (Netsys_types.memory -> int);
           send : (Netsys_types.memory -> int -> int);
           mutable config : config;
           session : G.gnutls_session_t;
+          peer_name : string option;
           mutable our_cert : raw_credentials option;
           mutable state : state;
           mutable trans_eof : bool;
@@ -86,7 +89,6 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
           peer_auth : [ `None | `Optional | `Required ];
           credentials : credentials;
           verify : endpoint -> bool;
-          peer_name : string option;
           peer_name_unchecked : bool;
         }
 
@@ -96,7 +98,18 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
         }
 
     let error_message code = 
-      G.gnutls_strerror (G.b_error_of_name code)
+      match code with
+        | "NETTLS_CERT_VERIFICATION_FAILED" ->
+             "The certificate could not be verified against the list of \
+              trusted authorities"
+        | "NETTLS_NAME_VERIFICATION_FAILED" ->
+             "The name of the peer does not match the name of the certificate"
+        | "NETTLS_USER_VERIFICATION_FAILED" ->
+             "The user-supplied verification function did not succeed"
+        | "NETTLS_UNEXPECTED_STATE" ->
+             "The endpoint is in an unexpected state"
+        | _ ->
+             G.gnutls_strerror (G.b_error_of_name code)
 
 
     let () =
@@ -150,7 +163,7 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
 
 
     let create_config ?(algorithms="NORMAL") ?dh_params ?(verify=fun _ -> true)
-                      ?peer_name ?(peer_name_unchecked=false) ~peer_auth 
+                      ?(peer_name_unchecked=false) ~peer_auth 
                       ~credentials () =
       let f() =
         let priority = G.gnutls_priority_init algorithms in
@@ -171,15 +184,11 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
                 let dhp = G.gnutls_dh_params_init() in
                 G.gnutls_dh_params_generate2 dhp bits;
                 Some dhp in
-        if peer_name=None && not peer_name_unchecked && peer_auth <> `None then
-          failwith "TLS configuration error: authentication required, \
-                    but no peer_name set";
         { priority;
           dh_params = dhp_opt;
           peer_auth;
           credentials;
           verify;
-          peer_name;
           peer_name_unchecked
         } in
       trans_exn f ()
@@ -298,7 +307,14 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
         (create_x509_credentials_1 ~trust ~revoke ~keys)
         ()
 
-    let create_endpoint ~role ~recv ~send config =
+    let create_endpoint ~role ~recv ~send ~peer_name config =
+      if peer_name=None && 
+         role=`Client &&
+         not config.peer_name_unchecked &&
+         config.peer_auth <> `None
+      then
+        failwith "TLS configuration error: authentication required, \
+                  but no peer_name set";
       let f() =
         let flags = [ (role :> G.gnutls_init_flags_flag) ] in
         let session = G.gnutls_init flags in
@@ -309,6 +325,77 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
             config;
             our_cert = None;
             session;
+            peer_name;
+            state = `Start;
+            trans_eof = false;
+          } in
+        let recv1 mem =
+          let n = recv mem in
+          if Bigarray.Array1.dim mem > 0 && n=0 then ep.trans_eof <- true;
+          n in
+        G.b_set_pull_callback session recv1;
+        G.b_set_push_callback session send;
+
+        G.gnutls_priority_set session config.priority;
+        G.gnutls_credentials_set session config.credentials.gcred;
+
+        if role = `Client then (
+          match peer_name with
+            | None -> ()
+            | Some n -> G.gnutls_server_name_set session `Dns n
+        );
+        ep
+      in
+      trans_exn f ()
+
+    exception Stashed of role * config * G.gnutls_session_t * string option *
+                           raw_credentials option * state * bool
+
+    let stash_endpoint ep =
+      G.b_set_pull_callback ep.session (fun _ -> 0);
+      G.b_set_push_callback ep.session (fun _ _ -> 0);
+      let exn =
+        Stashed(ep.role,
+                ep.config,
+                ep.session,
+                ep.peer_name,
+                ep.our_cert,
+                ep.state,
+                ep.trans_eof) in
+      ep.state <- `End;
+      exn
+
+    let restore_endpoint ~recv ~send exn =
+      match exn with
+        | Stashed(role,config,session,peer_name,our_cert,state,trans_eof) ->
+             let ep =
+               { role; recv; send; config; session; peer_name;
+                 our_cert; state; trans_eof
+               } in
+             let recv1 mem =
+               let n = recv mem in
+               if Bigarray.Array1.dim mem > 0 && n=0 then ep.trans_eof <- true;
+               n in
+             G.b_set_pull_callback session recv1;
+             G.b_set_push_callback session send;
+             ep
+        | _ ->
+             failwith "Nettls_gnutls.restore_endpoint: bad exception value"
+
+          
+    let resume_client ~recv ~send ~peer_name config data =
+      let f() =
+        let flags = [ `Client ] in
+        let session = G.gnutls_init flags in
+        G.gnutls_session_set_data session data;
+        let ep =
+          { role = `Client;
+            recv;
+            send;
+            config;
+            our_cert = None;
+            session;
+            peer_name;
             state = `Start;
             trans_eof = false;
           } in
@@ -364,7 +451,7 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
               raise(Exc.TLS_error code')
 
     let unexpected_state() =
-      failwith "Nettls_gnutls: the endpoint is in an unexpected state"
+      raise(Exc.TLS_error "NETTLS_UNEXPECTED_STATE")
 
     let update_our_cert ep =
       (* our_cert: if the session is resumed, our_cert should already be
@@ -424,20 +511,23 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
     let verify ep =
       let f() =
         if G.gnutls_certificate_get_peers ep.session = [| |] then (
-          if ep.config.peer_auth <> `None then
+          if ep.config.peer_auth <> `Required then
             raise(Exc.TLS_error (G.gnutls_strerror_name `No_certificate_found))
         )
         else (
           if ep.config.peer_auth <> `None then (
             let status_l = G.gnutls_certificate_verify_peers2 ep.session in
             if status_l <> [] then
+              raise(Exc.TLS_error "NETTLS_CERT_VERIFICATION_FAILED");
+(*
               failwith(sprintf "Certificate verification failed with codes: " ^ 
                          (String.concat ", " 
                             (List.map 
                                G.string_of_verification_status_flag
                                status_l)));
+ *)
             if not ep.config.peer_name_unchecked then ( 
-              match ep.config.peer_name with
+              match ep.peer_name with
                 | None -> ()
                 | Some pn ->
                      let der_peer_certs = 
@@ -447,12 +537,10 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
                      G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
                      let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
                      if not ok then
-                       failwith "Certificate verification failed with codes: \
-                                 BAD_HOSTNAME";
+                       raise(Exc.TLS_error "NETTLS_NAME_VERIFICATION_FAILED");
             );
             if not (ep.config.verify ep) then
-              failwith "Certificate verification failed with codes: \
-                        FAILED_USER_CHECK";
+              raise(Exc.TLS_error "NETTLS_USER_VERIFICATION_FAILED");
           )
         ) in
       trans_exn f ()
@@ -563,17 +651,16 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
       trans_exn f ()
 
     let get_session_id ep =
-      (* Session IDs are up to 32 bytes *)
       trans_exn
         (fun () ->
-           let sz = 32 in
-           let buf = 
-             Bigarray.Array1.create Bigarray.char Bigarray.c_layout sz in
-           let act_sz = G.gnutls_session_get_id ep.session buf sz in
-           assert(act_sz <= sz);
-           let s = String.create act_sz in
-           Netsys_mem.blit_memory_to_string buf 0 s 0 act_sz;
-           s
+           G.gnutls_session_get_id ep.session
+        )
+        ()
+
+    let get_session_data ep =
+      trans_exn
+        (fun () ->
+           G.gnutls_session_get_data ep.session
         )
         ()
 
@@ -623,14 +710,6 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
           | G.Error `Requested_data_not_available ->
               [] in
       trans_exn get 0
-
-    let set_addressed_servers ep l =
-      List.iter
-        (function
-          | `Domain n ->
-              G.gnutls_server_name_set ep.session `Dns n
-        )
-        l
 
     let set_session_cache ~store ~remove ~retrieve ep =
       let g_store key data =

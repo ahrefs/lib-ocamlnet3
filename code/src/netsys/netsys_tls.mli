@@ -101,7 +101,6 @@ val create_x509_config :
       ?algorithms : string ->
       ?dh_params : dh_params ->
       ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
-      ?peer_name : string ->
       ?peer_name_unchecked : bool ->
       ?trust : crt_list list ->
       ?revoke : crl_list list ->
@@ -118,9 +117,6 @@ val create_x509_config :
             implementation-defined.
           - [dh_params]: parameters for Diffie-Hellman key exchange (used for
             DH-based authentication, but only on the server side)
-          - [peer_name]: The expected name of the peer (i.e. the subject
-            of the peer certificate = normally the DNS name). {b This is
-            strongly recommended to set for clients!}
           - [peer_name_unchecked]: If you do not want to check the peer name
             although authentication is enabled, you can set this option.
             (Normally, it is an error just to omit [peer_name].)
@@ -164,17 +160,36 @@ val create_x509_config :
  *)
 
 
-val create_file_endpoint : 
+val create_file_endpoint :
+       ?resume:string ->
        role : [ `Server | `Client ] ->
        rd:Unix.file_descr ->
        wr:Unix.file_descr ->
+       peer_name : string option ->
        (module Netsys_crypto_types.TLS_CONFIG) ->
          (module Netsys_crypto_types.FILE_TLS_ENDPOINT)
-  (** [create_file_endpoint ~role ~rd ~wr tls_config]:
+  (** [create_file_endpoint ~role ~rd ~wr ~peer_name tls_config]:
       Creates a new TLS endpoint (encapsulated as module, together with
       the provider) for the case that the data flows over file descriptors.
       [rd] is used for reading data, and [wr] for writing (of
       course, both descriptors may be identical).
+
+      [peer_name] is the expected common name or DNS name of the
+      peer.  [peer_name] has an option type as it is not always
+      required to pass it. However, keep in mind that clients
+      normally authenticate servers ([peer_auth=`Required]). In
+      order to do so, they need to check whether the name in the
+      server certificate equals the DNS name of the service they
+      are connected to. This check is done by comparing [peer_name]
+      with the name in the certificate.
+
+      [peer_name] is also used for the SNI extension.
+
+      Servers normally need not to set [peer_name]. You can also omit it
+      when there is no name-driven authentication at all.
+
+      [resume]: The endpoint resumes an old session whose data are passed here.
+      This is only possible for client endpoints.
    *)
 
 

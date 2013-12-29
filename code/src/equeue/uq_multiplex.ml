@@ -96,6 +96,8 @@ object(self)
   method alive = alive
   method mem_supported = mem_supported
   method tls_session_props = None
+  method tls_session = None
+  method tls_stashed_endpoint = failwith "#tls_stashed_endpoint"
   method reading = reading <> `None
   method writing = writing <> `None || writing_eof <> None
   method shutting_down = shutting_down <> None
@@ -877,13 +879,23 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
   )
 
 
-let tls_endpoint ~role config mplex on_input on_output =
+let new_tls_endpoint ?resume ~role ~peer_name config mplex on_input on_output =
   let module Config = (val config : Netsys_crypto_types.TLS_CONFIG) in
   let module P = Config.TLS in
   let adapter = tls_adapter mplex on_input on_output in
   let ep = 
-    P.create_endpoint
-      ~role ~recv:adapter#recv ~send:adapter#send Config.config in
+    match resume with
+      | None ->
+           P.create_endpoint
+             ~role ~recv:adapter#recv ~send:adapter#send ~peer_name
+             Config.config
+      | Some data ->
+           if role <> `Client then 
+             failwith
+               "Uq_multiplex.tls_multiplex_controller: can only resume clients";
+           P.resume_client
+             ~recv:adapter#recv ~send:adapter#send ~peer_name 
+             Config.config data in
   let module Endpoint = struct
     module TLS = P
     let endpoint = ep
@@ -892,12 +904,26 @@ let tls_endpoint ~role config mplex on_input on_output =
   (ep_mod, adapter)
 
 
-class tls_multiplex_controller ~role config mplex : multiplex_controller =
+let restore_tls_endpoint exn config mplex on_input on_output =
+  let module Config = (val config : Netsys_crypto_types.TLS_CONFIG) in
+  let module P = Config.TLS in
+  let adapter = tls_adapter mplex on_input on_output in
+  let ep = P.restore_endpoint ~recv:adapter#recv ~send:adapter#send exn in
+  let module Endpoint = struct
+    module TLS = P
+    let endpoint = ep
+  end in
+  let ep_mod = (module Endpoint : Netsys_crypto_types.TLS_ENDPOINT) in
+  (ep_mod, adapter)
+
+
+class tls_multiplex_controller get_ep config mplex on_handshake
+      : multiplex_controller =
   let on_input = ref (fun () -> ()) in
   let on_output = ref (fun () -> ()) in
-  let ep_mod, adapter = 
-    tls_endpoint
-      ~role config mplex
+  let ep_mod, adapter =
+    get_ep
+      config mplex
       (fun () -> !on_input())
       (fun () -> !on_output()) in
   let esys = mplex#event_system in
@@ -913,6 +939,7 @@ object(self)
   val mutable tls_handshake = None
   val mutable tls_shutdown = None
   val mutable tls_session_props = None
+  val mutable tls_session = None
   val mutable out_notify = Queue.create()
   val mutable fatal_exn = None
 
@@ -942,13 +969,37 @@ object(self)
            let module EP = (val ep_mod : Netsys_crypto_types.TLS_ENDPOINT) in
            let ep = EP.endpoint in
            let state = EP.TLS.get_state ep in
-           if state = `Start || state = `Handshake then
+           if state = `Start || state = `Handshake then (
              None
-           else
-             let props = 
+           )
+           else (
+             let props =
                Nettls_support.get_tls_session_props ep_mod in
              tls_session_props <- Some props;
              Some props
+           )
+
+  method tls_session =
+    match tls_session with
+      | Some(id,data) ->
+           Some(id,data)
+      | None ->
+           let module EP = (val ep_mod : Netsys_crypto_types.TLS_ENDPOINT) in
+           let ep = EP.endpoint in
+           let state = EP.TLS.get_state ep in
+           if state = `Start || state = `Handshake then
+             None
+           else
+             let id = EP.TLS.get_session_id ep in
+             let data = EP.TLS.get_session_data ep in
+             tls_session <- Some (id,data);
+             Some(id,data)
+
+  method tls_stashed_endpoint() =
+    let module EP = (val ep_mod : Netsys_crypto_types.TLS_ENDPOINT) in
+    let ep = EP.endpoint in
+    EP.TLS.stash_endpoint ep
+           
 
   method start_reading ?(peek = fun ()->()) ~when_done s pos len =
     if pos < 0 || len < 0 || pos > String.length s - len then
@@ -1319,6 +1370,7 @@ object(self)
       adapter # enable_send (adapter#send_size > 0);
       tls_handshake <- None;
       dlog "tls_multiplex_controller: cont_handshake done";
+      on_handshake (self :> multiplex_controller);
       self # update();
     with
       | Netsys_types.EAGAIN_RD ->
@@ -1388,6 +1440,28 @@ object(self)
 end
 
 
-let tls_multiplex_controller ~role config mplex =
-  new tls_multiplex_controller ~role config mplex
+class tls_multiplex_controller_1 ?resume ?(on_handshake=fun _ -> ())
+                                 ~role ~peer_name config mplex
+      : multiplex_controller =
+  let get_ep config mplex on_input on_output =
+    new_tls_endpoint
+      ?resume ~role ~peer_name config mplex on_input on_output in
+  tls_multiplex_controller get_ep config mplex on_handshake
 
+
+class tls_multiplex_controller_2 ?(on_handshake=fun _ -> ()) exn config mplex
+      : multiplex_controller =
+  let get_ep config mplex on_input on_output =
+    restore_tls_endpoint
+      exn config mplex on_input on_output in
+  tls_multiplex_controller get_ep config mplex on_handshake
+
+
+let tls_multiplex_controller ?resume ?on_handshake 
+                             ~role ~peer_name config mplex =
+  new tls_multiplex_controller_1
+      ?resume ?on_handshake ~role ~peer_name config mplex
+
+
+let restore_tls_multiplex_controller ?on_handshake exn config mplex =
+  new tls_multiplex_controller_2 ?on_handshake exn config mplex

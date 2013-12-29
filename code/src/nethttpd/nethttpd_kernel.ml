@@ -716,7 +716,7 @@ class http_protocol (config : #http_protocol_config) (fd : Unix.file_descr) =
       | Some tc -> 
           Some(Netsys_tls.endpoint
                  (Netsys_tls.create_file_endpoint 
-                    ~role:`Server ~rd:fd ~wr:fd tc))
+                    ~role:`Server ~rd:fd ~wr:fd ~peer_name:None tc))
   in
   let tls_message code =
     match config # config_tls with

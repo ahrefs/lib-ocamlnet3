@@ -138,7 +138,7 @@ object (self)
     self # smtp_cmd cmd;
     handle_answer ic
 
-  method starttls (tls_config : Netsys_crypto_types.tls_config) =
+  method starttls ~peer_name (tls_config : Netsys_crypto_types.tls_config) =
     if tls_endpoint <> None then
       failwith "Netsmtp: TLS already negotiated";
     self # smtp_cmd "STARTTLS";
@@ -148,6 +148,7 @@ object (self)
         ~role:`Client
         ~rd:(ic0 :> Netchannels.raw_in_channel)
         ~wr:(oc0 :> Netchannels.raw_out_channel)
+        ~peer_name
         tls_config in
     tls_endpoint <- Some tls_ch#tls_endpoint;
     tls_ch # flush();   (* This enforces the TLS handshake *)

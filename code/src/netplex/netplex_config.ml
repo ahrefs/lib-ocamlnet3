@@ -831,10 +831,12 @@ let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
                       | _ ->
                            failwith ("Several sections: " ^ 
                                        cf#print a_tls ^ ".dh_params") in
+(*
                   let peer_name =
                     try Some(cf # string_param
                                     (cf # resolve_parameter a_tls "peer_name"))
                     with Not_found -> None in
+ *)
                   let peer_auth =
                     try
                       match cf # string_param
@@ -858,7 +860,6 @@ let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
                                   ?algorithms
                                   ?dh_params
                                   ?verify
-                                  ?peer_name
                                   ?peer_name_unchecked
                                   ~trust
                                   ~revoke

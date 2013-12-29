@@ -77,7 +77,8 @@ object
   method quit : unit -> unit
     (** Requests the server to end this session. *)
 
-  method starttls : Netsys_crypto_types.tls_config -> unit
+  method starttls : peer_name:string option -> Netsys_crypto_types.tls_config ->
+                    unit
     (** Sends STARTTLS, and negotiates a secure connection. This should
         only be done after EHLO, and only if "STARTTLS" is among the returned
         strings.

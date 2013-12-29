@@ -50,7 +50,7 @@ let error_message tls code =
 
 let create_x509_config
       ?algorithms ?dh_params ?(verify = fun _ -> true) 
-      ?peer_name ?peer_name_unchecked ?trust ?revoke ?keys 
+      ?peer_name_unchecked ?trust ?revoke ?keys 
       ~peer_auth tls =
   let module P = (val tls : Netsys_crypto_types.TLS_PROVIDER) in
   let verify ep =
@@ -63,7 +63,7 @@ let create_x509_config
     let credentials = P.create_x509_credentials ?trust ?revoke ?keys () in
     let config =
       P.create_config
-        ?algorithms ?dh_params ~verify ?peer_name ?peer_name_unchecked
+        ?algorithms ?dh_params ~verify ?peer_name_unchecked
         ~peer_auth ~credentials () in
     let module Config = struct
       module TLS = P
@@ -77,7 +77,7 @@ let create_x509_config
          raise exn
 
 
-let create_file_endpoint ~role ~rd ~wr config =
+let create_file_endpoint ?resume ~role ~rd ~wr ~peer_name config =
   let module Config = (val config : Netsys_crypto_types.TLS_CONFIG) in
   let module P = Config.TLS in
   try
@@ -85,7 +85,15 @@ let create_file_endpoint ~role ~rd ~wr config =
       Netsys_mem.mem_recv rd buf 0 (Bigarray.Array1.dim buf) [] in
     let send buf size =
       Netsys_mem.mem_send wr buf 0 size [] in
-    let ep = P.create_endpoint ~role ~recv ~send Config.config in
+    let ep = 
+      match resume with
+        | None ->
+             P.create_endpoint ~role ~recv ~send ~peer_name Config.config
+        | Some data ->
+             if role <> `Client then 
+               failwith
+                 "Netsys_tls.create_file_endpoint: can only resume clients";
+             P.resume_client ~recv ~send ~peer_name Config.config data in
     let module Endpoint = struct
       module TLS = P
       let endpoint = ep

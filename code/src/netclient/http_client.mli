@@ -385,6 +385,11 @@ object
   method status : status
     (** The condensed status *)
 
+  (** {2 TLS} *)
+
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** If TLS is enabled, this returns the session properties *)
+
   (** {2 Accessing the request message (new style) } *)
 
   method request_method : string
@@ -735,12 +740,43 @@ end
 ;;
 
 
+(** A cache object for storing TLS session data *)
+class type tls_cache =
+object
+  method set : domain:string -> port:int -> cb:channel_binding_id -> 
+               data:string -> unit
+    (** This is called by the client to store a new session in the cache.
+        It is up to the cache for how long the session is remembered.
+     *)
+  method get : domain:string -> port:int -> cb:channel_binding_id -> string
+    (** Get a cached session (data string) *)
+  method clear : unit -> unit
+    (** Clear the cache *)
+end
+
+
+val null_tls_cache : unit -> tls_cache
+  (** This "cache" does not remember any session *)
+
+val unlim_tls_cache : unit -> tls_cache
+  (** Returns a simple cache without limit for the number of cached
+      sessions
+   *)
+
+
 class type transport_channel_type =
 object
+  method identify_conn_by_name : bool
+    (** Whether connections must be identified by name, and not by
+        IP address. (Set for TLS connections.)
+     *)
+
   method setup_e : Unix.file_descr -> channel_binding_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
+                   tls_cache ->
                    Uq_engines.multiplex_controller Uq_engines.engine
-  (** [setup fd cb tmo tmo_x host port esys]: Create or configure a communication
+  (** [setup fd cb tmo tmo_x host port esys tls_cache]: 
+      Create or configure a communication
       circuit over the file descriptor [fd] that can be driven by the
       returned multiplex controller object.
 
@@ -754,9 +790,10 @@ object
 
   method continue : Unix.file_descr -> channel_binding_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
+                   exn option ->
                    Uq_engines.multiplex_controller
   (** [continue] is called when an already established circuit needs to
-      be continued.
+      be continued. The additional argument contains the stashed TLS session.
 
       Note that the event system can be different now.
    *)
@@ -1115,6 +1152,7 @@ val https_transport_channel_type :
       just set the [tls] field of {!Http_client.http_options}.
    *)
 
+
 type proxy_type = [`Http_proxy | `Socks5 ] 
 
 
@@ -1223,6 +1261,9 @@ class pipeline :
 	   By default, there is only a configuration for
 	   {!Http_client.http_cb_id}, i.e. for normal unencrypted channels.
 	*)
+
+    method set_tls_cache : tls_cache -> unit
+       (** Sets the TLS cache (NB. The default cache is [null_tls_cache]) *)
 
     method set_transport_proxy : channel_binding_id ->
                                  string ->

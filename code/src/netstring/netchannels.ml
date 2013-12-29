@@ -1520,7 +1520,8 @@ end
 
 (************************** TLS *****************************)
 
-class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ~role ~rd ~wr config =
+class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ?resume
+                ~role ~rd ~wr ~peer_name config =
   let sbuf = String.create 65536 in
   let recv buf =
     try
@@ -1548,7 +1549,15 @@ class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ~role ~rd ~wr config =
   let endpoint = 
     let module Config = (val config : Netsys_crypto_types.TLS_CONFIG) in
     let module P = Config.TLS in
-    let ep = P.create_endpoint ~role ~recv ~send Config.config in
+    let ep =
+      match resume with
+        | None ->
+             P.create_endpoint ~role ~recv ~send ~peer_name Config.config
+        | Some data ->
+             if role <> `Client then 
+               failwith
+                 "Netchannels.tls_layer: can only resume clients";
+             P.resume_client ~recv ~send ~peer_name Config.config data in
     let module Endpoint = struct
       module TLS = P
       let endpoint = ep
@@ -1621,9 +1630,11 @@ class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ~role ~rd ~wr config =
   )
 
 
-class tls_endpoint ?(start_pos_in=0) ?(start_pos_out=0) ~role fd config =
+class tls_endpoint ?(start_pos_in=0) ?(start_pos_out=0) ?resume 
+                   ~role ~peer_name fd config =
   let endpoint = 
-    Netsys_tls.create_file_endpoint ~role ~rd:fd ~wr:fd config in
+    Netsys_tls.create_file_endpoint
+      ?resume ~role ~rd:fd ~wr:fd ~peer_name config in
   let fd_style = `TLS endpoint in
   ( object (self)
       inherit socket_descr ~fd_style fd as super

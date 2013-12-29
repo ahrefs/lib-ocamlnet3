@@ -9,17 +9,23 @@
 type channel_binding_id = int
     (** Same as in {!Http_client.channel_binding_id} *)
 
-type conn_state = [ `Inactive of channel_binding_id | `Active of < > ]
+type inactive_data =
+    { conn_cb : channel_binding_id;
+      tls_stashed_endpoint : exn option;
+    }
+
+type conn_state = [ `Inactive of inactive_data | `Active of < > ]
   (** A TCP connection may be either [`Inactive], i.e. it is not used
     * by any pipeline, or [`Active obj], i.e. it is in use by the pipeline
     * [obj] (this is the {!Http_client.pipeline} coerced to [< >]).
     *
-    * Since Ocamlnet-3.3, [`Inactive] connections carry the channel binding
-    * ID as argument.
+    * Since Ocamlnet-4, [`Inactive] connections carry an [inactive_data]
+    * record (was a [channel_binding_id] before).
    *)
 
 type peer =
     [ `Direct of string * int
+    | `Direct_name of string * int
     | `Http_proxy of string * int
     | `Http_proxy_connect of (string * int) * (string * int)
     | `Socks5 of (string * int) * (string * int)
@@ -36,10 +42,11 @@ object
       * to the caller to close the connection.
      *)
   method find_inactive_connection : peer -> channel_binding_id ->
-                                     Unix.file_descr
+                                     Unix.file_descr * inactive_data
     (** Returns an inactive connection to the passed peer, or raise
       * [Not_found]. Since Ocamlnet-3.3, the required channel binding ID
-      * is also an argument of this method.
+      * is also an argument of this method. Since Ocamlnet-4, the
+      * [inactive_data] record is also returned.
      *)
   method find_my_connections : < > -> Unix.file_descr list
     (** Returns all active connections owned by the object *)

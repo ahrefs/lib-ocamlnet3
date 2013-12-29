@@ -893,9 +893,11 @@ class socket_descr :
 class tls_layer :
   ?start_pos_in:int ->
   ?start_pos_out:int ->
+  ?resume:string ->
   role:[ `Client | `Server ] ->
   rd:raw_in_channel ->
   wr:raw_out_channel ->
+  peer_name:string option ->
   Netsys_crypto_types.tls_config ->
     tls_channel
   (** Adds TLS security to an already established connection, here made
@@ -903,12 +905,16 @@ class tls_layer :
 
       The TLS handshake is done on the first I/O activity (call [flush]
       to enforce it).
+
+      [resume]: see {!Netsys_tls.create_file_endpoint}.
    *)
 
 class tls_endpoint :
   ?start_pos_in:int ->
   ?start_pos_out:int ->
+  ?resume:string ->
   role:[ `Client | `Server ] ->
+  peer_name:string option ->
   Unix.file_descr ->
   Netsys_crypto_types.tls_config ->
     tls_channel

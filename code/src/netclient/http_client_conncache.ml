@@ -2,10 +2,16 @@
 
 type channel_binding_id = int
  
-type conn_state = [ `Inactive of channel_binding_id | `Active of < > ]
+type inactive_data =
+    { conn_cb : channel_binding_id;
+      tls_stashed_endpoint : exn option;
+    }
+
+type conn_state = [ `Inactive of inactive_data | `Active of < > ]
 
 type peer =
     [ `Direct of string * int
+    | `Direct_name of string * int
     | `Http_proxy of string * int
     | `Http_proxy_connect of (string * int) * (string * int)
     | `Socks5 of (string * int) * (string * int)
@@ -15,7 +21,7 @@ class type connection_cache =
 object
   method get_connection_state : Unix.file_descr -> conn_state
   method set_connection_state : Unix.file_descr -> peer -> conn_state -> unit
-  method find_inactive_connection : peer -> channel_binding_id -> Unix.file_descr
+  method find_inactive_connection : peer -> channel_binding_id -> Unix.file_descr * inactive_data
   method find_my_connections : < > -> Unix.file_descr list
   method close_connection : Unix.file_descr -> unit
   method close_all : unit -> unit
@@ -90,17 +96,17 @@ object(self)
   val mutable rev_active_conns = Hashtbl.create 10
     (* maps owner to file_descr list *)
   val mutable inactive_conns = Hashtbl.create 10
-    (* maps file_descr to (cb,sockaddr) *)
+    (* maps file_descr to (inactive_data,sockaddr) *)
   val mutable rev_inactive_conns = Hashtbl.create 10
-    (* maps (cb,sockaddr) to file_descr list *)
+    (* maps (cb,sockaddr) to (file_descr * inactive_data) list *)
 
   method get_connection_state fd =
     try
       `Active(Hashtbl.find active_conns fd)
     with
 	Not_found ->
-	  let (cb,_) = Hashtbl.find inactive_conns fd in
-	  `Inactive cb
+	  let (idata,_) = Hashtbl.find inactive_conns fd in
+	  `Inactive idata
 
   method set_connection_state fd peer state =
     match state with
@@ -111,15 +117,17 @@ object(self)
 	    try Hashtbl.find rev_active_conns owner with Not_found -> [] in
 	  if not (List.mem fd fd_list) then
 	    Hashtbl.replace rev_active_conns owner (fd :: fd_list);
-      | `Inactive cb ->
+      | `Inactive idata ->
+          let cb = idata.conn_cb in
 	  ( try
 	      self # forget_active_connection fd;
-	      Hashtbl.replace inactive_conns fd (cb,peer);
+	      Hashtbl.replace inactive_conns fd (idata,peer);
 	      let fd_list =
 		try Hashtbl.find rev_inactive_conns (cb,peer)
 		with Not_found -> [] in
-	      if not (List.mem fd fd_list) then
-		Hashtbl.replace rev_inactive_conns (cb,peer) (fd :: fd_list)
+	      if not (List.mem_assoc fd fd_list) then
+		Hashtbl.replace 
+                  rev_inactive_conns (cb,peer) ((fd,idata) :: fd_list)
 	    with
 	      | Unix.Unix_error(Unix.ENOTCONN,_,_) ->
 		  self # close_connection fd
@@ -128,7 +136,7 @@ object(self)
   method find_inactive_connection peer cb =
     match Hashtbl.find rev_inactive_conns (cb,peer) with
       | [] -> raise Not_found
-      | fd :: _ -> fd
+      | (fd,idata) :: _ -> (fd,idata)
 
   method find_my_connections owner =
     try
@@ -155,12 +163,13 @@ object(self)
 
   method private forget_inactive_connection fd =
     try
-      let cb, peer = Hashtbl.find inactive_conns fd in
+      let idata, peer = Hashtbl.find inactive_conns fd in
       (* Do not use getpeername! fd might be disconnected in the meantime! *)
+      let cb = idata.conn_cb in
       let fd_list = 
 	try Hashtbl.find rev_inactive_conns (cb,peer) with Not_found -> [] in
       let fd_list' =
-	List.filter (fun fd' -> fd' <> fd) fd_list in
+	List.filter (fun (fd',_) -> fd' <> fd) fd_list in
       if fd_list' <> [] then 
 	Hashtbl.replace rev_inactive_conns (cb,peer) fd_list'
       else

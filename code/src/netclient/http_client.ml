@@ -403,6 +403,7 @@ class type http_call =
 object
   method is_served : bool
   method status : status
+  method tls_session_props : Nettls_support.tls_session_props option
   method request_method : string
   method request_uri : string
   method set_request_uri : string -> unit
@@ -492,6 +493,8 @@ object
 
   method auth_state : auth_session auth_state
   method set_auth_state : auth_session auth_state -> unit
+
+  method set_tls_session_props : Nettls_support.tls_session_props -> unit
 
   method retry_anyway : bool
   method set_retry_anyway : bool -> unit
@@ -615,6 +618,8 @@ object(self)
   val mutable redir_counter = 0
   val mutable auth_state = `None
 
+  val mutable tls_session_props = None
+
 
   method private resp_body =
     match resp_body with
@@ -695,6 +700,8 @@ object(self)
 	method auth_state = auth_state
 	method set_auth_state s = auth_state <- s
 
+        method set_tls_session_props p = tls_session_props <- Some p
+
 	method retry_anyway = retry_anyway
 	method set_retry_anyway flag = retry_anyway <- flag;
 
@@ -760,6 +767,7 @@ object(self)
 	method prepare_transmission () =
 	  pself # release_resources();
 	  status <- `Unserved;
+          tls_session_props <- None;
 	  req_work_header <- new Netmime.basic_mime_header 
 	                             req_base_header#fields;
 	  resp_code <- 0;
@@ -945,6 +953,8 @@ object(self)
 
   method is_served = finished
   method status = status
+
+  method tls_session_props = tls_session_props
 
   (* Accessing the request message (new style) *)
 
@@ -3245,14 +3255,20 @@ let drive_postprocessing_msg esys options m f_done =
 
 type peer =
     [ `Direct of string * int
+    | `Direct_name of string * int
     | `Http_proxy of string * int
     | `Http_proxy_connect of (string * int) * (string * int)
     | `Socks5 of (string * int) * (string * int)
     ]
 
+(* `Direct_name: like `Direct, but the host name must not be rwritten to an
+    IP address when the connection is cached
+ *)
+
 let first_hop =
   function
     | `Direct (host,port) -> (host,port)
+    | `Direct_name (host,port) -> (host,port)
     | `Http_proxy (host,port) -> (host,port)
     | `Http_proxy_connect ((host,port),_) -> (host,port)
     | `Socks5 ((host,port),_) -> (host,port)
@@ -3260,6 +3276,7 @@ let first_hop =
 let content_hop =
   function
     | `Direct (host,port) -> (host,port)
+    | `Direct_name (host,port) -> (host,port)
     | `Http_proxy (host,port) -> (host,port)  (* This case does not work *)
     | `Http_proxy_connect (_,(host,port)) -> (host,port)
     | `Socks5 (_,(host,port)) -> (host,port)
@@ -3268,6 +3285,7 @@ let content_hop =
 let rewrite_first_hop s =
   function
     | `Direct (host,port) -> `Direct(s,port)
+    | `Direct_name (host,port) -> `Direct_name(host,port)  (* no rewriting *)
     | `Http_proxy (host,port) -> `Http_proxy(s,port)
     | `Http_proxy_connect ((host1,port1),(host2,port2)) ->
 	`Http_proxy_connect ((s,port1),(host2,port2))
@@ -3384,8 +3402,17 @@ let proxy_connect_e esys fd fd_open host port options proxy_auth_handler_opt
      )
 
 
-let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options 
-                  proxy_auth_handler_opt =
+class type tls_cache =
+object
+  method set : domain:string -> port:int -> cb:channel_binding_id -> 
+               data:string -> unit
+  method get : domain:string -> port:int -> cb:channel_binding_id -> string
+  method clear : unit -> unit
+end
+
+
+let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
+                  options proxy_auth_handler_opt =
   (* An engine connecting to peer_host:peer_port. If a connection is still
      available in conn_cache, use this instead.
 
@@ -3420,6 +3447,8 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
     match peer with
       | `Direct (host,port) -> 
 	  sprintf "direct connection to %s:%d" host port
+      | `Direct_name (host,port) -> 
+	  sprintf "direct connection to (name) %s:%d" host port
       | `Http_proxy (host,port) ->
 	  sprintf "proxy connection via %s:%d" host port
       | `Http_proxy_connect ((host1,port1),(host2,port2)) ->
@@ -3440,7 +3469,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 	let cache_peer =
 	  rewrite_first_hop hop1_host_ip peer in
 	try
-	  let fd = conn_cache # find_inactive_connection cache_peer cb in
+	  let fd, idata = conn_cache # find_inactive_connection cache_peer cb in
 	  (* Case: reuse old connection *)
 	  conn_cache # set_connection_state fd cache_peer (`Active conn_owner);
 	  if !options.verbose_events then
@@ -3450,8 +3479,11 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 	  let mplex = 
 	    tp # continue 
 	      fd cb !options.connection_timeout tmo_x 
-	      real_host real_port esys in
-	  eps_e (`Done(fd, mplex, 0.0)) esys
+	      real_host real_port esys
+              ( let open Http_client_conncache in
+                idata.tls_stashed_endpoint
+              ) in
+	  eps_e (`Done(fd, cache_peer, mplex, 0.0)) esys
 	with
 	  | Not_found ->
 	      if !options.verbose_connection then
@@ -3469,6 +3501,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 	      let sockspec =
 		match peer with
 		  | `Direct _
+		  | `Direct_name _
 		  | `Http_proxy _ 
 		  | `Http_proxy_connect _ ->
 		      `Sock_inet(Unix.SOCK_STREAM, hop1_ip, hop1_port)
@@ -3489,7 +3522,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 			  let setup_e() =
 			    tp # setup_e
 			      fd cb !options.connection_timeout tmo_x
-			      real_host real_port esys
+			      real_host real_port esys tls_cache
 			    >> (function
 				  | `Done mplex -> `Done(fd,mplex)
 				  | `Error err -> `Error err
@@ -3542,7 +3575,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 
 		    conn_cache # set_connection_state
 		      fd cache_peer (`Active conn_owner);
-		    eps_e (`Done(fd, mplex, d)) esys
+		    eps_e (`Done(fd, cache_peer, mplex, d)) esys
 		 )
 	      >> (function
 		    | `Error err ->
@@ -3561,24 +3594,29 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner options
 
 class type transport_channel_type =
 object
+  method identify_conn_by_name : bool
   method setup_e : Unix.file_descr -> channel_binding_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
+                   tls_cache ->
                    Uq_engines.multiplex_controller Uq_engines.engine
   method continue : Unix.file_descr -> channel_binding_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
+                   exn option ->
                    Uq_engines.multiplex_controller
 end
 
 let http_transport_channel_type : transport_channel_type =
   ( object(self)
-      method continue fd cb tmo tmo_x host port esys =
+      method identify_conn_by_name = false
+
+      method continue fd cb tmo tmo_x host port esys tls_data =
 	Uq_multiplex.create_multiplex_controller_for_connected_socket
 	  ~close_inactive_descr:true
 	  ~supports_half_open_connection:true
 	  ~timeout:( tmo, tmo_x )
 	  fd esys
-      method setup_e fd cb tmo tmo_x host port esys =
-	let mplex = self # continue fd cb tmo tmo_x host port esys in
+      method setup_e fd cb tmo tmo_x host port esys tls_cache =
+	let mplex = self # continue fd cb tmo tmo_x host port esys None in
 	eps_e (`Done mplex) esys
     end
   )
@@ -3586,7 +3624,9 @@ let http_transport_channel_type : transport_channel_type =
 
 let https_transport_channel_type config : transport_channel_type =
   ( object(self)
-      method continue fd cb tmo tmo_x host port esys =
+      method identify_conn_by_name = true
+
+      method continue fd cb tmo tmo_x host port esys tls_data =
         let mplex1 =
 	  Uq_multiplex.create_multiplex_controller_for_connected_socket
 	    ~close_inactive_descr:true
@@ -3594,21 +3634,67 @@ let https_transport_channel_type config : transport_channel_type =
 	    ~timeout:( tmo, tmo_x )
 	    fd esys in
         let mplex2 =
-          Uq_multiplex.tls_multiplex_controller ~role:`Client config mplex1 in
+          match tls_data with
+            | None ->
+                 Uq_multiplex.tls_multiplex_controller 
+                   ~role:`Client ~peer_name:(Some host) config mplex1
+            | Some exn ->
+                 Uq_multiplex.restore_tls_multiplex_controller
+                   exn config mplex1 in
         mplex2
-      method setup_e fd cb tmo tmo_x host port esys =
-	let mplex = self # continue fd cb tmo tmo_x host port esys in
-	eps_e (`Done mplex) esys
+      method setup_e fd cb tmo tmo_x host port esys tls_cache =
+        let on_handshake mplex2 =
+          match mplex2#tls_session with
+            | None -> ()
+            | Some(id,data) ->
+                 tls_cache # set ~domain:host ~port ~cb ~data in
+        let mplex1 =
+	  Uq_multiplex.create_multiplex_controller_for_connected_socket
+	    ~close_inactive_descr:true
+	    ~supports_half_open_connection:true
+	    ~timeout:( tmo, tmo_x )
+	    fd esys in
+        let mplex2 =
+          try
+            let tls_data = tls_cache # get ~domain:host ~port ~cb in
+            Uq_multiplex.tls_multiplex_controller 
+              ~resume:tls_data ~on_handshake ~role:`Client 
+              ~peer_name:(Some host) config mplex1
+          with
+            | Not_found ->
+                 Uq_multiplex.tls_multiplex_controller 
+                   ~role:`Client ~on_handshake ~peer_name:(Some host) 
+                   config mplex1 in
+	eps_e (`Done mplex2) esys
     end
   )
 
+
+let null_tls_cache() : tls_cache =
+  object
+    method set ~domain ~port ~cb ~data = ()
+    method get ~domain ~port ~cb = raise Not_found
+    method clear () = ()
+  end
+
+
+let unlim_tls_cache() : tls_cache =
+  let ht = Hashtbl.create 7 in
+  object
+    method set ~domain ~port ~cb ~data =
+      Hashtbl.replace ht (domain,port,cb) data
+    method get ~domain ~port ~cb =
+      Hashtbl.find ht (domain,port,cb)
+    method clear () =
+      Hashtbl.clear ht
+  end
 
 
 (**********************************************************************)
 
 let fragile_pipeline 
        esys  cb
-       peer
+       peer cache_peer
        proxy_auth_state proxy_auth_handler_opt
        fd mplex connect_time no_pipelining conn_cache
        auth_cache
@@ -3912,8 +3998,10 @@ let fragile_pipeline
       if io # socket_state <> Down then (
 	if !options.verbose_connection then 
 	  dlog (sprintf 
-		  "FD %s - HTTP connection: Shutdown!"
-		  fd_str);
+		  "FD %s - HTTP connection: %s"
+		  fd_str
+                  (if reusable then "caching for later" else "shutdown")
+               );
 	let followup() =
 	  signal_connection(`Done());
 	  if !options.verbose_events then
@@ -3931,12 +4019,27 @@ let fragile_pipeline
 	  | Up_rw ->
 	      if reusable then (
 		( try
-		    conn_cache # set_connection_state fd peer (`Inactive cb);
+                    let idata =
+                      try
+                        let tls_stashed_endpoint =
+                          match mplex#tls_session with
+                            | None -> None
+                            | Some _ -> Some(mplex#tls_stashed_endpoint()) in
+                        { Http_client_conncache.conn_cb = cb;
+                          tls_stashed_endpoint;
+                        }
+                      with _ -> raise Not_found in
+		    conn_cache # set_connection_state
+                                   fd cache_peer (`Inactive idata);
 		    io # down();
 		  with
 		    | Not_found ->
 			(* We can do an orderly shutdown: *)
-			io # close ~followup:(fun () -> ()) ()
+	                 if !options.verbose_connection then 
+	                   dlog (sprintf 
+                              "FD %s - HTTP connection: shutting down anyway"
+		              fd_str);
+			 io # close ~followup:(fun () -> ()) ()
 		);
 		followup()
 	      )
@@ -4430,6 +4533,11 @@ let fragile_pipeline
 	drive_postprocessing_e esys options trans#message trans#f_done in
 
       let msg = trans # message in
+      ( match mplex # tls_session_props with
+          | None -> ()
+          | Some props -> msg # private_api # set_tls_session_props props
+      );
+
       let code = msg # private_api # response_code in
       let _req_hdr = msg # request_header `Effective in
       let _resp_hdr = msg # private_api # response_header in
@@ -4534,6 +4642,7 @@ let robust_pipeline
       proxy_auth_handler_opt
       conn_cache conn_owner 
       auth_cache
+      tls_cache
       counters options =
   (* Implements a pipeline that connects to the peer after the first
      message is added, and that is able to reconnect as often as
@@ -4659,7 +4768,7 @@ let robust_pipeline
 	  connect_pause
 	  (fun () ->
 	     tcp_connect_e 
-	       esys tp cb peer conn_cache conn_owner options 
+	       esys tp cb peer conn_cache conn_owner tls_cache options 
 	       proxy_auth_handler_opt
 	  )
 	  esys in
@@ -4669,13 +4778,13 @@ let robust_pipeline
 		     connecting <- None;
 		     self#conn_is_error err
 		  )
-	~is_done:(fun (fd,mplex,t) ->
+	~is_done:(fun (fd,cache_peer,mplex,t) ->
 		    connect_time <- t;
 		    connect_pause <- 0.0;
 		    connecting <- None;
 		    let fp =
 		      fragile_pipeline
-			esys cb peer
+			esys cb peer cache_peer
 			proxy_auth_state proxy_auth_handler_opt
 			fd mplex t no_pipelining conn_cache
 			auth_cache
@@ -4903,6 +5012,8 @@ class pipeline =
 
     val mutable conn_cache = create_restrictive_cache()
 
+    val mutable tls_cache = null_tls_cache()
+
     val counters =
       { new_connections = 0;
 	timed_out_connections = 0;
@@ -5010,6 +5121,9 @@ class pipeline =
     method configure_transport (cb:int) (tp:transport_channel_type) =
       Hashtbl.replace transports cb tp
 
+    method set_tls_cache c =
+      tls_cache <- c
+
     method set_transport_proxy cb host port auth (pt:proxy_type) =
       Hashtbl.replace tproxy cb (host,port,auth,pt)
 
@@ -5091,7 +5205,12 @@ class pipeline =
 	)
 	else raise Not_found
       with Not_found ->
-	(`Direct(host,port), None)
+        try
+          let tct = Hashtbl.find transports cb in
+          if not(tct#identify_conn_by_name) then raise Not_found;
+          (`Direct_name(host,port), None)
+        with Not_found ->
+	  (`Direct(host,port), None)
 
 
     method proxy_type_of_call request =
@@ -5101,6 +5220,7 @@ class pipeline =
 	| `Http_proxy_connect _ -> Some `Http_proxy
 	| `Socks5 _ -> Some `Socks5
 	| `Direct _ -> None
+	| `Direct_name _ -> None
 
 
     method proxy_type url : proxy_type option =
@@ -5158,6 +5278,7 @@ class pipeline =
 			     conn_cache
 			     (self :> < >)
 			     auth_cache
+                             tls_cache
 			     counters
 			     options in
 	    open_connections <- open_connections + 1;

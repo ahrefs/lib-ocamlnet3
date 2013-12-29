@@ -58,8 +58,9 @@ let get_tls_session_props (ep:Netsys_crypto_types.tls_endpoint)
   let id = TLS.get_session_id e1 in
   let sni_l =
     try TLS.get_addressed_servers e1
-    with TLS.Exc.TLS_error ""  ->
-      [] in
+    with 
+      | TLS.Exc.TLS_error ""
+      | TLS.Exc.TLS_error "GNUTLS_E_INVALID_REQUEST"  -> [] in
   let sni =
     match sni_l with
       | `Domain n :: _ -> Some n

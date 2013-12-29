@@ -1127,6 +1127,8 @@ object
   method mem_supported : bool
   method event_system : Unixqueue.event_system
   method tls_session_props : Nettls_support.tls_session_props option
+  method tls_session : (string * string) option
+  method tls_stashed_endpoint : unit -> exn
   method reading : bool
   method start_reading : 
     ?peek:(unit -> unit) ->

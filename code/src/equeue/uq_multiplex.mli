@@ -26,6 +26,16 @@ object
         are first available after the TLS handshake.
      *)
 
+  method tls_session : (string * string) option
+    (** If TLS is enabled, this returns (session_id, session_data). This
+        is first available after the TLS handshake.
+     *)
+
+  method tls_stashed_endpoint : unit -> exn
+    (** Returns the TLS endpoint in stashed form. Note that the
+        multiplex controller becomes immediately unusable.
+     *)
+
   method reading : bool
     (** True iff there is a reader *)
 
@@ -262,10 +272,29 @@ val create_multiplex_controller_for_datagram_socket :
    *)
 
 val tls_multiplex_controller :
+      ?resume:string ->
+      ?on_handshake:(multiplex_controller -> unit) ->
       role:[ `Server | `Client ] ->
+      peer_name:string option ->
       (module Netsys_crypto_types.TLS_CONFIG) ->
       multiplex_controller ->
         multiplex_controller
   (** Creates a new multiplex controller on top of an existing controller,
       and configures the new controller for running the TLS protocol.
+
+      [resume]: The endpoint resumes an old session whose data are passed here.
+      This is only possible for client endpoints.
+
+      [on_handshake]: called back when the handshake is done
+   *)
+
+val restore_tls_multiplex_controller :
+      ?on_handshake:(multiplex_controller -> unit) ->
+      exn ->
+      (module Netsys_crypto_types.TLS_CONFIG) ->
+      multiplex_controller ->
+        multiplex_controller
+  (** Like [tls_multiplex_controller], but this function does not create a new
+      TLS endpoint. Instead the exn value is assumed to be a stashed old
+      endpoint.
    *)

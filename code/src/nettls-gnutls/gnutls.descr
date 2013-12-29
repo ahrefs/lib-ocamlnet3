@@ -603,23 +603,19 @@ let functions =
     standard
       "error_code gnutls_session_set_data \
            (gnutls_session_t session, \
-            1 bigarray session_data, 1 bigarray_size session_data_size)";
+            1 stringbuf session_data, 1 stringbuf_size session_data_size)";
 
-    "gnutls_session_get_data",
-    [ "session", `In, "gnutls_session_t";
-      "session_data", `In, "1 bigarray";
-      "session_data_size", `In_out, "1 bigarray_size";
-      "result", `Return_ignore, "error_code";
-    ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_session_get_data \
+           (gnutls_session_t session, \
+            1 stringbuf session_data, 1 stringbuf_size session_data_size)";
 
-    "gnutls_session_get_id",
-    [ "session", `In, "gnutls_session_t";
-      "session_data", `In, "1 bigarray";
-      "session_data_size", `In_out, "1 bigarray_size";
-      "result", `Return_ignore, "error_code";
-    ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_session_get_id \
+           (gnutls_session_t session, \
+            1 stringbuf session_id, 1 stringbuf_size session_id_size)";
 
     standard
       "bool gnutls_session_is_resumed (gnutls_session_t session)";
@@ -832,7 +828,7 @@ let functions =
       "error_code gnutls_server_name_set \
            (gnutls_session_t session, \
             gnutls_server_name_type_t type, \
-            1 ztstringbuf name, 1 ztstringbuf_size name_length)";
+            1 stringbuf name, 1 stringbuf_size name_length)";
     
     standard
       ~ask_for_size:true
