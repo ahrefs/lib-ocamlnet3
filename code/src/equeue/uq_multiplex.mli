@@ -298,3 +298,16 @@ val restore_tls_multiplex_controller :
       TLS endpoint. Instead the exn value is assumed to be a stashed old
       endpoint.
    *)
+
+(*
+val dtls_multiplex_controller :
+      ?resume:string ->
+      ?on_handshake:(multiplex_controller -> unit) ->
+      role:[ `Server | `Client ] ->
+      peer_name:string option ->
+      (module Netsys_crypto_types.TLS_CONFIG) ->
+      datagram_multiplex_controller ->
+        datagram_multiplex_controller
+
+ -- not yet, see comments in uq_multiplex.ml
+ *)

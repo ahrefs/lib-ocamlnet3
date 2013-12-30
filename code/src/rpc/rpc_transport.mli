@@ -71,6 +71,9 @@ object
   method protocol : protocol
     (** The protocol encapsulation *)
 
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** The TLS session properties (if TLS is enabled) *)
+
   method peer_user_name : string option
     (** If the transport mechanism provides a way to authenticate the
       * peer, it can return the name here.
@@ -195,6 +198,8 @@ end
 val stream_rpc_multiplex_controller :
        ?close_inactive_descr:bool ->
        ?preclose:(unit -> unit) ->
+       ?tls:((module Netsys_crypto_types.TLS_CONFIG) * string option) ->
+       role:[`Client|`Server] ->
        Unix.file_descr -> Unixqueue.event_system ->
          rpc_multiplex_controller
   (** The multiplex controller for stream encapsulation
@@ -203,23 +208,19 @@ val stream_rpc_multiplex_controller :
         inactivated
       - [preclose]: This function is called just before the descriptor
         is closed.
+      - [tls]: Enables TLS support for the passed config and the passed DNS
+        peer name
    *)
 
 
 val datagram_rpc_multiplex_controller :
        ?close_inactive_descr:bool ->
        ?preclose:(unit -> unit) ->
+       role:[`Client|`Server] ->
        Unix.file_descr -> Unixqueue.event_system ->
          rpc_multiplex_controller
-  (** The multiplex controller for datagrams *)
+  (** The multiplex controller for datagrams ((D)TLS not yet supported) *)
 
-
-class stream_rpc_multiplex_controller : 
-         sockaddr -> sockaddr -> string option -> Unix.file_descr option -> 
-         Uq_engines.multiplex_controller -> 
-         Unixqueue.event_system ->
-            rpc_multiplex_controller
-  (** The class is exported for the SSL transporter *)
 
 (** {1 Debugging} *)
 

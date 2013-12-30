@@ -1465,3 +1465,42 @@ let tls_multiplex_controller ?resume ?on_handshake
 
 let restore_tls_multiplex_controller ?on_handshake exn config mplex =
   new tls_multiplex_controller_2 ?on_handshake exn config mplex
+
+
+(* What needs to be done for DTLS:
+
+   DTLS is different because we need to create a new endpoint per
+   peeraddr, as a UDP socket can communicate with many different peers
+   at once.
+
+   tls_adapter needs to be changed so that the peeraddr of received
+   messages is stored with these messages, and that the peeraddr can be
+   set for sent messages. Also, on_input and on_output need to be
+   changed so that the peeraddr is also passed.
+
+   tls_multiplex_controller covers only a single endpoint. This is ok,
+   but this is not the API the user wants to have. We need another
+   layer on top of this, dtls_multiplex_controller. This controller
+   creates the tls_adapter, and gets on_input and on_output callbacks.
+   Cases:
+    - on_input for new peers: create a new internal tls_multiplex_controller,
+      and set it up so that the handshake is run
+    - on_input for known peers: pass it down to the existing
+      tls_multiplex_controller
+    - on_output for known peers: pass it down to the existing
+      tls_multiplex_controller
+    - (is on_output possible for unknown peers?)
+
+   The API provided by dtls_multiplex_controller is the same as for
+   datagram_multiplex_controller. Methods like start_reading and
+   start_writing are forwarded to the internal tls_multiplex_controller
+   provided for the peeraddr. 
+
+   Also:
+    - tls_session_props is like received_from, and returns the properties
+      of the last received message
+    - tls_stashed_endpoint: not supported
+    - we need to honour the retransmission timer in tls_multiplex_controller
+      (i.e. if a handshake raises EAGAIN, ensure that the handshake is
+      continued after this number of seconds)
+ *)

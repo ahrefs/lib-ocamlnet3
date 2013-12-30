@@ -85,6 +85,22 @@ val get_tls_session_props : Netsys_crypto_types.tls_endpoint ->
    *)
 
 
+val get_tls_user_name : tls_session_props -> string
+  (** Get the "user name" of client certificates. It is determined as follows:
+
+       - if there is a subjectAltName with an email address (i.e. rfc822
+         type), this address is returned
+       - if there is a subjectAltName using the directory name format,
+         it is checked whether there is a "uid", "email", or "cn"
+         name component
+       - otherwise, it is checked whether there is a "uid", "email", or "cn"
+         name component in the subject
+
+      Raises [Not_found] if nothing approriate is found.
+   *)
+
+
+
 val is_endpoint_host : string -> tls_session_props -> bool
   (** [is_endpoint_host name props]: checks whether [name] matches
       the certificate of the endpoint in [props].

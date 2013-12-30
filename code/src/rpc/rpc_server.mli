@@ -174,6 +174,16 @@ end
 val default_socket_config : socket_config
 class default_socket_config : socket_config
 
+val tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                        socket_config
+  (** This configuration establishes TLS when accepting new connections.
+      It is (so far) only compatible with {!Rpc.Tcp}.
+   *)
+
+class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                          socket_config
+  (** TLS configuration as class *)
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
@@ -278,6 +288,10 @@ val is_dummy : t -> bool
   (** Whether this is a server in [`Dummy] mode. These servers cannot be
       used for communication
    *)
+
+val get_tls_session_props : session -> Nettls_support.tls_session_props option
+  (** Get the TLS properties so far TLS is enabled *)
+
 
 type rule =
     [ `Deny
@@ -448,6 +462,7 @@ object
   method verifier : string * string
   method frame_len : int
   method message : Rpc_packer.packed_value
+  method transport_user : string option
 end
 
 
@@ -504,7 +519,8 @@ val auth_too_weak : auth_method
 
 val auth_transport : auth_method
   (** Authenticate by trusting the transport layer. The user returned by
-    * the multiplexer's method peer_user_name is taken.
+    * the multiplexer's method peer_user_name is taken. Use this for getting
+    * the user name from a client certificate.
     *)
 
 val get_user : session -> string

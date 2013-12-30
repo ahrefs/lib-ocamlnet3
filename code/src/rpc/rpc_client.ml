@@ -1282,16 +1282,23 @@ let shutdown_connector cl mplex ondown =
   )
 
 
-let mplex_of_fd ~close_inactive_descr prot fd esys =
+let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
   let preclose() =
     Netlog.Debug.release_fd fd in
   match prot with
     | Tcp ->
         Rpc_transport.stream_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys
+          ~close_inactive_descr ~preclose ~role:`Client ?tls fd esys
     | Udp ->
+        if tls <> None then (* a little ad... *)
+          failwith "Rpc_client: It is not supported to use TLS with datagrams. \
+                    Generally, there is an approach to solve this (via the \
+                    DTLS protocol variant of TLS), but this has not yet been \
+                    implemented. If it happens that you have some money left \
+                    in your pockets, you may support Gerd Stolpmann to \
+                    implement this feature. Contact gerd@gerd-stolpmann.de";
         Rpc_transport.datagram_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys
+          ~close_inactive_descr ~preclose ~role:`Client fd esys
 
 
 class type socket_config =
@@ -1299,31 +1306,34 @@ object
   method non_blocking_connect : bool
   method multiplexing :
     close_inactive_descr:bool ->
+    peer_name:string option ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller Uq_engines.engine
 end
 
 
+let close_fd fd =
+  Netlog.Debug.release_fd fd;
+  try
+    match Netsys_win32.lookup fd with
+      | Netsys_win32.W32_pipe ph ->
+	   Netsys_win32.pipe_shutdown ph;
+	   Unix.close fd
+      | _ -> 
+	   ()
+  with Not_found ->
+    Unix.close fd 
+
+
 class default_socket_config : socket_config =
 object
   method non_blocking_connect = true
-  method multiplexing ~close_inactive_descr prot fd esys =
+  method multiplexing ~close_inactive_descr ~peer_name prot fd esys =
     let close() =
-      if close_inactive_descr then (
-	Netlog.Debug.release_fd fd;
-	try
-	  match Netsys_win32.lookup fd with
-	    | Netsys_win32.W32_pipe ph ->
-		Netsys_win32.pipe_shutdown ph;
-		Unix.close fd
-	    | _ -> 
-		()
-	with Not_found ->
-	  Unix.close fd 
-      ) in
+      if close_inactive_descr then close_fd fd in
     let eng = 
       try
-	let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
+	let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
 	new Uq_engines.epsilon_engine (`Done mplex) esys 
       with
 	| error -> 
@@ -1342,8 +1352,31 @@ object
   method non_blocking_connect = false
 end
 
+
+class tls_socket_config tls_config : socket_config =
+object
+  method non_blocking_connect = true
+  method multiplexing ~close_inactive_descr ~peer_name prot fd esys =
+    let tls = Some(tls_config, peer_name) in
+    let close() =
+      if close_inactive_descr then close_fd fd in
+    let eng = 
+      try
+	let mplex = mplex_of_fd ~close_inactive_descr ~tls prot fd esys in
+	new Uq_engines.epsilon_engine (`Done mplex) esys 
+      with
+	| error -> 
+	    new Uq_engines.epsilon_engine (`Error error) esys in
+    Uq_engines.when_state
+      ~is_aborted:(fun () -> close())
+      ~is_error:(fun _ -> close())
+      eng;
+    eng
+end
+
 let default_socket_config = new default_socket_config
 let blocking_socket_config = new blocking_socket_config
+let tls_socket_config = new tls_socket_config
 
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
@@ -1554,7 +1587,7 @@ let rec internal_create initial_xid
       Unix.setsockopt fd Unix.TCP_NODELAY true
     with _ -> () in
 
-  let open_socket_non_blocking addr prot conf =
+  let open_socket_non_blocking host_opt addr prot conf =
     new Uq_engines.seq_engine
       (connect_engine addr esys)
       (fun status ->
@@ -1564,10 +1597,11 @@ let rec internal_create initial_xid
 	 let fd = Uq_client.client_endpoint status in
 	 disable_nagle fd;
 	 track fd;
-	 conf # multiplexing ~close_inactive_descr:true prot fd esys
+	 conf # multiplexing 
+            ~close_inactive_descr:true ~peer_name:host_opt prot fd esys
       ) in
 
-  let open_socket_blocking addr prot conf =
+  let open_socket_blocking host_opt addr prot conf =
     let conn_esys = Unixqueue.create_unix_event_system() in
     let c = connect_engine addr conn_esys in
     Unixqueue.run conn_esys;
@@ -1579,7 +1613,8 @@ let rec internal_create initial_xid
 	  let fd = Uq_client.client_endpoint status in
 	  disable_nagle fd;
 	  track fd;
-	  conf # multiplexing ~close_inactive_descr:true prot fd esys
+	  conf # multiplexing 
+             ~close_inactive_descr:true ~peer_name:host_opt prot fd esys
       | `Error err ->
 	  raise err
       | _ ->
@@ -1597,7 +1632,8 @@ let rec internal_create initial_xid
       | `Socket_endpoint(prot,fd) ->
 	  disable_nagle fd;
 	  track fd;
-	  let m = mplex_of_fd ~close_inactive_descr:true prot fd esys in
+	  let m = 
+            mplex_of_fd ~close_inactive_descr:true ~tls:None prot fd esys in
 	  (prot, new Uq_engines.epsilon_engine (`Done m) esys)
       | `Multiplexer_endpoint(mplex) ->
 	  if mplex # event_system != esys then
@@ -1613,37 +1649,40 @@ let rec internal_create initial_xid
 		  let saddr = `Sock_inet_byname(stype, host, port) in
 		  let addr = 
 		    `Socket(saddr, Uq_client.default_connect_options) in
-		  (prot, open_socket addr prot conf)
+		  (prot, open_socket (Some host) addr prot conf)
 	      | Internet (host,port) ->
 		  let saddr = `Sock_inet(stype, host, port) in
 		  let addr = 
 		    `Socket(saddr, Uq_client.default_connect_options) in
-		  (prot, open_socket addr prot conf)
+		  (prot, open_socket None addr prot conf)
 	      | Unix path ->
 		  let saddr = `Sock_unix(stype, path) in
 		  let addr = 
 		    `Socket(saddr, 
 			    Uq_client.default_connect_options) in
-		  (prot, open_socket addr prot conf)
+		  (prot, open_socket None addr prot conf)
 	      | W32_pipe path ->
 		  if prot <> Rpc.Tcp then
 		    failwith "Rpc_client.create2: \
                               Pipe only supported for Rpc.Tcp protocol type";
 		  let addr = `W32_pipe(Netsys_win32.Pipe_duplex, path) in
-		  (prot, open_socket addr prot conf)
+		  (prot, open_socket None addr prot conf)
 	      |	Descriptor fd -> 
 		  (* no track! *)
 		  let m = 
-		    mplex_of_fd ~close_inactive_descr:false prot fd esys in
+		    mplex_of_fd ~close_inactive_descr:false ~tls:None
+                                prot fd esys in
 		  (prot, new Uq_engines.epsilon_engine (`Done m) esys)
 	      |	Dynamic_descriptor f ->
 		  let fd = f() in
 		  track fd;
 		  let m = 
-		    mplex_of_fd ~close_inactive_descr:true prot fd esys in
+		    mplex_of_fd ~close_inactive_descr:true ~tls:None
+                                prot fd esys in
 		  (prot, new Uq_engines.epsilon_engine (`Done m) esys)
 	      | Portmapped host ->
-		  (prot, open_socket (`Portmapped(prot,host)) prot conf)
+		  (prot, 
+                   open_socket (Some host) (`Portmapped(prot,host)) prot conf)
 	   )
   in
 
@@ -1832,6 +1871,12 @@ let get_xid_of_last_call cl =
 
 let get_protocol cl =
   cl.prot
+
+let get_tls_session_props cl =
+  match cl.trans with
+    | None -> failwith "Rpc_client.get_tls_session_props: not connected"
+    | Some trans ->
+        trans # tls_session_props
 
 let verbose b =
   Debug.enable := b

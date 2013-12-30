@@ -114,6 +114,7 @@ module DN_attributes : sig
   val at_pseudonym : oid
   val at_domainComponent : oid
   val at_emailAddress : oid
+  val at_uid : oid
 
   val attribute_types : (oid * string * string list) list
     (** The above types in the format [(oid, full_name, short_names)] *)

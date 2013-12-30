@@ -5,7 +5,19 @@ TLS:
  - document new Netplex directives in netplex_admin.txt
  - Rpc_ssl: integrate into main rpc lib
     * need test case3
+
+Rpc_transport: add ?tls_config argument
+
+class Rpc_client.tls_socket_config
+val Rpc_client.get_tls_session_props
+
+class Rpc_server.tls_socket_config
+val Rpc_server.get_tls_session_props
+val Rpc_server.auth_transport: ensure that TLS name is returned
+
  - Rpc_ssl: test DTLS
+
+DTLS:
  - pop: also basic TLS support (like smtp)
  - telnet: add a "starttls" method (to be used by ftp client)
     * run the handshake at starttls time
@@ -29,6 +41,9 @@ TLS:
 
       For TLS: encapsulate the file_descr with tls_multiplex_controller,
       and wrap it as Uq_io.in_device. Use Uq_io.copy_e for copying the data.
+
+   test servers: ftp.pca.dfn.de
+
  - delete openssl support
 
 
@@ -91,6 +106,26 @@ TLS:
       and request the rehandshake immediately after sending the 300
       response. That way the rehandshake is a special response message.
  - OCSP support ?
+
+LATER:
+ - DTLS support
+     type dtls_config =
+      { dtls_mtu : int;
+        dtls_enable_cookies : bool;
+        dtls_retrans_tmo : float;
+        dtls_total_tmo : float;
+      }
+
+      * create_endpoint: ?dtls:dtls_config
+      * get_dtls_timeout : endpoint -> float  (-1 if no DTLS is active)
+      * cookies are implemented inside Nettls_gnutls. The GNUTLS session
+        object is first created when the cookie phase is over.
+      * always set dtls nonblocking mode, so that a recv with timeout is
+        not needed
+      * comments in uq_multiplex.ml for a DTLS-aware multiplex controller
+      * testcase: use DTLS for RPC
+      * open: how to clean up sessions that are idle for too long
+        (maybe set limits: max_idle_time, max_sessions)
 
 
 cleanup of all hex digit routines

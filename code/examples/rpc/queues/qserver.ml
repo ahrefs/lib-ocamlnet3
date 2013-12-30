@@ -13,7 +13,7 @@
  * - Put all config options into config section.
  *)
 
-let spooldir = "/var/spool/qserver";;
+let spooldir = "/tmp/qserver";;
 let max_chunksize = Int32.of_string "1048576" ;;   (* 1 MB *)
 
 

@@ -145,6 +145,7 @@ object
     *)
   method multiplexing :
     close_inactive_descr:bool ->
+    peer_name:string option ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller Uq_engines.engine
     (* close_inactive_descr: also implies that release_fd is called *)
@@ -163,6 +164,16 @@ val blocking_socket_config : socket_config
 
 class blocking_socket_config : socket_config
   (** blocking [connect] configuration as class *)
+
+val tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                        socket_config
+  (** This configuration establishes TLS when connecting with the server.
+      It is (so far) only compatible with {!Rpc.Tcp}.
+   *)
+
+class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                          socket_config
+  (** TLS configuration as class *)
 
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
@@ -183,6 +194,8 @@ type mode2 =
     *   socket according to [conn]. [proto] determines the
     *   encapsulation; should be [Tcp] for stream sockets and [Udp] for
     *   datagram sockets. [config] specifies configuration details.
+    *   {b In particular, use this option to enable TLS for the socket:
+    *   Get a [tls_socket_config] and pass this as [config] here.}
    *)
 
 val create2 :
@@ -389,6 +402,9 @@ val get_xid_of_last_call : t -> Rtypes.uint4
 
 val get_protocol : t -> Rpc.protocol
   (** Get the protocol flavour *)
+
+val get_tls_session_props : t -> Nettls_support.tls_session_props option
+  (** Get the TLS properties so far TLS is enabled *)
 
 val abandon_call : t -> Rtypes.uint4 -> unit
   (** To be used in conjunction with {!Rpc_client.Keep_call}: The call

@@ -94,6 +94,65 @@ let get_tls_session_props (ep:Netsys_crypto_types.tls_endpoint)
   )
 
 
+let get_tls_user_name props =
+  let rec search_dn_loop dn at_list =
+    match at_list with
+      | [] ->
+           raise Not_found
+      | at :: at_list' ->
+           try
+             Netx509.lookup_dn_ava_utf8 dn at
+           with
+             | Not_found -> search_dn_loop dn at_list' in
+  let search_dn dn =
+    search_dn_loop
+      dn
+      [ Netx509.DN_attributes.at_uid;
+        Netx509.DN_attributes.at_emailAddress;
+        Netx509.DN_attributes.at_commonName;
+      ] in
+
+  match props # peer_credentials with
+    | `X509 cert ->
+         ( try
+             let (san_der, _) =
+               Netx509.find_extension
+                 Netx509.CE.ce_subject_alt_name
+                 cert#extensions in
+             let san = Netx509.parse_subject_alt_name san_der in
+             try
+               let san_email =
+                 List.find
+                   (function
+                     | `Rfc822_name n -> true
+                     | _ -> false
+                   )
+                   san in
+               match san_email with
+                 | `Rfc822_name n -> n
+                 | _ -> assert false
+             with
+               | Not_found ->
+                    let san_dn =
+                      List.find
+                        (function
+                          | `Directory_name n -> true
+                          | _ -> false
+                        )
+                        san in
+                    match san_dn with
+                      | `Directory_name dn ->
+                           search_dn dn
+                      | _ -> assert false
+           with
+             | Not_found
+             | Netx509.Extension_not_found _ ->
+                  search_dn cert#subject
+         )
+    | _ ->
+         raise Not_found
+
+
 let dot_re = Netstring_str.regexp "[.]"
 
 

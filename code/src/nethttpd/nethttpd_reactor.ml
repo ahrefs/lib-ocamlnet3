@@ -281,11 +281,9 @@ object(self)
                     match p # peer_credentials with
                       | `X509 cert ->
                            ( try
-                               let cn =
-                                 Netx509.lookup_dn_ava_utf8
-                                   cert#subject
-                                   Netx509.DN_attributes.at_commonName in
-                               [ "REMOTE_USER", cn ]
+                               let name =
+                                 Nettls_support.get_tls_user_name p in
+                               [ "REMOTE_USER", name ]
                              with Not_found -> []
                            )
                       | _ -> []

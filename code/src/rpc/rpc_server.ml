@@ -81,6 +81,7 @@ object
   method verifier : string * string
   method frame_len : int
   method message : Rpc_packer.packed_value
+  method transport_user : string option
 end
 
 
@@ -226,6 +227,7 @@ and session =
 	auth_ret_flav : string;
 	auth_ret_data : string;
 	encoder : Xdr.encoder option;
+        tls_session_props : Nettls_support.tls_session_props option;
       }
 
 and connector =
@@ -279,14 +281,22 @@ let auth_too_weak = new auth_too_weak
 class auth_transport : auth_method =
 object
   method name = "AUTH_TRANSPORT"
-  method flavors = [ ]
+  method flavors = [ "AUTH_TRANSPORT" ]   (* special-cased! *)
+(* The following would be too early, before the TLS handshake! *)
+(*
   method peek = 
     `Peek_multiplexer
       (fun mplex ->
 	 mplex # peer_user_name
       )
-  method authenticate _ _ _ f = 
-    f(Auth_negative Auth_too_weak)
+ *)
+  method peek = `None
+  method authenticate _ _ ad f = 
+    match ad#transport_user with
+      | None ->
+           f(Auth_negative Auth_too_weak)
+      | Some u ->
+           f(Auth_positive(u, "AUTH_NONE", "", None, None))
 end
 
 let auth_transport = new auth_transport
@@ -431,6 +441,16 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	     | `Sockaddr a -> a
 	 ) in
 
+  let get_tls_session_props() =
+    match conn.trans with
+      | None -> None
+      | Some trans -> trans # tls_session_props in
+
+  let get_trans_user() =
+    match conn.trans with
+      | None -> None
+      | Some trans -> trans # peer_user_name in
+
   let make_immediate_answer xid procname result f_ptrace_result =
     srv.get_last_proc <- 
       (fun () -> 
@@ -451,7 +471,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
       auth_ret_flav = "AUTH_NONE";
       auth_ret_data = "";
       encoder = None;
-      ptrace_result = (if !Debug.enable_ptrace then f_ptrace_result() else "")
+      ptrace_result = (if !Debug.enable_ptrace then f_ptrace_result() else "");
+      tls_session_props = get_tls_session_props();
     }
   in
 
@@ -571,7 +592,10 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		 | None ->
 		     ( let m =
 			 try Hashtbl.find srv.auth_methods flav_cred
-			 with Not_found -> auth_too_weak in
+			 with Not_found ->
+                           ( try Hashtbl.find srv.auth_methods "AUTH_TRANSPORT"
+                             with Not_found -> auth_too_weak
+                           ) in
 		       (m, m#authenticate)
 		     )
 	     in
@@ -588,6 +612,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		   method verifier = (flav_verf, data_verf)
 		   method frame_len = frame_len
 		   method message = message
+                   method transport_user = get_trans_user()
 		 end
 	       ) in
 
@@ -710,6 +735,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 				 auth_ret_data = ret_data;
 				 ptrace_result = "";  (* not yet known *)
 				 encoder = enc_opt;
+                                 tls_session_props = get_tls_session_props();
 			       } in
 			     conn.next_call_id <- conn.next_call_id + 1;
 			     p.async_invoke this_session param
@@ -1142,16 +1168,23 @@ let create2_multiplexer_endpoint mplex =
 ;;
 
 
-let mplex_of_fd ~close_inactive_descr prot fd esys =
+let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
   let preclose() =
     Netlog.Debug.release_fd fd in
   match prot with
     | Tcp ->
         Rpc_transport.stream_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys
+          ~close_inactive_descr ~preclose ~role:`Server ?tls fd esys
     | Udp ->
+        if tls <> None then (* a little ad... *)
+          failwith "Rpc_server: It is not supported to use TLS with datagrams. \
+                    Generally, there is an approach to solve this (via the \
+                    DTLS protocol variant of TLS), but this has not yet been \
+                    implemented. If it happens that you have some money left \
+                    in your pockets, you may support Gerd Stolpmann to \
+                    implement this feature. Contact gerd@gerd-stolpmann.de";
         Rpc_transport.datagram_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys 
+          ~close_inactive_descr ~preclose ~role:`Server fd esys 
 ;;
 
 
@@ -1160,7 +1193,25 @@ object
   method listen_options = Uq_server.default_listen_options
 
   method multiplexing ~close_inactive_descr prot fd esys =
-    let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
+    let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
+    let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
+
+    when_state
+      ~is_aborted:(fun () -> mplex # inactivate())
+      ~is_error:(fun _ -> mplex # inactivate())
+      eng;
+
+    eng
+end
+
+
+class tls_socket_config tls_config : socket_config = 
+object
+  method listen_options = Uq_server.default_listen_options
+
+  method multiplexing ~close_inactive_descr prot fd esys =
+    let tls = Some(tls_config,None) in
+    let mplex = mplex_of_fd ~close_inactive_descr ~tls prot fd esys in
     let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
 
     when_state
@@ -1173,13 +1224,14 @@ end
 
 
 let default_socket_config = new default_socket_config 
+let tls_socket_config = new tls_socket_config 
 
 
 let create2_socket_endpoint ?(close_inactive_descr=true) 
                             prot fd esys =
   disable_nagle fd;
   if close_inactive_descr then track fd;
-  let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
+  let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
   create2_multiplexer_endpoint mplex 
 ;;
 
@@ -1521,11 +1573,19 @@ let bind ?program_number ?version_number prog0 procs srv =
 	  Rtypes.int_of_uint4
 	    Rpc_portmapper_aux.pmap_port in
 	let pm =
-	  Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	    ~esys:srv.esys 
-	    (`Socket(Rpc.Udp, 
-		     Rpc_client.Inet("127.0.0.1", pmap_port), 
-		     Rpc_client.default_socket_config)) in
+          (* HACK to allow connections on recent Linux boxes *)
+          if Sys.file_exists "/run/rpcbind.sock" then
+	    Rpc_portmapper_clnt.PMAP.V2.create_client2 
+	      ~esys:srv.esys 
+	      (`Socket(Rpc.Tcp, 
+		       Rpc_client.Unix "/run/rpcbind.sock",
+		       Rpc_client.default_socket_config))
+          else
+	    Rpc_portmapper_clnt.PMAP.V2.create_client2 
+	      ~esys:srv.esys 
+	      (`Socket(Rpc.Udp, 
+		       Rpc_client.Inet("127.0.0.1", pmap_port), 
+		       Rpc_client.default_socket_config)) in
 	pm_get_old_port 
 	  pm
 	  (fun old_port ->
@@ -1611,11 +1671,19 @@ let unbind' ?(followup = fun () -> ())
 	    Rtypes.int_of_uint4
 	      Rpc_portmapper_aux.pmap_port in
 	  let pm =
-	    Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	      ~esys:srv.esys 
-	      (`Socket(Rpc.Udp, 
-		       Rpc_client.Inet("127.0.0.1", pmap_port), 
-		       Rpc_client.default_socket_config)) 
+            (* HACK to allow connections on recent Linux boxes *)
+            if Sys.file_exists "/run/rpcbind.sock" then
+	      Rpc_portmapper_clnt.PMAP.V2.create_client2 
+	        ~esys:srv.esys 
+	        (`Socket(Rpc.Tcp, 
+		         Rpc_client.Unix "/run/rpcbind.sock",
+		         Rpc_client.default_socket_config))
+            else
+	      Rpc_portmapper_clnt.PMAP.V2.create_client2 
+	        ~esys:srv.esys 
+	        (`Socket(Rpc.Udp, 
+		         Rpc_client.Inet("127.0.0.1", pmap_port), 
+		         Rpc_client.default_socket_config)) 
 	  in
 	  pm_unset_port pm port (fun () -> Rpc_client.shut_down pm)
 	)
@@ -1729,6 +1797,8 @@ let get_user sess = sess.auth_user
 let get_auth_method sess = sess.auth_method
 
 let get_last_proc_info srv = srv.get_last_proc()
+
+let get_tls_session_props sess = sess.tls_session_props
 
   (*****)
 

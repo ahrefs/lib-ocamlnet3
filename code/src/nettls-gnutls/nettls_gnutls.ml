@@ -358,6 +358,15 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
             | None -> ()
             | Some n -> G.gnutls_server_name_set session `Dns n
         );
+
+        if role = `Server && config.peer_auth <> `None then
+          G.gnutls_certificate_server_set_request
+            session
+            (match config.peer_auth with
+               | `Optional -> `Request
+               | `Required -> `Require
+               | `None -> assert false
+            );
         ep
       in
       trans_exn f ()

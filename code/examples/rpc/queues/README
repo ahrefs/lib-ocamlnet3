@@ -26,9 +26,18 @@ Furthermore, you must set the authentication style:
 
 - auth_ssl: RPC over SSL.
 
-The Makefile variable AUTH_MODULE must be set accordingly (in Makefile.code).
+The Makefile variable AUTH_MODULE must be set accordingly, e.g.
+
+$ make AUTH_MODULE=auth_ssl
+
 
 See the comments on the authentication modules below.
+
+
+
+*** System requirements ***
+
+The program assumes that the portmapper (or rpcbind) runs!
 
 
 
@@ -153,7 +162,8 @@ You need the following files (all in PEM format):
 
 - client.key: The client private key (w/o password)
 
-Put these files into the current working directory.
+Put these files into the current working directory. The script create_certs.sh
+does this with some sample certificates.
 
 
 The DN of the client cert is the user name.
