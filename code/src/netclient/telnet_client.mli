@@ -326,6 +326,28 @@ class telnet_session :
       (** Set whether the timeout value is to be applied to the input side
 	  of the connection. This is [true] by default.
        *)
+
+    method start_tls : (module Netsys_crypto_types.TLS_CONFIG) -> 
+                       peer_name:string option -> unit
+      (** Switch to TLS. Note that this is not covered by the TELNET protocol
+          standard. However, some applications of TELNET use this nevertheless
+          (e.g. FTP control connections). 
+
+          Switching to TLS can be done at any time, but should be done at a
+          moment when the other side of the connection expects it. If
+          [start_tls] is invoked before [attach], TLS is enabled at the
+          very beginning.
+
+          The arguments are the TLS configuration, and the peer name for
+          validation (pass the host name here).
+       *)
+
+    method tls_session_props : Nettls_support.tls_session_props option
+      (** TLS session properties (if on) *)
+
+    method tls_session_data : string option
+      (** TLS session data (if on) *)
+       
   end
 ;;
 

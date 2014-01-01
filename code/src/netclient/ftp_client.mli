@@ -166,6 +166,15 @@ type transmission_mode =
    *)
 
 
+type ftp_auth =
+  [ `None
+  | `TLS
+  ]
+
+type ftp_data_prot =
+  [ `C | `S | `E | `P ]
+
+
 type ftp_state =
     { cmd_state : cmd_state;        (** the command state *)
       ftp_connected : bool;         (** whether connected with the server *)
@@ -174,6 +183,7 @@ type ftp_state =
       ftp_password : string option; (** successfully sent password *)
       ftp_account : string option;  (** successfully sent account identifier *)
       ftp_logged_in : bool;         (** whether the user is logged in *)
+      ftp_host : string;            (** Host name *)
       ftp_port : port;              (** the selected port *)
       ftp_repr : representation;    (** the selected representation *)
       ftp_structure : structure;    (** the selected structure *)
@@ -200,6 +210,12 @@ type ftp_state =
            * is the uppercase command name the option refers to. Only
            * the last negotiated [optionparam] for the command is remembered.
           *)
+      ftp_auth : ftp_auth;
+         (** Authentication/privacy mode (AUTH command) *)
+      ftp_data_prot : ftp_data_prot;
+         (** Security protocol for data connections (PROT command) *)
+      ftp_data_pbsz : int;
+         (** protection buffer size (PBSZ command) *)
     }
   (** The ftp_state reflects the knowledge of the client about what has been
     * agreed upon with the server.
@@ -257,8 +273,18 @@ type cmd =
     | `SIZE of string
     | `MLST of string option
     | `MLSD of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
+    (* RFC 2228, so far required by RFC 4217 *)
+    | `AUTH of string
+    | `PBSZ of int
+    | `PROT of ftp_data_prot
+    (* RFC 4217 *)
+    | `Start_TLS of (module Netsys_crypto_types.TLS_CONFIG)
     ]
-  (** An FTP command. Not all commands are implemented by all servers. *)
+  (** An FTP command. Not all commands are implemented by all servers. 
+
+      [`Start_TLS] is a pseudo command - at this point the TLS handshake
+      starts.
+   *)
 
 type reply = int * string
   (** Reply code plus text *)
@@ -364,6 +390,9 @@ object
   method supports_utf8 : bool
     (** Whether the UTF-8 extension is understood by the server (RFC 2640) *)
 
+  method supports_tls : bool
+    (** Whether TLS is supported *)
+
 end
 
 
@@ -400,6 +429,14 @@ val login_method : user:string ->
 val quit_method : unit -> ftp_method
   (** Quits and disconnects *)
 
+val tls_method : config:(module Netsys_crypto_types.TLS_CONFIG) ->
+                 required:bool ->
+                 unit ->
+                 ftp_method
+(** This FTP method negotiates the use of TLS. If [required], it is
+    an error if TLS is not supported. Otherwise, it is ok to omit the TLS
+    protection.
+ *)
 
 val walk_method : [ `File of string | `Dir of string | `Stay ] ->
                   ftp_method

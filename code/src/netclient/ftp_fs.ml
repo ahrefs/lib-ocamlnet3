@@ -31,6 +31,12 @@ class ftp_fs ?(config_client = fun _ -> ())
              ?(get_password = fun _ -> "")
              ?(get_account = fun _ -> "")
 	     ?(keep_open = false)
+             ?(tls_config = Netsys_tls.create_x509_config
+                              ~system_trust:true
+                              ~peer_auth:`Required
+                              (Netsys_crypto.current_tls()))
+             ?(tls_enabled=false)
+             ?(tls_required=false)
              base_url_s : ftp_stream_fs =
   (* parse base_url: *)
   let base_url =
@@ -83,6 +89,10 @@ class ftp_fs ?(config_client = fun _ -> ())
 			     with Not_found -> None)
 		      ()
 		   );
+        if tls_enabled then (
+          ftp # exec
+            (Ftp_client.tls_method ~config:tls_config ~required:tls_required ())
+        );
 	let user = 
 	  try Neturl.url_user base_url
 	  with Not_found -> "anonymous" in

@@ -29,6 +29,9 @@ class ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
                ?get_password:(string -> string) ->
                ?get_account:(string -> string) ->
                ?keep_open:bool ->
+               ?tls_config:(module Netsys_crypto_types.TLS_CONFIG) ->
+               ?tls_enabled:bool ->
+               ?tls_required:bool ->
                string -> ftp_stream_fs
   (** [ftp_fs base_url]: Access the FTP file system rooted at [base_url].
 
@@ -86,6 +89,11 @@ class ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
       - [keep_open]: By default, a new FTP connection is started for
         each operation, and it is shut down afterward. By setting [keep_open]
         the connection is kept open. The user has to call [close] when done.
+      - [tls_config]: The TLS configuration to use. (If not set, a
+        reasonable default is used.)
+      - [tls_enabled]: whether TLS is enabled
+      - [tls_required]: whether TLS is required
+
    *)
 
 
@@ -95,5 +103,8 @@ val ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
              ?get_password:(string -> string) ->
              ?get_account:(string -> string) ->
              ?keep_open:bool ->
+             ?tls_config:(module Netsys_crypto_types.TLS_CONFIG) ->
+             ?tls_enabled:bool ->
+             ?tls_required:bool ->
              string -> ftp_stream_fs
   (** Same as function *)

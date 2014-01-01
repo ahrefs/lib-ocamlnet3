@@ -94,6 +94,17 @@ let get_tls_session_props (ep:Netsys_crypto_types.tls_endpoint)
   )
 
 
+let squash_file_tls_endpoint file_ep =
+  let module FEP =
+    (val file_ep : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+  let module EP =
+    struct
+      module TLS = FEP.TLS
+      let endpoint = FEP.endpoint
+    end in
+  (module EP : Netsys_crypto_types.TLS_ENDPOINT)
+
+
 let get_tls_user_name props =
   let rec search_dn_loop dn at_list =
     match at_list with

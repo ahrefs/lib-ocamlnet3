@@ -195,12 +195,19 @@ end
  *
  * It is ensured that [local_receiver] is always closed after operation
  * (whether successful or not). The socket [descr] remains open.
+ *
+ * [tls]: may be set to [(config, peer_name, resume_data)]
  *)
 class ftp_data_receiver : 
+        ?tls:((module Netsys_crypto_types.TLS_CONFIG) *
+              string option *
+              string option) ->
         esys:Unixqueue.event_system ->
 	mode:transmission_mode ->
 	local_receiver:local_receiver ->
 	descr:Unix.file_descr ->
+        timeout:float ->
+        timeout_exn:exn ->
 	unit ->
 object
   inherit ftp_data_engine
@@ -218,12 +225,19 @@ end
  *
  * It is ensured that [local_sender] is always closed after operation
  * (whether successful or not). The socket [descr] remains open.
+ *
+ * [tls]: may be set to [(config, peer_name, resume_data)]
  *)
 class ftp_data_sender :
+        ?tls:((module Netsys_crypto_types.TLS_CONFIG) *
+              string option *
+              string option) ->
         esys:Unixqueue.event_system ->
 	mode:transmission_mode ->
 	local_sender:local_sender ->
 	descr:Unix.file_descr ->
+        timeout:float ->
+        timeout_exn:exn ->
 	unit ->
 object
   inherit ftp_data_engine

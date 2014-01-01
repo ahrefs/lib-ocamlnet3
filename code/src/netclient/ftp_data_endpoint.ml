@@ -3,6 +3,7 @@
 open Netchannels
 open Netconversion
 open Uq_engines
+open Uq_engines.Operators   (* ++, >>, eps_e *)
 
 exception Ftp_data_protocol_error
 
@@ -905,13 +906,119 @@ object(self)
      * value
      *)
 end ;;
+
+
+let copy_e ~src ~dst ~write_eof_dst ~close_src ~close_dst esys =
+  let e =
+    Uq_io.copy_e
+      src dst
+    ++ (fun _ ->
+          ( if write_eof_dst then
+              Uq_io.write_eof_e dst
+            else
+              (eps_e (`Done false) esys)
+          )
+          ++
+            (fun _ ->
+               if close_src then
+                 Uq_io.shutdown_e src
+               else
+                 (eps_e (`Done ()) esys)
+            )
+          ++ 
+            (fun () ->
+               if close_dst then
+                 Uq_io.shutdown_e dst
+               else
+                 (eps_e (`Done ()) esys)
+            )
+       ) in
+  e >>
+    (function
+      | `Done _ -> `Done ()
+      | `Error e ->
+           if close_src then (try Uq_io.inactivate src with _ -> ());
+           if close_dst then (try Uq_io.inactivate dst with _ -> ());
+           `Error e
+      | `Aborted -> `Aborted
+    )
+;;
+
+
+let receive_e ~src ~dst ~close_dst esys =
+  let src = `Multiplex src in
+  let dst = `Async_out(dst,esys) in
+  copy_e ~src ~dst ~write_eof_dst:false ~close_src:false ~close_dst esys
+;;
+
+
+let tls_receive_e ?resume ~tls_config ~peer_name 
+                  ~src ~dst ~close_dst esys =
+  let src1 =
+    Uq_multiplex.tls_multiplex_controller
+      ?resume ~role:`Client ~peer_name tls_config src in
+  receive_e ~src:src1 ~dst ~close_dst:false esys
+  ++
+    (fun () ->
+       (* Shut down the src completely *)
+       Uq_io.shutdown_e (`Multiplex src)
+       ++ (fun () ->
+             if close_dst then
+               dst # close_out();
+             eps_e (`Done ()) esys
+          )
+    )
+;;
+
+
+let opt_tls_receive_e ?tls ~src ~dst ~close_dst esys =
+  match tls with
+    | None ->
+         receive_e
+           ~src ~dst ~close_dst esys
+    | Some(tls_config, peer_name, resume) ->
+         tls_receive_e 
+           ~tls_config 
+           ~peer_name ?resume ~src ~dst ~close_dst esys
+;;
+	
+
+let send_e ~src ~dst ~write_eof_dst ~close_src esys =
+  let src = `Async_in(src,esys) in
+  let dst = `Multiplex dst in
+  copy_e ~src ~dst ~write_eof_dst ~close_src ~close_dst:false esys
+;;
+
+
+let tls_send_e ?resume ~tls_config ~peer_name 
+                  ~src ~dst ~write_eof_dst ~close_src esys =
+  let dst =
+    Uq_multiplex.tls_multiplex_controller
+      ?resume ~role:`Client ~peer_name tls_config dst in
+  send_e ~src ~dst ~write_eof_dst ~close_src esys
+;;
+
+
+let opt_tls_send_e ?tls ~src ~dst ~write_eof_dst ~close_src esys =
+  match tls with
+    | None ->
+         send_e
+           ~src ~dst ~write_eof_dst ~close_src esys
+    | Some(tls_config, peer_name, resume) ->
+         tls_send_e 
+           ~tls_config
+           ~peer_name ?resume ~src ~dst ~write_eof_dst ~close_src esys
+;;
 	
 
 class ftp_data_receiver_impl 
+        ?tls
         ~esys 
 	~(mode : transmission_mode)
 	~(local_receiver : local_receiver)
-	~descr () =
+	~descr
+        ~timeout
+        ~timeout_exn () =
   (* This is almost the same as the class [ftp_data_receiver] (which is
    * explained in the mli). This engine, however, uses the state [`Aborted]
    * to signal that it stops processing, e.g. because the logical EOF
@@ -948,9 +1055,19 @@ class ftp_data_receiver_impl
 		  ch in
 	  new block_record_reader ~onclose ~ondata ~commit rec_ch
   in
+  let src = 
+    Uq_multiplex.create_multiplex_controller_for_connected_socket
+      ~close_inactive_descr:false
+      ~timeout:(timeout,timeout_exn)
+      descr esys in
 object (self)
+(*
   inherit Uq_transfer.receiver 
     ~src:descr ~dst ~close_src:false ~close_dst:true esys
+ *)
+  inherit [unit] Uq_engines.delegate_engine
+            (opt_tls_receive_e
+               ?tls ~src ~dst ~close_dst:true esys)
 
   val mutable descr_state = (`Transfer_in_progress : descr_state)
 
@@ -966,38 +1083,29 @@ object (self)
   method commit() = !commit()
 
   method private close() =
-    descr_state <- ( match local_receiver with
-		       | `File_structure _ when mode = `Stream_mode ->
-			   (* The other side closed the stream. We shut
-                            * the connection down, too.
-                            *)
-			   ( try
-			       Unix.shutdown descr Unix.SHUTDOWN_SEND;
-			     with
-			       | Unix.Unix_error(Unix.ENOTCONN,_,_) -> ()
-			   );
-			   `Down
-		       | _ ->
-			   (* Direct call of [abort] does not work.
-			    * Workaround: Defer minimally.
-			    * Furthermore, this ensures that [`Error] has
-			    * precedence.
-			    *)
-			   let g = Unixqueue.new_group esys in
-			   Unixqueue.once esys g 0.0 self#abort;
-			   `Clean );
+    let g = Unixqueue.new_group esys in
+    Unixqueue.once esys g 0.0 self#abort;
+    descr_state <- `Down;
+    (* We could also go back to `Clean for some data protocols. However,
+       I doubt that would work well with all the buggy ftp servers
+     *)
+    try
+      Unix.shutdown descr Unix.SHUTDOWN_ALL
+    with _ -> ()
 
 end ;;
 
 
-class ftp_data_receiver ~esys ~mode ~local_receiver ~descr () =
+class ftp_data_receiver ?tls ~esys ~mode ~local_receiver ~descr
+                        ~timeout ~timeout_exn () =
   (* The engine [e] may go into the state [`Aborted] when it finishes
    * normally. This is wrong; the engine should go to [`Done ()] instead,
    * and [`Aborted] is reserved for the case when the user of the class
    * calls [abort]. We correct this here by mapping the state.
    *)
   let e = 
-    new ftp_data_receiver_impl ~esys ~mode ~local_receiver ~descr () in
+    new ftp_data_receiver_impl
+          ?tls ~esys ~mode ~local_receiver ~descr ~timeout ~timeout_exn () in
   let commit() =
     try e#commit(); `Done()
     with
@@ -1020,20 +1128,24 @@ object(self)
 
   method descr_state = e # descr_state
 
+  method abort() =
+    try e#abort() with _ -> ()
+
   (* method e = e *)
 
 end ;;
 
 
-(* This class implements the core of the FTP data sender. One detail is
- * missing, however: After a stream mode transmission, the socket is
- * not yet shut down for sending. It just remains fully open.
- *)
-class ftp_data_sender_impl
+class ftp_data_sender
+        ?tls
         ~esys 
 	~(mode : transmission_mode)
 	~(local_sender : local_sender)
-	~descr () =
+	~descr
+        ~timeout
+        ~timeout_exn
+        () =
+  let descr_state = ref (`Transfer_in_progress : descr_state) in
   let src =
     match mode with
 	`Stream_mode ->
@@ -1052,9 +1164,36 @@ class ftp_data_sender_impl
 		  ch in
 	  new block_record_writer rec_ch
   in
+  let dst = 
+    Uq_multiplex.create_multiplex_controller_for_connected_socket
+      ~close_inactive_descr:false
+      ~timeout:(timeout,timeout_exn)
+      descr esys in
+  let e1 = 
+    opt_tls_send_e ?tls ~src ~dst ~write_eof_dst:true ~close_src:true esys in
+  let e2 =
+    e1 ++
+      (fun () ->
+         descr_state := `Down;
+         (* We could also go back to `Clean for some data protocols. However,
+            I doubt that would work well with all the buggy ftp servers
+          *)
+         ( try
+             Unix.shutdown descr Unix.SHUTDOWN_ALL
+           with _ -> ()
+         );
+         eps_e (`Done ()) esys
+      ) in  
 object (self)
+(*
   inherit Uq_transfer.sender
     ~src ~dst:descr ~close_src:true ~close_dst:false esys
+ *)
+  inherit [unit] Uq_engines.delegate_engine e2
+
+  method local_sender = local_sender
+  method descr = descr
+  method descr_state = !descr_state
 end ;;
 
 
@@ -1064,50 +1203,6 @@ object
   method descr : Unix.file_descr
   method descr_state : descr_state
 end    
-
-
-
-class ftp_data_sender
-        ~esys 
-	~(mode : transmission_mode)
-	~(local_sender : local_sender)
-	~descr () =
-  let e = 
-    new ftp_data_sender_impl ~esys ~mode ~local_sender ~descr () in
-  let descr_state = ref (`Transfer_in_progress : descr_state) in
-object(self)
-  (* The engine [e] does not shut down the socket. We do this here when
-   * [e] goes to the state `Done.
-   *)
-  inherit 
-    [unit,unit]
-    map_engine
-      ~map_done:(fun _ -> 
-		   match local_sender with
-		       `File_structure _ when mode = `Stream_mode ->
-			 descr_state := `Down;
-			 ( try
-			     Unix.shutdown descr Unix.SHUTDOWN_SEND;
-			     `Done ()
-			   with error ->
-			     Netlog.logf `Err
-			       "Ftp_data_endpoint.ftp_data_sender: %s"
-			       (Netexn.to_string error);
-			     `Error error
-			 )
-		     | _ ->
-			 descr_state := `Clean;
-			 `Done ()
-		)
-      (e :> unit engine)
-  
-
-  method local_sender = local_sender
-
-  method descr = descr
-
-  method descr_state = !descr_state
-end ;;
 
 
 let () =

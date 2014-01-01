@@ -83,9 +83,13 @@ let create_file_endpoint ?resume ~role ~rd ~wr ~peer_name config =
   let module P = Config.TLS in
   try
     let recv buf =
-      Netsys_mem.mem_recv rd buf 0 (Bigarray.Array1.dim buf) [] in
+      let n = Netsys_mem.mem_recv rd buf 0 (Bigarray.Array1.dim buf) [] in
+      dlogr (fun () -> sprintf "Netsys_tls: Unix.recv n=%d" n);
+      n in
     let send buf size =
-      Netsys_mem.mem_send wr buf 0 size [] in
+      let n = Netsys_mem.mem_send wr buf 0 size [] in
+      dlogr (fun () -> sprintf "Netsys_tls: Unix.send n=%d" n);
+      n in
     let ep = 
       match resume with
         | None ->
@@ -136,23 +140,34 @@ let state_driven_action endpoint =
   try
     match P.get_state Endpoint.endpoint with
       | `Start | `Handshake ->
+           dlog "Netsys_tls: hello";
            P.hello Endpoint.endpoint;
+           dlog "Netsys_tls: verify";
            P.verify Endpoint.endpoint
       | `Accepting ->
+           dlog "Netsys_tls: accept_switch";
            P.accept_switch Endpoint.endpoint (P.get_config Endpoint.endpoint)
       | `Refusing ->
+           dlog "Netsys_tls: refuse_switch";
            P.refuse_switch Endpoint.endpoint
       | `Switching ->
+           dlog "Netsys_tls: switch";
            P.switch Endpoint.endpoint (P.get_config Endpoint.endpoint);
+           dlog "Netsys_tls: hello";
            P.hello Endpoint.endpoint;
+           dlog "Netsys_tls: verify";
            P.verify Endpoint.endpoint
       | _ -> 
            ()
    with
-    | exn -> 
-         if !Debug.enable then
-           debug_backtrace "state_driven_action" exn (Printexc.get_backtrace());
-         raise exn
+     | P.Exc.EAGAIN_RD as exn ->
+          dlog "Netsys_tls: EAGAIN_RD"; raise exn
+     | P.Exc.EAGAIN_WR as exn ->
+          dlog "Netsys_tls: EAGAIN_WR"; raise exn
+     | exn -> 
+          if !Debug.enable then
+            debug_backtrace "state_driven_action" exn (Printexc.get_backtrace());
+          raise exn
 
 
 let handshake endpoint =
@@ -161,7 +176,8 @@ let handshake endpoint =
   let module P = Endpoint.TLS in
   let state = P.get_state Endpoint.endpoint in
   if state = `Start || state = `Handshake then
-    state_driven_action endpoint
+    state_driven_action endpoint;
+  dlog "Netsys_tls: handshake done"
 
 
 let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
@@ -175,7 +191,10 @@ let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
     else
       Bigarray.Array1.sub buf pos len in
   try
-    P.recv Endpoint.endpoint buf'
+    dlog "Netsys_tls: recv";
+    let n = P.recv Endpoint.endpoint buf' in
+    dlogr (fun () -> sprintf "Netsys_tls: recv done (n=%d)" n);
+    n
   with
     | P.Exc.TLS_switch_request ->
          if on_rehandshake endpoint then
@@ -183,6 +202,10 @@ let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
          else
            P.refuse_switch Endpoint.endpoint;
          raise Netsys_types.EAGAIN_RD
+    | P.Exc.EAGAIN_RD as exn ->
+         dlog "Netsys_tls: EAGAIN_RD"; raise exn
+    | P.Exc.EAGAIN_WR as exn ->
+         dlog "Netsys_tls: EAGAIN_WR"; raise exn
     | exn ->
          if !Debug.enable then
            debug_backtrace "mem_recv" exn (Printexc.get_backtrace());
@@ -208,8 +231,15 @@ let mem_send endpoint buf pos len =
     else
       Bigarray.Array1.sub buf pos len in
   try
-    P.send Endpoint.endpoint buf' len
+    dlog "Netsys_tls: send";
+    let n = P.send Endpoint.endpoint buf' len in
+    dlogr (fun () -> sprintf "Netsys_tls: send done (n=%d)" n);
+    n
   with
+    | P.Exc.EAGAIN_RD as exn ->
+         dlog "Netsys_tls: EAGAIN_RD"; raise exn
+    | P.Exc.EAGAIN_WR as exn ->
+         dlog "Netsys_tls: EAGAIN_WR"; raise exn
     | exn ->
          if !Debug.enable then
            debug_backtrace "mem_send" exn (Printexc.get_backtrace());
@@ -230,9 +260,15 @@ let shutdown endpoint how =
   let module P = Endpoint.TLS in
   state_driven_action endpoint;
   try
-    P.bye Endpoint.endpoint how
+    dlog "Netsys_tls: bye";
+    P.bye Endpoint.endpoint how;
+    dlog "Netsys_tls: bye done";
   with
+    | P.Exc.EAGAIN_RD as exn ->
+         dlog "Netsys_tls: EAGAIN_RD"; raise exn
+    | P.Exc.EAGAIN_WR as exn ->
+         dlog "Netsys_tls: EAGAIN_WR"; raise exn
     | exn ->
          if !Debug.enable then
-           debug_backtrace "end_tls" exn (Printexc.get_backtrace());
+           debug_backtrace "shutdown" exn (Printexc.get_backtrace());
          raise exn

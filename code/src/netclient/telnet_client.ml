@@ -28,6 +28,7 @@ let () =
   Netlog.Debug.register_module "Ftp_client" Debug.enable
 
 
+open Printf
 
 exception Telnet_protocol of exn;;
 
@@ -225,10 +226,14 @@ class telnet_session =
     val mutable group = None
     val mutable socket = Unix.stdin
     val mutable socket_state = Down
+    val mutable socket_style = `Read_write
     val mutable connecting = None
     val mutable polling_wr = false
+    val mutable force_rw = None
     val mutable input_timed_out = false
     val mutable output_timed_out = false
+
+    val mutable tls_config = None
 
     val mutable options = 
 	    { connection_timeout = 300.0;
@@ -292,6 +297,18 @@ class telnet_session =
       Queue.clear synch_queue;
       Netbuffer.clear input_buffer;
       Netbuffer.clear output_buffer;
+      send_eof <- false;
+      sending_urgent_data <- false;
+      socket_state <- Down;
+      socket_style <- `Read_write;
+      connecting <- None;
+      polling_wr <- false;
+      force_rw <- None;
+      input_timed_out <- false;
+      output_timed_out <- false;
+      tls_config <- None
+      
+                        
 
     method enable_local_option p =
       if not (List.mem p enabled_local_options) then
@@ -545,6 +562,11 @@ class telnet_session =
 					   timeout_value)
 	    
 
+    method start_tls config ~peer_name =
+      tls_config <- Some(config,peer_name);
+      force_rw <- Some `W;
+      self # enable_tls()
+
     method private connect_server f_ok f_err =
 
       begin match connector with
@@ -569,6 +591,7 @@ class telnet_session =
 			  | `Socket(s,_) ->
 			      Unixqueue.clear esys g1;
 			      socket <- s;
+                              socket_style <- Netsys.get_fd_style s;
 			      connecting <- None;
 			      syscall
 				(fun () -> 
@@ -578,6 +601,7 @@ class telnet_session =
 				~descr:("connection to " ^ 
 					  hostname ^  ":" ^ string_of_int port)
 				s;
+                              self # enable_tls();
 			      f_ok()
 			  | _ -> assert false
 		       )
@@ -599,6 +623,7 @@ class telnet_session =
 	    connecting <- None;
 	    syscall(fun () -> Unix.setsockopt s Unix.SO_OOBINLINE true);
 	    socket <- s;
+            socket_style <- Netsys.get_fd_style s;
 	    Netlog.Debug.track_fd
 	      ~owner:"Telnet_client"
 	      ~descr:("connection to " ^ 
@@ -606,6 +631,7 @@ class telnet_session =
 			with _ -> "(noaddr)")
 	      s;
 	    dlog "Telnet connection: Got connected socket";
+            self # enable_tls();
 	    let g1 = Unixqueue.new_group esys in
 	    Unixqueue.once esys g1 0.0 f_ok
       end;
@@ -618,6 +644,22 @@ class telnet_session =
       sending_urgent_data <- false;
       input_timed_out <- false;
       output_timed_out <- false;
+
+
+    method private enable_tls () =
+      match tls_config with
+        | None -> ()
+        | Some (config, peer_name) ->
+             dlog "Telnet connection: enabling TLS";
+             let ep =
+               Netsys_tls.create_file_endpoint
+                 ~role:`Client
+                 ~rd:socket
+                 ~wr:socket
+                 ~peer_name
+                 config in
+             socket_style <- `TLS ep;
+             force_rw <- Some `W
 
 
     method private shutdown =
@@ -667,8 +709,30 @@ class telnet_session =
 
       let timeout_value = options.connection_timeout in
 
-      if (Queue.length output_queue = 0 & Queue.length synch_queue = 0)
-      then begin
+      let need_wr =
+        force_rw=Some `W ||
+        (force_rw=None &&
+           (send_eof ||
+              Queue.length output_queue > 0 || 
+                Queue.length synch_queue > 0 ||
+                  Netbuffer.length output_buffer > 0)) in
+      
+      dlogr
+        (fun () ->
+           sprintf "Telnet connection: maintain_polling \
+                    force_rw=%s send_eof=%B output_queue=%d synch_queue=%d \
+                    output_buffer=%d"
+                   (match force_rw with
+                      | None -> "none"
+                      | Some `W -> "w"
+                      | Some `R -> "r"
+                   )
+                   send_eof (Queue.length output_queue)
+                   (Queue.length synch_queue)
+                   (Netbuffer.length output_buffer)
+        );
+
+      if not need_wr then begin
 	if polling_wr then begin
 	  let g = match group with
 	      Some x -> x
@@ -685,8 +749,7 @@ class telnet_session =
        * - The write_queue is not empty or the synch_queue is not empty
        *)
 
-      if (Queue.length output_queue > 0 or Queue.length synch_queue > 0)
-      then begin
+      if need_wr then begin
 	if not polling_wr then begin
 	  let g = match group with
 	      Some x -> x
@@ -726,6 +789,23 @@ class telnet_session =
 	    else raise Equeue.Reject
 	| _ ->
 	    raise Equeue.Reject
+
+    method tls_session_props =
+      match socket_style with
+        | `TLS ep ->
+             let ep = Nettls_support.squash_file_tls_endpoint ep in
+             Some(Nettls_support.get_tls_session_props ep)
+        | _ ->
+             None
+
+    method tls_session_data =
+      match socket_style with
+        | `TLS ep ->
+             let module EP = (val ep : Netsys_crypto_types.FILE_TLS_ENDPOINT) in
+             Some(EP.TLS.get_session_data EP.endpoint)
+        | _ ->
+             None
+
 
     (**********************************************************************)
     (***                    THE TIMEOUT HANDLER                         ***)
@@ -774,6 +854,7 @@ class telnet_session =
 	raise Equeue.Reject;
 
       input_timed_out <- false;
+      force_rw <- None;
 
       dlog "Telnet connection: Input event!";
 
@@ -789,12 +870,19 @@ class telnet_session =
 	  (fun () ->
 	     try
 	       let n =
-		 Unix.read 
-		   socket primary_buffer 0 (String.length primary_buffer) in
+		 Netsys.gread 
+		   socket_style socket 
+                   primary_buffer 0 (String.length primary_buffer) in
 	       (n, n=0)
 	     with
-	       | Unix.Unix_error(Unix.EAGAIN,_,_) -> 
+	       | Unix.Unix_error(Unix.EAGAIN,_,_)
+	       | Unix.Unix_error(Unix.EINTR,_,_)
+               | Netsys_types.EAGAIN_RD -> 
 		   (0, false)
+               | Netsys_types.EAGAIN_WR ->
+                   dlog "Telnet connection: EAGAIN_WR";
+                   force_rw <- Some `W;
+                   (0, false)
 	  ) in
 
       Netbuffer.add_sub_string input_buffer primary_buffer 0 n;
@@ -958,6 +1046,7 @@ class telnet_session =
 	raise Equeue.Reject;
 
       output_timed_out <- false;
+      force_rw <- None;
 
       dlog "Telnet connection: Output event!";
 
@@ -1084,18 +1173,37 @@ class telnet_session =
 	  syscall
 	    (fun () ->
 	       try
-		 Unix.send
-		   socket (Netbuffer.unsafe_buffer output_buffer) 0 l flags
+                 match socket_style with
+                   | `TLS _ ->  (* no support for [flags] *)
+		        Netsys.gwrite
+		          socket_style socket 
+                          (Netbuffer.unsafe_buffer output_buffer) 0 l
+                        
+                   | _ ->
+		        Unix.send
+		          socket 
+                          (Netbuffer.unsafe_buffer output_buffer) 0 l flags
 	       with
-		 | Unix.Unix_error(Unix.EAGAIN,_,_) -> 0
+		 | Unix.Unix_error(Unix.EAGAIN,_,_)
+                 | Unix.Unix_error(Unix.EINTR,_,_)
+                 | Netsys_types.EAGAIN_WR -> 0
+                 | Netsys_types.EAGAIN_RD ->
+                      force_rw <- Some `R; 0
 	    ) in
 	Netbuffer.delete output_buffer 0 k;
       end;
 
       if Netbuffer.length output_buffer = 0 && send_eof then begin
-	dlog "Telnet connection: Sending EOF";
-	syscall(fun () -> Unix.shutdown socket Unix.SHUTDOWN_SEND);
-	socket_state <- Up_r;
+        try
+          Netsys.gshutdown socket_style socket Unix.SHUTDOWN_SEND;
+	  dlog "Telnet connection: Sending EOF";
+          send_eof <- false;
+          socket_state <- Up_r;
+        with
+	  | Unix.Unix_error(Unix.EAGAIN,_,_)
+          | Unix.Unix_error(Unix.EINTR,_,_)
+          | Netsys_types.EAGAIN_RD
+          | Netsys_types.EAGAIN_WR -> ()
       end;
 
       self # maintain_polling;

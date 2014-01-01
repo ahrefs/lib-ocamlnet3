@@ -100,6 +100,11 @@ val get_tls_user_name : tls_session_props -> string
    *)
 
 
+val squash_file_tls_endpoint :
+      (module Netsys_crypto_types.FILE_TLS_ENDPOINT) ->
+      (module Netsys_crypto_types.TLS_ENDPOINT)
+  (** Coerce a file endpoint to a normal endpoint *)
+
 
 val is_endpoint_host : string -> tls_session_props -> bool
   (** [is_endpoint_host name props]: checks whether [name] matches

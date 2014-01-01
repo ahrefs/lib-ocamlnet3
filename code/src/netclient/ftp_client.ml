@@ -74,6 +74,15 @@ type structure =
 type transmission_mode =
     Ftp_data_endpoint.transmission_mode
 
+type ftp_auth =
+  [ `None
+  | `TLS
+  ]
+
+type ftp_data_prot =
+  [ `C | `S | `E | `P ]
+
+
 type ftp_state =
     { cmd_state : cmd_state;
       ftp_connected : bool;
@@ -82,6 +91,7 @@ type ftp_state =
       ftp_password : string option;
       ftp_account : string option;
       ftp_logged_in : bool;
+      ftp_host : string;
       ftp_port : port;
       ftp_repr : representation;
       ftp_structure : structure;
@@ -89,6 +99,9 @@ type ftp_state =
       ftp_dir : string list;
       ftp_features : (string * string option) list option;
       ftp_options : (string * string option) list;
+      ftp_auth : ftp_auth;
+      ftp_data_prot : ftp_data_prot;
+      ftp_data_pbsz : int;
     }
 
 
@@ -137,6 +150,10 @@ type cmd =
     | `SIZE of string
     | `MLST of string option
     | `MLSD of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
+    | `AUTH of string
+    | `PBSZ of int
+    | `PROT of ftp_data_prot
+    | `Start_TLS of (module Netsys_crypto_types.TLS_CONFIG)
     ]
 
 let string_of_cmd_nolf =
@@ -144,6 +161,7 @@ let string_of_cmd_nolf =
     | `Connect _ -> ""
     | `Disconnect -> ""
     | `Dummy -> ""
+    | `Start_TLS _ -> ""
     | `USER s -> "USER " ^ s
     | `PASS s -> "PASS " ^ s
     | `ACCT s -> "ACCT " ^ s
@@ -217,6 +235,14 @@ let string_of_cmd_nolf =
     | `MLST (Some n) -> "MLST " ^ n
     | `MLSD (None, _) -> "MLSD"
     | `MLSD (Some n,_) -> "MLSD " ^ n
+    | `AUTH m -> "AUTH " ^ m
+    | `PBSZ k -> "PBSZ " ^ string_of_int k
+    | `PROT p -> "PROT " ^ (match p with
+                              | `C -> "C"
+                              | `S -> "S"
+                              | `E -> "E"
+                              | `P -> "P"
+                           )
 
 
 let string_of_cmd =
@@ -224,6 +250,7 @@ let string_of_cmd =
     | `Connect _ -> ""
     | `Disconnect -> ""
     | `Dummy -> ""
+    | `Start_TLS _ -> ""
     | cmd -> string_of_cmd_nolf cmd ^ "\r\n"
 
 let pasv_re = 
@@ -380,6 +407,7 @@ let nc_state () =
     ftp_password = None;
     ftp_account = None;
     ftp_logged_in = false;
+    ftp_host = "";
     ftp_port = `Unspecified;
     ftp_repr = `ASCII None;
     ftp_structure = `File_structure;
@@ -387,9 +415,12 @@ let nc_state () =
     ftp_dir = [];
     ftp_features = None;
     ftp_options = [];
+    ftp_auth = `None;
+    ftp_data_prot = `C;
+    ftp_data_pbsz = (-1);
   }
 
-let init_state s =
+let init_state s ftp_host =
   let _s_name =
     match Unix.getsockname s with
       | Unix.ADDR_INET(addr,_) ->
@@ -404,6 +435,7 @@ let init_state s =
     ftp_password = None;
     ftp_account = None;
     ftp_logged_in = false;
+    ftp_host;
     ftp_port = `Unspecified;
     ftp_repr = `ASCII None;
     ftp_structure = `File_structure;
@@ -411,6 +443,9 @@ let init_state s =
     ftp_dir = [];
     ftp_features = None;
     ftp_options = [];
+    ftp_auth = `None;
+    ftp_data_prot = `C;
+    ftp_data_pbsz = (-1);
   }
 
 
@@ -465,6 +500,7 @@ object
   method mlst_facts : string list
   method mlst_enabled_facts : string list
   method supports_utf8 : bool
+  method supports_tls : bool
 end
 
 type ftp_method =
@@ -530,6 +566,8 @@ object(self)
        * `Not_connected
        *)
 
+  val mutable tls_config = None
+
 
   initializer (
     ctrl # set_event_system event_system;
@@ -572,9 +610,11 @@ object(self)
     
 
   method private catch_telnet_exception e =
+    dlogr (fun () -> sprintf "catch_telnet exn=%s" (Netexn.to_string e));
     self # set_error (Telnet_protocol e)
 
   method private set_error e =
+    dlogr (fun () -> sprintf "set_error exn=%s" (Netexn.to_string e));
     ctrl # reset();
     self # close_connection();
     self # set_state (`Error e);
@@ -710,6 +750,44 @@ object(self)
 	    )
 	| `Waiting `Dummy ->
 	    ready(); reply ftp_state `Success
+        | `Waiting (`AUTH "TLS") ->
+            ( match code with
+                | 234 -> 
+                     ready(); 
+                     reply { ftp_state with 
+                               ftp_auth = `TLS
+                           }
+                           `Success
+	        | n when n >= 400 && n <= 499 ->
+		     ready(); reply ftp_state `Temp_failure
+	        | n when n >= 500 && n <= 599 ->
+		     ready(); reply ftp_state `Perm_failure
+	        | _   -> proto_viol "Unexpected control message"
+            )
+        | `Waiting (`PBSZ n) ->
+            ( match code with
+                | 200 ->
+                     ready();
+                     reply { ftp_state with
+                               ftp_data_pbsz = n } `Success
+	        | n when n >= 400 && n <= 499 ->
+		     ready(); reply ftp_state `Temp_failure
+	        | n when n >= 500 && n <= 599 ->
+		     ready(); reply ftp_state `Perm_failure
+	        | _   -> proto_viol "Unexpected control message"
+            )
+        | `Waiting (`PROT p) ->
+            ( match code with
+                | 200 ->
+                     ready();
+                     reply { ftp_state with
+                               ftp_data_prot = p } `Success
+	        | n when n >= 400 && n <= 499 ->
+		     ready(); reply ftp_state `Temp_failure
+	        | n when n >= 500 && n <= 599 ->
+		     ready(); reply ftp_state `Perm_failure
+	        | _   -> proto_viol "Unexpected control message"
+            )
 	| `Waiting (`USER s) ->
 	    ( match code with
 		| 230 -> 
@@ -823,7 +901,8 @@ object(self)
 		| 120 -> 
 		    reply ftp_state `Preliminary
 		| 220 -> 
-		    ready(); reply (init_state self#sock) `Success
+		    ready(); 
+                    reply (init_state self#sock ftp_state.ftp_host) `Success
 		    (* CHECK: Close data connection? *)
 		| n when n >= 400 && n <= 499 ->
 		    ready(); reply ftp_state `Temp_failure
@@ -971,7 +1050,19 @@ object(self)
 		| n when n >= 100 && n <= 199 ->
 		    reply ftp_state `Preliminary
 		| n when n >= 200 && n <= 299 ->
-		    ready(); reply ftp_state `Success
+                    (* Some servers do not properly close connections. 
+                       Workaround: close connection on our side after QUIT 
+                     *)
+                    if cmd = `QUIT then (
+                      (* Insert `Disconnect at the beginning of queue *)
+                      let q = Queue.create() in
+                      Queue.add
+                        (`Disconnect, (fun _ _ -> ()),  (fun _ -> ())) q;
+                      Queue.transfer queue q;
+                      Queue.transfer q queue;
+                    );
+		    ready(); 
+                    reply ftp_state `Success
 		| n when n >= 400 && n <= 499 ->
 		    ready(); reply ftp_state `Temp_failure
 		| n when n >= 500 && n <= 599 ->
@@ -1083,6 +1174,10 @@ object(self)
 	( match cmd with
 	    | `Connect _ -> 
 		failwith "Ftp_client: Already connected"
+            | `Start_TLS config ->
+                ctrl # start_tls config (Some ftp_state.ftp_host);
+                interaction_state <- `Waiting `Dummy;
+                tls_config <- Some config;
 	    | `RETR(_,f)
 	    | `LIST(_,f)
 	    | `NLST(_,f)
@@ -1213,7 +1308,7 @@ object(self)
 					 sprintf "connected to %s:%d"
 					   host port);
 				sock_opt <- Some sock;
-				ftp_state <- init_state sock;
+				ftp_state <- init_state sock host;
 				ctrl # set_connection (Telnet_socket sock);
 				if not ctrl_attached then (
 				  ctrl # attach();
@@ -1249,6 +1344,7 @@ object(self)
 		| `Working _ -> e # abort()
 		| _ -> ()
 	    );
+	    dlogr (fun () -> "abort ok");
 	    let data_sock = e # descr in
 	    Netlog.Debug.release_fd data_sock;
 	    Unix.close data_sock;
@@ -1256,6 +1352,7 @@ object(self)
     );
     ftp_state <- set_ftp_port ftp_state `Unspecified;
     List.iter (fun e -> e # abort()) work_engines;
+    dlogr (fun () -> "work abort ok");
     work_engines <- [];
 
   method private close_connection() =
@@ -1263,8 +1360,10 @@ object(self)
     interaction_state <- `Not_connected;
     self # close_data_connection();
     ctrl # reset();
+    ctrl_attached <- false;
     sock_opt <- None;
-    ftp_state <- nc_state()
+    ftp_state <- nc_state();
+    dlogr (fun () -> "close ok");
 
 
   method private setup_passive_endpoint typ cmd f_send f_receive =
@@ -1468,20 +1567,26 @@ object(self)
       try Netsys.string_of_sockaddr (Unix.getpeername data_sock)
       with _ -> "n/a" in
     let local = f_receive ftp_state in
-    let de = 
+    let tls =
+      match ctrl # tls_session_data with
+        | Some session ->
+             let config =
+               match tls_config with
+                 | None -> assert false
+                 | Some config -> config in
+             Some(config, Some ftp_state.ftp_host, Some session)
+        | _ -> None in
+    let e = 
       new ftp_data_receiver
+        ?tls
 	~esys:event_system
 	~mode:ftp_state.ftp_trans
 	~local_receiver:local
-	~descr:data_sock () in
-    let e = 
-      Uq_engines.watchdog timeout de
-      >> (function
-	    | `Error Uq_engines.Watchdog_timeout ->
-		`Error (FTP_timeout data_peer)
-	    | st -> st
-	 ) in
-    data_engine <- Some (de :> ftp_data_engine);
+	~descr:data_sock
+        ~timeout
+        ~timeout_exn:(FTP_timeout data_peer)
+        () in
+    data_engine <- Some (e :> ftp_data_engine);
     Uq_engines.when_state 
       ~is_done
       ~is_error
@@ -1493,20 +1598,26 @@ object(self)
       try Netsys.string_of_sockaddr (Unix.getpeername data_sock)
       with _ -> "n/a" in
     let local = f_send ftp_state in
-    let de = 
+    let tls =
+      match ctrl # tls_session_data with
+        | Some session ->
+             let config =
+               match tls_config with
+                 | None -> assert false
+                 | Some config -> config in
+             Some(config, Some ftp_state.ftp_host, Some session)
+        | _ -> None in
+    let e = 
       new ftp_data_sender
+        ?tls
 	~esys:event_system
 	~mode:ftp_state.ftp_trans
 	~local_sender:local
-	~descr:data_sock () in
-    let e = 
-      Uq_engines.watchdog timeout de
-      >> (function
-	    | `Error Uq_engines.Watchdog_timeout ->
-		`Error (FTP_timeout data_peer)
-	    | st -> st
-	 ) in
-    data_engine <- Some (de :> ftp_data_engine);
+	~descr:data_sock
+        ~timeout
+        ~timeout_exn:(FTP_timeout data_peer)
+        () in
+    data_engine <- Some (e :> ftp_data_engine);
     Uq_engines.when_state 
       ~is_done
       ~is_error
@@ -1609,6 +1720,10 @@ object(self)
       | None -> false
       | Some l -> List.mem_assoc "UTF8" l
 
+  method supports_tls =
+    match ftp_state.ftp_features with
+      | None -> false
+      | Some l -> List.mem ("AUTH", Some "TLS") l
 end
 
 
@@ -1631,6 +1746,42 @@ let errorcheck_e pi (st,(rcode,rtext)) =
 	eps_e (`Error(FTP_method_perm_failure(rcode,rtext))) pi#event_system
     | _ ->
 	eps_e (`Error(FTP_method_unexpected_reply(rcode,rtext))) pi#event_system
+
+
+let tls_method ~config ~required () (pi:ftp_client_pi) =
+  pi # exec_e (`AUTH "TLS")
+  ++ (fun (st,r) ->
+	match st.cmd_state with
+	  | `Success -> 
+               pi # exec_e (`Start_TLS config)
+               ++ (fun (st,r) ->
+                     match st.cmd_state with
+                       | `Success -> 
+                            pi # exec_e (`PBSZ 0)
+                            ++ (fun (st,r) ->
+                                  match st.cmd_state with
+                                    | `Success -> 
+                                         pi # exec_e (`PROT `P)
+                                         ++ (fun (st,r) ->
+                                               match st.cmd_state with
+                                                 | `Success -> 
+                                                      eps_e (`Done()) 
+                                                            pi#event_system
+                                                 | _ ->
+                                                      errorcheck_e pi (st,r)
+                                            )
+                                    | _ ->
+                                         errorcheck_e pi (st,r)
+                               )
+                       | _ ->
+                            errorcheck_e pi (st,r)
+                  )
+          | _ ->
+               if required then
+                 errorcheck_e pi (st,r)
+               else
+                 eps_e (`Done()) pi#event_system
+     )
 
 
 let login_method ~user ~get_password ~get_account () (pi:ftp_client_pi) =
