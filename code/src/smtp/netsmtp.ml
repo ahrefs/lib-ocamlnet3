@@ -133,6 +133,10 @@ object (self)
   method quit () =
     self # smtp_cmd "QUIT";
     ignore_answer ic
+
+  method close () = 
+    oc # close_out();
+    ic # close_in();
  
   method command cmd =
     self # smtp_cmd cmd;
@@ -158,6 +162,11 @@ object (self)
 
   method tls_endpoint = tls_endpoint
 
+  method tls_session_props =
+    match tls_endpoint with
+      | None -> None
+      | Some ep ->
+           Some(Nettls_support.get_tls_session_props ep)
 
 end
 

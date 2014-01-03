@@ -47,6 +47,9 @@ object
      * side of the connection.
      *)
 
+  method close : unit -> unit
+     (** Closes the file descriptors *)
+
   (* Authorization Commands *)
 
   method user : user:string -> unit
@@ -104,17 +107,37 @@ object
      * or for all messages in the current mailbox. The result is a
      * hash table that maps a message number to its unique id.
      *)
+
+  method stls : peer_name:string option -> Netsys_crypto_types.tls_config ->
+                    unit
+    (** Sends STLS (STARTTLS), and negotiates a secure connection.
+        Raises [Err_state] if TLS is unavailable on the server.
+
+        STLS is specified in RFC 2595.
+     *)
+
+  method tls_endpoint : Netsys_crypto_types.tls_endpoint option
+    (** Returns the TLS endpoint (after [STARTTLS]) *)
+
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** Returns the TLS session properties (after [STARTTLS]) *)
 end
 
-(* ======================================================================
- * History:
- * 
- * $Log$
- * Revision 1.2  2004/08/01 10:24:06  stolpmann
- * 	Pre-release changes: ocamldoc, further doc updates
- *
- * Revision 1.1  2001/11/11 21:43:14  pdoane
- * 	Initial revision
- *
- * 
- *)
+
+class connect : ?proxy:#Uq_engines.client_endpoint_connector ->
+                Uq_engines.connect_address ->
+                float ->
+                  client
+  (** [connect addr timeout]: Connects with the server at [addr], and
+      configure that I/O operations time out after [timeout] seconds of
+      waiting.
+
+      Example:
+{[
+  let addr =
+    `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "www.domain.com", 110),
+            Uq_engines.default_connect_options) in
+  let client =
+    new Netpop.connect addr 60.0
+]}
+   *)

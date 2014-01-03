@@ -77,6 +77,9 @@ object
   method quit : unit -> unit
     (** Requests the server to end this session. *)
 
+  method close : unit -> unit 
+    (** Closes the file descriptors *)
+
   method starttls : peer_name:string option -> Netsys_crypto_types.tls_config ->
                     unit
     (** Sends STARTTLS, and negotiates a secure connection. This should
@@ -95,6 +98,9 @@ object
 
   method tls_endpoint : Netsys_crypto_types.tls_endpoint option
     (** Returns the TLS endpoint (after [STARTTLS]) *)
+
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** Returns the TLS session properties (after [STARTTLS]) *)
 
 end
 

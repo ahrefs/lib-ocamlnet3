@@ -103,11 +103,13 @@ let body_response ic =
 ;;
 
 class client
-  (ic : in_obj_channel)
-  (oc : out_obj_channel) =
-  let greeting = status_response ic (fun s p -> trim s p 1) in
+  (ic0 : in_obj_channel)
+  (oc0 : out_obj_channel) =
+  let greeting = status_response ic0 (fun s p -> trim s p 1) in
 object (self)
-
+  val mutable ic = ic0
+  val mutable oc = oc0
+  val mutable tls_endpoint = None
   val mutable state : state = `Authorization
 
   (* Current State *)
@@ -123,6 +125,10 @@ object (self)
   method quit () =
     send_command oc "QUIT";
     ignore_status ic;
+
+  method close () =
+    oc # close_out();
+    ic # close_in();
 
   (* Authorization Commands *)
 
@@ -230,4 +236,52 @@ object (self)
 	(count, size, ext)
       )
     with _ -> raise Protocol_error;
+
+
+  method stls ~peer_name (tls_config : Netsys_crypto_types.tls_config) =
+    if tls_endpoint <> None then
+      failwith "Netpop: TLS already negotiated";
+    send_command oc "STLS";
+    ignore_status ic;
+    let tls_ch =
+      new Netchannels.tls_layer
+        ~role:`Client
+        ~rd:(ic0 :> Netchannels.raw_in_channel)
+        ~wr:(oc0 :> Netchannels.raw_out_channel)
+        ~peer_name
+        tls_config in
+    tls_endpoint <- Some tls_ch#tls_endpoint;
+    tls_ch # flush();   (* This enforces the TLS handshake *)
+    ic <- Netchannels.lift_in (`Raw (tls_ch :> Netchannels.raw_in_channel));
+    oc <- Netchannels.lift_out (`Raw (tls_ch :> Netchannels.raw_out_channel))
+
+
+  method tls_endpoint = tls_endpoint
+
+  method tls_session_props =
+    match tls_endpoint with
+      | None -> None
+      | Some ep ->
+           Some(Nettls_support.get_tls_session_props ep)
+
 end
+
+class connect ?proxy addr timeout =
+  let st = Uq_client.connect ?proxy addr timeout in
+  let bi = Uq_client.client_channel st timeout in
+  let ic = Netchannels.lift_in (`Raw (bi :> Netchannels.raw_in_channel)) in
+  let oc = Netchannels.lift_out (`Raw (bi :> Netchannels.raw_out_channel)) in
+  client ic oc
+
+
+(*
+#use "topfind";;
+#require "pop,nettls-gnutls";;
+let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "pop.kundenserver.de", 110), Uq_client.default_connect_options);;
+let tls = Netsys_crypto.current_tls();;
+let tc = Netsys_tls.create_x509_config ~system_trust:true ~peer_auth:`Required tls;;
+let c  = new Netpop.connect addr 300.0;;
+c#stls ~peer_name:(Some "pop.kundenserver.de") tc;;
+c#stat;;
+
+ *)

@@ -196,16 +196,19 @@ OCAMLNET
 ----------------------------------------------------------------------
 Major future directions:
 
-- Continue SSL
-  * Nethttpd
-  * Ftp_client
+- Continue TLS
+  * Nethttpd - DONE
+  * Ftp_client - DONE
+  * integrate more of GnuTLS
 
 - Integrate more protocols/improve implementations
-  * NetDNS: integrate
+  * NetDNS: finish & integrate
   * sftp: develop
   * async fastcgi client
+  * RPC: support RPCBIND versions 3 and 4 (for IPv6 needed)
 
 - Security
+  * Access GnuTLS crypto routines via Cryptokit-like API
   * GSS-API wrapper on C level (Kerberos support)
   * GSS-API and HTTP
   * GSS-API and FTP

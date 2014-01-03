@@ -1,4 +1,4 @@
-requires = "netstring"
+requires = "netstring,netsys,equeue"
 version = "@VERSION@"
 description = "Ocamlnet - Post Office Protocol (POP3)"
 archive(byte) = "pop.cma"
