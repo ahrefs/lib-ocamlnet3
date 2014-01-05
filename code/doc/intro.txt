@@ -54,6 +54,7 @@ A number of ideas and concepts are used throughout the libraries:
 - {!Platform}: Which functions are available on which platform
   (POSIX/Win32). Also hints for portable programming.
 - {!Ipv6}: The state of IPv6 support
+- {!Tls}: TLS support
 - {!Regexp}: Regular expression backends
 
 {divend guide}
@@ -181,6 +182,11 @@ for other libraries.
    Netmappings
    Netaux
    Netnumber
+   Nettls_support
+   Netoid
+   Netx509
+   Netdn
+   Netasn1
    Rtypes
    Xdr
    Xdr_mstring
@@ -215,6 +221,10 @@ by a number of other libraries of Ocamlnet to parallelize network code
    Uq_socks5
    Uq_resolver
    Uq_io
+   Uq_client
+   Uq_server
+   Uq_multiplex
+   Uq_transfer
    Uq_lwt
    Uq_libevent
    Uq_mt
@@ -228,15 +238,6 @@ made with lablgtk and lablgtk2
 
 {!modules:
   Uq_gtk}
-
-{3:equeue_ssl The [equeue-ssl] extension}
-
-Extensions for [equeue] to support SSL
-
-{!modules:
-   Uq_ssl
-   Https_client
-}
 
 {3:equeue_tcl The [equeue-tcl] extension}
 
@@ -320,6 +321,9 @@ other Ocamlnet libraries.
     Netsys_pollset_win32
     Netsys_win32
     Netsys_rng
+    Netsys_crypto_types
+    Netsys_crypto
+    Netsys_tls
 }
 
 
@@ -454,14 +458,6 @@ over a local XTI connection ("cots" connection).
 
 {!modules:
     Rpc_xti_client}
-
-{2:rpc_ssl The [rpc_ssl] extension: SSL encryption}
-
-This library allows you to tunnel RPC through SSL/TLS.
-
-{!modules:
-    Rpc_ssl}
-
 
 {2:netgssapi The [netgssapi] library with the GSS-API framework}
 

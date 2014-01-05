@@ -21,13 +21,18 @@ module type GNUTLS_ENDPOINT =
 
 exception I of (module GNUTLS_PROVIDER)
 
-let self = ref Not_found
+module type SELF =
+  sig
+    val self : exn ref
+  end
 
 
-module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
+module Make_TLS_1 
+         (Self:SELF)
+         (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
   struct
     let implementation_name = "Nettls_gnutls.TLS"
-    let implementation () = !self
+    let implementation () = !Self.self
 
     module Exc = Exc
     module G = Nettls_gnutls_bindings
@@ -755,19 +760,36 @@ module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
   end
 
 
-module TLS = Make_TLS(Netsys_types)
+let make_tls (exc : (module Netsys_crypto_types.TLS_EXCEPTIONS)) =
+  let module Self =
+    struct
+      let self = ref Not_found
+    end in
+  let module Exc =
+    (val exc : Netsys_crypto_types.TLS_EXCEPTIONS) in
+  let module Impl =
+    Make_TLS_1(Self)(Exc) in
+  let () =
+    Self.self := I (module Impl) in
+  (module Impl : GNUTLS_PROVIDER)
 
 
-let tls = (module TLS : GNUTLS_PROVIDER)
+(*
+module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER =
+  (val make_tls (module Exc) : GNUTLS_PROVIDER)
+ *)
 
-let () =
-  self := I tls
+module GNUTLS = (val make_tls (module Netsys_types))
+module TLS = (GNUTLS : Netsys_crypto_types.TLS_PROVIDER)
+
+let gnutls = (module GNUTLS : GNUTLS_PROVIDER)
+let tls = (module TLS : Netsys_crypto_types.TLS_PROVIDER)
 
 
 let endpoint ep =
   let module EP =
     struct
-      module TLS = TLS
+      module TLS = GNUTLS
       let endpoint = ep
     end in
   (module EP : GNUTLS_ENDPOINT)
@@ -777,6 +799,17 @@ let downcast p =
   match P.implementation() with
     | I tls -> tls
     | _ -> raise Not_found
+
+let downcast_endpoint ep_mod =
+  let module EP = (val ep_mod : Netsys_crypto_types.TLS_ENDPOINT) in
+  let module T = (val downcast (module EP.TLS)) in
+  let module EP1 =
+    struct
+      module TLS = T
+      let endpoint = (Obj.magic EP.endpoint)
+    end in
+  (module EP1 : GNUTLS_ENDPOINT)
+
 
 let init() =
   Nettls_gnutls_bindings.gnutls_global_init();

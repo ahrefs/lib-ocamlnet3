@@ -47,5 +47,5 @@ val read_tls_config :
   (** Reads the TLS section of a configuration file: At the passed location
       there must be [tls] section (or [None] is returned).
 
-      The TLS options are now documented in {!Netplex_admin.tls}. (TODO)
+      The TLS options are now documented in {!Nethttpd_plex.tls}.
    *)

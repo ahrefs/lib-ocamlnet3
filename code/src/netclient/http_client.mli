@@ -22,13 +22,13 @@
  *  - HTTP proxy support, also with Basic and Digest
  *    authentication
  *  - SOCKS proxy support (1)
- *  - HTTPS support via extension module {!Https_client} (in library
- *    [equeue-ssl]). HTTPS proxies are also supported (CONNECT method) (1)
+ *  - HTTPS support is now built-in, but requires that a TLS provider is
+ *    initialized (see {!Tls} for more information).
+ *    HTTPS proxies are also supported (CONNECT method) (1)
  *  - Automatic and configurable retry of failed idempotent requests
  *  - Redirections can be followed automatically 
  *  - Compressed message bodies can be automatically decoded (gzip only,
  *    method [set_accept_encoding]) (1)
- *  - Support for TLS-encrypted sessions (https)
  *
  * Left out:
  *  - multipart messages, including multipart/byterange
@@ -1197,9 +1197,6 @@ class pipeline :
      *
      * This works not only with pipelines, but with every network client
      * or server which is compatible with the [Unixqueue] design.
-     *
-     * By default, the pipeline only supports "http" URLs. You can configure
-     * "https" support via {!Https_client}.
      *)
 
     method event_system : Unixqueue.event_system
@@ -1501,8 +1498,6 @@ sig
     *
     * Error codes are reported as {!Http_client.Http_error}. Note that
     * this is different than what the pipeline core does.
-    *
-    * "https" support can be additionally configured via {!Https_client}.
     *)
 
   (** {b Thread safety}

@@ -10,6 +10,8 @@
   * - IPv6 (RFC 2428)
   * - Internationalization (RFC 2640)
   * - Directory walking (NVFS) and direct access (TVFS)
+  * - TLS (it is required, though, that a TLS provider is initialized, see
+  *   {!Tls} for more information)
   * 
   * The client is written in asynchronous style (using {!Uq_engines}).
   *

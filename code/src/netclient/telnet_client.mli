@@ -336,7 +336,7 @@ class telnet_session :
           Switching to TLS can be done at any time, but should be done at a
           moment when the other side of the connection expects it. If
           [start_tls] is invoked before [attach], TLS is enabled at the
-          very beginning.
+          very beginning of the TELNET connection.
 
           The arguments are the TLS configuration, and the peer name for
           validation (pass the host name here).

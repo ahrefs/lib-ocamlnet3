@@ -172,99 +172,7 @@ val nethttpd_factory :
         Netplex_types.processor_factory
   (** Factory for a web server component.
     *
-    * {b Configuration file.} Reads a configuration section like
-    * {[
-    *    processor {
-    *      type = "nethttpd";          (* or what is passed as "name" arg *)
-    *      timeout = 300.0;
-    *      timeout_next_request = 15.0;
-    *      access_log = "enabled";
-    *      suppress_broken_pipe = true;
-    *      host {
-    *        pref_name = "myhost";     (* optional *)
-    *        pref_port = 80;           (* optional *)
-    *        names = "myhost:80 yourhost:81";  (* use *:0 for any name *)
-    *        uri {
-    *          path = "/the/path";
-    *          method {
-    *            allow = "GET POST";
-    *            (* or: deny = "..." *)
-    *            service {
-    *              type = "...";
-    *              ...
-    *            }
-    *          }
-    *        }
-    *        uri {
-    *          ...
-    *        }
-    *      }
-    *      host {
-    *        ...
-    *      }
-    *    }
-    * ]}
-    *
-    * The [access_log] parameter can be set to [off], [enabled], or [debug].
-    * The default is [off]. Access messages go to the "access" subchannel
-    * of the component logger. If [enabled], one line is printed with the
-    * most important data. If [debug] is set, all access data are printed.
-    *
-    * If [suppress_broken_pipe] the error "Broken pipe" is not logged
-    * in the error log. This error occurs frequently, and may be regarded
-    * as a normal condition.
-    *
-    * The sections [host], [uri] and [method] can be nested to any depth.
-    * However, on every nesting level only one of these section types must be
-    * used. For example, if a [host] section already contains [uri]
-    * subsections, it is not allowed to add [method] subsections.
-    * Furthermore, the outermost section must be [host].
-    *
-    * The [service] section may be one of (at least if the [services]
-    * parameter is not overridden):
-    *
-    * {[
-    *    service {
-    *      type = "file";
-    *      docroot = "/a/path/in/the/filesystem";
-    *      uri = "/the/uri/prefix/corresponding/to/docroot";
-    *      media_types_file = "/etc/mime.types";
-    *      media_type {
-    *        type = "application/foo";
-    *        suffix = "foo"
-    *      }
-    *      default_media_type = "text/plain";
-    *      enable_gzip = true;   (* see doc in nethttpd_services.mli *)
-    *      index_files = "index.html";
-    *      enable_listings = true;
-    *      hide_from_listings = "README";   (* list of PCRE regexps *)
-    *    }
-    * ]}
-    *
-    * Note that [uri] is taken from the surrounding [uri] section (or
-    * assumed to be "/" if there is none) if omitted.
-    *
-    * {[
-    *    service {
-    *      type = "dynamic";
-    *      handler = "name_of_handler";
-    *    }
-    * ]}
-    *
-    * Binds the passed handler here.
-    *
-    * Any of [host], [uri], and [method] sections may contain one or several
-    * [access] sections (which are AND-connected):
-    *
-    * {[
-    *    access {
-    *      type = "host";
-    *      allow = "host1 host2 ...";
-    *      (* or deny = "host1 host2 ..."; *)
-    *    }
-    * ]}
-    *
-    * Other access control methods are not yet available.
+    * {b Configuration file.} See below.
     *
     * The [services] optional argument can be used to change the service
     * types understood. If not passed, it defaults to [default_services].
@@ -299,3 +207,170 @@ val nethttpd_factory :
     * - [tls]: the TLS provider to use. By default, 
     *   {!Netsys_crypto.current_tls_opt} is used.
    *)
+
+
+(**
+
+{2 Configuration files}
+
+The configuration file understood by [nethttpd_factory] looks like:
+
+ {[
+    processor {
+      type = "nethttpd";          (* or what is passed as "name" arg *)
+      timeout = 300.0;
+      timeout_next_request = 15.0;
+      access_log = "enabled";
+      suppress_broken_pipe = true;
+      host {
+        pref_name = "myhost";     (* optional *)
+        pref_port = 80;           (* optional *)
+        names = "myhost:80 yourhost:81";  (* use *:0 for any name *)
+        uri {
+          path = "/the/path";
+          method {
+            allow = "GET POST";
+            (* or: deny = "..." *)
+            service {
+              type = "...";
+              ...
+            }
+          }
+        }
+        uri {
+          ...
+        }
+      }
+      host {
+        ...
+      }
+    }
+ ]}
+
+ The [access_log] parameter can be set to [off], [enabled], or [debug].
+ The default is [off]. Access messages go to the "access" subchannel
+ of the component logger. If [enabled], one line is printed with the
+ most important data. If [debug] is set, all access data are printed.
+
+ If [suppress_broken_pipe] the error "Broken pipe" is not logged
+ in the error log. This error occurs frequently, and may be regarded
+ as a normal condition.
+
+ The sections [host], [uri] and [method] can be nested to any depth.
+ However, on every nesting level only one of these section types must be
+ used. For example, if a [host] section already contains [uri]
+ subsections, it is not allowed to add [method] subsections.
+ Furthermore, the outermost section must be [host].
+
+ The [service] section may be one of (at least if the [services]
+ parameter is not overridden):
+
+ {[
+    service {
+      type = "file";
+      docroot = "/a/path/in/the/filesystem";
+      uri = "/the/uri/prefix/corresponding/to/docroot";
+      media_types_file = "/etc/mime.types";
+      media_type {
+        type = "application/foo";
+        suffix = "foo"
+      }
+      default_media_type = "text/plain";
+      enable_gzip = true;   (* see doc in nethttpd_services.mli *)
+      index_files = "index.html";
+      enable_listings = true;
+      hide_from_listings = "README";   (* list of PCRE regexps *)
+    }
+ ]}
+
+ Note that [uri] is taken from the surrounding [uri] section (or
+ assumed to be "/" if there is none) if omitted.
+
+ {[
+    service {
+      type = "dynamic";
+      handler = "name_of_handler";
+    }
+ ]}
+
+ Binds the passed handler here.
+
+ Any of [host], [uri], and [method] sections may contain one or several
+ [access] sections (which are AND-connected):
+
+ {[
+    access {
+      type = "host";
+      allow = "host1 host2 ...";
+      (* or deny = "host1 host2 ..."; *)
+    }
+ ]}
+
+ Other access control methods are not yet available.
+ *)
+
+
+(**
+
+{2:tls Configuring TLS}
+
+First of all, there needs to be a TLS provider. See {!Tls} for more information
+how to get one.
+
+If the TLS provider is initialized, you can have a [tls] subsection inside
+[processor], like:
+
+{[
+processor {
+  ...
+  tls {
+    x509 {
+      trust {
+        crt_file = "ca.pem";
+      }
+      key {
+        crt_file = "server.crt";
+        key_file = "server.key";
+      }
+    }
+  }
+}
+]}
+
+All of the files, [ca.pem], [server.crt] and [server.key] need to be 
+PEM-encoded. You can have several [key] sub-sections when you want to do
+name-based virtual hosting. Note, however, that this relies on the SNI
+extension of the TLS protocol, and not all clients support this extension.
+
+Further parameters inside [tls]:
+
+ - [algorithms]: This is a string describing the cipher suites and protocol
+   options that are in effect. This string is provider-specific. (GnuTLS
+   calls this string the "priority string".) Example:
+   {[
+tls {
+   ...
+   algorithms = "SECURE-128 !ARCFOUR-128";
+}
+   ]}
+ - [dh_params]: This sub-section may set DH parameters. Example:
+   {[
+tls {
+  ...
+  dh_params {
+    pkcs3_file = "/path/to/pkcs3_file";
+  }
+}
+   ]}
+ - [peer_auth]: This string parameter may enable client certificates.
+   Set it to "required" to enforce such a certificate.
+   {[
+tls {
+  ...
+  peer_auth = "required";
+}
+   ]}
+
+
+
+ *)

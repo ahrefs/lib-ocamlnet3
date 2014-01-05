@@ -267,7 +267,7 @@ type general_name =
   | `Registered_ID of oid
   ]
   (** General names:
-      - [`Other_name(oid, value): the [oid] determines the extension name
+      - [`Other_name(oid, value)]: the [oid] determines the extension name
         format
       - [`Rfc822_name n]: an email address [n] (ASCII encoded)
       - [`DNS_name n]: an Internet domain [n] (ASCII encoded - no

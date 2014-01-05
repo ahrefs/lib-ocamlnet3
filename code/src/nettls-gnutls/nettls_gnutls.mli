@@ -20,24 +20,36 @@ module type GNUTLS_ENDPOINT =
   end
 
 
-module Make_TLS (Exc:Netsys_crypto_types.TLS_EXCEPTIONS) : GNUTLS_PROVIDER
+val make_tls : (module Netsys_crypto_types.TLS_EXCEPTIONS) ->
+               (module GNUTLS_PROVIDER)
   (** The implementation of TLS backed by GnuTLS, here for an arbitrary
       TLS_EXCEPTIONS module
    *)
 
-module TLS : GNUTLS_PROVIDER
+module GNUTLS : GNUTLS_PROVIDER
   (** The implementation of TLS backed by GnuTLS, here using {!Netsys_types}
       as TLS_EXCEPTIONS module
    *)
 
-val tls : (module GNUTLS_PROVIDER)
+module TLS : Netsys_crypto_types.TLS_PROVIDER
+  (** Same as [GNUTLS], but without the extra [gnutls_*] functions *)
+
+
+val gnutls : (module GNUTLS_PROVIDER)
   (** The implementation of TLS backed by GnuTLS, as value *)
 
-val endpoint : TLS.endpoint -> (module GNUTLS_ENDPOINT)
+val tls : (module Netsys_crypto_types.TLS_PROVIDER)
+  (** The implementation of TLS backed by GnuTLS, as value *)
+
+val endpoint : GNUTLS.endpoint -> (module GNUTLS_ENDPOINT)
   (** Wraps an endpoint *)
 
 val downcast : (module Netsys_crypto_types.TLS_PROVIDER) -> 
                  (module GNUTLS_PROVIDER)
+  (** Attempts a downcast, or raises [Not_found] *)
+
+val downcast_endpoint : (module Netsys_crypto_types.TLS_ENDPOINT) -> 
+                        (module GNUTLS_ENDPOINT)
   (** Attempts a downcast, or raises [Not_found] *)
 
 val init : unit -> unit

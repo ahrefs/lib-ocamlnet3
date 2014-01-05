@@ -213,11 +213,15 @@ let mem_recv ?(on_rehandshake=fun _ -> true) endpoint buf pos len =
 
 
 let recv ?on_rehandshake endpoint buf pos len =
-  let mem = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
-  let mem_len = min len (Bigarray.Array1.dim mem) in
-  let n = mem_recv ?on_rehandshake endpoint mem 0 mem_len in
-  Netsys_mem.blit_memory_to_string mem 0 buf pos n;
-  n
+  let mem, return = Netsys_mem.pool_alloc_memory2 Netsys_mem.default_pool in
+  try
+    let mem_len = min len (Bigarray.Array1.dim mem) in
+    let n = mem_recv ?on_rehandshake endpoint mem 0 mem_len in
+    Netsys_mem.blit_memory_to_string mem 0 buf pos n;
+    return();
+    n
+  with
+    | exn -> return(); raise exn
 
 
 let mem_send endpoint buf pos len =
@@ -248,10 +252,15 @@ let mem_send endpoint buf pos len =
 
 let send endpoint buf pos len =
   state_driven_action endpoint;
-  let mem = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
-  let mem_len = min len (Bigarray.Array1.dim mem) in
-  Netsys_mem.blit_string_to_memory buf pos mem 0 mem_len;
-  mem_send endpoint mem 0 mem_len
+  let mem, return = Netsys_mem.pool_alloc_memory2 Netsys_mem.default_pool in
+  try
+    let mem_len = min len (Bigarray.Array1.dim mem) in
+    Netsys_mem.blit_string_to_memory buf pos mem 0 mem_len;
+    let n = mem_send endpoint mem 0 mem_len in
+    return();
+    n
+  with
+    | exn -> return(); raise exn
 
 
 let shutdown endpoint how =

@@ -63,6 +63,9 @@
        let fsys = Netglob.of_stream_fs (fs :> Netfs.stream_fs)
        let files = Netglob.glob ~fsys (`String "/*.gif")
     ]}
+
+    The "https" protocol is also supported, so far a TLS provider is
+    initialized (see {!Tls} for more information).
  *)
 
 (** {2 Extended [stream_fs] type} *)
