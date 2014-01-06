@@ -1,17 +1,33 @@
-2013-09-09  Gerd Stolpmann  <gerd@zotac>
+Ocamlnet-4 adds:
 
-	* Netconversion: adding support for three ASN.1 encodings
-	* Netconversion: adding UTF-32
-	* Netconversion: adding BOM option for UTF-8
+	- new library nettls-gnutls
+	- removed equeue-ssl and rpc-ssl
+	- X.500 modules Netasn1, Netdn, Netx509
+	- Crypto definitions Netsys_crypto_types, Netsys_crypto
+	- TLS modules Netsys_tls, Nettls_support
+	- Moved many functions from Uq_engines to new modules in
+	  the equeue library (Uq_client, Uq_server, Uq_multiplex,
+	  Uq_transfer)
 
-	* Netoid: new module for OID handling
-
-	* Netdn: new module for parsing/printing distinguished names
-
-	* Netasn1: adding parser for ASN.1 BER encoding
-
-Development of OCamlnet-4 starts
+Development of Ocamlnet-4 starts
 ======================================================================
+
+2013-10-01  Gerd Stolpmann  <gerd@zotac>
+
+	* Https_client and aggressive connection caching: In previous
+	  versions there was a problem with the reinitialization of the
+	  SSL socket when a former connection was reused. The fix requires
+	  an API change of connection_cache: The SSL socket can now be
+	  stored with the inactive connection.
+
+	* Http_client: fixing a bug with connection caching: Address
+	  resolution was not taken into account for computing the key
+	  in the connection cache.
+
+2013-09-30  Gerd Stolpmann  <gerd@zotac>
+
+	* ssl_exts_stubs.c: releasing global lock on shutdown error
+	  (Török Edwin)
 
 2013-09-08  Gerd Stolpmann  <gerd@zotac>
 

@@ -101,6 +101,8 @@ cleanup of all hex digit routines
 
 out-of-heap values: implement this better
 
+out-of-heap values: implement this better
+
 - Bug: Rpc_proxy + authenticated request + message timeout. 
   If the connect is refused, the exception is not immedietaly passed
   back to the caller. First the message must time out. Probably

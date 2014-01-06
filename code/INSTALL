@@ -15,7 +15,6 @@ cgi		CORE		This is an alias for netcgi1
 equeue		CORE		Event queues
 equeue-gtk1	-enable-gtk	Event queues - integration into lablgtk
 equeue-gtk2	-enable-gtk2	Event queues - integration into lablgtk2
-equeue-ssl	-enable-ssl	Event queues - SSL support
 equeue-tcl	-enable-tcl	Event queues - integration into labltk
 netcamlbox	CORE		Multiprocessing
 netcgi2		CORE		Web applications (revised lib)
@@ -31,13 +30,13 @@ netshm		CORE		Shared memory for IPC
 netstring	CORE		String routines (e.g. URLs, HTML, Mail)
 netstring-pcre  -enable[-full]-pcre   PCRE layer
 netsys		CORE		System interfaces missing in Unix
+nettls-gnutls   -enable-gnutls  TLS library
 netzip	        -enable-zip     read/write gzip data using object channels
 pop		CORE		POP3 client
 rpc		CORE		Sophisticated SunRPC/ONCRPC implementation
 rpc-auth-dh	-with-rpc-auth-dh SunRPC/ONCRPC - Add-on for Diffie-Hellman auth
 rpc-auth-local	CORE (*)	SunRPC/ONCRPC - Add-on for local auth
 rpc-generator	CORE		SunRPC/ONCRPC - Stub generator
-rpc-ssl		-enable-ssl	SunRPC/ONCRPC - Add-on for SSL support
 rpc-xti		CORE (*)	SunRPC/ONCRPC - Add-on for XTI-only transports
 shell		CORE		Sophisticated version of Sys.command
 smtp		CORE		SMTP client
@@ -69,6 +68,9 @@ CORE		findlib		>= 1.0
 
                                 PLEASE READ doc/html-main/Regexp.html
 
+-enanle-gnutls  gnutls          2.8 or better
+                                http://www.gnutls.org
+
 -enable-gtk	lablgtk		>= 1.2 (*)
 				http://wwwfun.kurims.kyoto-u.ac.jp/soft/
 				  olabl/lablgtk.html
@@ -78,10 +80,6 @@ CORE		findlib		>= 1.0
 				http://wwwfun.kurims.kyoto-u.ac.jp/soft/
 				  olabl/lablgtk.html
 				Bindings for gtk2 GUIs
-
--enable-ssl	ssl		probably any
-		  (ocaml-ssl)	http://savonet.sourceforge.net/
-				Bindings for openssl
 
 -enable-tcl	labltk		probably any
 				part of the O'Caml distribution
@@ -213,9 +211,9 @@ First, it is suggested to distribute ocamlnet as several packages
 in binary form:
 
 - ocamlnet		CORE only
+- ocamlnet-gnutls       Add-on libraries needing gnutls
 - ocamlnet-gtk		Add-on libraries needing gtk
 - ocamlnet-gtk2		Add-on libraries needing gtk2
-- ocamlnet-ssl		Add-on libraries needing ssl
 - ocamlnet-tcl		Add-on libraries needing tcl
 - ocamlnet-zip          Add-on libraries needing camlzip
 - ocamlnet-crypto	Add-on libraries needing cryptokit

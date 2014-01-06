@@ -778,7 +778,8 @@ object
   (** [setup fd cb tmo tmo_x host port esys tls_cache]: 
       Create or configure a communication
       circuit over the file descriptor [fd] that can be driven by the
-      returned multiplex controller object.
+      returned multiplex controller object. Since OCamlnet-3.8, the method
+      can also return private data for the connection cache.
 
       [tmo] is the timeout. After inactivity the  exception [tmo_x] must be
       raised.
@@ -796,6 +797,8 @@ object
       be continued. The additional argument contains the stashed TLS session.
 
       Note that the event system can be different now.
+
+      If it is not possible to continue, the method may raise [Not_found].
    *)
 end
 

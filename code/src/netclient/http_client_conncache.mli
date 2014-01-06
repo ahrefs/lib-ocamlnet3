@@ -21,6 +21,10 @@ type conn_state = [ `Inactive of inactive_data | `Active of < > ]
     *
     * Since Ocamlnet-4, [`Inactive] connections carry an [inactive_data]
     * record (was a [channel_binding_id] before).
+    * Since Ocamlnet-3.3, [`Inactive] connections carry the channel binding
+    * ID as argument. Since 3.8, there is the option of storing an exception
+    * value [private_data]. This may be used by implementations to store 
+    * private data together with the file descriptor.
    *)
 
 type peer =
