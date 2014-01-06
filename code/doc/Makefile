@@ -16,7 +16,7 @@ html-doc:
 		[ "$$p" != "equeue-gtk1" ] || continue; \
 		echo "-load ../src/$$p/ocamldoc.dump" >>loadopts.tmp; \
 	done
-	$(OCAMLDOC) -d html-main -stars -t "Ocamlnet 3 Reference Manual" \
+	$(OCAMLDOC) -d html-main -stars -t "Ocamlnet 4 Reference Manual" \
 		-g odoc/chtml.cmo \
 		-css-style style.css \
 		-intro intro.txt intro.txt \
