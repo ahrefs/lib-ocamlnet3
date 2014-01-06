@@ -3526,8 +3526,8 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
 			      fd cb !options.connection_timeout tmo_x
 			      real_host real_port esys tls_cache
 			    >> (function
-				  | `Done(mplex,priv_data) -> 
-                                      `Done(fd,mplex,priv_data)
+				  | `Done(mplex) -> 
+                                      `Done(fd,mplex)
 				  | `Error err -> `Error err
 				  | `Aborted -> `Aborted
 			       ) in
@@ -3560,7 +3560,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
 		(Timeout (sprintf
 			    "creating %s" descr))
 		eng
-	      ++ (fun (fd,mplex,priv_data) ->
+	      ++ (fun (fd,mplex) ->
 		    let t1 = Unix.gettimeofday() in
 		    let d = t1 -. t0 in
 
@@ -3699,7 +3699,7 @@ let fragile_pipeline
        esys  cb
        peer cache_peer
        proxy_auth_state proxy_auth_handler_opt
-       fd mplex priv_data connect_time no_pipelining conn_cache
+       fd mplex connect_time no_pipelining conn_cache
        auth_cache
        counters options =
   (* Implements a pipeline for an existing connection [fd]. This object
@@ -4791,7 +4791,7 @@ let robust_pipeline
 		      fragile_pipeline
 			esys cb peer cache_peer
 			proxy_auth_state proxy_auth_handler_opt
-			fd mplex priv_data t no_pipelining conn_cache
+			fd mplex t no_pipelining conn_cache
 			auth_cache
 			counters options in
 		    fp_opt <- Some fp;

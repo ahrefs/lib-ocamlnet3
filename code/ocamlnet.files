@@ -354,6 +354,7 @@ p src/netmulticore/.*\.mli
 p src/netmulticore/.*\.txt
 
 d src/nettls-gnutls
+f src/nettls-gnutls/META.in
 f src/nettls-gnutls/configure
 f src/nettls-gnutls/reconfigure
 f src/nettls-gnutls/Makefile
