@@ -54,6 +54,7 @@ x src/netstring/netmessage.mli
 x src/netstring/netiso2022.ml
 # Make sure these exist:
 f src/netstring/netmappings_iso.pmap
+f src/netstring/netmappings_asn1.pmap
 f src/netstring/netmappings_jp.pmap
 f src/netstring/netmappings_kr.pmap
 f src/netstring/netmappings_other.pmap
@@ -233,15 +234,6 @@ p src/equeue-tcl/.*\.mli
 p src/equeue-tcl/.*\.c
 p src/equeue-tcl/.*\.h
 
-d src/equeue-ssl
-f src/equeue-ssl/META.in
-f src/equeue-ssl/Makefile
-f src/equeue-ssl/Makefile.pre
-p src/equeue-ssl/.*\.ml
-p src/equeue-ssl/.*\.mli
-p src/equeue-ssl/.*\.c
-p src/equeue-ssl/.*\.h
-
 d src/shell
 f src/shell/META.in
 f src/shell/Makefile
@@ -330,13 +322,6 @@ p src/rpc-auth-local/.*\.ml
 p src/rpc-auth-local/.*\.mli
 p src/rpc-auth-local/.*\.c
 
-d src/rpc-ssl
-f src/rpc-ssl/META.in
-f src/rpc-ssl/Makefile
-f src/rpc-ssl/Makefile.pre
-p src/rpc-ssl/.*\.ml
-p src/rpc-ssl/.*\.mli
-
 d src/rpc-xti
 f src/rpc-xti/META.in
 f src/rpc-xti/Makefile
@@ -367,6 +352,18 @@ f src/netmulticore/Makefile.pre
 p src/netmulticore/.*\.ml
 p src/netmulticore/.*\.mli
 p src/netmulticore/.*\.txt
+
+d src/nettls-gnutls
+f src/nettls-gnutls/configure
+f src/nettls-gnutls/reconfigure
+f src/nettls-gnutls/Makefile
+f src/nettls-gnutls/Makefile.pre
+f src/nettls-gnutls/gnutls.c
+f src/nettls-gnutls/gnutls.descr
+f src/nettls-gnutls/gnutls.ml
+f src/nettls-gnutls/gnutls.mli
+f src/nettls-gnutls/nettls_gnutls.ml
+f src/nettls-gnutls/nettls_gnutls.mli
 
 d examples
 
@@ -413,6 +410,7 @@ f examples/nethttpd/file_mt_reactor.ml
 f examples/nethttpd/file_reactor.ml
 f examples/nethttpd/proxy_engine.ml
 f examples/nethttpd/netplex.conf
+f examples/nethttpd/netplex_tls.conf
 f examples/nethttpd/netplex.ml
 
 d examples/rpc
