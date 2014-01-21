@@ -1,3 +1,5 @@
+Merge fix from trunk: 1952 (OS X setlocale)
+
  - Netcgi_common.cgi_delegation
 
 TLS:
