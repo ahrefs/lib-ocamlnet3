@@ -1320,12 +1320,15 @@ module Cryptosystem = struct
       ki = derive `Ki;
     }
 
+  let rec identity x = x
+
   let encrypt_and_sign s_keys message =
     let c_bytes = C.c/8 in
     let conf = String.make c_bytes '\000' in
     Netsys_rng.fill_random conf;
     let l = String.length message in
-    let p = (l + c_bytes) mod C.m in
+    let p = (l + c_bytes) mod (identity C.m) in
+      (* Due to a bug in the ARM code generator, avoid "... mod 1" *)
     let pad = 
       if p = 0 then "" else String.make (C.m - p) '\000' in
     let p1 = conf ^ message ^ pad in
