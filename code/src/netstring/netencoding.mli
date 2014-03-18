@@ -120,7 +120,7 @@ module QuotedPrintable :
 	 * to ensure that all output lines have a length <= 76 bytes.
 	 *
 	 * Note unsafe characters:
-	 *   As recommended by RFC 2045, the characters [!#$\@[]^`{|}~]
+	 *   As recommended by RFC 2045, the characters [!#$\@[]^`|{}~]
 	 *   and the double quotes
 	 *   are additionally represented as hex tokens.        
 	 *   Furthermore, the letter 'F' is considered as unsafe if it
