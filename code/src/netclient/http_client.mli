@@ -800,6 +800,9 @@ object
 
       If it is not possible to continue, the method may raise [Not_found].
    *)
+
+  method default_port : int option
+  (** If set, the [Host] header omits this port number *)
 end
 
 

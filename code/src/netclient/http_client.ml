@@ -2851,6 +2851,7 @@ let test_http_1_1 proto_str =
 let transmitter
   peer_is_proxy
   proxy_auth_state
+  default_port
   (m : http_call) 
   (f_done : http_call -> unit)
   options
@@ -2954,8 +2955,13 @@ let transmitter
 	  let rh = msg # request_header `Effective in
 	  let host = msg # get_host() in
 	  let port = msg # get_port() in
-	  let host_str = host ^ (if port = 80 then "" 
-				 else ":" ^ string_of_int port) in
+          let include_port =
+            match default_port with
+              | None -> true
+              | Some p -> p <> port in
+	  let host_str = host ^ (if include_port then 
+                                   ":" ^ string_of_int port
+                                 else "") in
 	  rh # update_field "Host" host_str;
 	  
 	  if close_flag then
@@ -3606,9 +3612,10 @@ object
                    string -> int -> Unixqueue.event_system ->
                    exn option ->
                    Uq_engines.multiplex_controller
+  method default_port : int option
 end
 
-let http_transport_channel_type : transport_channel_type =
+let simple_transport_channel_type default_port : transport_channel_type =
   ( object(self)
       method identify_conn_by_name = false
 
@@ -3621,8 +3628,15 @@ let http_transport_channel_type : transport_channel_type =
       method setup_e fd cb tmo tmo_x host port esys tls_cache =
 	let mplex = self # continue fd cb tmo tmo_x host port esys None in
 	eps_e (`Done mplex) esys
+      method default_port = default_port
     end
   )
+
+let http_transport_channel_type =
+  simple_transport_channel_type (Some 80)
+
+let proxy_transport_channel_type =
+  simple_transport_channel_type None
 
 
 let https_transport_channel_type config : transport_channel_type =
@@ -3669,6 +3683,7 @@ let https_transport_channel_type config : transport_channel_type =
                    ~role:`Client ~on_handshake ~peer_name:(Some host) 
                    config mplex1 in
 	eps_e (`Done mplex2) esys
+      method default_port = Some 443
     end
   )
 
@@ -3699,6 +3714,7 @@ let fragile_pipeline
        esys  cb
        peer cache_peer
        proxy_auth_state proxy_auth_handler_opt
+       default_port
        fd mplex connect_time no_pipelining conn_cache
        auth_cache
        counters options =
@@ -3842,7 +3858,8 @@ let fragile_pipeline
 	 * queues:
 	 *)
 	let trans = 
-	  transmitter peer_is_proxy proxy_auth_state m f_done options in
+	  transmitter peer_is_proxy proxy_auth_state default_port
+                      m f_done options in
 	
 (* (* would not work, so leave disabled *)
 	if !proxy_auth_state = `None then (
@@ -4645,6 +4662,7 @@ let robust_pipeline
       esys tp cb
       peer
       proxy_auth_handler_opt
+      default_port
       conn_cache conn_owner 
       auth_cache
       tls_cache
@@ -4791,6 +4809,7 @@ let robust_pipeline
 		      fragile_pipeline
 			esys cb peer cache_peer
 			proxy_auth_state proxy_auth_handler_opt
+                        default_port
 			fd mplex t no_pipelining conn_cache
 			auth_cache
 			counters options in
@@ -5034,7 +5053,7 @@ class pipeline =
 
     initializer (
       Hashtbl.add transports http_cb_id http_transport_channel_type;
-      Hashtbl.add transports proxy_only_cb_id http_transport_channel_type;
+      Hashtbl.add transports proxy_only_cb_id proxy_transport_channel_type;
       self # update_https_transport()
     )
 
@@ -5289,6 +5308,7 @@ class pipeline =
 	                     esys tp cb
 	                     peer
 	                     proxy_auth_handler_opt
+                             tp#default_port
 			     conn_cache
 			     (self :> < >)
 			     auth_cache
