@@ -73,6 +73,7 @@ val run :
   ?output_type:output_type ->
   ?arg_store:arg_store ->
   ?exn_handler:exn_handler ->
+  ?default_socket:Unix.file_descr ->
   ?sockaddr:Unix.sockaddr ->
   ?port:int ->
   (cgi -> unit) -> unit
@@ -93,13 +94,16 @@ val run :
       @param exn_handler See {!Netcgi.exn_handler}.  Default: delegate
       all exceptions to the default handler.
 
+      @param default_socket is the descriptor to use if neither [sockaddr]
+      nor [port] is set. Defaults to [Unix.stdin].
+
       @param sockaddr tells on what socket to contact the script.  If
       not specified, the script expects to be launched by the web
       server and to communicate with it through stdin.  For external
       scripts (launched independently of the web server and possibly
       on a different machine), set [sockaddr] to the address the web
       server needs to connect to to talk to the script (this address
-      must also be specified in the wen server config file).
+      must also be specified in the web server config file).
 
       @param port alternative way to specify [sockaddr] listening to
       localhost {b only}.  If you would like your FastCGI program to
@@ -124,6 +128,28 @@ val handle_request :
 
         [log] is the error logger function or [None], in which case
         errors are passed through to the FCGI client.
+
+        The other arguments are just like for [run].
+
+        The return value indicates whether the connection can be kept
+        open or must be closed.
+    *)
+
+val handle_connection :
+  config -> output_type -> arg_store -> exn_handler ->
+  (cgi -> unit) -> max_conns:int -> one_shot:bool ->
+  Unix.file_descr -> 
+    unit
+    (** [handle_connection config output_type arg_store eh f ~max_conns
+        ~one_shot fd]: This is a lower-level interface that processes
+        exactly one connection [fd]. The descriptor is closed (even on
+        error).
+
+        [max_conns] is passed to the FCGI client and indicates how many
+        connections this server can process in parallel.
+
+        [one_shot]: if true, only one request is processed over this
+        connection, overriding any indication by the web server.
 
         The other arguments are just like for [run].
 

@@ -717,8 +717,8 @@ let handle_request config
 (* [handle_connection fd .. f] handle an accept()ed connection,
    reading incoming records on the file descriptor [fd] and running
    [f] for each incoming request. *)
-let rec handle_connection_1 fd ~max_conns ~external_server ~config
-    output_type arg_store exn_handler f =
+let rec handle_connection_1 config output_type arg_store exn_handler f 
+                            ~max_conns ~one_shot fd =
   let fd_cmd =
     handle_request config output_type arg_store exn_handler f ~max_conns 
       ~log:None fd in
@@ -735,7 +735,7 @@ let rec handle_connection_1 fd ~max_conns ~external_server ~config
   *)
 
   let fd_cmd' =
-    if external_server then
+    if not one_shot then
       fd_cmd 
     else
       if fd_cmd = `Conn_keep_alive then
@@ -757,24 +757,27 @@ let rec handle_connection_1 fd ~max_conns ~external_server ~config
 	(* The server is supposed to take care of closing [fd].  (Tail
 	   recursiveness is important as many requests may be handled by
 	   this fun.)  *)
-	handle_connection_1 fd ~external_server ~max_conns
-	  ~config output_type arg_store exn_handler f
+	handle_connection_1 
+          config output_type arg_store exn_handler f 
+          ~max_conns ~one_shot fd
     | `Conn_error e ->
         (try Unix.shutdown fd Unix.SHUTDOWN_ALL with _ -> ());
 	Netlog.Debug.release_fd fd;
 	Unix.close fd;
 	raise e
 
-let handle_connection fd ~max_conns ~external_server ~config
-    output_type arg_store exn_handler f =
+let handle_connection config output_type arg_store exn_handler f 
+                      ~max_conns ~one_shot fd =
   Netlog.Debug.track_fd 
     ~owner:"Netcgi_fcgi"
     ~descr:("connection from " ^ 
 	      try Netsys.string_of_sockaddr(Netsys.getpeername fd)
 	      with _ -> "(noaddr)")
     fd;
-  handle_connection_1 fd ~max_conns ~external_server ~config
-    output_type arg_store exn_handler f
+  handle_connection_1
+    config output_type arg_store exn_handler f
+    ~max_conns ~one_shot fd
+    
 
 
 let default_allow server =
@@ -789,6 +792,7 @@ let run ?(config=Netcgi.default_config)
     ?(output_type=(`Direct "":Netcgi.output_type))
     ?(arg_store=(fun _ _ _ -> `Automatic))
     ?(exn_handler=(fun _ f -> f()))
+    ?(default_socket = fcgi_listensock)
     ?sockaddr
     ?port
     f =
@@ -804,7 +808,7 @@ let run ?(config=Netcgi.default_config)
   let sock = match sockaddr1 with
     | None ->
 	(* FastCGI launched by the web server *)
-	fcgi_listensock
+	default_socket
     | Some sockaddr ->
 	(* FastCGI on a distant machine, listen on the given socket. *)
 	let sock =
@@ -823,11 +827,12 @@ let run ?(config=Netcgi.default_config)
     let (fd, server) = Netsys.restart Unix.accept sock in
     try
       if allow server then (
-        let external_server = (match server with
-                               | Unix.ADDR_UNIX _ -> false
-                               | Unix.ADDR_INET _ -> true) in
-	handle_connection fd ~max_conns ~external_server
-	  ~config output_type arg_store exn_handler f
+        let one_shot = (match server with
+                          | Unix.ADDR_UNIX _ -> true
+                          | Unix.ADDR_INET _ -> false) in
+	handle_connection 
+          config output_type arg_store exn_handler f
+          ~max_conns ~one_shot fd
       );
     with
     | e when config.default_exn_handler ->
