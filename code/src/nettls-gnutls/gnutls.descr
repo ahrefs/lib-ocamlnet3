@@ -1322,7 +1322,7 @@ let functions =
            (gnutls_x509_crt_t crt, \
             uint seq, gnutls_info_access_what_t what, \
             OUT str_datum data, \
-            OUT bool critical)";
+            OUT ubool critical)";
     standard
       "double gnutls_x509_crt_get_activation_time(gnutls_x509_crt_t cert)";
     standard

@@ -571,7 +571,7 @@ CAMLprim value net_gnutls_credentials_set(value sess, value creds) {
 
 CAMLprim value net_gnutls_x509_crt_list_import(value datav, value formatv, 
                                                value flagsv) {
-    gnutls_datum data;
+    gnutls_datum_t data;
     gnutls_x509_crt_fmt_t format;
     unsigned int flags;
     gnutls_x509_crt_t cert1;
@@ -613,7 +613,7 @@ CAMLprim value net_gnutls_x509_crt_list_import(value datav, value formatv,
 CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv, 
                                                value flagsv) {
 #ifdef HAVE_FUN_net_gnutls_x509_crl_list_import
-    gnutls_datum data;
+    gnutls_datum_t data;
     gnutls_x509_crt_fmt_t format;
     unsigned int flags;
     gnutls_x509_crl_t cert1;

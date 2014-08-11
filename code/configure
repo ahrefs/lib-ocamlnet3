@@ -787,6 +787,8 @@ if [ $enable_gnutls -gt 0 ]; then
     )
     if [ $? -eq 0 ]; then
         with_gnutls=1
+        # There is now also src/nettls-gnutls/config.mk, which needs to be
+        # appended to Makefile.conf
     else
         echo "Required library GnuTLS not found!"
         exit 1
@@ -1080,6 +1082,10 @@ APXS = $apxs
 OCAMLRPCGEN_CPP = $cpp
 
 _EOF_
+
+if [ $with_gnutls -gt 0 ]; then
+    cat src/nettls-gnutls/config.mk >>Makefile.conf
+fi
 
 ######################################################################
 # Finish
