@@ -505,7 +505,133 @@ module type FILE_TLS_ENDPOINT =
   end
 
 
+module type SYMMETRIC_CRYPTO = sig
+  type scipher
+    (** Describes a cipher *)
+
+  val ciphers : scipher list
+    (** List of supported ciphers. OCamlnet implements a number of modes
+        anyway, and it is normally only required to implement "ECB" here.
+        If there is special hardware acceleration, though, it is an option
+        to provide accelerated modes too (e.g. some CPUs support AES-GCM
+        specially).
+     *)
+
+  val name : scipher -> string
+    (** Returns the name. This should follow the convention 
+        [<uppercasestring>-<blocksize>], e.g. 
+        "AES-128" or "TWOFISH-128".
+     *)
+
+  val mode : scipher -> string
+    (** Returns the mode.  Modes are "ECB", "CBC", "OFB",
+        "CFB", "CTR", "CTS", "STREAM", "GCM".
+     *)
+
+  val key_lengths : scipher -> (int * int) list
+    (** Supported key lengths as pairs [min,max]. If there is a recommended
+        key length, this should be the first.
+     *)
+
+  val iv_lengths : scipher -> (int * int) list
+    (** Supported iv lengths as pairs [min,max]. If there is a recommended
+        iv length, this should be the first.
+     *)
+
+  val data_constraint : scipher -> int
+    (** The buffers used with encrypt/decrypt must have a length that is a
+        multiple of this number. (In ECB mode, this is the block size.)
+     *)
+
+  val supports_aead : scipher -> bool
+    (** Whether this cipher integrates authentication *)
+
+  type scipher_ctx
+    (** A cipher context stores processing data while encrypting or
+        decrypting data
+     *)
+
+  val create : scipher -> string -> scipher_ctx
+    (** [create c key]: create a new cipher context for [key]. If not set,
+        the initialization vector is zero, and the header the empty string.
+     *)
+
+  val set_iv : scipher_ctx -> string -> unit
+    (** [set_iv cctx iv]: Sets the initialization vector. This is only allowed
+        before encrypting or decrypting data
+     *)
+
+  val set_header : scipher_ctx -> string -> unit
+    (** [set_header cctx data]: Sets the additional header that is authenticated
+        for AEAD schemes. The header must have been set before starting the
+        encryption or decryption (otherwise it is assumed to be the empty
+        string).
+
+        For non-AEAD schemes, the header is ignored for encryption, and must
+        be empty for decryption.
+     *)
+
+  val encrypt : scipher_ctx -> 
+                Netsys_types.memory ->
+                Netsys_types.memory ->
+                  unit
+    (** [encrypt cctx inbuf outbuf]: Encrypts the data in [inbuf] and writes
+        the result into [outbuf]. Both buffers must have the same size.
+
+        In order to encrypt long texts, it is allowed to call [encrypt] several
+        times in sequence.
+     *)
+
+  val decrypt : scipher_ctx -> 
+                Netsys_types.memory ->
+                Netsys_types.memory ->
+                  bool
+    (** [decrypt cctx inbuf outbuf]: Decrypts the data in [inbuf] and writes
+        the result into [outbuf]. Both buffers must have the same size.
+
+        The function returns [true] on success, and [false] if a problem
+        is detected.
+
+        In order to decrypt long texts, it is allowed to call [decrypt] several
+        times in sequence.
+     *)
+
+  val mac : scipher_ctx -> string
+    (** Returns the MAC for AEAD ciphers. This is updated after
+        [encrypt]/[decrypt]. This function fails for non-AEAD ciphers.
+     *)
+end
+
+
+module type DIGESTS = sig
+    type digest
+      (** Describes a digest *)
+
+    val digests : digest list
+      (** returns digests *)
+
+    val name : digest -> string
+      (** returns the name of the digest *)
+
+    val size : digest -> int
+      (** returns the size of the hash output *)
+
+    type digest_ctx
+      (** A digest context stores state while digesting data *)
+
+    val create : digest -> digest_ctx
+      (** Creates a fresh context *)
+
+    val add : digest_ctx -> Netsys_types.memory -> unit
+      (** Adds data *)
+
+    val finish : digest_ctx -> string
+      (** Returns the digest *)
+end
+
 type tls_provider = (module TLS_PROVIDER)
 type tls_config = (module TLS_CONFIG)
 type tls_endpoint = (module TLS_ENDPOINT)
 type file_tls_endpoint = (module FILE_TLS_ENDPOINT)
+type symmetric_crypto = (module SYMMETRIC_CRYPTO)
+type digests = (module DIGESTS)

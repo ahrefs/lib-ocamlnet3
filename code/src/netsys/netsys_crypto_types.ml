@@ -148,8 +148,45 @@ module type FILE_TLS_ENDPOINT =
     val wr_file : Unix.file_descr
   end
 
+module type SYMMETRIC_CRYPTO = sig
+  type scipher
+  val ciphers : scipher list
+  val name : scipher -> string
+  val mode : scipher -> string
+  val key_lengths : scipher -> (int * int) list
+  val iv_lengths : scipher -> (int * int) list
+  val data_constraint : scipher -> int
+  val supports_aead : scipher -> bool
+  type scipher_ctx
+  val create : scipher -> string -> scipher_ctx
+  val set_iv : scipher_ctx -> string -> unit
+  val set_header : scipher_ctx -> string -> unit
+  val encrypt : scipher_ctx -> 
+                Netsys_types.memory ->
+                Netsys_types.memory ->
+                  unit
+  val decrypt : scipher_ctx -> 
+                Netsys_types.memory ->
+                Netsys_types.memory ->
+                  bool
+  val mac : scipher_ctx -> string
+end
+
+
+module type DIGESTS = sig
+    type digest
+    val digests : digest list
+    val name : digest -> string
+    val size : digest -> int
+    type digest_ctx
+    val create : digest -> digest_ctx
+    val add : digest_ctx -> Netsys_types.memory -> unit
+    val finish : digest_ctx -> string
+end
 
 type tls_provider = (module TLS_PROVIDER)
 type tls_config = (module TLS_CONFIG)
 type tls_endpoint = (module TLS_ENDPOINT)
 type file_tls_endpoint = (module FILE_TLS_ENDPOINT)
+type symmetric_crypto = (module SYMMETRIC_CRYPTO)
+type digests = (module DIGESTS)
