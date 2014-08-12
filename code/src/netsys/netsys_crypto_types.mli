@@ -530,7 +530,10 @@ module type SYMMETRIC_CRYPTO = sig
 
   val mode : scipher -> string
     (** Returns the mode.  Modes are "ECB", "CBC", "OFB",
-        "CFB", "CTR", "CTS", "STREAM", "GCM".
+        "CTR", "STREAM", "GCM".
+
+        Note that the mode needs not to deal with padding (this is done
+        on a higher level).
      *)
 
   val key_lengths : scipher -> (int * int) list
@@ -543,7 +546,7 @@ module type SYMMETRIC_CRYPTO = sig
         iv length, this should be the first.
      *)
 
-  val data_constraint : scipher -> int
+  val block_constraint : scipher -> int
     (** The buffers used with encrypt/decrypt must have a length that is a
         multiple of this number. (In ECB mode, this is the block size.)
      *)
@@ -582,6 +585,7 @@ module type SYMMETRIC_CRYPTO = sig
                   unit
     (** [encrypt cctx inbuf outbuf]: Encrypts the data in [inbuf] and writes
         the result into [outbuf]. Both buffers must have the same size.
+        It is not allowed to pass the same buffer as [inbuf] and [outbuf].
 
         In order to encrypt long texts, it is allowed to call [encrypt] several
         times in sequence.
@@ -593,6 +597,7 @@ module type SYMMETRIC_CRYPTO = sig
                   bool
     (** [decrypt cctx inbuf outbuf]: Decrypts the data in [inbuf] and writes
         the result into [outbuf]. Both buffers must have the same size.
+        It is not allowed to pass the same buffer as [inbuf] and [outbuf].
 
         The function returns [true] on success, and [false] if a problem
         is detected.

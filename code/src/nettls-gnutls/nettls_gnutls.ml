@@ -810,26 +810,21 @@ let downcast_endpoint ep_mod =
     end in
   (module EP1 : GNUTLS_ENDPOINT)
 
-module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
+let rec filter_map f l =
+  match l with
+    | x :: l' ->
+         ( try
+             let x' = f x in
+             x' :: filter_map f l'
+           with
+             | Not_found -> filter_map f l'
+         )
+    | [] ->
+         []
+
+module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
   open Nettls_nettle_bindings
-
-  type scipher_ctx =
-      { set_iv : string -> unit;
-        set_header : string -> unit;
-        encrypt : Netsys_types.memory -> Netsys_types.memory -> unit;
-        decrypt : Netsys_types.memory -> Netsys_types.memory -> bool;
-        mac : unit -> string;
-      }
-
-  type scipher =
-      { name : string;
-        mode : string;
-        key_lengths : (int * int) list;
-        iv_lengths : (int * int) list;
-        data_constraint : int;
-        supports_aead : bool;
-        create : string -> scipher_ctx;
-      }
+  open Netsys_crypto_modes.Symmetric_cipher
 
   module StrMap = Map.Make(String)
 
@@ -875,95 +870,75 @@ module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
     then
       failwith "create: invalid key length for this cipher"
 
+  let no_mac _ =
+    failwith "mac: not supported by this cipher"
+
   let nettle_basic_ciphers =
     let l = Array.to_list (net_nettle_ciphers()) in
-    List.flatten
-      (List.map
-         (fun nc ->
-            try
-              let (name,mode,key_lengths,iv_lengths,dc) = 
-                StrMap.find (net_nettle_cipher_name nc) nettle_basic_props_m in
-              let set_iv s =
-                if s <> "" then
-                  invalid_arg "set_iv: empty string expected" in
-              let set_header s =
-                () in
-              let mac _ =
-                failwith "mac: not supported by this cipher" in
-              let create key =
-                let lkey = String.length key in
-                check_key lkey key_lengths;
-                let ctx = net_nettle_create_cipher_ctx nc in
-                let first = ref true in
-                let encrypt inbuf outbuf =
-                  let lbuf = Bigarray.Array1.dim inbuf in
-                  if lbuf <> Bigarray.Array1.dim outbuf then
-                    invalid_arg "encrypt: output buffer must have same size \
-                                 as input buffer";
-                  if lbuf mod dc <> 0 then
-                    invalid_arg (sprintf "encrypt: buffers must be multiples \
-                                          of %d" dc);
-                  if !first then
-                    net_nettle_set_encrypt_key nc ctx key;
-                  first := false;
-                  net_nettle_encrypt nc ctx lbuf outbuf inbuf in
-                let decrypt inbuf outbuf =
-                  let lbuf = Bigarray.Array1.dim inbuf in
-                  if lbuf <> Bigarray.Array1.dim outbuf then
-                    invalid_arg "decrypt: output buffer must have same size \
-                                 as input buffer";
-                  if lbuf mod dc <> 0 then
-                    invalid_arg (sprintf "decrypt: buffers must be multiples \
-                                          of %d" dc);
-                  if !first then
-                    net_nettle_set_decrypt_key nc ctx key;
-                  first := false;
-                  net_nettle_decrypt nc ctx lbuf outbuf inbuf;
-                  true in
-                { set_iv;
-                  set_header;
-                  encrypt;
-                  decrypt;
-                  mac
-                } in
-              [ { name;
-                  mode;
-                  key_lengths;
-                  iv_lengths;
-                  data_constraint = dc;
-                  supports_aead = false;
-                  create;
-                }
-              ]
-            with
-              | Not_found -> []
-         )
-         l
+    filter_map
+      (fun nc ->
+         let (name,mode,key_lengths,iv_lengths,dc) = 
+           StrMap.find (net_nettle_cipher_name nc) nettle_basic_props_m in
+         let set_iv s =
+           if s <> "" then
+             invalid_arg "set_iv: empty string expected" in
+         let set_header s =
+           () in
+         let create key =
+           let lkey = String.length key in
+           check_key lkey key_lengths;
+           let ctx = net_nettle_create_cipher_ctx nc in
+           let first = ref true in
+           let encrypt inbuf outbuf =
+             let lbuf = Bigarray.Array1.dim inbuf in
+             if lbuf <> Bigarray.Array1.dim outbuf then
+               invalid_arg "encrypt: output buffer must have same size \
+                            as input buffer";
+             if lbuf mod dc <> 0 then
+               invalid_arg (sprintf "encrypt: buffers must be multiples \
+                                     of %d" dc);
+             if !first then
+               net_nettle_set_encrypt_key nc ctx key;
+             first := false;
+             net_nettle_encrypt nc ctx lbuf outbuf inbuf in
+           let decrypt inbuf outbuf =
+             let lbuf = Bigarray.Array1.dim inbuf in
+             if lbuf <> Bigarray.Array1.dim outbuf then
+               invalid_arg "decrypt: output buffer must have same size \
+                            as input buffer";
+             if lbuf mod dc <> 0 then
+               invalid_arg (sprintf "decrypt: buffers must be multiples \
+                                     of %d" dc);
+             if !first then
+               net_nettle_set_decrypt_key nc ctx key;
+             first := false;
+             net_nettle_decrypt nc ctx lbuf outbuf inbuf;
+             true in
+           { set_iv;
+             set_header;
+             encrypt;
+             decrypt;
+             mac = no_mac;
+           } in
+         { name;
+           mode;
+           key_lengths;
+           iv_lengths;
+           block_constraint = dc;
+           supports_aead = false;
+           create;
+         }
       )
+      l
 
-  let ciphers =
-    nettle_basic_ciphers
-
-  let ciphers_m =
-    of_list
-      (List.map (fun c -> ((c.name ^ "-" ^ c.mode),c)) ciphers)
-
-  let find (name,mode) = StrMap.find (name ^ "-" ^ mode) ciphers_m
-
-  let name c = c.name
-  let mode c = c.mode
-  let key_lengths c = c.key_lengths
-  let iv_lengths c = c.iv_lengths
-  let data_constraint c = c.data_constraint
-  let supports_aead c = c.supports_aead
-  let create c = c.create
-  let set_iv ctx = ctx.set_iv
-  let set_header ctx = ctx.set_header
-  let encrypt ctx = ctx.encrypt
-  let decrypt ctx = ctx.decrypt
-  let mac ctx = ctx.mac ()
+  include Netsys_crypto_modes.Bundle(struct
+                                      let ciphers = nettle_basic_ciphers
+                                    end)
 end
 
+
+module Symmetric_crypto =
+  Netsys_crypto_modes.Add_modes(Basic_symmetric_crypto)
 
 
 let init() =

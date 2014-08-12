@@ -156,7 +156,7 @@ module type SYMMETRIC_CRYPTO = sig
   val mode : scipher -> string
   val key_lengths : scipher -> (int * int) list
   val iv_lengths : scipher -> (int * int) list
-  val data_constraint : scipher -> int
+  val block_constraint : scipher -> int
   val supports_aead : scipher -> bool
   type scipher_ctx
   val create : scipher -> string -> scipher_ctx

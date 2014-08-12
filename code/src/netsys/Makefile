@@ -7,6 +7,7 @@ PKGNAME  = netsys
 OBJECTS  = netsys_conf.cmo netsys_types.cmo \
            netlog.cmo netexn.cmo netsys_impl_util.cmo netsys_mem.cmo \
 	   netsys_signal.cmo netsys_crypto_types.cmo netsys_crypto.cmo \
+	   netsys_crypto_modes.cmo \
 	   netsys_posix.cmo netsys_win32.cmo netsys_tls.cmo netsys.cmo \
 	   netsys_rng.cmo \
 	   netsys_pollset.cmo netsys_pollset_posix.cmo \
