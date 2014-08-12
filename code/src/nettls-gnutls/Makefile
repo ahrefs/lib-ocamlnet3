@@ -5,10 +5,13 @@ include $(TOP_DIR)/Makefile.conf
 
 PKGNAME  = nettls-gnutls
 OBJECTS  = nettls_gnutls_bindings.cmo \
+	   nettls_nettle_bindings.cmo \
 	   nettls_gnutls_config.cmo \
            nettls_gnutls.cmo
-COBJECTS = nettls_gnutls_bindings_stubs.o
-DOBJECTS = nettls_gnutls_bindings.mli
+COBJECTS = nettls_gnutls_bindings_stubs.o \
+	   nettls_nettle_bindings_stubs.o
+DOBJECTS = nettls_gnutls_bindings.mli \
+	   nettls_nettle_bindings.mli
 
 LINK_OPTIONS = $(NETTLS_GNUTLS_LINK_OPTIONS)
 #LINK_OPTIONS = -lgnutls
@@ -32,10 +35,20 @@ nettls_gnutls_bindings.mli: done_reconfigure
 nettls_gnutls_bindings_stubs.c: done_reconfigure
 	@:
 
+nettls_nettls_bindings.ml: done_reconfigure
+	@:
+
+nettls_nettle_bindings.mli: done_reconfigure
+	@:
+
+nettls_nettle_bindings_stubs.c: done_reconfigure
+	@:
+
 nettls_gnutls_config.ml: done_reconfigure
 	@:
 
-done_reconfigure: gnutls.descr gnutls.c gnutls.ml gnutls.mli
+done_reconfigure: gnutls.descr gnutls.c gnutls.ml gnutls.mli \
+	          nettle.descr nettle.c nettle.ml nettle.mli
 	./reconfigure
 
 include depend

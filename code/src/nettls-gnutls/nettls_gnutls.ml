@@ -810,11 +810,168 @@ let downcast_endpoint ep_mod =
     end in
   (module EP1 : GNUTLS_ENDPOINT)
 
+module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
+  open Nettls_nettle_bindings
+
+  type scipher_ctx =
+      { set_iv : string -> unit;
+        set_header : string -> unit;
+        encrypt : Netsys_types.memory -> Netsys_types.memory -> unit;
+        decrypt : Netsys_types.memory -> Netsys_types.memory -> bool;
+        mac : unit -> string;
+      }
+
+  type scipher =
+      { name : string;
+        mode : string;
+        key_lengths : (int * int) list;
+        iv_lengths : (int * int) list;
+        data_constraint : int;
+        supports_aead : bool;
+        create : string -> scipher_ctx;
+      }
+
+  module StrMap = Map.Make(String)
+
+  let of_list l =
+    List.fold_left
+      (fun acc (n,v) -> StrMap.add n v acc)
+      StrMap.empty
+      l
+
+  let no_iv = [ 0, 0 ]
+
+  let nettle_basic_props =
+    [ "aes128", ("AES-128", "ECB", [ 16, 16 ], no_iv, 16);
+      "aes192", ("AES-192", "ECB", [ 24, 24 ], no_iv, 16);
+      "aes256", ("AES-256", "ECB", [ 32, 32 ], no_iv, 16);
+      "arcfour128", ("RC4-128", "STREAM", [ 16, 16; 1, 256 ], no_iv, 1);
+      "arctwo40", ("RC2-40", "ECB", [ 8, 8; 1, 256 ], no_iv, 8);
+      "arctwo64", ("RC2-64", "ECB", [ 8, 8; 1, 256 ], no_iv, 8);
+      "arctwo128", ("RC2-128", "ECB", [ 8, 8; 1, 256 ], no_iv, 8);
+      "blowfish", ("BLOWFISH", "ECB", [ 16, 16; 8, 56 ], no_iv, 8);
+      "camellia128", ("CAMELLIA-128", "ECB", [ 16, 16 ], no_iv, 16);
+      "camellia192", ("CAMELLIA-192", "ECB", [ 24, 24 ], no_iv, 16);
+      "camellia256", ("CAMELLIA-256", "ECB", [ 32, 32 ], no_iv, 16);
+      "cast128", ("CAST-128", "ECB", [ 16, 16; 5, 16 ], no_iv, 8); 
+      (* "chacha" - does not fit in here (no way to set nonce) *)
+      "des", ("DES-56", "ECB", [ 8, 8 ], no_iv, 8);
+      "des3", ("DES3-112", "ECB", [ 24, 24 ], no_iv, 8);
+      (* "salsa20" - does not fit in here (no way to set nonce) *)
+      "serpent128", ("SERPENT-128", "ECB", [ 16, 16 ], no_iv, 16);
+      "serpent192", ("SERPENT-192", "ECB", [ 24, 24 ], no_iv, 16);
+      "serpent256", ("SERPENT-256", "ECB", [ 32, 32 ], no_iv, 16);
+      "twofish128", ("TWOFISH-128", "ECB", [ 16, 16 ], no_iv, 16);
+      "twofish192", ("TWOFISH-192", "ECB", [ 24, 24 ], no_iv, 16);
+      "twofish256", ("TWOFISH-256", "ECB", [ 32, 32 ], no_iv, 16);
+      (* "arctwo_gutmann128" is non-standard *)
+    ]
+
+  let nettle_basic_props_m =
+    of_list nettle_basic_props
+
+  let check_key l key_lengths =
+    if not (List.exists (fun (min,max) -> l >= min && l <= max) key_lengths)
+    then
+      failwith "create: invalid key length for this cipher"
+
+  let nettle_basic_ciphers =
+    let l = Array.to_list (net_nettle_ciphers()) in
+    List.flatten
+      (List.map
+         (fun nc ->
+            try
+              let (name,mode,key_lengths,iv_lengths,dc) = 
+                StrMap.find (net_nettle_cipher_name nc) nettle_basic_props_m in
+              let set_iv s =
+                if s <> "" then
+                  invalid_arg "set_iv: empty string expected" in
+              let set_header s =
+                () in
+              let mac _ =
+                failwith "mac: not supported by this cipher" in
+              let create key =
+                let lkey = String.length key in
+                check_key lkey key_lengths;
+                let ctx = net_nettle_create_cipher_ctx nc in
+                let first = ref true in
+                let encrypt inbuf outbuf =
+                  let lbuf = Bigarray.Array1.dim inbuf in
+                  if lbuf <> Bigarray.Array1.dim outbuf then
+                    invalid_arg "encrypt: output buffer must have same size \
+                                 as input buffer";
+                  if lbuf mod dc <> 0 then
+                    invalid_arg (sprintf "encrypt: buffers must be multiples \
+                                          of %d" dc);
+                  if !first then
+                    net_nettle_set_encrypt_key nc ctx key;
+                  first := false;
+                  net_nettle_encrypt nc ctx lbuf outbuf inbuf in
+                let decrypt inbuf outbuf =
+                  let lbuf = Bigarray.Array1.dim inbuf in
+                  if lbuf <> Bigarray.Array1.dim outbuf then
+                    invalid_arg "decrypt: output buffer must have same size \
+                                 as input buffer";
+                  if lbuf mod dc <> 0 then
+                    invalid_arg (sprintf "decrypt: buffers must be multiples \
+                                          of %d" dc);
+                  if !first then
+                    net_nettle_set_decrypt_key nc ctx key;
+                  first := false;
+                  net_nettle_decrypt nc ctx lbuf outbuf inbuf;
+                  true in
+                { set_iv;
+                  set_header;
+                  encrypt;
+                  decrypt;
+                  mac
+                } in
+              [ { name;
+                  mode;
+                  key_lengths;
+                  iv_lengths;
+                  data_constraint = dc;
+                  supports_aead = false;
+                  create;
+                }
+              ]
+            with
+              | Not_found -> []
+         )
+         l
+      )
+
+  let ciphers =
+    nettle_basic_ciphers
+
+  let ciphers_m =
+    of_list
+      (List.map (fun c -> ((c.name ^ "-" ^ c.mode),c)) ciphers)
+
+  let find (name,mode) = StrMap.find (name ^ "-" ^ mode) ciphers_m
+
+  let name c = c.name
+  let mode c = c.mode
+  let key_lengths c = c.key_lengths
+  let iv_lengths c = c.iv_lengths
+  let data_constraint c = c.data_constraint
+  let supports_aead c = c.supports_aead
+  let create c = c.create
+  let set_iv ctx = ctx.set_iv
+  let set_header ctx = ctx.set_header
+  let encrypt ctx = ctx.encrypt
+  let decrypt ctx = ctx.decrypt
+  let mac ctx = ctx.mac ()
+end
+
+
 
 let init() =
   Nettls_gnutls_bindings.gnutls_global_init();
   Netsys_crypto.set_current_tls
-    (module TLS : Netsys_crypto_types.TLS_PROVIDER)
+    (module TLS : Netsys_crypto_types.TLS_PROVIDER);
+  Netsys_crypto.set_current_symmetric_crypto
+    (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO)
 
 
 let () =

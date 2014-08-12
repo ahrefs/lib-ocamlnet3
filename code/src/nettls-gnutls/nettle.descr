@@ -1,0 +1,78 @@
+(* -*- tuareg -*- *)
+
+#use "stubgen.ml"
+
+let types =
+  [ "net_nettle_cipher_t",      abstract_ptr "net_nettle_destroy_cipher";
+    "net_nettle_cipher_ctx_t",  abstract_ptr "net_nettle_destroy_cipher_ctx";
+  ]
+
+
+let standard ?(options=[]) decl =
+  let (name, result, params) = parse decl in
+  (name,
+   params @ [ "result",
+              (if result = "void" then `Return_ignore else `Return),
+              result
+            ],
+   options
+  )
+
+let functions =
+  [ standard
+      "void net_nettle_ciphers \
+         (OUT net_nettle_cipher_t array cipher_list, \
+          OUT_IGNORE cipher_list array_size cipher_list_size)";
+    standard
+      "const ztstr net_nettle_cipher_name \
+         (net_nettle_cipher_t cipher)";
+    standard
+      "net_nettle_cipher_ctx_t net_nettle_create_cipher_ctx \
+         (net_nettle_cipher_t cipher)";
+    standard
+      "void net_nettle_set_encrypt_key \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          1 stringbuf_size key_length, \
+          1 stringbuf key)";
+    standard
+      "void net_nettle_set_decrypt_key \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          1 stringbuf_size key_length, \
+          1 stringbuf key)";
+    standard
+      "void net_nettle_encrypt \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard
+      "void net_nettle_decrypt \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+  ]
+
+
+let optional_types = []
+let optional_functions = []
+
+
+let () =
+  generate
+    ~c_file:"nettle.c"
+    ~ml_file:"nettle.ml"
+    ~mli_file:"nettle.mli"
+    ~modname:"nettls_nettle_bindings"
+    ~types
+    ~functions
+    ~optional_functions
+    ~optional_types
+    ~free:[]
+    ~hashes:[]
+    ~enum_of_string:[]
+    ()

@@ -485,7 +485,7 @@ let functions =
 
     "gnutls_certificate_get_peers",
     [ "session", `In, "gnutls_session_t";
-      "list_size", `Out_ignore, "result array_size";
+      "list_size", `Out_ignore, "result array_size_uint";
       "result", `Return, "const str_datum array";
     ],
     [];

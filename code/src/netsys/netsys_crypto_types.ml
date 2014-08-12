@@ -151,6 +151,7 @@ module type FILE_TLS_ENDPOINT =
 module type SYMMETRIC_CRYPTO = sig
   type scipher
   val ciphers : scipher list
+  val find : (string * string) -> scipher
   val name : scipher -> string
   val mode : scipher -> string
   val key_lengths : scipher -> (int * int) list

@@ -19,6 +19,7 @@ module Empty_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
   type scipher = unit
   type scipher_ctx = unit
   let ciphers = []
+  let find _ = raise Not_found
   let unavailable() = assert false
   let name _ = unavailable()
   let mode _ = unavailable()

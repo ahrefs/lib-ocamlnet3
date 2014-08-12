@@ -10,6 +10,9 @@ include $(TOP_DIR)/Makefile.rules
 CLEAN_LIST += nettls_gnutls_bindings.ml \
               nettls_gnutls_bindings.mli \
               nettls_gnutls_bindings_stubs.c \
+	      nettls_nettle_bindings.ml \
+              nettls_nettle_bindings.mli \
+              nettls_nettle_bindings_stubs.c \
 	      nettls_gnutls_config.ml \
               config.log \
               config_checks.sh \

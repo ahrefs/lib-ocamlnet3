@@ -23,6 +23,7 @@ let parse decl =
              let tag, l1 =
                match l with
                  | "OUT" :: l1 -> (`Out, l1)
+                 | "OUT_IGNORE" :: l1 -> (`Out_ignore, l1)
                  | _ -> (`In, l) in
              let n = List.hd (List.rev l1) in
              let ty = List.rev (List.tl (List.rev l1)) in
@@ -469,7 +470,9 @@ let rec translate_type_to_c name ty =
              translate_type_to_c name elt in
            el_cty ^ " *", `Array(el_cty, el_tag)
       | [ aname; "array_size" ] ->
-           "unsigned int", `Array_size aname
+           "size_t", `Array_size(aname, "size_t")
+      | [ aname; "array_size_uint" ] ->
+           "unsigned int", `Array_size(aname, "unsigned int")
       | [ id; "bigarray" ] -> 
            "void *", `Bigarray id
       | [ id; "bigarray_size" ] -> 
@@ -675,9 +678,9 @@ let gen_fun c mli ml name args directives free =
                      else []) @
                       [ sprintf "stat_free(%s);" n1 ] in
                   c_code_post_prio := List.rev code2 @ !c_code_post_prio;
-             | `Array_size n_array ->
+             | `Array_size(n_array, ty) ->
                   let code =
-                    sprintf "%s = (unsigned long) Wosize_val(%s);" n1 n_array in
+                    sprintf "%s = (%s) Wosize_val(%s);" n1 ty n_array in
                   c_code_pre := code :: !c_code_pre
              | `Bigarray id ->
                   let code1 =
@@ -785,7 +788,9 @@ let gen_fun c mli ml name args directives free =
                     try
                       List.find
                         (fun (_,_,_,_,tag) -> 
-                           tag = `Array_size n
+                           match tag with
+                             | `Array_size(n_size,_) -> n_size = n
+                             | _ -> false
                         )
                         c_args
                     with
@@ -813,7 +818,7 @@ let gen_fun c mli ml name args directives free =
                     ] in
                   c_code_post := List.rev code @ !c_code_post;
 
-             | `Array_size aname ->
+             | `Array_size(aname,ty) ->
                   let code =
                     [ sprintf "%s = Val_long(%s);" n n1 ] in
                   c_code_post := List.rev code @ !c_code_post;
@@ -1169,7 +1174,9 @@ let generate ?c_file ?ml_file ?mli_file
     to_close := (fun () -> close_out_noerr ml) :: !to_close;
     let mli = open_out mli_name in
     to_close := (fun () -> close_out_noerr mli) :: !to_close;
-    let cfg = open_out cfg_name in
+    let cfg = 
+      open_out_gen
+        [Open_wronly;Open_append;Open_creat;Open_text] 0o666 cfg_name in
     to_close := (fun () -> close_out_noerr cfg) :: !to_close;
 
     List.iter

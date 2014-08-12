@@ -125,8 +125,13 @@ EOF
 ######################################################################
 
 echo "Generating stubs"
+
+rm -f config_checks.sh
 echo "$ ocaml -I ../../tools gnutls.descr" >>$log
 ocaml -I ../../tools gnutls.descr || exit 1
+
+echo "$ ocaml -I ../../tools nettle.descr" >>$log
+ocaml -I ../../tools nettle.descr || exit 1
 
 . ./config_checks.sh
 

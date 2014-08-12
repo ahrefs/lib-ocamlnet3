@@ -517,10 +517,15 @@ module type SYMMETRIC_CRYPTO = sig
         specially).
      *)
 
+  val find : (string * string) -> scipher
+    (** [find (name,mode)]: Looks up a cipher by name and mode, or
+        raises Not_found
+     *)
+
   val name : scipher -> string
     (** Returns the name. This should follow the convention 
-        [<uppercasestring>-<blocksize>], e.g. 
-        "AES-128" or "TWOFISH-128".
+        [<uppercasestring>-<size>], e.g. 
+        "AES-128" or "TWOFISH-128". The size is normally the key size.
      *)
 
   val mode : scipher -> string

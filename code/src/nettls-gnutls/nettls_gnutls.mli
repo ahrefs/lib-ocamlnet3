@@ -52,5 +52,10 @@ val downcast_endpoint : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                         (module GNUTLS_ENDPOINT)
   (** Attempts a downcast, or raises [Not_found] *)
 
+module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO
+  (** Symmetric cryptography as provided by GnuTLS and its helper library
+      Nettle
+   *)
+
 val init : unit -> unit
   (** Ensure that GnuTLS is initialized *)

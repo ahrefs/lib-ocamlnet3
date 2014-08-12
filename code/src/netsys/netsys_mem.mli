@@ -40,6 +40,12 @@ external blit_string_to_memory_unsafe :
   = "netsys_blit_string_to_memory" "noalloc"
   (** Unsafe version *)
 
+val memory_of_string : string -> memory
+  (** Return a new bigarray as a copy of the string *)
+
+val string_of_memory : memory -> string
+  (** Return a new string as a copy of the bigarray *)
+
 val memory_address : memory -> nativeint
   (** Returns the start address of the buffer *)
 
