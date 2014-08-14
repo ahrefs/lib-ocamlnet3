@@ -7,6 +7,11 @@ test_client: test_client.ml
 		test_client.ml \
 		-o test_client
 
+crypto: crypto.ml
+	ocamlfind ocamlc -package nettls-gnutls -linkpkg -custom -g \
+		crypto.ml \
+		-o crypto
+
 
 clean:
 	rm -f *.cmi *.cmo *.cmx *.o
