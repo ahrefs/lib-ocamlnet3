@@ -23,6 +23,8 @@ let types =
 
     "gnutls_priority_t",         abstract_ptr "gnutls_priority_deinit";
 
+    "gnutls_cipher_hd_t",        abstract_ptr "gnutls_cipher_deinit";
+
     "gnutls_x509_privkey_t",     abstract_ptr "gnutls_x509_privkey_deinit"; 
     "gnutls_x509_crl_t",         abstract_ptr "gnutls_x509_crl_deinit";
     "gnutls_x509_crt_t",         abstract_ptr "gnutls_x509_crt_deinit";
@@ -780,6 +782,46 @@ let functions =
             gnutls_cipher_algorithm_t cipher_algorithm, \
             gnutls_mac_algorithm_t mac_algorithm)";
     (* TODO: gnutls_cipher_suite_info *)
+
+    (**********************************************************************)
+    (* Symmetric cryptography                                             *)
+    (**********************************************************************)
+
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_init \
+           (OUT gnutls_cipher_hd_t handle, \
+            gnutls_cipher_algorithm_t cipher, \
+            str_datum_p key, \
+            str_datum_p iv)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_encrypt2 \
+           (gnutls_cipher_hd_t handle, \
+            1 bigarray text, \
+            1 bigarray_size textlen, \
+            2 bigarray ciphertext, \
+            2 bigarray_size ciphertextlen)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_decrypt2 \
+           (gnutls_cipher_hd_t handle, \
+            1 bigarray ciphertext, \
+            2 bigarray_size ciphertextlen, \
+            2 bigarray text, \
+            2 bigarray_size textlen)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_add_auth \
+           (gnutls_cipher_hd_t handle, \
+            1 stringbuf text, \
+            1 stringbuf_size text_size)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_tag \
+           (gnutls_cipher_hd_t handle, \
+            1 stringbuf tag, \
+            1 stringbuf_size tag_size)";
 
     (**********************************************************************)
     (* Handshake details                                                  *)
@@ -1541,7 +1583,12 @@ let optional_functions =
   [ "gnutls_transport_set_pull_timeout_function";
     "gnutls_certificate_set_verify_function";
     "gnutls_x509_crl_list_import";
-    
+    "gnutls_cipher_init";
+    "gnutls_cipher_deinit";
+    "gnutls_cipher_encrypt2";
+    "gnutls_cipher_decrypt2";
+    "gnutls_cipher_add_auth";
+    "gnutls_cipher_qtag";
   ]
 
 
@@ -1551,6 +1598,7 @@ let optional_types =
     "gnutls_ecc_curve_t";
     "gnutls_info_access_what_t";
     "gnutls_privkey_type_t";
+    "gnutls_cipher_hd_t";
   ]
 
 

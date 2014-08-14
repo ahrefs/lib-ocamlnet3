@@ -3,6 +3,7 @@
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+#include <gnutls/crypto.h>
 #include <errno.h>
 
 #include "./config.h"

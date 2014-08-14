@@ -824,6 +824,7 @@ let rec filter_map f l =
 
 module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
   open Nettls_nettle_bindings
+  open Nettls_gnutls_bindings
   open Netsys_crypto_modes.Symmetric_cipher
 
   module StrMap = Map.Make(String)
@@ -836,11 +837,15 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
 
   let no_iv = [ 0, 0 ]
 
+  (* The ciphers we access directly via the Nettle API. These are all in ECB
+     or STREAM mode)
+   *)
+
   let nettle_basic_props =
     [ "aes128", ("AES-128", "ECB", [ 16, 16 ], no_iv, 16);
       "aes192", ("AES-192", "ECB", [ 24, 24 ], no_iv, 16);
       "aes256", ("AES-256", "ECB", [ 32, 32 ], no_iv, 16);
-      "arcfour128", ("RC4-128", "STREAM", [ 16, 16; 1, 256 ], no_iv, 1);
+      "arcfour128", ("ARCFOUR-128", "STREAM", [ 16, 16; 1, 256 ], no_iv, 1);
       "arctwo40", ("RC2-40", "ECB", [ 8, 8; 1, 256 ], no_iv, 8);
       "arctwo64", ("RC2-64", "ECB", [ 8, 8; 1, 256 ], no_iv, 8);
       "arctwo128", ("RC2-128", "ECB", [ 8, 8; 1, 256 ], no_iv, 8);
@@ -851,7 +856,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
       "cast128", ("CAST-128", "ECB", [ 16, 16; 5, 16 ], no_iv, 8); 
       (* "chacha" - does not fit in here (no way to set nonce) *)
       "des", ("DES-56", "ECB", [ 8, 8 ], no_iv, 8);
-      "des3", ("DES3-112", "ECB", [ 24, 24 ], no_iv, 8);
+      "des3", ("3DES-112", "ECB", [ 24, 24 ], no_iv, 8);
       (* "salsa20" - does not fit in here (no way to set nonce) *)
       "serpent128", ("SERPENT-128", "ECB", [ 16, 16 ], no_iv, 16);
       "serpent192", ("SERPENT-192", "ECB", [ 24, 24 ], no_iv, 16);
@@ -931,8 +936,141 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
       )
       l
 
+  (* The ciphers we access via the GnuTLS API. These are all CBC or GCM.
+     GnuTLS has sometimes ways to accelerate the cipher, so prefer this.
+   *)
+
+  let iv_16 = [ 16, 16 ]
+  let iv_8 = [ 8, 8 ]
+  let iv_gcm = [ 12, 12; 0, 256 ]
+
+  let gnutls_basic_props =
+    [ "AES-128-CBC", ("AES-128", "CBC", [ 16, 16 ], iv_16, 16);
+      "AES-192-CBC", ("AES-192", "CBC", [ 24, 24 ], iv_16, 16);
+      "AES-256-CBC", ("AES-256", "CBC", [ 32, 32 ], iv_16, 16);
+      "CAMELLIA-128-CBC", ("CAMELLIA-128", "CBC", [ 16, 16 ], iv_16, 16);
+      "CAMELLIA-128-GCM", ("CAMELLIA-128", "GCM", [ 16, 16 ], iv_gcm, 16);
+      "CAMELLIA-192-CBC", ("CAMELLIA-192", "CBC", [ 24, 24 ], iv_16, 16);
+      "CAMELLIA-192-GCM", ("CAMELLIA-192", "GCM", [ 24, 24 ], iv_gcm, 16);
+      "CAMELLIA-256-CBC", ("CAMELLIA-256", "CBC", [ 32, 32 ], iv_16, 16);
+      "CAMELLIA-256-GCM", ("CAMELLIA-256", "GCM", [ 32, 32 ], iv_gcm, 16);
+      "DES-CBC", ("DES-56", "CBC", [ 8, 8 ], iv_8, 8);
+      "3DES-CBC", ("3DES-112", "CBC", [ 24, 24 ], iv_8, 8);
+      "SALSA20-256", ("SALSA20-256", "STREAM", [ 32, 32 ], iv_8, 1);
+    ]
+
+  let gnutls_basic_props_m =
+    of_list gnutls_basic_props
+
+  let can_exploit_gnutls_ciphers =
+    try
+      let testkey = "0000000011111111" in
+      let testiv  = "2222222233333333" in
+      let data = Netsys_mem.memory_of_string "4444444455555555" in
+      let out = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 16 in
+      let c =
+        gnutls_cipher_init
+          (gnutls_cipher_get_id "AES-128-CBC")
+          testkey
+          testiv in
+      gnutls_cipher_encrypt2
+        c
+        data
+        out;
+      true
+    with Invalid_argument _ -> false
+
+  let check_iv l iv_lengths =
+    if not (List.exists (fun (min,max) -> l >= min && l <= max) iv_lengths)
+    then
+      failwith "create: invalid iv length for this cipher"
+
+  let gnutls_basic_ciphers =
+    let l =
+      if can_exploit_gnutls_ciphers then
+        gnutls_cipher_list()
+      else
+        [] in
+    filter_map
+      (fun algo ->
+         let gname = gnutls_cipher_get_name algo in
+         let (name,mode,key_lengths,iv_lengths,dc) = 
+           StrMap.find gname gnutls_basic_props_m in
+         let create key =
+           let lkey = String.length key in
+           check_key lkey key_lengths;
+           let ctx = ref None in
+           let iv = ref "" in
+           let hdr = ref "" in
+           let set_iv s =
+             check_iv (String.length s) iv_lengths;
+             iv := s in
+           let set_header s =
+             hdr := s in
+           let get_ctx() =
+             match !ctx with
+               | None ->
+                    let c = gnutls_cipher_init algo key !iv in
+                    if mode = "GCM" then
+                      gnutls_cipher_add_auth c !hdr;
+                    ctx := Some c;
+                    c
+               | Some c ->
+                    c in
+           let encrypt inbuf outbuf =
+             let lbuf = Bigarray.Array1.dim inbuf in
+             if lbuf <> Bigarray.Array1.dim outbuf then
+               invalid_arg "encrypt: output buffer must have same size \
+                            as input buffer";
+             if lbuf mod dc <> 0 then
+               invalid_arg (sprintf "encrypt: buffers must be multiples \
+                                     of %d" dc);
+             let c = get_ctx() in
+             gnutls_cipher_encrypt2 c inbuf outbuf in
+           let decrypt inbuf outbuf =
+             let lbuf = Bigarray.Array1.dim inbuf in
+             if lbuf <> Bigarray.Array1.dim outbuf then
+               invalid_arg "decrypt: output buffer must have same size \
+                            as input buffer";
+             if lbuf mod dc <> 0 then
+               invalid_arg (sprintf "decrypt: buffers must be multiples \
+                                     of %d" dc);
+             let c = get_ctx() in
+             try
+               gnutls_cipher_decrypt2 c inbuf outbuf;
+               true
+             with _ -> false in
+           let mac() =
+             match mode with
+               | "GCM" ->
+                    let c = get_ctx() in
+                    let s = String.create 16 in
+                    gnutls_cipher_tag c s;
+                    s
+               | _ ->
+                    no_mac() in
+           { set_iv;
+             set_header;
+             encrypt;
+             decrypt;
+             mac;
+           } in
+         { name;
+           mode;
+           key_lengths;
+           iv_lengths;
+           block_constraint = dc;
+           supports_aead = (mode = "GCM");
+           create;
+         }
+      )
+      l
+
+
   include Netsys_crypto_modes.Bundle(struct
-                                      let ciphers = nettle_basic_ciphers
+                                      let ciphers =
+                                        nettle_basic_ciphers @
+                                          gnutls_basic_ciphers
                                     end)
 end
 
