@@ -44,6 +44,7 @@ call_ocamlc () {
 
 have_gnutls_crypto_h=0
 have_nettle_gcm_h=0
+have_nettle_camellia_h=0
 add_include=""
 
 init_header() {
@@ -64,6 +65,14 @@ init_checks() {
         echo "#define HAVE_GNUTLS_CRYPTO_H" >>$out
     else
         echo "#undef HAVE_GNUTLS_CRYPTO_H" >>$out
+    fi
+    if init_header "nettle/camellia.h"; then
+        have_nettle_camellia_h=1
+        add_include="$add_include
+#include <nettle/camellia.h>"
+        echo "#define HAVE_NETTLE_CAMELLIA_H" >>$out
+    else
+        echo "#undef HAVE_NETTLE_CAMELLIA_H" >>$out
     fi
     if init_header "nettle/gcm.h"; then
         have_nettle_gcm_h=1

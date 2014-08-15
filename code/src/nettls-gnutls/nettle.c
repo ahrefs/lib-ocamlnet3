@@ -79,9 +79,11 @@ const struct nettle_cipher * const nettle_ciphers[] = {
   &nettle_aes128,
   &nettle_aes192,
   &nettle_aes256,
+#ifdef HAVE_NETTLE_CAMELLIA_H
   &nettle_camellia128,
   &nettle_camellia192,
   &nettle_camellia256,
+#endif
   &nettle_cast128,
   &nettle_serpent128,
   &nettle_serpent192,
