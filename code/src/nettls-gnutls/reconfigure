@@ -87,6 +87,7 @@ check_enum () {
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+#include <nettle/nettle-meta.h>
 $add_include
 int main (int argc, char *argv[], char *envp[]) {
   int n;
@@ -118,6 +119,7 @@ EOF
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+#include <nettle/nettle-meta.h>
 $add_include
 int main (int argc, char *argv[], char *envp[]) {
   (void) & $fun;
@@ -143,6 +145,7 @@ check_type() {
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+#include <nettle/nettle-meta.h>
 $add_include
 int main (int argc, char *argv[], char *envp[]) {
   $ty x;

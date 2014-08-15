@@ -111,6 +111,7 @@ let optional_functions =
     "nettle_gcm_aes_encrypt";
     "nettle_gcm_aes_decrypt";
     "nettle_gcm_aes_digest";
+    "nettle_ciphers";   (* actually a variable *)
   ]
 
 

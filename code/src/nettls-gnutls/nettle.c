@@ -74,6 +74,30 @@ static const char *net_nettle_cipher_name(net_nettle_cipher_t cipher) {
     return cipher->name;
 }
 
+#ifndef HAVE_FUN_nettle_ciphers
+const struct nettle_cipher * const nettle_ciphers[] = {
+  &nettle_aes128,
+  &nettle_aes192,
+  &nettle_aes256,
+  &nettle_camellia128,
+  &nettle_camellia192,
+  &nettle_camellia256,
+  &nettle_cast128,
+  &nettle_serpent128,
+  &nettle_serpent192,
+  &nettle_serpent256,
+  &nettle_twofish128,
+  &nettle_twofish192,
+  &nettle_twofish256,
+  &nettle_arctwo40,
+  &nettle_arctwo64,
+  &nettle_arctwo128,
+  &nettle_arctwo_gutmann128,
+  NULL
+};
+#endif
+
+
 static void net_nettle_ciphers(net_nettle_cipher_t **ciphers,
                                size_t *n) {
     size_t k;
