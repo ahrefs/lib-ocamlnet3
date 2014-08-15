@@ -65,34 +65,34 @@ let functions =
     standard
       "net_nettle_gcm_aes_ctx_t net_nettle_gcm_aes_init \
          ()";
-    standard
+    standard ~optional:true
       "void nettle_gcm_aes_set_key \
          (net_nettle_gcm_aes_ctx_t ctx, \
           1 stringbuf_size key_length, \
           1 stringbuf key)";
-    standard
+    standard ~optional:true
       "void nettle_gcm_aes_set_iv \
          (net_nettle_gcm_aes_ctx_t ctx, \
           1 stringbuf_size iv_length, \
           1 stringbuf iv)";
-    standard
+    standard ~optional:true
       "void nettle_gcm_aes_update \
          (net_nettle_gcm_aes_ctx_t ctx, \
           1 stringbuf_size data_length, \
           1 stringbuf data)";
-    standard
+    standard ~optional:true
       "void nettle_gcm_aes_encrypt \
          (net_nettle_gcm_aes_ctx_t ctx, \
           uint length, \
           1 bigarray dst, \
           1 bigarray src)";
-    standard
+    standard ~optional:true
       "void nettle_gcm_aes_decrypt \
          (net_nettle_gcm_aes_ctx_t ctx, \
           uint length, \
           1 bigarray dst, \
           1 bigarray src)";
-    standard
+    standard ~optional:true
       "void nettle_gcm_aes_digest \
          (net_nettle_gcm_aes_ctx_t ctx, \
           1 stringbuf_size length, \

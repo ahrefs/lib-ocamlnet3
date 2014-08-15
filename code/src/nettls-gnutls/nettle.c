@@ -219,7 +219,7 @@ static net_nettle_gcm_aes_ctx_t net_nettle_gcm_aes_init(void) {
 #ifdef HAVE_NETTLE_GCM_H
     return stat_alloc(sizeof(struct gcm_aes_ctx));
 #else
-    return NULL
+    return NULL;
 #endif
 }
 
