@@ -11,14 +11,15 @@ let types =
   ]
 
 
-let standard ?(options=[]) decl =
+let standard ?(optional=false) ?(options=[]) decl =
   let (name, result, params) = parse decl in
   (name,
    params @ [ "result",
               (if result = "void" then `Return_ignore else `Return),
               result
             ],
-   options
+   (if optional then [ `Optional ] else []) @
+     options
   )
 
 let functions =
