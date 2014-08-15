@@ -163,6 +163,51 @@ module Symmetric_cipher = struct
       create;
     }
 
+(*
+  (* Commented out because only accelerated encryption would help for the
+     other modes
+   *)
+  let accel_ecb_from_cbc c_ecb c_cbc =
+    (* ECB decryption can be easily reduced to CBC decryption, and if the
+       latter is accelerated, ECB decryption will also be accelerated. There
+       is no way to do this for encryption, though.
+     *)
+    if c_ecb.mode <> "ECB" then raise Not_found;
+    if c_cbc.mode <> "CBC" then raise Not_found;
+    let bs = c_ecb.block_constraint in
+    let create key =
+      let orig_ctx_ecb_lz = lazy (c_ecb.create key) in
+      let set_iv s =
+        if s <> "" then
+          invalid_arg "set_iv: empty string expected" in
+      let set_header s =
+        () in
+      let encrypt inbuf outbuf =
+        let ctx = Lazy.force orig_ctx_ecb_lz in
+        ctx.encrypt inbuf outbuf in
+      let decrypt inbuf outbuf =
+        let ctx = c_cbc.create key in
+        ctx.set_iv (String.make bs "\000");
+        let ok = c_cbc.decrypt inbuf outbuf in
+        ok && (
+          let lbuf = Bigarray.Array1.dim inbuf in
+          mem_xor
+            (Bigarray.Array1.sub outbuf bs (lbuf-bs))
+            (Bigarray.Array1.sub outbuf bs (lbuf-bs))
+            (Bigarray.Array1.sub inbuf 0 (lbuf-bs));
+          true
+        ) in
+      { set_iv;
+        set_header;
+        encrypt;
+        decrypt;
+        mac = no_mac;
+      } in
+    { c_cbc with
+      create;
+    }
+ *)
+
   let ofb_of_ecb c =
     if c.mode <> "ECB" then raise Not_found;
     let bs = c.block_constraint in
@@ -311,12 +356,14 @@ module Bundle (L : CIPHERS) = struct
   open Symmetric_cipher
   type scipher = sc
   type scipher_ctx = sc_ctx
-  let ciphers = L.ciphers
   let ciphers_m =
     List.fold_left
       (fun acc sc -> StrPairMap.add (sc.name,sc.mode) sc acc)
       StrPairMap.empty
       L.ciphers
+  let ciphers =
+    StrPairMap.fold (fun _ v acc -> v :: acc) ciphers_m []
+
   let find (name,mode) =
     StrPairMap.find (name,mode) ciphers_m
                     

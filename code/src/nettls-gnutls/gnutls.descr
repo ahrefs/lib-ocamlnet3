@@ -788,6 +788,9 @@ let functions =
     (**********************************************************************)
 
     standard
+      "bool net_have_crypto()";
+
+    standard
       ~optional:true
       "error_code gnutls_cipher_init \
            (OUT gnutls_cipher_hd_t handle, \
@@ -1588,7 +1591,7 @@ let optional_functions =
     "gnutls_cipher_encrypt2";
     "gnutls_cipher_decrypt2";
     "gnutls_cipher_add_auth";
-    "gnutls_cipher_qtag";
+    "gnutls_cipher_tag";
   ]
 
 

@@ -19,7 +19,7 @@ ulimit -c 0          # no coredumps
 compiler="ocamlc -custom"
 if ocamlopt; then compiler=ocamlopt; fi
 
-log="config.log"
+log=`pwd`/"config.log"
 rm -f $log
 touch $log
 
@@ -42,6 +42,39 @@ call_ocamlc () {
     return $?
 }
 
+have_gnutls_crypto_h=0
+have_nettle_gcm_h=0
+add_include=""
+
+init_header() {
+    echo "Checking presence of $1"
+    echo "# HEADER $1" >> $log
+    cat <<EOF >testdir/test.c
+#include <gnutls/gnutls.h>
+#include <$1>
+EOF
+    call_ocamlc -c test.c
+}
+
+init_checks() {
+    if init_header "gnutls/crypto.h"; then
+        have_gnutls_crypto_h=1
+        add_include="$add_include
+#include <gnutls/crypto.h>"
+        echo "#define HAVE_GNUTLS_CRYPTO_H" >>$out
+    else
+        echo "#undef HAVE_GNUTLS_CRYPTO_H" >>$out
+    fi
+    if init_header "nettle/gcm.h"; then
+        have_nettle_gcm_h=1
+        add_include="$add_include
+#include <nettle/gcm.h>"
+        echo "#define HAVE_NETTLE_GCM_H" >>$out
+    else
+        echo "#undef HAVE_NETTLE_GCM_H" >>$out
+    fi
+}
+
 
 check_enum () {
     macro="$1"
@@ -54,6 +87,7 @@ check_enum () {
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+$add_include
 int main (int argc, char *argv[], char *envp[]) {
   int n;
   n = $enum;
@@ -84,6 +118,7 @@ EOF
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+$add_include
 int main (int argc, char *argv[], char *envp[]) {
   (void) & $fun;
   return 0;
@@ -108,6 +143,7 @@ check_type() {
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
+$add_include
 int main (int argc, char *argv[], char *envp[]) {
   $ty x;
   return 0;
@@ -133,6 +169,7 @@ ocaml -I ../../tools gnutls.descr || exit 1
 echo "$ ocaml -I ../../tools nettle.descr" >>$log
 ocaml -I ../../tools nettle.descr || exit 1
 
+init_checks
 . ./config_checks.sh
 
 if [ -n "$GNUTLS_SYSTEM_TRUST_FILE" ]; then

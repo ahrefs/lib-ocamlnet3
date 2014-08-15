@@ -1,10 +1,13 @@
 (* -*- tuareg -*- *)
 
+(* Minimum expected version: nettle-2.0 (as in Debian Squeeze) *)
+
 #use "stubgen.ml"
 
 let types =
-  [ "net_nettle_cipher_t",      abstract_ptr "net_nettle_destroy_cipher";
-    "net_nettle_cipher_ctx_t",  abstract_ptr "net_nettle_destroy_cipher_ctx";
+  [ "net_nettle_cipher_t",          abstract_ptr "net_nettle_destroy_cipher";
+    "net_nettle_cipher_ctx_t",      abstract_ptr "net_nettle_free";
+    "net_nettle_gcm_aes_ctx_t",     abstract_ptr "net_nettle_free";
   ]
 
 
@@ -21,6 +24,10 @@ let standard ?(options=[]) decl =
 let functions =
   [ standard
       "void net_nettle_ciphers \
+         (OUT net_nettle_cipher_t array cipher_list, \
+          OUT_IGNORE cipher_list array_size cipher_list_size)";
+    standard
+      "void net_ext_ciphers \
          (OUT net_nettle_cipher_t array cipher_list, \
           OUT_IGNORE cipher_list array_size cipher_list_size)";
     standard
@@ -55,11 +62,56 @@ let functions =
           uint length, \
           1 bigarray dst, \
           1 bigarray src)";
+    standard
+      "net_nettle_gcm_aes_ctx_t net_nettle_gcm_aes_init \
+         ()";
+    standard
+      "void nettle_gcm_aes_set_key \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size key_length, \
+          1 stringbuf key)";
+    standard
+      "void nettle_gcm_aes_set_iv \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size iv_length, \
+          1 stringbuf iv)";
+    standard
+      "void nettle_gcm_aes_update \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size data_length, \
+          1 stringbuf data)";
+    standard
+      "void nettle_gcm_aes_encrypt \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard
+      "void nettle_gcm_aes_decrypt \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard
+      "void nettle_gcm_aes_digest \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size length, \
+          1 stringbuf mac)";
+    standard
+      "bool net_have_gcm_aes()";
   ]
 
 
-let optional_types = []
-let optional_functions = []
+let optional_types =
+  [ ]
+let optional_functions =
+  [ "nettle_gcm_aes_set_key";
+    "nettle_gcm_aes_set_iv";
+    "nettle_gcm_aes_update";
+    "nettle_gcm_aes_encrypt";
+    "nettle_gcm_aes_decrypt";
+    "nettle_gcm_aes_digest";
+  ]
 
 
 let () =

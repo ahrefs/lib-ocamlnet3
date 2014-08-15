@@ -1,12 +1,16 @@
 /* This file is included into nettls_gnutls_bindings_stubs.c */
 
+#include "./config.h"
+
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
-#include <gnutls/crypto.h>
-#include <errno.h>
 
-#include "./config.h"
+#ifdef HAVE_GNUTLS_CRYPTO_H
+#include <gnutls/crypto.h>
+#endif
+
+#include <errno.h>
 
 typedef int error_code;
 typedef unsigned int gnutls_init_flags;
@@ -652,5 +656,13 @@ CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv,
     CAMLreturn(array);
 #else
     invalid_argument("gnutls_x509_crl_list_import");
+#endif
+}
+
+static int net_have_crypto(void) {
+#ifdef HAVE_FUN_gnutls_cipher_encrypt2
+    return 1;
+#else
+    return 0;
 #endif
 }

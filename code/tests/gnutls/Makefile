@@ -15,5 +15,5 @@ crypto: crypto.ml
 
 clean:
 	rm -f *.cmi *.cmo *.cmx *.o
-	rm -f test_client
+	rm -f test_client crypto
 	rm -rf certs
