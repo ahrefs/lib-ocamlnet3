@@ -45,6 +45,13 @@ module type TLS_EXCEPTIONS =
 
 module type TLS_PROVIDER =
   sig
+    (** Provides TLS functionality.
+
+        Users should not call functions of the provider directly, but use
+        {!Netsys_tls}, or another higher-level layer.
+     *)
+
+
     type config
     type credentials
     type endpoint
@@ -506,6 +513,12 @@ module type FILE_TLS_ENDPOINT =
 
 
 module type SYMMETRIC_CRYPTO = sig
+  (** Symmetric cryptographic ciphers.
+
+       Users should not call functions of the provider directly, but use
+      {!Netsys_ciphers}, or another higher-level layer.
+   *)
+
   type scipher
     (** Describes a cipher *)
 
@@ -614,6 +627,12 @@ end
 
 
 module type DIGESTS = sig
+  (** Cryptographic digests.
+
+      Users should not call functions of the provider directly, but use
+      {!Netsys_digests}, or another higher-level layer.
+   *)
+
     type digest
       (** Describes a digest *)
 

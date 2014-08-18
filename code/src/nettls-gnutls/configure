@@ -17,6 +17,7 @@ if [ -z "$GNUTLS_LIBS" ]; then
    GNUTLS_CFLAGS2=`$PKG_CONFIG --cflags nettle`
    GNUTLS_LIBS1=`$PKG_CONFIG --libs gnutls`
    GNUTLS_LIBS2=`$PKG_CONFIG --libs nettle`
+   if [ -z "$GNUTLS_LIBS2" ]; then GNUTLS_LIBS2="-lnettle"; fi
    GNUTLS_CFLAGS="$GNUTLS_CFLAGS1 $GNUTLS_CFLAGS2"
    GNUTLS_LIBS="$GNUTLS_LIBS1 $GNUTLS_LIBS2"
 fi

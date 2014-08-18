@@ -2,6 +2,12 @@
 
 (** Cryptographic providers *)
 
+(** Users should not call functions of the providers directly. Instead, use:
+     - {!Netsys_tls} for using TLS
+     - {!Netsys_ciphers} for using (symmetric) ciphers
+     - {!Netsys_digests} for using digests
+ *)
+
 val current_tls : unit -> (module Netsys_crypto_types.TLS_PROVIDER)
   (** Return the current TLS provider. Only available if such a provider
       is linked into the executable. Do this by calling the [init] function
