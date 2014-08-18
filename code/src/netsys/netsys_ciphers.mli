@@ -138,7 +138,7 @@ end
 
 
 (** The following functions use the current crypto module (as retrieved by
-    {!Netsys_crypto.current_ciphers}), unless the [impl] argument is
+    {!Netsys_crypto.current_symmetric_crypto}), unless the [impl] argument is
     passed.
  *)
 
