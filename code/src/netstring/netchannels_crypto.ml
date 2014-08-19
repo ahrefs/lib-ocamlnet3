@@ -6,6 +6,19 @@ class type tls_channel = object
 end
 
 
+class type crypto_out_filter = object
+  inherit Netchannels.out_obj_channel
+  method supports_aead : bool
+  method mac : unit -> string
+end
+
+
+class type crypto_in_filter = object
+  inherit Netchannels.in_obj_channel
+  method supports_aead : bool
+  method mac : unit -> string
+end
+
 
 (************************** TLS *****************************)
 
@@ -139,3 +152,182 @@ class tls_endpoint ?(start_pos_in=0) ?(start_pos_out=0) ?resume
 
 
 
+(*************** SYMM CRYPTO ************)
+
+
+let process_out proc ctx ch =
+  let buf, free_buf =
+    Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
+  let out_buf, free_out_buf =
+    Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
+  let str_buf =
+    String.create (Bigarray.Array1.dim out_buf) in
+  let buf_pos = ref 0 in
+  let buf_len = Bigarray.Array1.dim buf in
+  let closed = ref false in
+  let pos_out = ref 0 in
+  ( object(self)
+      inherit Netchannels.augment_raw_out_channel
+
+      method output s pos len =
+        if !closed then raise Netchannels.Closed_channel;
+        let n = min len (buf_len - !buf_pos) in
+        Netsys_mem.blit_string_to_memory s pos buf !buf_pos n;
+        buf_pos := !buf_pos + n;
+        if !buf_pos = buf_len then
+          self#flush();
+        pos_out := !pos_out + n;
+        n
+
+      method flush() =
+        if !closed then raise Netchannels.Closed_channel;
+        if !buf_pos > 0 then (
+          let buf1 = Bigarray.Array1.sub buf 0 !buf_pos in
+          let consumed, generated = proc ~last:false buf1 out_buf in
+          Netsys_mem.blit_memory_to_string out_buf 0 str_buf 0 generated;
+          ch # really_output str_buf 0 generated;
+          let remaining = buf_len - consumed in
+          if remaining > 0 then
+            Bigarray.Array1.blit
+              (Bigarray.Array1.sub buf consumed remaining)
+              (Bigarray.Array1.sub buf 0 remaining);
+          buf_pos := remaining;
+        )
+
+      method private final_flush() =
+        (* tricky: call [proc ~last:true] at least once. Call it again if there
+           is not enough space in out_buf (the encrypted msg can get longer), 
+           which is indicated by not consuming all data
+         *)
+        if !closed then raise Netchannels.Closed_channel;
+        while !buf_pos >= 0 do
+          let buf_sub = Bigarray.Array1.sub buf 0 !buf_pos in
+          let consumed, generated = proc ~last:true buf_sub out_buf in
+          Netsys_mem.blit_memory_to_string out_buf 0 str_buf 0 generated;
+          ch # really_output str_buf 0 generated;
+          let remaining = !buf_pos - consumed in
+          if remaining > 0 then
+            Bigarray.Array1.blit
+              (Bigarray.Array1.sub buf consumed remaining)
+              (Bigarray.Array1.sub buf 0 remaining);
+          buf_pos := remaining;
+          if !buf_pos = 0 then buf_pos := (-1)
+        done;
+        buf_pos := 0;
+        ()
+
+      method close_out() =
+        if not !closed then (
+          self # final_flush();
+          closed := true;
+          free_buf();
+          free_out_buf();
+          ch # close_out()
+        )
+
+      method pos_out = !pos_out
+
+      method supports_aead = ctx # supports_aead
+      method mac() = ctx # mac()
+    end
+  )
+
+
+let encrypt_out c key p ch =
+  let ctx = c # create key p in
+  let proc = ctx # encrypt in
+  process_out proc ctx ch
+
+
+let decrypt_out c key p ch =
+  let ctx = c # create key p in
+  let proc = ctx # decrypt in
+  process_out proc ctx ch
+
+
+let process_in proc ctx ch =
+  let buf, free_buf =
+    Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
+  let in_buf, free_in_buf =
+    Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
+  let str_buf =
+    String.create (Bigarray.Array1.dim in_buf) in
+  let buf_pos = ref 0 in
+  let buf_len = ref 0 in
+  let in_buf_len = ref 0 in
+  let closed = ref false in
+  let eof = ref false in
+  let pos_in = ref 0 in
+  ( object(self)
+      inherit Netchannels.augment_raw_in_channel
+
+      method input s pos len =
+        if !closed then raise Netchannels.Closed_channel;
+        if !buf_pos = !buf_len && not !eof then (
+          try
+            let l = Bigarray.Array1.dim in_buf - !in_buf_len in
+            let n = ch # input str_buf 0 l in
+            Netsys_mem.blit_string_to_memory str_buf 0 in_buf !in_buf_len n;
+            in_buf_len := !in_buf_len + n;
+            let consumed, generated =
+              proc
+                ~last:false
+                (Bigarray.Array1.sub in_buf 0 !in_buf_len)
+                buf in
+            buf_pos := 0;
+            buf_len := generated;
+            let remaining = !in_buf_len - consumed in
+            if remaining > 0 then
+              Bigarray.Array1.blit
+                (Bigarray.Array1.sub in_buf consumed remaining)
+                (Bigarray.Array1.sub in_buf 0 remaining);
+            in_buf_len := remaining;
+          with
+            | End_of_file ->
+                eof := true;
+                buf_pos := 0;
+                buf_len := 0;
+                while !in_buf_len >= 0 do
+                  let consumed, generated =
+                    proc
+                      ~last:true
+                      (Bigarray.Array1.sub in_buf 0 !in_buf_len)
+                      buf in
+                  buf_len := generated;
+                  in_buf_len := !in_buf_len - consumed;
+                  if !in_buf_len = 0 then in_buf_len := (-1)
+                done;
+                in_buf_len := 0;
+        );
+        let n = min len (!buf_len - !buf_pos) in
+        if !eof && n=0 && len>0 then raise End_of_file;
+        Netsys_mem.blit_memory_to_string buf !buf_pos s pos n;
+        buf_pos := !buf_pos + n;
+        pos_in := !pos_in + n;
+        n
+
+      method close_in() =
+        if not !closed then (
+          closed := true;
+          free_buf();
+          free_in_buf();
+          ch # close_in()
+        )
+
+      method pos_in = !pos_in
+      method supports_aead = ctx # supports_aead
+      method mac() = ctx # mac()
+    end
+  )
+
+
+let encrypt_in c key p ch =
+  let ctx = c # create key p in
+  let proc = ctx # encrypt in
+  process_in proc ctx ch
+
+
+let decrypt_in c key p ch =
+  let ctx = c # create key p in
+  let proc = ctx # decrypt in
+  process_in proc ctx ch
