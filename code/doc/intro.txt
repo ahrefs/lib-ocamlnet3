@@ -55,6 +55,7 @@ A number of ideas and concepts are used throughout the libraries:
   (POSIX/Win32). Also hints for portable programming.
 - {!Ipv6}: The state of IPv6 support
 - {!Tls}: TLS support
+- {!Crypto}: Cryptography
 - {!Regexp}: Regular expression backends
 
 {divend guide}
@@ -158,6 +159,7 @@ for other libraries.
    Netconversion
    Netunichar
    Netchannels
+   Netchannels_crypto
    Netstream
    Mimestring
    Netmime
@@ -323,7 +325,9 @@ other Ocamlnet libraries.
     Netsys_rng
     Netsys_crypto_types
     Netsys_crypto
+    Netsys_crypto_modes
     Netsys_tls
+    Netsys_ciphers
 }
 
 
