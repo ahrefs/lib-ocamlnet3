@@ -148,7 +148,7 @@ object (self)
     self # smtp_cmd "STARTTLS";
     ignore_answer ic;
     let tls_ch =
-      new Netchannels.tls_layer
+      new Netchannels_crypto.tls_layer
         ~role:`Client
         ~rd:(ic0 :> Netchannels.raw_in_channel)
         ~wr:(oc0 :> Netchannels.raw_out_channel)

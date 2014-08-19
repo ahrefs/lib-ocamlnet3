@@ -244,7 +244,7 @@ object (self)
     send_command oc "STLS";
     ignore_status ic;
     let tls_ch =
-      new Netchannels.tls_layer
+      new Netchannels_crypto.tls_layer
         ~role:`Client
         ~rd:(ic0 :> Netchannels.raw_in_channel)
         ~wr:(oc0 :> Netchannels.raw_out_channel)
