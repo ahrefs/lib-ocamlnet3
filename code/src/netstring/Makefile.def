@@ -1,5 +1,5 @@
 OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
-	   netaux.cmo netchannels.cmo netsockaddr.cmo \
+	   netaux.cmo netchannels.cmo netchannels_crypto.cmo netsockaddr.cmo \
 	   netdb.cmo netmappings.cmo netconversion.cmo netulex.cmo \
            netencoding.cmo netstream.cmo netdate.cmo \
 	   mimestring.cmo \

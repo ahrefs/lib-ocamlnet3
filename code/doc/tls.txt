@@ -306,7 +306,8 @@ TLS provider directly. Better ways:
 
  - {!Netsys_tls} hides the first-class modules to some degree, but is
    still close to what the provider defines.
- - {!Netchannels.tls_layer} and {!Netchannels.tls_endpoint} allow it to
+ - {!Netchannels_crypto.tls_layer} and {!Netchannels_crypto.tls_endpoint} 
+   allow it to
    add TLS security to an existing input or output channel (as defined
    by the {!Netchannels} module).
  - {!Uq_multiplex.tls_multiplex_controller} allows it to add TLS
@@ -399,7 +400,7 @@ let () = Netsys.gshutdown fd_style Unix.SHUTDOWN_ALL
 ]}
 
 Similar "convenience functions" exist for Netchannels (see
-{!Netchannels.tls_layer}) and multiplex controllers (see
+{!Netchannels_crypto.tls_layer}) and multiplex controllers (see
 {!Uq_multiplex.tls_multiplex_controller}).
 
 Some word on the shutdown of a TLS session: TLS implements this by
