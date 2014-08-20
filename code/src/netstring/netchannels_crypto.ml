@@ -233,14 +233,12 @@ let process_out proc ctx ch =
   )
 
 
-let encrypt_out c key p ch =
-  let ctx = c # create key p in
+let encrypt_out ctx ch =
   let proc = ctx # encrypt in
   process_out proc ctx ch
 
 
-let decrypt_out c key p ch =
-  let ctx = c # create key p in
+let decrypt_out ctx ch =
   let proc = ctx # decrypt in
   process_out proc ctx ch
 
@@ -321,13 +319,11 @@ let process_in proc ctx ch =
   )
 
 
-let encrypt_in c key p ch =
-  let ctx = c # create key p in
+let encrypt_in ctx ch =
   let proc = ctx # encrypt in
   process_in proc ctx ch
 
 
-let decrypt_in c key p ch =
-  let ctx = c # create key p in
+let decrypt_in ctx ch =
   let proc = ctx # decrypt in
   process_in proc ctx ch

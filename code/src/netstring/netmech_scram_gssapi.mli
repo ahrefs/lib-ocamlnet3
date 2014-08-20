@@ -4,7 +4,7 @@
 
 (** See RFC 5802 *)
 
-open Netgssapi
+open Netsys_gssapi
 
 val scram_mech : oid
   (** The OID of SCRAM *)
@@ -41,7 +41,7 @@ class scram_gss_api :
         ?client_key_ring:client_key_ring ->
         ?server_key_verifier:server_key_verifier ->
         Netmech_scram.profile ->
-          Netgssapi.gss_api
+          Netsys_gssapi.gss_api
   (** Returns a standard-compliant GSS-API object for the passed SCRAM
       profile. The object can be used on the client side for all
       users whose passwords are available via [client_key_ring].

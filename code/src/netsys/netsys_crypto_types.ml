@@ -180,6 +180,7 @@ module type DIGESTS = sig
     val find : string -> digest
     val name : digest -> string
     val size : digest -> int
+    val block_length : digest -> int
     type digest_ctx
     val create : digest -> digest_ctx
     val add : digest_ctx -> Netsys_types.memory -> unit

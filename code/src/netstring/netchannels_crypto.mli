@@ -70,32 +70,32 @@ class type crypto_in_filter = object
 end
 
 
-val encrypt_out : Netsys_ciphers.cipher -> string -> Netsys_ciphers.padding ->
+val encrypt_out : Netsys_ciphers.cipher_ctx ->
                   Netchannels.out_obj_channel ->
                     crypto_out_filter
-  (** [let ch2 = encrypt_out cipher key padding ch1]: Writing to [ch2] encrypts
+  (** [let ch2 = encrypt_out ctx ch1]: Writing to [ch2] encrypts
       the data and writes the ciphertext to [ch1]. Closing [ch2] will flush
       data and close [ch1].
    *)
 
-val encrypt_in : Netsys_ciphers.cipher -> string -> Netsys_ciphers.padding ->
+val encrypt_in : Netsys_ciphers.cipher_ctx ->
                  Netchannels.in_obj_channel ->
                     crypto_in_filter
-  (** [let ch2 = encrypt_in cipher key padding ch1]: Reading from [ch2] encrypts
+  (** [let ch2 = encrypt_in ctx ch1]: Reading from [ch2] encrypts
       the data from [ch1]. Closing [ch2] will close [ch1].
    *)
 
-val decrypt_out : Netsys_ciphers.cipher -> string -> Netsys_ciphers.padding ->
+val decrypt_out : Netsys_ciphers.cipher_ctx ->
                   Netchannels.out_obj_channel ->
                     crypto_out_filter
-  (** [let ch2 = decrypt_out cipher key padding ch1]: Writing to [ch2] decrypts
+  (** [let ch2 = decrypt_out ctx ch1]: Writing to [ch2] decrypts
       the data and writes the plaintext to [ch1]. Closing [ch2] will flush
       data and close [ch1].
    *)
 
-val decrypt_in : Netsys_ciphers.cipher -> string -> Netsys_ciphers.padding ->
+val decrypt_in : Netsys_ciphers.cipher_ctx ->
                  Netchannels.in_obj_channel ->
                     crypto_in_filter
-  (** [let ch2 = decrypt_in cipher key padding ch1]: Reading from [ch2] decrypts
+  (** [let ch2 = decrypt_in ctx ch1]: Reading from [ch2] decrypts
       the data from [ch1]. Closing [ch2] will close [ch1].
    *)

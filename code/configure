@@ -45,7 +45,6 @@ set_defaults () {
     enable_gtk2=0
     enable_tcl=0
     enable_zip=0
-    enable_crypto=0
     enable_apache=0
     enable_gnutls=0
     enable_pcre=0
@@ -82,7 +81,6 @@ ehelp_gtk2="Enable/disable parts that depend on lablgtk2"
 ehelp_tcl="Enable/disable parts that depend on tcl/tk"
 ehelp_gnutls="Enable/disable parts that depend on GnuTLS"
 ehelp_zip="Enable/disable parts that depend on camlzip"
-ehelp_crypto="Enable/disable parts that depend on cryptokit"
 ehelp_apache="Enable/disable Apache mod connector (EXPERIMENTAL)"
 ehelp_pcre="Enable/disable the build against pcre-ocaml"
 ehelp_full_pcre="Enable/disable the build against pcre-ocaml (no Str)"
@@ -90,7 +88,7 @@ whelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 whelp_rpc_auth_dh="Enable/disable support for SecureRPC (Diffie-Hellman auth)"
 
 # Which options exist? eoptions for enable/disable, woptions for with/without:
-eoptions="pcre full_pcre gtk gtk2 tcl gnutls zip crypto apache"
+eoptions="pcre full_pcre gtk gtk2 tcl gnutls zip apache"
 woptions="nethttpd rpc_auth_dh"
 
 # Packages to include anyway:
@@ -820,23 +818,6 @@ if [ $enable_zip -gt 0 ]; then
 fi
 
 ######################################################################
-# Check cryptokit
-
-with_crypto=0
-
-if [ $enable_crypto -gt 0 ]; then
-    printf "%s" "Checking for cryptokit... "
-    if ocamlfind query cryptokit >/dev/null 2>/dev/null; then
-        echo "found"
-	with_crypto=1
-    else
-        echo "not found"
-	echo "Required library cryptokit not found!"
-	exit 1
-    fi
-fi
-
-######################################################################
 # Check SecureRPC
 
 adh_reqs=""
@@ -942,9 +923,9 @@ echo "Effective options:"
 print_options
 echo
 
-pkglist="netsys netshm netstring equeue shell netgssapi rpc-generator rpc rpc-auth-local pop smtp netclient netcgi2 netplex netcgi2-plex"
+pkglist="netsys netshm netstring equeue shell rpc-generator rpc rpc-auth-local pop smtp netclient netcgi2 netplex netcgi2-plex"
 
-full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache netmech-scram nettls-gnutls"
+full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache nettls-gnutls"
 
 if [ $enable_camlbox -gt 0 ]; then
     pkglist="$pkglist netcamlbox"
@@ -975,10 +956,6 @@ fi
 
 if [ $enable_apache -gt 0 ]; then
     pkglist="$pkglist netcgi2-apache"
-fi
-
-if [ $with_crypto -gt 0 ]; then
-    pkglist="$pkglist netmech-scram"
 fi
 
 if [ $enable_gnutls -gt 0 ]; then

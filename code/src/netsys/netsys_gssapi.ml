@@ -1,0 +1,444 @@
+(* $Id$ *)
+
+open Printf
+
+type oid = int array
+type oid_set = oid list
+type credential = < otype : [ `Credential ] >
+type context = < otype : [ `Context ]; valid : bool >
+type token = string
+type interprocess_token = string
+type calling_error =
+    [ `None
+    | `Inaccessible_read
+    | `Inaccessible_write
+    | `Bad_structure
+    ]
+type routine_error =
+    [ `None
+    | `Bad_mech
+    | `Bad_name
+    | `Bad_nametype
+    | `Bad_bindings
+    | `Bad_status
+    | `Bad_mic
+    | `No_cred
+    | `No_context
+    | `Defective_token
+    | `Defective_credential
+    | `Credentials_expired
+    | `Context_expired
+    | `Failure
+    | `Bad_QOP
+    | `Unauthorized
+    | `Unavailable
+    | `Duplicate_element
+    | `Name_not_mn
+    ]
+type suppl_status =
+    [ `Continue_needed
+    | `Duplicate_token
+    | `Old_token
+    | `Unseq_token
+    | `Gap_token
+    ]
+type major_status = calling_error * routine_error * suppl_status list
+type minor_status = int32
+type name = < otype : [ `Name ] >
+type address =
+    [ `Unspecified of string
+    | `Local of string
+    | `Inet of Unix.inet_addr
+    | `Nulladdr
+    | `Other of int32 * string
+    ]
+type channel_bindings = address * address * string
+type cred_usage = [ `Initiate |`Accept | `Both ]
+type qop = < otype : [ `QOP ] >
+type message = Netsys_types.mstring list
+type ret_flag =
+    [ `Deleg_flag | `Mutual_flag | `Replay_flag | `Sequence_flag 
+    | `Conf_flag | `Integ_flag | `Anon_flag | `Prot_ready_flag
+    | `Trans_flag
+    ]
+type req_flag = 
+    [ `Deleg_flag | `Mutual_flag | `Replay_flag | `Sequence_flag 
+    | `Conf_flag | `Integ_flag | `Anon_flag
+    ]
+
+class type gss_api =
+object
+  method provider : string
+  method no_credential : credential
+  method no_name : name
+  method accept_sec_context :
+          't . context:context option ->
+               acceptor_cred:credential -> 
+               input_token:token ->
+               chan_bindings:channel_bindings option ->
+               out:( src_name:name ->
+		     mech_type:oid ->
+		     output_context:context option ->
+		     output_token:token ->
+		     ret_flags:ret_flag list ->
+		     time_rec:[ `Indefinite | `This of float] ->
+		     delegated_cred:credential ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't 
+		   ) -> unit -> 't
+
+  method acquire_cred :
+          't . desired_name:name ->
+               time_req:[`None | `Indefinite | `This of float] ->
+               desired_mechs:oid_set ->
+               cred_usage:cred_usage  ->
+               out:( cred:credential ->
+		     actual_mechs:oid_set ->
+		     time_rec:[ `Indefinite | `This of float] ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method add_cred :
+          't . input_cred:credential ->
+               desired_name:name ->
+               desired_mech:oid ->
+               cred_usage:cred_usage ->
+               initiator_time_req:[`None | `Indefinite | `This of float] ->
+               acceptor_time_req:[`None | `Indefinite | `This of float] ->
+               out:( output_cred:credential ->
+		     actual_mechs:oid_set ->
+		     initiator_time_rec:[ `Indefinite | `This of float] ->
+		     acceptor_time_rec:[ `Indefinite | `This of float] ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method canonicalize_name :
+          't . input_name:name ->
+               mech_type:oid ->
+               out:( output_name:name ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method compare_name :
+          't . name1:name ->
+               name2:name ->
+               out:( name_equal:bool ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method context_time :
+          't . context:context ->
+               out:( time_rec:[ `Indefinite | `This of float] ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method delete_sec_context :
+          't . context:context ->
+               out:( minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method display_name :
+          't . input_name:name ->
+               out:( output_name:string ->
+		     output_name_type:oid ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method display_minor_status :
+          't . minor_status:minor_status ->
+               mech_type: oid ->
+               out:( status_strings: string list ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method export_name : 
+          't . name:name ->
+               out:( exported_name:string ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method export_sec_context :
+          't . context:context ->
+               out:( interprocess_token:interprocess_token ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method get_mic : 
+          't . context:context ->
+               qop_req:qop option ->
+               message:message ->
+               out:( msg_token:token ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method import_name :
+          't . input_name:string ->
+               input_name_type:oid ->
+               out:( output_name:name ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method import_sec_context :
+          't . interprocess_token:interprocess_token ->
+               out:( context:context option ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method indicate_mechs :
+          't . out:( mech_set:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method init_sec_context :
+          't . initiator_cred:credential ->
+               context:context option ->
+               target_name:name ->
+               mech_type:oid -> 
+               req_flags:req_flag list ->
+               time_rec:float option ->
+               chan_bindings:channel_bindings option ->
+               input_token:token option ->
+               out:( actual_mech_type:oid ->
+		     output_context:context option ->
+		     output_token:token ->
+		     ret_flags:ret_flag list ->
+		     time_rec:[ `Indefinite | `This of float ] ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method inquire_context :
+          't . context:context ->
+               out:( src_name:name ->
+                     targ_name:name ->
+		     lifetime_req : [ `Indefinite | `This of float ] ->
+		     mech_type:oid ->
+		     ctx_flags:ret_flag list ->
+		     locally_initiated:bool ->
+		     is_open:bool ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method inquire_cred :
+          't . cred:credential ->
+               out:( name:name ->
+		     lifetime: [ `Indefinite | `This of float ] ->
+		     cred_usage:cred_usage ->
+		     mechanisms:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method inquire_cred_by_mech :
+          't . cred:credential ->
+               mech_type:oid -> 
+               out:( name:name ->
+		     initiator_lifetime: [ `Indefinite | `This of float ] ->
+		     acceptor_lifetime: [ `Indefinite | `This of float ] ->
+		     cred_usage:cred_usage ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method inquire_mechs_for_name :
+          't . name:name ->
+               out:( mech_types:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method inquire_names_for_mech :
+          't . mechanism:oid ->
+               out:( name_types:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+
+  method process_context_token :
+          't . context:context ->
+               token:token ->
+               out:( minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method unwrap :
+          't . context:context ->
+               input_message:message ->
+               output_message_preferred_type:[ `String | `Memory ] ->
+               out:( output_message:message ->
+		     conf_state:bool ->
+		     qop_state:qop ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method verify_mic :
+          't . context:context ->
+               message:message ->
+               token:token ->
+               out:( qop_state:qop ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method wrap :
+          't . context:context ->
+               conf_req:bool ->
+               qop_req:qop option ->
+               input_message:message ->
+               output_message_preferred_type:[ `String | `Memory ] ->
+               out:( conf_state:bool ->
+		     output_message:message ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+  method wrap_size_limit :
+          't . context:context ->
+               conf_req:bool ->
+               qop_req:qop option ->
+               req_output_size:int ->
+               out:( max_input_size:int ->
+                     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+end
+
+let string_of_calling_error =
+  function
+    | `None -> "-"
+    | `Inaccessible_read -> "Inaccessible_read"
+    | `Inaccessible_write -> "Inaccessible_write"
+    | `Bad_structure -> "Bad_structure"
+
+let string_of_routine_error =
+  function
+    | `None -> "-"
+    | `Bad_mech -> "Bad_mech"
+    | `Bad_name -> "Bad_name"
+    | `Bad_nametype -> "Bad_nametype"
+    | `Bad_bindings -> "Bad_bindings"
+    | `Bad_status -> "Bad_status"
+    | `Bad_mic -> "Bad_mic"
+    | `No_cred -> "No_cred"
+    | `No_context -> "No_context"
+    | `Defective_token -> "Defective_token"
+    | `Defective_credential -> "Defective_credential"
+    | `Credentials_expired -> "Credentials_expired"
+    | `Context_expired -> "Context_expired"
+    | `Failure -> "Failure"
+    | `Bad_QOP -> "Bad_QOP"
+    | `Unauthorized -> "Unauthorized"
+    | `Unavailable -> "Unavailable"
+    | `Duplicate_element -> "Duplicate_element"
+    | `Name_not_mn -> "Name_not_mn"
+
+let string_of_suppl_status =
+  function
+    | `Continue_needed -> "Continue_needed"
+    | `Duplicate_token -> "Duplicate_token"
+    | `Old_token -> "Old_token"
+    | `Unseq_token -> "Unseq_token"
+    | `Gap_token -> "Gap_token"
+
+let string_of_major_status (ce,re,sl) =
+  let x = String.concat "," (List.map string_of_suppl_status sl) in
+  "<major:" ^ string_of_calling_error ce ^ 
+  ";" ^ string_of_routine_error re ^ 
+  (if x <> "" then ";" ^ x else "") ^ 
+  ">"
+
+
+let nt_hostbased_service =
+  [| 1; 3; 6; 1; 5; 6; 2 |]
+
+let nt_user_name =
+  [| 1; 2; 840; 113554; 1; 2; 1; 1 |]
+
+let nt_machine_uid_name =
+  [| 1; 2; 840; 113554; 1; 2; 1; 2 |]
+
+let nt_string_uid_name =
+  [| 1; 2; 840; 113554; 1; 2; 1; 3 |]
+
+let nt_anonymous =
+  [| 1; 3; 6; 1; 5; 6; 3 |]
+
+let nt_export_name =
+  [| 1; 3; 6; 1; 5; 6; 4 |]
+
+let parse_hostbased_service s =
+  try
+    let k = String.index s '@' in
+    (String.sub s 0 k, String.sub s (k+1) (String.length s - k - 1))
+  with
+    | Not_found ->
+	failwith "Netsys_gssapi.parse_hostbased_service"

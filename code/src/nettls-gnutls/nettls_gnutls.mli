@@ -57,5 +57,8 @@ module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO
       Nettle
    *)
 
+module Digests : Netsys_crypto_types.DIGESTS
+  (** Cryptographic digests *)
+
 val init : unit -> unit
   (** Ensure that GnuTLS is initialized *)

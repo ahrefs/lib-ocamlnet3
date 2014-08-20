@@ -2,7 +2,7 @@
 
 (** GSS-API for RPC authentication *)
 
-open Netgssapi
+open Netsys_gssapi
 
 type user_name_format =
     [ `Exported_name

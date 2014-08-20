@@ -49,3 +49,42 @@ let of_string s =
 
 let to_string oid =
   String.concat "." (List.map string_of_int (Array.to_list oid))
+
+(* Curly notation follows RFC 2078, but additional information about DER
+   can also be found in ITU-T X.690:
+
+     http://www.itu.int/ITU-T/studygroups/com17/languages/X.690-0207.pdf
+ *)
+
+let of_string_curly s =
+  let oid_str_re = Netstring_str.regexp "[ \t\r\n]+\\|{\\|}" in
+  let rec cont1 l =
+    match l with
+      | Netstring_str.Delim "{" :: l' -> cont2 l'
+      | Netstring_str.Delim "}" :: _ -> raise Not_found
+      | Netstring_str.Delim _ :: l' -> cont1 l'   (* whitespace *)
+      | _ -> raise Not_found 
+  and cont2 l =  (* after "{" *)
+    match l with
+      | Netstring_str.Delim "{" :: _ -> raise Not_found
+      | Netstring_str.Delim "}" :: l' -> cont3 l'
+      | Netstring_str.Delim _ :: l' -> cont2 l'
+      | Netstring_str.Text s :: l' -> int_of_string s :: cont2 l'
+      | _ -> raise Not_found
+  and cont3 l = (* after "}" *)
+    match l with
+      | Netstring_str.Delim ("{" | "}") :: _ -> raise Not_found
+      | Netstring_str.Delim _ :: l' -> cont3 l'
+      | [] -> []
+      | _ -> raise Not_found 
+  in
+
+  let l =
+    Netstring_str.full_split oid_str_re s in
+  try
+    Array.of_list(cont1 l)
+  with
+    | _ -> failwith "Netoid.of_string_curly"
+
+let to_string_curly oid =
+  "{" ^ String.concat " " (List.map string_of_int (Array.to_list oid)) ^ "}"

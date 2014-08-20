@@ -12,6 +12,10 @@ object
   method preferred : [ `Memory | `String ]
 end
 
+(* This def must be the same as the one in Netsys_types: *)
+let _ =
+  (fun (ms : mstring ) -> (ms : Netsys_types.mstring))
+
 
 class type mstring_factory =
 object
@@ -276,3 +280,68 @@ let copy_mstring ms =
 
 let copy_mstrings l =
   List.map copy_mstring l
+
+
+let in_channel_of_mstrings ms_list =
+  let ms_list = ref ms_list in
+  let ms_pos = ref 0 in
+  let in_pos = ref 0 in
+  ( object(self)
+      inherit Netchannels.augment_raw_in_channel
+
+      method input s pos len =
+        match !ms_list with
+          | [] ->
+              raise End_of_file
+          | ms :: ms_list' ->
+              let ms_len = ms#length in
+              if !ms_pos >= ms_len then (
+                ms_list := ms_list';
+                ms_pos := 0;
+                self # input s pos len
+              )
+              else (
+                match ms#preferred with
+	          | `String ->
+                      let (u,start) = ms#as_string in
+                      let n = min len ms_len in
+                      String.blit u start s pos n;
+                      ms_pos := !ms_pos + n;
+                      in_pos := !in_pos + n;
+                      n
+                  | `Memory ->
+                      let (m,start) = ms#as_memory in
+                      let n = min len ms_len in
+                      Netsys_mem.blit_memory_to_string m start s pos n;
+                      ms_pos := !ms_pos + n;
+                      in_pos := !in_pos + n;
+                      n
+              )
+
+      method close_in() = ()
+      method pos_in = !in_pos
+    end
+  )
+
+
+let mstrings_of_in_channel ch =
+  let len = 1024 in
+  let acc = ref [] in
+  let buf = ref (String.create len) in
+  let pos = ref 0 in
+  let rec loop() : unit =
+    let n = ch # input !buf !pos (len - !pos) in (* or End_of_file *)
+    pos := !pos + n;
+    if !pos < len then 
+      loop()
+    else (
+      acc := string_to_mstring !buf :: !acc;
+      buf := String.create len;
+      pos := 0;
+      loop()
+    ) in
+  try loop(); assert false
+  with End_of_file ->
+    if !pos > 0 then
+      acc := string_to_mstring ~pos:0 ~len:!pos !buf :: !acc;
+    List.rev !acc

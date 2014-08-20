@@ -5,7 +5,8 @@
      and it does not include the flags
  *)
 
-open Netgssapi
+open Netsys_gssapi
+open Netgssapi_support
 open Printf
 
 class scram_name (name_string:string) (name_type:oid) =
@@ -329,7 +330,8 @@ object(self)
 	  if is_first then (* There is a header *)
 	    try
 	      let k = ref 0 in
-	      let (oid, tok) = Netgssapi.wire_decode_token input_token k in
+	      let (oid, tok) =
+                Netgssapi_support.wire_decode_token input_token k in
 	      if !k <> String.length input_token then
 		raise(Routine_error `Defective_token);
 	      if oid <> scram_mech then
@@ -452,7 +454,7 @@ object(self)
 		with
 		  | Not_found -> error `No_cred in
 	      (* Expect nt_user_name: *)
-	      if desired_name # name_type = Netgssapi.nt_user_name then (
+	      if desired_name # name_type = Netsys_gssapi.nt_user_name then (
 		let user = desired_name # name_string in
 		out_client_cred user
 	      )
@@ -741,7 +743,7 @@ object(self)
 		let sequence_number = context # seq_nr in
 		let sent_by_acceptor = context # is_acceptor in
 		let token =
-		  Netgssapi.create_mic_token
+		  Netgssapi_support.create_mic_token
 		    ~sent_by_acceptor
 		    ~acceptor_subkey:false
 		    ~sequence_number
@@ -998,7 +1000,7 @@ object(self)
 	  if continuation then
 	    output_token_1
 	  else
-	    Netgssapi.wire_encode_token scram_mech output_token_1 in
+	    Netgssapi_support.wire_encode_token scram_mech output_token_1 in
 	let ret_flags =
 	  if Netmech_scram.client_protocol_key sess <> None then
 	    `Prot_ready_flag :: scram_ret_flags
@@ -1265,12 +1267,12 @@ object(self)
 	      if context#is_acceptor then k_wrap_c else k_wrap_s in
 	    ( try
 		let (sent_by_acceptor, _, _, tok_seq_nr) =
-		  Netgssapi.parse_wrap_token_header input_message in
+		  Netgssapi_support.parse_wrap_token_header input_message in
 		if sent_by_acceptor = context#is_acceptor then
 		  raise Netmech_scram.Cryptosystem.Integrity_error;
 		let flags = context#is_peer_seq_nr_ok tok_seq_nr in
 		let s =
-		  Netgssapi.unwrap_wrap_token_conf
+		  Netgssapi_support.unwrap_wrap_token_conf
 		    ~decrypt_and_verify:(
 		      Netmech_scram.Cryptosystem.decrypt_and_verify_mstrings
 			sk_wrap)
@@ -1315,12 +1317,12 @@ object(self)
 	    let sk_mic =
 	      if context#is_acceptor then k_mic_c else k_mic_s in
 	    let (sent_by_acceptor,_,tok_seq_nr) =
-	      Netgssapi.parse_mic_token_header token in
+	      Netgssapi_support.parse_mic_token_header token in
 	    let flags =
 	      context#is_peer_seq_nr_ok tok_seq_nr in
 	    let ok =
 	      sent_by_acceptor <> context#is_acceptor &&
-		(Netgssapi.verify_mic_token
+		(Netgssapi_support.verify_mic_token
 		   ~get_mic:(Netmech_scram.Cryptosystem.get_mic_mstrings sk_mic)
 		   ~message
 		   ~token) in
@@ -1371,7 +1373,7 @@ object(self)
 	      let sk_wrap =
 		if context#is_acceptor then k_wrap_s else k_wrap_c in
 	      let token =
-		Netgssapi.create_wrap_token_conf
+		Netgssapi_support.create_wrap_token_conf
 		  ~sent_by_acceptor:context#is_acceptor
 		  ~acceptor_subkey:false
 		  ~sequence_number:context#seq_nr

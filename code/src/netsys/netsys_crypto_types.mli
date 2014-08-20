@@ -648,7 +648,10 @@ module type DIGESTS = sig
        *)
 
     val size : digest -> int
-      (** returns the size of the hash output *)
+      (** returns the size of the hash output (in bytes) *)
+
+    val block_length : digest -> int
+      (** the block length (in bytes) *)
 
     type digest_ctx
       (** A digest context stores state while digesting data *)

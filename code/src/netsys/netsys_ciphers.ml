@@ -38,31 +38,34 @@ object
 end
 
 
+let process_substring proc s pos len =
+  let inbuf, free_inbuf =
+    Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
+  let outbuf, free_outbuf =
+    Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
+  let collect = ref [] in
+  let k = ref pos in
+  while !k < len do
+    let n = min (len - !k) (Bigarray.Array1.dim inbuf) in
+    Netsys_mem.blit_string_to_memory s !k inbuf 0 n;
+    let inbuf1 = Bigarray.Array1.sub inbuf 0 n in
+    let (n_in, n_out) = proc ~last:(n = len - !k) inbuf1 outbuf in
+    if n_in = 0 then failwith "encryption/decryption: would loop";
+    let u =
+      Netsys_mem.string_of_memory (Bigarray.Array1.sub outbuf 0 n_out) in
+    collect := u :: !collect;
+    k := !k + n_in
+  done;
+  free_inbuf();
+  free_outbuf();
+  String.concat "" (List.rev !collect)
+
+
+let process_string proc s =
+  process_substring proc s 0 (String.length s)
+
+
 module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
-  let process_string proc s =
-    let inbuf, free_inbuf =
-      Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
-    let outbuf, free_outbuf =
-      Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
-    let collect = ref [] in
-    let k = ref 0 in
-    let l = String.length s in
-    while !k < l do
-      let n = min (l - !k) (Bigarray.Array1.dim inbuf) in
-      Netsys_mem.blit_string_to_memory s !k inbuf 0 n;
-      let inbuf1 = Bigarray.Array1.sub inbuf 0 n in
-      let (n_in, n_out) = proc ~last:(n = l - !k) inbuf1 outbuf in
-      if n_in = 0 then failwith "encryption/decryption: would loop";
-      let u =
-        Netsys_mem.string_of_memory (Bigarray.Array1.sub outbuf 0 n_out) in
-      collect := u :: !collect;
-      k := !k + n_in
-    done;
-    free_inbuf();
-    free_outbuf();
-    String.concat "" (List.rev !collect)
-
-
   let ctx_obj_no_padding c ctx : cipher_ctx =
     let bs = Impl.block_constraint c in
     object(self)
@@ -209,7 +212,10 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
     end
 
 
-  let ctx_obj_cts c ctx : cipher_ctx =
+  let ctx_obj_cts c ctx key : cipher_ctx =
+    let mode = Impl.mode c in
+    if mode <> "ECB" && mode <> "CBC" then
+      failwith "CTS padding is only defined for ECB and CBC modes";
     let bs = Impl.block_constraint c in
     let pad_e = Bigarray.Array1.create Bigarray.char Bigarray.c_layout bs in
     let pad_d = Bigarray.Array1.create Bigarray.char Bigarray.c_layout bs in
@@ -241,6 +247,11 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
               (Bigarray.Array1.sub inbuf l_inbuf2 bs)
               pad_e;
             let m = l_inbuf - l_inbuf2 - bs in
+            (* In CBC mode delete the second part of pad_e: *)
+            if mode = "CBC" then
+              Bigarray.Array1.fill
+                (Bigarray.Array1.sub pad_e m (bs-m))
+                '\000';
             Bigarray.Array1.blit
               (Bigarray.Array1.sub pad_e 0 m)
               (Bigarray.Array1.sub outbuf (n1+bs) m);
@@ -276,25 +287,56 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
           if l_inbuf <= bs then failwith "decrypt";
           let l_out_needed = l_inbuf in
           if l_outbuf > l_out_needed then (
-            let ok =
-              Impl.decrypt
-                ctx
-                (Bigarray.Array1.sub inbuf n1 bs)
-                pad_d in
-            if not ok then failwith "decrypt";
             let m = l_inbuf - l_inbuf2 - bs in
-            Bigarray.Array1.blit
-              (Bigarray.Array1.sub pad_d 0 m)
-              (Bigarray.Array1.sub outbuf (n1+bs) m);
-            Bigarray.Array1.blit
-              (Bigarray.Array1.sub inbuf (l_inbuf2+bs) m)
-              (Bigarray.Array1.sub pad_d 0 m);
-            let ok =
-              Impl.decrypt
-                ctx
-                pad_d
-                (Bigarray.Array1.sub outbuf n1 bs) in
-            if not ok then failwith "decrypt";
+            if mode = "CBC" then (
+              (* This is very different due to the mods in encryption *)
+              let ctx_ecb = Impl.create c key in
+              Impl.set_iv ctx_ecb (String.make bs '\000');
+              let ok =
+                Impl.decrypt
+                  ctx_ecb
+                  (Bigarray.Array1.sub inbuf n1 bs)
+                  pad_d in
+              if not ok then failwith "decrypt";
+              Bigarray.Array1.blit
+                (Bigarray.Array1.sub inbuf (l_inbuf2+bs) m)
+                (Bigarray.Array1.sub pad_d 0 m);
+              let ok =
+                Impl.decrypt
+                  ctx
+                  pad_d
+                  (Bigarray.Array1.sub outbuf n1 bs) in
+              if not ok then failwith "decrypt";
+              let ok =
+                Impl.decrypt
+                  ctx
+                  (Bigarray.Array1.sub inbuf n1 bs)
+                  pad_d in
+              if not ok then failwith "decrypt";
+              Bigarray.Array1.blit
+                (Bigarray.Array1.sub pad_d 0 m)
+                (Bigarray.Array1.sub outbuf (n1+bs) m);
+            )            
+            else (
+              let ok =
+                Impl.decrypt
+                  ctx
+                  (Bigarray.Array1.sub inbuf n1 bs)
+                  pad_d in
+              if not ok then failwith "decrypt";
+              Bigarray.Array1.blit
+                (Bigarray.Array1.sub pad_d 0 m)
+                (Bigarray.Array1.sub outbuf (n1+bs) m);
+              Bigarray.Array1.blit
+                (Bigarray.Array1.sub inbuf (l_inbuf2+bs) m)
+                (Bigarray.Array1.sub pad_d 0 m);
+              let ok =
+                Impl.decrypt
+                  ctx
+                  pad_d
+                  (Bigarray.Array1.sub outbuf n1 bs) in
+              if not ok then failwith "decrypt";
+            );
             (l_inbuf, l_out_needed)
           )
           else (n1,n1)          
@@ -324,7 +366,7 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
           | `_8000 ->
               ctx_obj_simple_padding c ctx `_8000
           | `CTS ->
-              ctx_obj_cts c ctx
+              ctx_obj_cts c ctx key
     end
 
   let list() =

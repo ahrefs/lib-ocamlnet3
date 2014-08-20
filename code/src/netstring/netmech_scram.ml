@@ -468,16 +468,28 @@ let decode_sf_message s =
 	raise(Invalid_encoding("decode_sf_mesage", s))
 
 
-let sha1 s =
-  Cryptokit.hash_string (Cryptokit.Hash.sha1()) s
 
-let hmac key str =
-  Netauth.hmac
-    ~h:sha1
-    ~b:64
-    ~l:20
-    ~k:key
-    ~message:str
+
+let sha1() =
+  try Netsys_digests.find "SHA1-160"
+  with Not_found ->
+    failwith "Netmech_scram: cannot find digest SHA1-160. Is the crypto \
+              support initialized?"
+
+let sha1_string s =
+  let dg = sha1() in
+  Netsys_digests.digest_string dg s
+
+let hmac_sha1 key =
+  Netsys_digests.hmac (sha1()) key
+
+let hmac_sha1_string key str =
+  let dg = hmac_sha1 key in
+  Netsys_digests.digest_string dg str
+
+let hmac_sha1_mstrings key ms_list =
+  let dg = hmac_sha1 key in
+  Netsys_digests.digest_mstrings dg ms_list
 
 let int_s i =
   let s = String.make 4 '\000' in
@@ -490,12 +502,12 @@ let int_s i =
 let hi str salt i =
   let rec uk k =
     if k=1 then
-      let u = hmac str (salt ^ int_s 1) in
+      let u = hmac_sha1_string str (salt ^ int_s 1) in
       let h = u in
       (u,h)
     else (
       let (u_pred, h_pred) = uk (k-1) in
-      let u = hmac str u_pred in
+      let u = hmac_sha1_string str u_pred in
       let h = Netauth.xor_s u h_pred in
       (u,h)
     ) in
@@ -623,8 +635,8 @@ let client_emit_message cs =
 	       match cs.cs_s1 with None -> assert false | Some s1 -> s1 in
 	     let salted_pw = 
 	       salt_password cs.cs_password s1.s1_salt s1.s1_iteration_count in
-	     let client_key = hmac salted_pw "Client Key" in
-	     let stored_key = sha1 client_key in
+	     let client_key = hmac_sha1_string salted_pw "Client Key" in
+	     let stored_key = sha1_string client_key in
 	     let cf_no_proof =
 	       encode_cf_message { cf_chanbind = cs.cs_chanbind;
 				   cf_nonce = s1.s1_nonce;
@@ -635,7 +647,7 @@ let client_emit_message cs =
 	       encode_c1_message c1 ^ "," ^ 
 		 cs.cs_s1_raw ^ "," ^ 
 		 cf_no_proof in
-	     let client_signature = hmac stored_key auth_message in
+	     let client_signature = hmac_sha1_string stored_key auth_message in
 	     let p = Netauth.xor_s client_key client_signature in
 	     let cf =
 	       { cf_chanbind = cs.cs_chanbind;
@@ -648,7 +660,7 @@ let client_emit_message cs =
 	     cs.cs_auth_message <- auth_message;
 	     cs.cs_salted_pw <- salted_pw;
 	     cs.cs_proto_key <- Some ( lsb128
-					 (hmac
+					 (hmac_sha1_string
 					    stored_key
 					    ("GSS-API session key" ^ 
 					       client_key ^ auth_message)));
@@ -692,9 +704,9 @@ let client_recv_message cs message =
 		 | `Verifier v ->
 		     let salted_pw = cs.cs_salted_pw in
 		     let server_key =
-		       hmac salted_pw "Server Key" in
+		       hmac_sha1_string salted_pw "Server Key" in
 		     let server_signature =
-		       hmac server_key cs.cs_auth_message in
+		       hmac_sha1_string server_key cs.cs_auth_message in
 		     if v <> server_signature then
 		       raise Invalid_server_signature;
 		     cs.cs_state <- `Connected;
@@ -863,9 +875,9 @@ let server_emit_message ss =
 		    ss.ss_s1_raw ^ "," ^ 
 		    cf_no_proof in
 		let server_key =
-		  hmac spw "Server Key" in
+		  hmac_sha1_string spw "Server Key" in
 		let server_signature =
-		  hmac server_key auth_message in
+		  hmac_sha1_string server_key auth_message in
 		let sf =
 		  { sf_error_or_verifier = `Verifier server_signature;
 		    sf_extensions = []
@@ -909,20 +921,21 @@ let server_recv_message ss message =
 	       let cf = decode_cf_message true message in
 	       if s1.s1_nonce <> cf.cf_nonce then
 		 raise (Invalid_proof "nonce mismatch");
-	       let client_key = hmac salted_pw "Client Key" in
-	       let stored_key = sha1 client_key in
+	       let client_key = hmac_sha1_string salted_pw "Client Key" in
+	       let stored_key = sha1_string client_key in
 	       let cf_no_proof = strip_cf_proof message in
 	       let auth_message =
 		 ss.ss_c1_raw ^ "," ^ 
 		   ss.ss_s1_raw ^ "," ^ 
 		   cf_no_proof in
-	       let client_signature = hmac stored_key auth_message in
+	       let client_signature =
+                 hmac_sha1_string stored_key auth_message in
 	       let p = Netauth.xor_s client_key client_signature in
 	       if Some p <> cf.cf_proof then
 		 raise (Invalid_proof "bad client signature");
 	       ss.ss_cf <- Some cf;
 	       ss.ss_proto_key <- Some ( lsb128
-					   (hmac
+					   (hmac_sha1_string
 					      stored_key
 					      ("GSS-API session key" ^ 
 						 client_key ^ auth_message)));
@@ -947,96 +960,26 @@ let server_user_name ss =
     | Some c1 -> Some c1.c1_username
 
 
-let transform_mstrings (trafo:Cryptokit.transform) ms_list =
-  (* Like Cryptokit's transform_string, but for "mstring list" *)
-  let blen = 256 in
-  let s = String.create blen in
-
-  let rec loop in_list out_list =
-    match in_list with
-      | ms :: in_list' ->
-	  let ms_len = ms#length in
-	  ( match ms#preferred with
-	      | `String ->
-		  let (s,start) = ms#as_string in
-		  trafo#put_substring s start ms_len;
-		  if trafo#available_output > 0 then
-		    let o = trafo#get_string in
-		    let ms' = Xdr_mstring.string_to_mstring o in
-		    loop in_list' (ms' :: out_list)
-		  else
-		    loop in_list' out_list
-	      | `Memory ->
-		  let (m,start) = ms#as_memory in
-		  let k = ref 0 in
-		  let ol = ref out_list in
-		  while !k < ms_len do
-		    let n = min blen (ms_len - !k) in
-		    Netsys_mem.blit_memory_to_string
-		      m (start + !k) s 0 n;
-		    trafo#put_substring s 0 n;
-		    k := !k + n;
-		    if trafo#available_output > 0 then (
-		      let o = trafo#get_string in
-		      let ms' = Xdr_mstring.string_to_mstring o in
-		      ol := ms' :: !ol;
-		    )
-		  done;
-		  loop in_list' !ol
-	  )
-      | [] ->
-	  trafo # finish;
-	  let out_list' =
-	    if trafo#available_output > 0 then
-	      let o = trafo#get_string in
-	      let ms' = Xdr_mstring.string_to_mstring o in
-	      ms' :: out_list
-	    else
-	      out_list in
-	  List.rev out_list' in
-  loop ms_list []
-
-
-let hash_mstrings (hash:Cryptokit.hash) ms_list =
-  (* Like Cryptokit's hash_string, but for "mstring list" *)
-  let blen = 1024 in
-  let s = String.create blen in
-
-  let rec loop in_list =
-    match in_list with
-      | ms :: in_list' ->
-	  let ms_len = ms#length in
-	  ( match ms#preferred with
-	      | `String ->
-		  let (s,start) = ms#as_string in
-		  hash#add_substring s start ms_len;
-		  loop in_list'
-	      | `Memory ->
-		  let (m,start) = ms#as_memory in
-		  let k = ref 0 in
-		  while !k < ms_len do
-		    let n = min blen (ms_len - !k) in
-		    Netsys_mem.blit_memory_to_string
-		      m (start + !k) s 0 n;
-		    hash#add_substring s 0 n;
-		    k := !k + n;
-		  done;
-		  loop in_list'
-	  )
-      | [] ->
-	  hash#result in
-  loop ms_list
-  
-
-let hmac_sha1_mstrings key ms_list =
-  let h = Cryptokit.MAC.hmac_sha1 key in
-  hash_mstrings h ms_list
-
-
 (* Encryption for GSS-API *)
 
 module AES_CTS = struct
   (* FIXME: avoid copying strings all the time *)
+
+  let aes128_err() =
+    failwith "Netmech_scram: cannot find cipher AES-128. Is the crypto \
+              support initialized?"
+
+  let aes128_ecb() =
+    try
+      Netsys_ciphers.find ("AES-128", "ECB")
+    with
+      | Not_found -> aes128_err()
+
+  let aes128_cbc() =
+    try
+      Netsys_ciphers.find ("AES-128", "CBC")
+    with
+      | Not_found -> aes128_err()
 
   let c = 128 (* bits *)
 
@@ -1050,33 +993,18 @@ module AES_CTS = struct
     let l = String.length s in
     if l <= 16 then (
       (* Corner case: exactly one AES block of 128 bits or less *)
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.ECB
-	  ~pad:Cryptokit.Padding.length (* any padding is ok here *)
-	  key Cryptokit.Cipher.Encrypt in
-      Cryptokit.transform_string cipher s
+      let cipher = aes128_ecb() in
+      let ctx = cipher # create key `Length in  (* any padding is ok here *)
+      ctx # encrypt_string s
     )
     else (
       (* Cipher-text stealing, also see
 	 http://en.wikipedia.org/wiki/Ciphertext_stealing
-	 http://www.wordiq.com/definition/Ciphertext_stealing
        *)
-      (* Cryptokit's padding feature is unusable here *)
-      let m = l mod 16 in
-      let s_padded = 
-	if m = 0 then s else s ^ String.make (16-m) '\000' in
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.CBC
-	  key Cryptokit.Cipher.Encrypt in
-      let u = Cryptokit.transform_string cipher s_padded in
-      let ulen = String.length u in
-      assert(ulen >= 32 && ulen mod 16 = 0);
-      let v = String.sub u (ulen-16) 16 in
-      String.blit u (ulen-32) u (ulen-16) 16;
-      String.blit v 0 u (ulen-32) 16;
-      String.sub u 0 l
+      let cipher = aes128_cbc() in
+      let ctx = cipher # create key `CTS in
+      ctx # set_iv (String.make 16 '\000');
+      ctx # encrypt_string s
     )
 
   let encrypt_mstrings key ms_list =
@@ -1085,33 +1013,16 @@ module AES_CTS = struct
      *)
     let l = Xdr_mstring.length_mstrings ms_list in
     if l <= 16 then (
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.ECB
-	  ~pad:Cryptokit.Padding.length (* any padding is ok here *)
-	  key Cryptokit.Cipher.Encrypt in
-      transform_mstrings cipher ms_list
+      let s = encrypt key (Xdr_mstring.concat_mstrings ms_list) in
+      [ Xdr_mstring.string_to_mstring s ]
     )
     else (
-      let m = l mod 16 in
-      let ms_padded =
-	if m=0 then ms_list else
-	  ms_list @ 
-	    [ Xdr_mstring.string_to_mstring (String.make (16-m) '\000') ] in
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.CBC
-	  key Cryptokit.Cipher.Encrypt in
-      let u = transform_mstrings cipher ms_padded in
-      let ulen = Xdr_mstring.length_mstrings u in
-      assert(ulen >= 32 && ulen mod 16 = 0);
-
-      let u0 = Xdr_mstring.shared_sub_mstrings u 0 (ulen-32) in
-      let u1 = Xdr_mstring.shared_sub_mstrings u (ulen-32) 16 in
-      let u2 = Xdr_mstring.shared_sub_mstrings u (ulen-16) 16 in
-
-      let u' = u0 @ u2 @ u1 in
-      Xdr_mstring.shared_sub_mstrings u' 0 l
+      let cipher = aes128_cbc() in
+      let ctx = cipher # create key `CTS in
+      ctx # set_iv (String.make 16 '\000');
+      let ch = Xdr_mstring.in_channel_of_mstrings ms_list in
+      let enc_ch = Netchannels_crypto.encrypt_in ctx ch in
+      Xdr_mstring.mstrings_of_in_channel (enc_ch :> Netchannels.in_obj_channel)
     )
     
 
@@ -1120,77 +1031,30 @@ module AES_CTS = struct
     if l <= 16 then (
       if l <> 16 then
 	invalid_arg "Netmech_scram.AES256_CTS: bad length of plaintext";
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.ECB
-	  key Cryptokit.Cipher.Decrypt in
-      Cryptokit.transform_string cipher s
-	(* This string is still padded! *)
+      let cipher = aes128_ecb() in
+      let ctx = cipher # create key `None in
+      ctx # set_iv (String.make 16 '\000');
+      ctx # decrypt_string s  (* This string is still padded! *)
     ) else (
-      let k_last = ((l - 1) / 16) * 16 in
-      let k_last_len = l - k_last in
-      let k_second_to_last = k_last - 16 in
-      let dn_cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.ECB
-	  key Cryptokit.Cipher.Decrypt in
-      let c_2nd_to_last = String.sub s k_second_to_last 16 in
-      let dn = 
-	Cryptokit.transform_string dn_cipher c_2nd_to_last in
-      let cn =
-	(String.sub s k_last k_last_len) ^ 
-	  (String.sub dn k_last_len (16 - k_last_len)) in
-      let u = String.create (k_last+16) in
-      String.blit s 0 u 0 k_second_to_last;
-      String.blit cn 0 u k_second_to_last 16;
-      String.blit c_2nd_to_last 0 u k_last 16;
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.CBC
-	  key Cryptokit.Cipher.Decrypt in
-      let v = Cryptokit.transform_string cipher u in
-      String.sub v 0 l
+      let cipher = aes128_cbc() in
+      let ctx = cipher # create key `CTS in
+      ctx # set_iv (String.make 16 '\000');
+      ctx # decrypt_string s
     )
 
 
   let decrypt_mstrings key ms_list =
     let l = Xdr_mstring.length_mstrings ms_list in
     if l <= 16 then (
-      if l <> 16 then
-	invalid_arg "Netmech_scram.AES256_CTS: bad length of plaintext";
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.ECB
-	  key Cryptokit.Cipher.Decrypt in
-      transform_mstrings cipher ms_list
-	(* This string is still padded! *)
+      let s = decrypt key (Xdr_mstring.concat_mstrings ms_list) in
+      [ Xdr_mstring.string_to_mstring s ]
     ) else (
-      let k_last = ((l - 1) / 16) * 16 in
-      let k_last_len = l - k_last in
-      let k_second_to_last = k_last - 16 in
-      let dn_cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.ECB
-	  key Cryptokit.Cipher.Decrypt in
-      let c_2nd_to_last = 
-	Xdr_mstring.shared_sub_mstrings ms_list k_second_to_last 16 in
-      let dn = 
-	transform_mstrings dn_cipher c_2nd_to_last in
-      let cn0 =
-	Xdr_mstring.shared_sub_mstrings ms_list k_last k_last_len in
-      let cn1 =
-	Xdr_mstring.shared_sub_mstrings dn k_last_len (16-k_last_len) in
-      let cn = cn0 @ cn1 in
-      let s0 =
-	Xdr_mstring.shared_sub_mstrings ms_list 0 k_second_to_last in
-      let u =
-	s0 @ cn @ c_2nd_to_last in
-      let cipher =
-	Cryptokit.Cipher.aes
-	  ~mode:Cryptokit.Cipher.CBC
-	  key Cryptokit.Cipher.Decrypt in
-      let v = transform_mstrings cipher u in
-      Xdr_mstring.shared_sub_mstrings v 0 l
+      let cipher = aes128_cbc() in
+      let ctx = cipher # create key `CTS in
+      ctx # set_iv (String.make 16 '\000');
+      let ch = Xdr_mstring.in_channel_of_mstrings ms_list in
+      let dec_ch = Netchannels_crypto.decrypt_in ctx ch in
+      Xdr_mstring.mstrings_of_in_channel (dec_ch :> Netchannels.in_obj_channel)
     )
 
   (* Test vectors from the RFC (for 128 bit AES): *)
@@ -1262,10 +1126,20 @@ module AES_CTS = struct
     ]
 
   let run_tests() =
+    let j = ref 1 in
     List.for_all
       (fun (k, v_in, v_out) ->
-	 encrypt k v_in = v_out &&
-	  decrypt k v_out = v_in
+	 prerr_endline("Test: " ^ string_of_int !j);
+         let e1 = encrypt k v_in in
+         prerr_endline "  enc ok";
+         let d1 = decrypt k v_out in
+         prerr_endline "  dec ok";
+         let ok1 = e1 = v_out in
+         if not ok1 then prerr_endline "  enc unexpected result";
+         let ok2 = d1 = v_in in
+         if not ok2 then prerr_endline "  dec unexpected result";
+         incr j;
+         ok1 && ok2
       )
       tests
 
@@ -1296,7 +1170,7 @@ module Cryptosystem = struct
     (* Cipher *)
 
   module I = struct   (* Integrity *)
-    let hmac = hmac  (* hmac-sha1 *)
+    let hmac = hmac_sha1_string  (* hmac-sha1 *)
     let hmac_mstrings = hmac_sha1_mstrings
     let h = 12
   end

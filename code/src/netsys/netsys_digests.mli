@@ -2,9 +2,6 @@
 
 (** Cryptographic digests (hashes) *)
 
-(** Also see {!Netauth} for the HMAC construction, for PRF, etc. *)
-
-
 class type digest_ctx =
 object
   method add_memory : Netsys_types.memory -> unit
@@ -26,6 +23,9 @@ object
      *)
   method size : int
     (** The size of the digest string in bytes *)
+
+  method block_length : int
+    (** The block length of the hash function (for HMAC) in bytes *)
 
   method create : unit -> digest_ctx
     (** Start digestion *)
@@ -52,3 +52,15 @@ val find : ?impl:(module Netsys_crypto_types.DIGESTS) ->
 
 val digest_string : digest -> string -> string
   (** Digest a string *)
+
+val digest_mstrings : digest -> Netsys_types.mstring list -> string
+  (** Digest a sequence of mstrings *)
+
+
+val hmac : digest -> string -> digest
+    (** [hmac dg key]: returns the digest context computing the HMAC
+        construction (RFC-2104).
+
+        The key must not be longer than dg#block_length.
+     *)
+

@@ -11,6 +11,19 @@ type memory =
    *)
 
 
+(** See {!Xdr_mstring.mstring} for documentation *)
+class type mstring =
+object
+  method length : int
+  method blit_to_string :  int -> string -> int -> int -> unit
+  method blit_to_memory : int -> memory -> int -> int -> unit
+  method as_string : string * int
+  method as_memory : memory * int
+  method preferred : [ `Memory | `String ]
+end
+
+
+
 exception EAGAIN_RD
 exception EAGAIN_WR
   (** A read or write cannot be done because the descriptor is in

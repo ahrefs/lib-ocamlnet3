@@ -67,7 +67,7 @@ let tok1, c_ctx =
 		let (ce,re,flags) = major_status in
 		if ce <> `None || re <> `None then
 		  failwith("tok1: " ^ 
-			     Netgssapi.string_of_major_status major_status);
+			     Netsys_gssapi.string_of_major_status major_status);
 		if not(List.mem `Continue_needed flags) then
 		  failwith("tok1: no continue");
 		let ctx =
@@ -90,7 +90,7 @@ let tok2, s_ctx =
 		let (ce,re,flags) = major_status in
 		if ce <> `None || re <> `None then
 		  failwith("tok2: " ^ 
-			     Netgssapi.string_of_major_status major_status);
+			     Netsys_gssapi.string_of_major_status major_status);
 		if not(List.mem `Continue_needed flags) then
 		  failwith("tok2: no continue");
 		let ctx =
@@ -117,7 +117,7 @@ let tok3 =
 		let (ce,re,flags) = major_status in
 		if ce <> `None || re <> `None then
 		  failwith("tok3: " ^ 
-			     Netgssapi.string_of_major_status major_status);
+			     Netsys_gssapi.string_of_major_status major_status);
 		if not (List.mem `Continue_needed flags) then
 		  failwith("tok3: no continue");
 		output_token
@@ -136,7 +136,7 @@ let tok4 =
 		let (ce,re,flags) = major_status in
 		if ce <> `None || re <> `None then
 		  failwith("tok4: " ^ 
-			     Netgssapi.string_of_major_status major_status);
+			     Netsys_gssapi.string_of_major_status major_status);
 		if (List.mem `Continue_needed flags) then
 		  failwith("tok4: no continue");
 		output_token
@@ -159,7 +159,7 @@ let () =
 		let (ce,re,flags) = major_status in
 		if ce <> `None || re <> `None then
 		  failwith("tok3: " ^ 
-			     Netgssapi.string_of_major_status major_status);
+			     Netsys_gssapi.string_of_major_status major_status);
 		if (List.mem `Continue_needed flags) then
 		  failwith("tok4: continue");
 		if output_token <> "" then
@@ -182,7 +182,7 @@ let mic1 =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("mic1: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	    msg_token
 	 )
     ()
@@ -196,7 +196,7 @@ let() =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("mic1 verification: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	 )
     ()
 
@@ -211,7 +211,7 @@ let mic2 =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("mic2: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	    msg_token
 	 )
     ()
@@ -225,7 +225,7 @@ let() =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("mic2 verification: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	 )
     ()
 
@@ -242,7 +242,7 @@ let enc_msg1 =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("enc_msg1: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	    output_message
 	 )
     ()
@@ -257,7 +257,7 @@ let dec_msg1 =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("dec_msg1: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	    output_message
 	 )
     ()
@@ -279,7 +279,7 @@ let enc_msg2 =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("enc_msg2: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	    output_message
 	 )
     ()
@@ -294,7 +294,7 @@ let dec_msg2 =
 	    let (ce,re,flags) = major_status in
 	    if ce <> `None || re <> `None then
 	      failwith("dec_msg2: " ^ 
-			 Netgssapi.string_of_major_status major_status);
+			 Netsys_gssapi.string_of_major_status major_status);
 	    output_message
 	 )
     ()

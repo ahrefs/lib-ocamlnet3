@@ -1160,25 +1160,26 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
   type digest =
       { name : string;
         size : int;
+        block_length : int;
         create : unit -> digest_ctx;
       }
 
 
   let props =
-    [ "md2",        ( "MD2-128", 16 );
-      "md4",        ( "MD4-128", 16 );
-      "md5",        ( "MD5-128", 16 );
-      "sha1",       ( "SHA1-160", 20 );
-      "sha256",     ( "SHA2-256", 32 );
-      "sha224",     ( "SHA2-224", 28 );
-      "sha284",     ( "SHA2-384", 48 );
-      "sha512",     ( "SHA2-512", 64 );
-      "sha3_256",   ( "SHA3-256", 32 );
-      "sha3_224",   ( "SHA3-224", 28 );
-      "sha3_284",   ( "SHA3-384", 48 );
-      "sha3_512",   ( "SHA3-512", 64 );
-      "ripemd160",  ( "RIPEMD-160", 20 );
-      "gosthash94", ( "GOSTHASH94-256", 32 );
+    [ "md2",        ( "MD2-128", 16, 16 );
+      "md4",        ( "MD4-128", 16, 64 );
+      "md5",        ( "MD5-128", 16, 64 );
+      "sha1",       ( "SHA1-160", 20, 64 );
+      "sha256",     ( "SHA2-256", 32, 64 );
+      "sha224",     ( "SHA2-224", 28, 64 );
+      "sha384",     ( "SHA2-384", 48, 128 );
+      "sha512",     ( "SHA2-512", 64, 128 );
+      "sha3_256",   ( "SHA3-256", 32, 136 );
+      "sha3_224",   ( "SHA3-224", 28, 144 );
+      "sha3_384",   ( "SHA3-384", 48, 104 );
+      "sha3_512",   ( "SHA3-512", 64, 72 );
+      "ripemd160",  ( "RIPEMD-160", 20, 64 );
+      "gosthash94", ( "GOSTHASH94-256", 32, 32 );
     ]
 
   let props_m =
@@ -1187,7 +1188,7 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
   let digests =
     filter_map
       (fun h ->
-         let (name,size) = 
+         let (name,size,blocklen) = 
            StrMap.find (net_nettle_hash_name h) props_m in
          let create() =
            let ctx = net_nettle_create_hash_ctx h in
@@ -1201,6 +1202,7 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
            { add; finish } in
          { name;
            size;
+           block_length = blocklen;
            create
          }
       )
@@ -1212,6 +1214,7 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
   let find name = StrMap.find name digests_m
   let name dg = dg.name
   let size dg = dg.size
+  let block_length dg = dg.block_length
   let create dg = dg.create()
   let add ctx mem = ctx.add mem
   let finish ctx = ctx.finish()

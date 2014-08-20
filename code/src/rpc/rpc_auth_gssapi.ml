@@ -1,6 +1,7 @@
 (* $Id$ *)
 
-open Netgssapi
+open Netsys_gssapi
+open Netgssapi_support
 open Rpc_auth_gssapi_aux
 open Printf
 
@@ -64,7 +65,7 @@ let split_rpc_gss_data_t ms =
 
 let omax = Rtypes.mk_uint4 ('\255', '\255', '\255', '\255')
 
-let integrity_encoder (gss_api : Netgssapi.gss_api)
+let integrity_encoder (gss_api : Netsys_gssapi.gss_api)
                       ctx is_server cred1 rpc_gss_integ_data s =
   dlog "integrity_encoder";
   let data =
@@ -132,7 +133,7 @@ let () =
   Hashtbl.add ms_factories "*" Xdr_mstring.string_based_mstrings
 
 
-let integrity_decoder (gss_api : Netgssapi.gss_api)
+let integrity_decoder (gss_api : Netsys_gssapi.gss_api)
                       ctx is_server cred1 rpc_gss_integ_data s pos len =
   dlog "integrity_decoder";
   try
@@ -178,7 +179,7 @@ let integrity_decoder (gss_api : Netgssapi.gss_api)
 		"Rpc_auth_gssapi: cannot decode integrity-proctected message")
 
 
-let privacy_encoder (gss_api : Netgssapi.gss_api)
+let privacy_encoder (gss_api : Netsys_gssapi.gss_api)
                      ctx is_server cred1 rpc_gss_priv_data s =
   dlog "privacy_encoder";
   let data =
@@ -229,7 +230,7 @@ let privacy_encoder (gss_api : Netgssapi.gss_api)
 	 )
     ()
 
-let privacy_decoder (gss_api : Netgssapi.gss_api)
+let privacy_decoder (gss_api : Netsys_gssapi.gss_api)
                      ctx is_server cred1 rpc_gss_priv_data s pos len =
   dlog "privacy_decoder";
   try
@@ -552,7 +553,7 @@ let server_auth_method
 			| `Exported_name -> assert false
 			| `Prefixed_name ->
 			    let oid_s =
-			      Netgssapi.oid_to_string output_name_type in
+			      Netoid.to_string_curly output_name_type in
 			    oid_s ^ output_name
 			| `Plain_name ->
 			    output_name
@@ -1280,7 +1281,8 @@ let client_auth_method
 			let l = String.length user in
 			( try
 			    let k = String.index user '}' in
-			    let oid = string_to_oid (String.sub user 0 (k+1)) in
+			    let oid = 
+                              Netoid.of_string_curly (String.sub user 0 (k+1)) in
 			    let n = String.sub user (k+1) (l-k-1) in
 			    (n, oid)
 			  with _ ->

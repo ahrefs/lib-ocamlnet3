@@ -37,7 +37,7 @@ defining the details of how GSS-API is to be used for ONCRPC (RFC
 
 {2 The GSS-API in Ocaml}
 
-The GSS-API is defined as a class type {!Netgssapi.gss_api}. We do not
+The GSS-API is defined as a class type {!Netsys_gssapi.gss_api}. We do not
 want to go much into detail - for {b using} the GSS-API it is not
 required to understand everything. The class type is "feature
 compatible" with the standard C version of the API (RFC 2744)
@@ -51,7 +51,7 @@ where only one provider can exist at a time (linked into the program),
 although the provider can manage several mechanisms.
 
 When using GSS-API you will be confronted with OIDs, names, and
-credentials. These concepts are defined in the {!Netgssapi} module:
+credentials. These concepts are defined in the {!Netsys_gssapi} module:
 
 - An OID (object identifier) is a IANA-registered number helping
   to identify especially security mechanisms, and styles of
@@ -72,9 +72,9 @@ credentials. These concepts are defined in the {!Netgssapi} module:
 OIDs are represented as [oid = int array]. There are a number of predefined
 OIDs, e.g.
 
-- {!Netgssapi.nt_user_name} is the OID of the name type identifying
+- {!Netsys_gssapi.nt_user_name} is the OID of the name type identifying
   users by name
-- {!Netgssapi.nt_hostbased_service} is the OID of the name type
+- {!Netsys_gssapi.nt_hostbased_service} is the OID of the name type
   identifying services relative to hosts
 - {!Netmech_scram_gssapi.scram_mech} is the OID of the SCRAM
   security mechanism
@@ -82,17 +82,17 @@ OIDs, e.g.
 An empty array is often used to mean the default (e.g. default
 mechanism).
 
-Names are represented as {!Netgssapi.name}. This object has almost
+Names are represented as {!Netsys_gssapi.name}. This object has almost
 no methods - which is intended because names are opaque to users
 outside the GSS-API implementation. The GSS-API defines methods
 to import and export names:
 
-- {!Netgssapi.gss_api.import_name} allows one to convert a pair
-  of a name type and a string to the opaque {!Netgssapi.name}
+- {!Netsys_gssapi.gss_api.import_name} allows one to convert a pair
+  of a name type and a string to the opaque {!Netsys_gssapi.name}
   object. The name type is an OID.
-- {!Netgssapi.gss_api.display_name} is roughly the reverse operation
+- {!Netsys_gssapi.gss_api.display_name} is roughly the reverse operation
   (but see below).
-- {!Netgssapi.gss_api.export_name} converts an opaque name to
+- {!Netsys_gssapi.gss_api.export_name} converts an opaque name to
   a binary string. It is ensured that another call of [import_name]
   with the same string restores the opaque name.
 
@@ -102,14 +102,14 @@ naming elements spanning several mechanisms. This is an issue when
 names need to be compared. Generally, it may lead to wrong results
 when names are compared by displaying or exporting them, and then
 comparing the resulting strings. There is a special
-{!Netgssapi.gss_api.compare_name} method for comparisons, and
-{!Netgssapi.gss_api.canonicalize_name} may also be useful in this
+{!Netsys_gssapi.gss_api.compare_name} method for comparisons, and
+{!Netsys_gssapi.gss_api.canonicalize_name} may also be useful in this
 context.
 
 For RPC, the ways of referring to names have been simplified - more on
 that below.
 
-Credentials are also opaque objects - {!Netgssapi.credential}. It is
+Credentials are also opaque objects - {!Netsys_gssapi.credential}. It is
 generally assumed that a GSS-API implementation can look up the right
 credentials for a principal that is identified by name. For example,
 the GSS-API provider for SCRAM can be equipped with a "keyring", i.e.
@@ -168,7 +168,7 @@ class scram_gss_api :
         ?client_key_ring:client_key_ring ->
         ?server_key_verifier:server_key_verifier ->
         Netmech_scram.profile ->
-          Netgssapi.gss_api
+          Netsys_gssapi.gss_api
 ]}
 
 takes a few arguments. The [profile] can be just obtained by calling
@@ -239,7 +239,7 @@ class {!Netmech_scram_gssapi.scram_gss_api} this is done in two steps:
   {[ 
   let am = 
     Rpc_auth_gssapi.client_auth_method
-      ~user_name_interpretation:(`Plain_name Netgssapi.nt_user_name)
+      ~user_name_interpretation:(`Plain_name Netsys_gssapi.nt_user_name)
       gss_api Netmech_scram.scram_mech
   ]}
 - Add this method to the client:
@@ -296,7 +296,7 @@ enabled:
 You might have wondered why we pass
 
 {[
-~user_name_interpretation:(`Plain_name Netgssapi.nt_user_name)
+~user_name_interpretation:(`Plain_name Netsys_gssapi.nt_user_name)
 ]}
 
 to [client_auth_method]. As described above, there are various ways

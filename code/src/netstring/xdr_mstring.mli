@@ -231,6 +231,16 @@ val copy_mstring : mstring -> mstring
 val copy_mstrings : mstring list -> mstring list
   (** Create a copy *)
 
+val in_channel_of_mstrings : mstring list -> Netchannels.in_obj_channel
+  (** Returns a channel reading from the sequence of mstrings *)
+
+val mstrings_of_in_channel : Netchannels.in_obj_channel -> mstring list
+  (** Returns the data of a channel as a sequence of mstrings *)
+
+
+(** See also {!Netsys_digests.digest_mstrings} for a utiliy function to
+    compute cryptographic digests on mstrings
+ *)
 
 type named_mstring_factories =
     (string, mstring_factory) Hashtbl.t

@@ -157,3 +157,22 @@ val find : ?impl:(module Netsys_crypto_types.SYMMETRIC_CRYPTO) ->
         Modes are "ECB", "CBC", "OFB", "CTR", "STREAM", "GCM". Not every cipher
         is available in every mode.
      *)
+
+val process_substring :
+     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
+     string -> int -> int -> string
+  (** [process_substring p s pos len]: If [p] is [encrypt] or [decrypt] from
+      a [cipher_ctx], [p] will be called to submit the data from string [s],
+      starting at position [pos] and length [len].
+
+      The encrypted or decrypted string is returned.
+   *)
+
+val process_string :
+     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
+     string -> string
+  (** [process_substring p s pos len]: If [p] is [encrypt] or [decrypt] from
+      a [cipher_ctx], [p] will be called to submit the data from string [s].
+
+      The encrypted or decrypted string is returned.
+   *)

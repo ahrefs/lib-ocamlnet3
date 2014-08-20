@@ -189,6 +189,9 @@ for other libraries.
    Netx509
    Netdn
    Netasn1
+   Netgssapi_support
+   Netmech_scram
+   Netmech_scram_gssapi}
    Rtypes
    Xdr
    Xdr_mstring
@@ -328,10 +331,8 @@ other Ocamlnet libraries.
     Netsys_crypto_modes
     Netsys_tls
     Netsys_ciphers
+    Netsys_gssapi
 }
-
-
-
 
 
 {1:ch_web Web Programming}
@@ -462,21 +463,6 @@ over a local XTI connection ("cots" connection).
 
 {!modules:
     Rpc_xti_client}
-
-{2:netgssapi The [netgssapi] library with the GSS-API framework}
-
-{!modules:
-    Netgssapi}
-
-{2:netmech_scram The [netmech-scram] library for SCRAM}
-
-Implements SCRAM (RFC 5802). Right now only for GSS-API.
-
-{!modules:
-    Netmech_scram
-    Netmech_scram_gssapi}
-
-
 
 
 
