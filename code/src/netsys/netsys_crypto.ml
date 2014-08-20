@@ -46,6 +46,7 @@ module Empty_digests : Netsys_crypto_types.DIGESTS = struct
   type digest = unit
   let unavailable() = assert false
   let digests = [ ]
+  let find _ = raise Not_found
   let name _ = unavailable()
   let size _ = unavailable()
   type digest_ctx = unit

@@ -1206,6 +1206,10 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
       )
       (Array.to_list (net_nettle_hashes()))
 
+  let digests_m =
+    of_list (List.map (fun dg -> dg.name, dg) digests)
+
+  let find name = StrMap.find name digests_m
   let name dg = dg.name
   let size dg = dg.size
   let create dg = dg.create()

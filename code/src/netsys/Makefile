@@ -9,7 +9,7 @@ OBJECTS  = netsys_conf.cmo netsys_types.cmo \
 	   netsys_signal.cmo netsys_crypto_types.cmo netsys_crypto.cmo \
 	   netsys_crypto_modes.cmo \
 	   netsys_posix.cmo netsys_win32.cmo netsys_tls.cmo netsys.cmo \
-	   netsys_ciphers.cmo netsys_rng.cmo \
+	   netsys_ciphers.cmo netsys_digests.cmo netsys_rng.cmo \
 	   netsys_pollset.cmo netsys_pollset_posix.cmo \
 	   netsys_pollset_win32.cmo netsys_pollset_generic.cmo \
 	   netsys_xdr.cmo netsys_tmp.cmo \
@@ -28,7 +28,7 @@ DOBJECTS = netsys.mli netsys_posix.mli netsys_pollset.mli netlog.mli \
 	   netsys_rng.mli netsys_crypto_types.mli \
 	   netsys_types.mli netsys_mem.mli netsys_tmp.mli \
 	   netsys_sem.mli netsys_pmanage.mli netsys_crypto.mli netsys_tls.mli \
-	   netsys_ciphers.mli
+	   netsys_ciphers.mli netsys_digests.mli
 LINK_OPTIONS = $(NETSYS_LINK_OPTIONS)
 
 ALL_EXTRA = netsys_oothr.cma $(OOH_OBJECT)

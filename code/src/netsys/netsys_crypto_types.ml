@@ -177,6 +177,7 @@ end
 module type DIGESTS = sig
     type digest
     val digests : digest list
+    val find : string -> digest
     val name : digest -> string
     val size : digest -> int
     type digest_ctx

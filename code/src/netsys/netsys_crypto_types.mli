@@ -639,8 +639,13 @@ module type DIGESTS = sig
     val digests : digest list
       (** returns digests *)
 
+    val find : string -> digest
+      (** Returns the digest of this name, or raises [Not_found] *)
+
     val name : digest -> string
-      (** returns the name of the digest *)
+      (** returns the name of the digest. The name follows the format
+          [<uppercasename>-<size>], e.g. "MD5-128", "SHA1-160", "SHA2-256".
+       *)
 
     val size : digest -> int
       (** returns the size of the hash output *)
