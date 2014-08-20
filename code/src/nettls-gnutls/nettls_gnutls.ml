@@ -2,6 +2,8 @@
 
 open Printf
 
+module StrMap = Map.Make(String)
+
 module type GNUTLS_PROVIDER =
   sig
     include Netsys_crypto_types.TLS_PROVIDER
@@ -822,18 +824,16 @@ let rec filter_map f l =
     | [] ->
          []
 
+let of_list l =
+  List.fold_left
+    (fun acc (n,v) -> StrMap.add n v acc)
+    StrMap.empty
+    l
+
 module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
   open Nettls_nettle_bindings
   open Nettls_gnutls_bindings
   open Netsys_crypto_modes.Symmetric_cipher
-
-  module StrMap = Map.Make(String)
-
-  let of_list l =
-    List.fold_left
-      (fun acc (n,v) -> StrMap.add n v acc)
-      StrMap.empty
-      l
 
   let no_iv = [ 0, 0 ]
 
@@ -1149,12 +1149,81 @@ module Symmetric_crypto =
   Netsys_crypto_modes.Add_modes(Basic_symmetric_crypto)
 
 
+module Digests : Netsys_crypto_types.DIGESTS = struct
+  open Nettls_nettle_bindings
+
+  type digest_ctx =
+      { add : Netsys_types.memory -> unit;
+        finish : unit -> string
+      }
+
+  type digest =
+      { name : string;
+        size : int;
+        create : unit -> digest_ctx;
+      }
+
+
+  let props =
+    [ "md2",        ( "MD2-128", 16 );
+      "md4",        ( "MD4-128", 16 );
+      "md5",        ( "MD5-128", 16 );
+      "sha1",       ( "SHA1-160", 20 );
+      "sha256",     ( "SHA2-256", 32 );
+      "sha224",     ( "SHA2-224", 28 );
+      "sha284",     ( "SHA2-384", 48 );
+      "sha512",     ( "SHA2-512", 64 );
+      "sha3_256",   ( "SHA3-256", 32 );
+      "sha3_224",   ( "SHA3-224", 28 );
+      "sha3_284",   ( "SHA3-384", 48 );
+      "sha3_512",   ( "SHA3-512", 64 );
+      "ripemd160",  ( "RIPEMD-160", 20 );
+      "gosthash94", ( "GOSTHASH94-256", 32 );
+    ]
+
+  let props_m =
+    of_list props
+
+  let digests =
+    filter_map
+      (fun h ->
+         let (name,size) = 
+           StrMap.find (net_nettle_hash_name h) props_m in
+         let create() =
+           let ctx = net_nettle_create_hash_ctx h in
+           let () = net_nettle_hash_init h ctx in
+           let add mem =
+             net_nettle_hash_update h ctx mem in
+           let finish() =
+             let s = String.make size 'X' in
+             net_nettle_hash_digest h ctx s;
+             s in
+           { add; finish } in
+         { name;
+           size;
+           create
+         }
+      )
+      (Array.to_list (net_nettle_hashes()))
+
+  let name dg = dg.name
+  let size dg = dg.size
+  let create dg = dg.create()
+  let add ctx mem = ctx.add mem
+  let finish ctx = ctx.finish()
+
+end
+
+
+
 let init() =
   Nettls_gnutls_bindings.gnutls_global_init();
   Netsys_crypto.set_current_tls
     (module TLS : Netsys_crypto_types.TLS_PROVIDER);
   Netsys_crypto.set_current_symmetric_crypto
-    (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO)
+    (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO);
+  Netsys_crypto.set_current_digests
+    (module Digests : Netsys_crypto_types.DIGESTS)
 
 
 let () =

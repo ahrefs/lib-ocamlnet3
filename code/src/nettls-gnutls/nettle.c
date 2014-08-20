@@ -15,9 +15,12 @@ typedef struct nettle_cipher *net_nettle_cipher_t;
 typedef void *net_nettle_cipher_ctx_t;
 typedef void *net_nettle_gcm_aes_ctx_t;
 
-#define raise_null_pointer net_gnutls_null_pointer
+typedef struct nettle_hash *net_nettle_hash_t;
+typedef void *net_nettle_hash_ctx_t;
 
-static void net_gnutls_null_pointer(void) {
+#define raise_null_pointer net_nettle_null_pointer
+
+static void net_nettle_null_pointer(void) {
     caml_raise_constant(*caml_named_value
                           ("Nettls_nettle_bindings.Null_pointer"));
 }
@@ -230,4 +233,60 @@ static int net_have_gcm_aes(void) {
 #else
     return 0;
 #endif
+}
+
+
+/* Hashes */
+
+static void net_nettle_destroy_hash(net_nettle_hash_t hash) {
+    /* do nothing, hashes are non-destructable */
+}
+
+static const char *net_nettle_hash_name(net_nettle_hash_t hash) {
+    return hash->name;
+}
+
+static net_nettle_hash_ctx_t
+         net_nettle_create_hash_ctx(net_nettle_hash_t hash) {
+    void *p;
+    p = stat_alloc(hash->context_size);
+    return p;
+}
+
+static void net_nettle_hash_init(net_nettle_hash_t hash,
+                                 net_nettle_hash_ctx_t ctx) {
+    hash->init(ctx);
+}
+
+static void net_nettle_hash_update(net_nettle_hash_t hash,
+                                   net_nettle_hash_ctx_t ctx,
+                                   unsigned int length,
+                                   const uint8_t *src) {
+    hash->update(ctx, length, src);
+}
+
+static void net_nettle_hash_digest(net_nettle_hash_t hash,
+                                   net_nettle_hash_ctx_t ctx,
+                                   unsigned int length,
+                                   uint8_t *dst) {
+    hash->digest(ctx, length, dst);
+}
+
+#ifndef HAVE_FUN_nettle_hashes
+const struct nettle_hash * const nettle_hashes[] = {
+    &nettle_md2,
+    &nettle_md4,
+    &nettle_md5,
+    &nettle_sha1,
+    &nettle_sha256
+};
+#endif
+
+static void net_nettle_hashes(net_nettle_hash_t **hashes,
+                              size_t *n) {
+    size_t k;
+    k = 0;
+    while (nettle_hashes[k] != NULL) k++;
+    *hashes = (net_nettle_hash_t *) nettle_hashes;
+    *n = k;
 }
