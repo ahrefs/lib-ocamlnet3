@@ -1,3 +1,12 @@
+2014-08-20  Gerd Stolpmann  <gerd@zotac>
+
+        * adding support for modular cryptography (symmetric ciphers and
+	  digests)
+	* SCRAM is now implemented with the new crypto providers
+	* removing dependency on Cryptokit
+	* removed library netgssapi; now part of netsys/netstring
+	* removed library netmech-scram; now part of netstring
+
 Ocamlnet-4 adds:
 
 	- new library nettls-gnutls
