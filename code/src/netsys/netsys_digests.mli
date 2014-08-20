@@ -2,6 +2,9 @@
 
 (** Cryptographic digests (hashes) *)
 
+(** Also see {!Netauth} for the HMAC construction, for PRF, etc. *)
+
+
 class type digest_ctx =
 object
   method add_memory : Netsys_types.memory -> unit
@@ -46,3 +49,6 @@ val find : ?impl:(module Netsys_crypto_types.DIGESTS) ->
         The name conventionally follows the [<uppercasestring>-<size>] format,
         e.g. "MD5-128", "SHA1-160", or "SHA2-256".
      *)
+
+val digest_string : digest -> string -> string
+  (** Digest a string *)

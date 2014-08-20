@@ -66,3 +66,9 @@ let find ?(impl = Netsys_crypto.current_digests()) name =
   let module I = (val impl : Netsys_crypto_types.DIGESTS) in
   let module C = Digest(I) in
   C.find name
+
+
+let digest_string dg s =
+  let ctx = dg # create() in
+  ctx # add_substring s 0 (String.length s);
+  ctx # finish()
