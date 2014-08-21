@@ -97,3 +97,15 @@ Mimestring:
                          'a -> stringlike -> int -> int -> 'a
   list_header_sl: ... -> stringlike -> int -> int -> (string * string) list
   scan_header_sl: ... -> stringlike -> int -> int -> ((string * string) list * int)
+
+Netchannels:
+
+  ...
+
+  out_obj_channel should include method output_memory,
+  in_obj_channel should include method input_memory
+
+  followup: Netchannels_crypto.{encrypt,decrypt}_{in,out} can be based
+  on memory, avoiding strings completely. Probably new augment classes
+  would be nice that use {in,out}put_memory as starting point.
+
