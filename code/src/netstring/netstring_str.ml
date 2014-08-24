@@ -65,8 +65,8 @@ let quote_set s =
 (* HAVE_PCRE                                                          *)
 (**********************************************************************)
 
-IFNDEF ENABLE_STR_EXTERNALS THEN
-IFDEF HAVE_PCRE THEN
+#ifndef ENABLE_STR_EXTERNALS
+#ifdef HAVE_PCRE
 
 (* This implementation of Netstring_str uses the PCRE engine. The
  * syntax for regular expressions is compatible with previous versions.
@@ -589,9 +589,9 @@ let string_after = Netstring_pcre.string_after ;;
 let first_chars = Netstring_pcre.first_chars ;;
 let last_chars = Netstring_pcre.last_chars ;;
 
-ENDIF
+#endif
 
-ELSE
+#else
 (* i.e. ENABLE_STR_EXTERNALS *)
 
 (**********************************************************************)
@@ -861,10 +861,10 @@ let string_after = Str.string_after;;
 let first_chars = Str.first_chars;;
 let last_chars = Str.last_chars;;
 
-ENDIF
+#endif
 
-IFNDEF HAVE_PCRE THEN
-IFNDEF ENABLE_STR_EXTERNALS THEN
+#ifndef HAVE_PCRE
+#ifndef ENABLE_STR_EXTERNALS
 
 (**********************************************************************)
 (* DEFAULT                                                            *)
@@ -1071,5 +1071,5 @@ let string_before = Str.string_before;;
 let string_after = Str.string_after;;
 let first_chars = Str.first_chars;;
 let last_chars = Str.last_chars;;
-ENDIF
-ENDIF
+#endif
+#endif

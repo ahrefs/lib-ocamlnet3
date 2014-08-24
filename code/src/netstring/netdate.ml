@@ -302,46 +302,89 @@ let to_upper cl9n =
   with _ -> (fun s -> s)
 
 
+let stream_cons prefix stream =
+  (* Prefix the list [prefix] before stream *)
+  let prefix = ref prefix in
+  Stream.from
+    (fun _ ->
+       match !prefix with
+         | [] -> ( try Some(Stream.next stream) with Stream.Failure -> None )
+         | p :: prefix' -> prefix := prefix'; Some p
+    )
+
+
+let stream_njunk n stream =
+  for k = 1 to n do Stream.junk stream done
+
+
 let tokens_of_string cl9n str =
   let to_lower = to_lower cl9n in
-  let rec scan_any = parser
-    | [< ' ('0'..'9') as c; rest >] ->
-	scan_number (1, int_of_char c - 48) rest
-    | [< ' ('a'..'z' | 'A'..'Z' | '\128'..'\255') as c; rest >] ->
-	let b = Buffer.create 16 in
-	Buffer.add_char b c;
-	scan_word b rest
-    | [< ''('; rest >] -> scan_comment 0 rest
-    | [< ' (' ' | '\t'); rest >] -> scan_any rest
-    | [< ''+'; rest >] -> [< 'Plus; scan_any rest >]
-    | [< ''-'; rest >] -> [< 'Minus; scan_any rest >]
-    | [< '':'; rest >] -> [< 'Colon; scan_any rest >]
-    | [< '','; rest >] -> [< 'Comma; scan_any rest >]
-    | [< ''/'; rest >] -> [< 'Slash; scan_any rest >]
-    | [< ''.'; rest >] -> [< 'Dot; scan_any rest >]
-    | [< ' _ ; rest >] -> [< 'Invalid; scan_any rest >]
-    | [< >] -> [< >]
-  and scan_number (l,a) = parser
-    | [< ' ('0'..'9') as c; rest >] ->
-	if l = 9 then failwith "Netdate: number too large";
-	scan_number (l+1, a * 10 + (int_of_char c - 48)) rest
-    | [< rest >] -> [< 'Number(l,a); scan_any rest >]
-  and scan_word b = parser
-    | [< ' ('a'..'z' | 'A'..'Z' | '\128'..'\255') as c; rest >] ->
-	Buffer.add_char b c;
-	scan_word b rest
-    | [< ''.'; rest >] -> scan_word b rest
-    | [< rest >] ->
-        let s = to_lower (Buffer.contents b) in
-        let tok =
-          try Hashtbl.find cl9n.tokens s with Not_found -> Invalid in
-	[< 'tok; scan_any rest >]
-  and scan_comment n = parser
-    | [< '')'; rest >] ->
-	if n = 0 then scan_any rest
-	else scan_comment (n - 1) rest
-    | [< ''('; rest >] -> scan_comment (n + 1) rest
-    | [< '_; rest >] -> scan_comment n rest in
+  let rec scan_any stream =
+    match Stream.peek stream with
+      | Some('0'..'9' as c) ->
+          Stream.junk stream;
+          scan_number (1, int_of_char c - 48) stream
+      | Some(('a'..'z' | 'A'..'Z' | '\128'..'\255') as c) ->
+          Stream.junk stream;
+	  let b = Buffer.create 16 in
+	  Buffer.add_char b c;
+	  scan_word b stream
+      | Some '(' -> 
+          Stream.junk stream; scan_comment 0 stream
+      | Some (' ' | '\t') ->
+          Stream.junk stream; scan_any stream
+      | Some '+' ->
+          Stream.junk stream; stream_cons [ Plus ] (scan_any stream)
+      | Some '-' ->
+          Stream.junk stream; stream_cons [ Minus ] (scan_any stream)
+      | Some ':' ->
+          Stream.junk stream; stream_cons [ Colon ] (scan_any stream)
+      | Some ',' ->
+          Stream.junk stream; stream_cons [ Comma ] (scan_any stream)
+      | Some '/' ->
+          Stream.junk stream; stream_cons [ Slash ] (scan_any stream)
+      | Some '.' ->
+          Stream.junk stream; stream_cons [ Dot ] (scan_any stream)
+      | Some _ ->
+          Stream.junk stream; stream_cons [ Invalid ] (scan_any stream)
+      | None ->
+          Stream.of_list []
+  and scan_number (l,a) stream =
+    match Stream.peek stream with
+      | Some ( ('0'..'9') as c ) ->
+          Stream.junk stream;
+          if l = 9 then failwith "Netdate: number too large";
+          scan_number (l+1, a * 10 + (int_of_char c - 48)) stream
+      | _ ->
+          stream_cons [ Number(l,a) ] (scan_any stream)
+  and scan_word b stream =
+    match Stream.peek stream with
+      | Some(('a'..'z' | 'A'..'Z' | '\128'..'\255') as c) ->
+          Stream.junk stream;
+          Buffer.add_char b c;
+	  scan_word b stream
+      | Some '.' ->
+          Stream.junk stream;
+          scan_word b stream
+      | _ ->
+          let s = to_lower (Buffer.contents b) in
+          let tok =
+            try Hashtbl.find cl9n.tokens s with Not_found -> Invalid in
+          stream_cons [ tok ] (scan_any stream)
+  and scan_comment n stream =
+    match Stream.peek stream with
+      | Some ')' ->
+          Stream.junk stream;
+          if n=0 then scan_any stream
+          else scan_comment (n-1) stream
+      | Some '(' ->
+          Stream.junk stream;
+          scan_comment (n+1) stream
+      | Some _ ->
+          Stream.junk stream;
+          scan_comment n stream
+      | None ->
+          raise Stream.Failure in
   scan_any (Stream.of_string str)
 ;;
 
@@ -361,6 +404,7 @@ let parse ?(localzone=false)
           ?zone:dzone
           ?(l9n = c_posix_l9n)
           str =
+  let invalid() = invalid_arg "Netdate.parse" in
   let tokens = tokens_of_string l9n str in
   let hour = ref None
   and minute = ref None
@@ -376,7 +420,7 @@ let parse ?(localzone=false)
     let may_store r = function
       | None -> ()
       | v when !r = None -> r := v
-      | _ -> invalid_arg "Netdate.parse" in
+      | _ -> invalid() in
     let h = match h with
       | None -> None
       | Some h -> match mdn with
@@ -385,7 +429,7 @@ let parse ?(localzone=false)
 	  | Some false when h = 12 -> Some 0
 	  | Some true when h > 0 && h <= 11 -> Some (h + 12)
 	  | Some true when h = 12 -> Some 12 
-	  | _ -> invalid_arg "Netdate.parse" in
+	  | _ -> invalid() in
     let y = match y with
       | None ->
 	  ( match y2 with
@@ -402,152 +446,252 @@ let parse ?(localzone=false)
     may_store day md;
     may_store month mo;
     may_store year y in
-  let rec scan_gen = parser
-    | [< 'Number(l,n); rest >] -> scan_number (l,n) rest
-    | [< 'Time; 'Number((0|1|2),n); 'Colon; 'Number((0|1|2),m); rest >] ->
-	scan_hour n m rest
-    | [< 'Zone(tz,isdst); dst = scan_dst; rest >] ->
-        let eff_tz =
+  let rec scan_gen stream =
+    match Stream.peek stream with
+      | Some(Number(l,n)) ->
+          Stream.junk stream;
+          scan_number (l,n) stream
+      | Some Time ->
+          Stream.junk stream;
+          let tok1 = Stream.next stream in
+          let tok2 = Stream.next stream in
+          let tok3 = Stream.next stream in
+          ( match tok1,tok2,tok3 with
+              | Number((0|1|2),n), Colon, Number((0|1|2),m) ->
+                  scan_hour n m stream
+              | _ ->
+                  invalid()
+          )
+      | Some(Zone(tz,isdst)) ->
+          Stream.junk stream;
+          let dst = scan_dst stream in
+          let eff_tz =
           if isdst then tz else
             match dst with
               | Some true -> tz + 60
               | _ -> tz in
-	add_data ~tz:eff_tz ();
-	scan_gen rest
-    | [< 'Day wd; _ = scan_opt_coma; rest >] ->
-	add_data ~wd ();
-	scan_gen rest
-    | [< 'Month mo; 'Number(lmd,md); rest >] -> scan_date_m mo (lmd,md) rest
-    | [< '_ >] -> invalid_arg "Netdate.parse"
-    | [< >] -> ()
-  and scan_number (l,n) = parser
-    | [< 'Meridian mdn; rest >] ->
-	add_data ~h:n ~mdn ();
-	scan_gen rest
-    | [< 'Colon; 'Number((0|1|2),m); rest >]-> 
-	if l <= 2 then 
-	  scan_hour n m rest
-	else invalid_arg "Netdate.parse"
-    | [< 'Slash; 'Number((0|1|2),m); rest >] -> 
-	scan_date_s (l,n) m rest
-    | [< 'Dot; 'Number((0|1|2),m); rest >] ->
-	if l<=2 then
-	  scan_date_dot n m rest
-	else invalid_arg "Netdate.parse"
-    | [< 'Minus; rest >] -> scan_date_d (l,n) rest
-    | [< 'Month mo; rest >] ->
-	add_data ~md:n ~mo ();
-	scan_gen rest
-    | [< rest >] ->
-	if l=4 then
-	  add_data ~y:n ()
-	else invalid_arg "Netdate.parse";
-	scan_gen rest
-  and scan_hour h m = parser
-    | [< 'Colon; 'Number(_,s); rest >] -> scan_hour_second_frac h m s rest
-    | [< tz = scan_tz; rest >] ->
-	add_data ~h ~m ~tz ();
-	scan_gen rest
-    | [< mdn = scan_opt_meridian; rest >] ->
-	add_data ~h ~m ?mdn ();
-	scan_gen rest
-  and scan_tz = parser
-    | [< 'Plus; rest >] -> scan_tz_details 1 rest
-    | [< 'Minus; rest >] -> scan_tz_details (-1) rest
-  and scan_tz_details sign = parser
-    | [< 'Number(l,tz) when l=4 >] -> sign * ((tz/100) * 60 + (tz mod 100))
-    | [< 'Number(l,tz) when l<=2; rest >] ->
-	scan_tz_details2 sign tz rest
-  and scan_tz_details2 sign tz1 = parser
-    | [< 'Colon; 'Number((0|1|2),tz2) >] ->
-	sign * (60 * tz1 + tz2)
-    | [< >] ->
-	sign * 60 * tz1
-  and scan_hour_second_frac h m s = parser
-    | [< 'Dot; 'Number(l,f); rest >] ->  (* e.g. 12:50:48.12345 *)
-	let ns = f * ten_power (9-l) in
-	scan_hour_second h m s ns rest
-    | [< rest >] ->
-	scan_hour_second h m s 0 rest
-  and scan_hour_second h m s ns = parser
-    | [< tz = scan_tz; rest >] ->
-	add_data ~h ~m ~s ~ns ~tz ();
-	scan_gen rest
-    | [< mdn = scan_opt_meridian; rest >] ->
-	add_data ~h ~m ~s ~ns ?mdn ();
-	scan_gen rest
-  and scan_date_s (ln,n) m = parser
-    | [< 'Slash; 'Number(lp,p); rest >] ->
-	if ln = 4
-	then add_data ~y:n ~mo:m ~md:p ()
-	else
-	  if lp = 4 then
-	    add_data ~y:p ~mo:n ~md:m ()
+          add_data ~tz:eff_tz ();
+          scan_gen stream
+      | Some(Day wd) ->
+          Stream.junk stream;
+          let _ = scan_opt_coma stream in
+          add_data ~wd ();
+          scan_gen stream
+      | Some(Month mo) ->
+          Stream.junk stream;
+          let tok1 = Stream.next stream in
+          ( match tok1 with
+              | Number(lmd,md) ->
+                  scan_date_m mo (lmd,md) stream
+              | _ ->
+                  invalid()
+          )
+      | Some _ ->
+          Stream.junk stream;
+          invalid()
+      | None ->
+          ()
+  and scan_number (l,n) stream =
+    match Stream.peek stream with
+      | Some(Meridian mdn) ->
+          Stream.junk stream;
+          add_data ~h:n ~mdn ();
+	  scan_gen stream
+      | Some Colon ->
+          Stream.junk stream;
+          let tok1 = Stream.next stream in
+          ( match tok1 with
+              | Number((0|1|2),m) ->
+                  if l <= 2 then
+                    scan_hour n m stream
+                  else
+                    invalid()
+              | _ -> invalid()
+          )
+      | Some Slash ->
+          Stream.junk stream;
+          let tok1 = Stream.next stream in
+          ( match tok1 with
+              | Number((0|1|2),m) -> scan_date_s (l,n) m stream
+              | _ -> invalid()
+          )
+      | Some Dot ->
+          Stream.junk stream;
+          let tok1 = Stream.next stream in
+          ( match tok1 with
+              | Number((0|1|2),m) ->
+                  if l<=2 then
+	            scan_date_dot n m stream
+	          else invalid()
+              | _ -> invalid()
+          )
+      | Some Minus ->
+          Stream.junk stream;
+          scan_date_d (l,n) stream
+      | Some (Month mo) ->
+          Stream.junk stream;
+          add_data ~md:n ~mo ();
+	  scan_gen stream
+      | _ ->
+          if l=4 then
+            add_data ~y:n ()
+          else
+            invalid();
+          scan_gen stream
+  and scan_hour h m stream =
+    match Stream.peek stream with
+      | Some Colon ->
+          Stream.junk stream;
+          let tok1 = Stream.next stream in
+          ( match tok1 with
+              | Number(_,s) -> scan_hour_second_frac h m s stream
+              | _ -> invalid()
+          )
+      | _ ->
+          let tz_opt = scan_tz_opt stream in
+          ( match tz_opt with 
+              | Some tz ->
+                  add_data ~h ~m ~tz ();
+	          scan_gen stream
+              | None ->
+                  let mdn = scan_opt_meridian stream in
+                  add_data ~h ~m ?mdn ();
+                  scan_gen stream
+          )
+  and scan_tz_opt stream =
+    match Stream.peek stream with
+      | Some Plus  -> Stream.junk stream; Some(scan_tz_details 1 stream)
+      | Some Minus -> Stream.junk stream; Some(scan_tz_details (-1) stream)
+      | _ -> None
+  and scan_tz_details sign stream =
+    match Stream.peek stream with
+      | Some(Number(l,tz)) when l=4 ->
+          Stream.junk stream;
+          sign * ((tz/100) * 60 + (tz mod 100))
+      | Some(Number(l,tz)) when l<=2 ->
+          Stream.junk stream;
+          scan_tz_details2 sign tz stream
+      | _ ->
+          invalid()
+  and scan_tz_details2 sign tz1 stream =
+    match Stream.npeek 2 stream with
+      | [ Colon; Number((0|1|2),tz2) ] ->
+          stream_njunk 2 stream;
+          sign * (60 * tz1 + tz2)
+      | _ ->
+          sign * 60 * tz1
+	
+  and scan_hour_second_frac h m s stream =
+    match Stream.npeek 2 stream with
+      | [ Dot; Number(l,f) ] ->  (* e.g. 12:50:48.12345 *)
+          stream_njunk 2 stream;
+          let ns = f * ten_power (9-l) in
+          scan_hour_second h m s ns stream
+      | _ ->
+          scan_hour_second h m s 0 stream
+
+  and scan_hour_second h m s ns stream =
+    match scan_tz_opt stream with
+      | Some tz ->
+          add_data ~h ~m ~s ~ns ~tz ();
+          scan_gen stream
+      | None ->
+          let mdn = scan_opt_meridian stream in
+          add_data ~h ~m ~s ~ns ?mdn ();
+          scan_gen stream
+
+  and scan_date_s (ln,n) m stream =
+    match Stream.npeek 2 stream with
+      | [ Slash; Number(lp,p) ] ->
+          stream_njunk 2 stream;
+	  if ln = 4
+	  then add_data ~y:n ~mo:m ~md:p ()
 	  else
-	    if lp = 2 then
-	      add_data ~y2:p ~mo:n ~md:m ()
+	    if lp = 4 then
+	      add_data ~y:p ~mo:n ~md:m ()
 	    else
-	      invalid_arg "Netdate.parse";
-	scan_gen rest
-    | [< rest >] ->
-	add_data ~mo:n ~md:m ();
-	scan_gen rest
-  and scan_date_dot n m = parser
-    | [< 'Dot; 'Number(l,p); rest >] ->
-	if l=4 then
-	  add_data ~md:n ~mo:m ~y: p ()
-	else if l=2 then
-	  add_data ~md:n ~mo:m ~y2: p ()
-	else invalid_arg "Netdate.parse";
-	scan_gen rest
-    | [< rest >] ->
-	add_data ~md:n ~mo:m ();
-	scan_gen rest
-  and scan_date_d (ln,n) = parser
-    | [< 'Number(_,mo); 'Minus; 'Number(_,md); rest >] ->
-	if ln=4 then
-	  add_data ~y:n ~mo ~md ()
-	else
-	  if ln=2 then
-	    add_data ~y2:n ~mo ~md ()
-	  else  invalid_arg "Netdate.parse";
-	scan_gen rest
-    | [< 'Month mo; 'Minus; 'Number(ly,y); rest >] ->
-	if ly=4 then
-	  add_data ~y ~mo ~md:n ()
-	else if ly=2 then
-	  add_data ~y2:y ~mo ~md:n ()
-	else invalid_arg "Netdate.parse";
-	scan_gen rest
-  and scan_date_m mo (lmd,md) = parser
-    | [< 'Comma; 'Number(4,y); rest >] ->
-	add_data ~y ~mo ~md ();
-	scan_gen rest
-    | [< rest >] ->
-	add_data ~mo ~md ();
-	scan_gen rest
-  and scan_dst = parser
-    | [< 'Dst >] -> Some true
-    | [< >] -> None
-  and scan_opt_coma = parser
-    | [< 'Comma >] -> ()
-    | [< >] -> ()
-  and scan_opt_meridian = parser
-    | [< 'Meridian mdn >] -> Some mdn
-    | [< >] -> None
+	      if lp = 2 then
+	        add_data ~y2:p ~mo:n ~md:m ()
+	      else
+	        invalid();
+	  scan_gen stream
+      | _ ->
+	  add_data ~mo:n ~md:m ();
+	  scan_gen stream
+
+  and scan_date_dot n m stream =
+    match Stream.npeek 2 stream with
+      | [ Dot; Number(l,p) ] ->
+          stream_njunk 2 stream;
+	  if l=4 then
+	    add_data ~md:n ~mo:m ~y: p ()
+	  else if l=2 then
+	    add_data ~md:n ~mo:m ~y2: p ()
+	  else invalid();
+	  scan_gen stream
+      | _ ->
+	  add_data ~md:n ~mo:m ();
+	  scan_gen stream
+
+  and scan_date_d (ln,n) stream =
+    match Stream.npeek 3 stream with
+      | [ Number(_,mo); Minus; Number(_,md) ] ->
+          stream_njunk 3 stream;
+	  if ln=4 then
+	    add_data ~y:n ~mo ~md ()
+	  else
+	    if ln=2 then
+	      add_data ~y2:n ~mo ~md ()
+	    else  invalid();
+	  scan_gen stream
+      | [ Month mo; Minus; Number(ly,y) ] ->
+          stream_njunk 3 stream;
+	  if ly=4 then
+	    add_data ~y ~mo ~md:n ()
+	  else if ly=2 then
+	    add_data ~y2:y ~mo ~md:n ()
+	  else invalid();
+	  scan_gen stream
+      | _ ->
+          invalid()
+
+  and scan_date_m mo (lmd,md) stream =
+    match Stream.npeek 2 stream with
+      | [ Comma; Number(4,y) ] ->
+          stream_njunk 2 stream;
+	  add_data ~y ~mo ~md ();
+	  scan_gen stream
+      | _ ->
+	  add_data ~mo ~md ();
+	  scan_gen stream
+  and scan_dst stream =
+    match Stream.peek stream with
+      | Some Dst -> Stream.junk stream; Some true
+      | _ -> None
+  and scan_opt_coma stream =
+    match Stream.peek stream with
+      | Some Comma -> Stream.junk stream; ()
+      | _ -> ()
+  and scan_opt_meridian stream =
+    match Stream.peek stream with
+      | Some (Meridian mdn) -> Stream.junk stream; Some mdn
+      | _ -> None
   in
   (try scan_gen tokens;
-   with Stream.Error _ -> invalid_arg "Netdate.parse");
+   with
+     | Stream.Error _ -> invalid()
+     | Stream.Failure -> invalid()
+  );
   let may_get r =
     match !r with
-      | None -> invalid_arg "Netdate.parse"
+      | None -> invalid()
       | Some r -> r in
   let get_default d r =
     match !r with
       | None -> d
       | Some r -> r in
   let month = may_get month in
-  if month < 1 || month > 12 then invalid_arg "Netdate.parse";
+  if month < 1 || month > 12 then invalid();
   let date =
     {
       year = may_get year;

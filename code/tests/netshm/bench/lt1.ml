@@ -64,14 +64,23 @@ let fork'n'go() =
     )
     !l
 
+let verify() =
+  let sd = open_shm name [Unix.O_RDWR] 0 in
+  let t = manage `Record_locking sd in
+  for k = 0 to 99 do
+    let x = find t (Int32.of_int k) in
+    let l = Bigarray.Array1.dim x in
+    for j = 0 to l-1 do
+      if x.{ j } <> Int32.of_int (j+1) then
+        failwith "FAILURE"
+    done
+  done;
+  close_shm sd
+
 let main() =
   fill();
   fork'n'go();
-  let sd = open_shm name [Unix.O_RDWR] 0 in
-  let t = manage `Record_locking sd in
-  dump t;
-  close_shm sd
-
+  verify()
 
 let () =
   main()

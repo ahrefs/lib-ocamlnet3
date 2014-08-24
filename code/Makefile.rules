@@ -7,11 +7,11 @@
 # How to invoke compilers and tools:
 # (May be moved to Makefile.conf if necessary)
 
-OCAMLC    = $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS)
-OCAMLC_MLI= $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)"
+OCAMLC    = $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
+OCAMLC_MLI= $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(WARNINGS)
 # Note that PP_OPTIONS do not affect .mli! (usually breaks ocamldoc)
 
-OCAMLOPT  = $(OCAMLFIND) ocamlopt -g $(OCAMLOPT_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS)
+OCAMLOPT  = $(OCAMLFIND) ocamlopt -g $(OCAMLOPT_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
 OCAMLDEP  = $(OCAMLFIND) ocamldep $(OCAMLDEP_OPTIONS) $(PP_OPTIONS)
 OCAMLFIND = ocamlfind
 OCAMLYACC = ocamlyacc
@@ -20,6 +20,13 @@ CAMLP4    = camlp4
 OCAMLMKLIB = $(TOP_DIR)/tools/mkstublib
 OCAMLDOC  = $(OCAMLFIND) ocamldoc
 STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
+CPPO      = $(TOP_DIR)/tools/cppo-$(CPPO_VERSION)/cppo
+
+# Set here which warnings we want to have:
+# 3: whether to report deprecated features. This is disabled because we are
+#    massively using mutable strings (deprecated in 4.02)
+# 25: "all clauses guarded". I like this.
+WARNINGS  = -w -3-25
 
 TOOLS_DIR = $(TOP_DIR)/tools
 COLLECT_FILES = $(TOOLS_DIR)/collect_files

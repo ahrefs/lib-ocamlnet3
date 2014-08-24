@@ -86,7 +86,7 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     value v_signals_hd;
 
     int j, k, nofile;
-    int fd1, fd2, fd1_flags;
+    int fd1, fd2;
 
     uerror_errno = 0;
     cleanup_mask = 0;
@@ -334,7 +334,6 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
 	    /* Check that fd1 is valid by reading the fd flags: */
 	    code = fcntl(fd1, F_GETFD);
 	    if (code == -1) SUB_ERROR(errno, "netsys_spawn/fcntl [221]");
-	    fd1_flags = code;
 	    /* Be careful when fd2 is the ctrl_pipe: */
 	    if (fd2 == ctrl_pipe[1]) {
 		code = dup(ctrl_pipe[1]);

@@ -24,8 +24,6 @@ OCAMLOPT_OPTIONS_FOR_rpc_packer.ml = -w p
 OCAMLC_OPTIONS_FOR_rpc_portmapper.ml = -w p
 OCAMLOPT_OPTIONS_FOR_rpc_portmapper.ml = -w p
 
-#OCAMLDEP_OPTIONS = -syntax camlp4o -package camlp4.macro
-
 INCLUDES += $(INC_EQUEUE) $(INC_NETSYS) $(INC_NETSTRING) $(INC_NETGSSAPI)
 
 include $(TOP_DIR)/Makefile.rules

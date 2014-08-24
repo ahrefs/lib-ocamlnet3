@@ -21,8 +21,6 @@ INCLUDES += $(INC_EQUEUE) $(INC_RPC) $(INC_NETSTRING) $(INC_NETSYS)
 
 ALL_EXTRA = netplex-admin$(EXEC_SUFFIX) netplex-packlist 
 
-PP_OPTIONS = -syntax camlp4o -package camlp4
-
 PACKLIST = netplex-packlist
 
 include $(TOP_DIR)/Makefile.rules

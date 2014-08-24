@@ -30,61 +30,73 @@ let mk_absolute dir path =
 
 
 let parse_config_file filename =
-  let rec parse_tree =
-    parser 
-      | [< 'Ident id;
-	   v = parse_rhs
-	>] ->
+  let rec parse_tree stream =
+    match Stream.peek stream with
+      | Some (Ident id) ->
+          ignore(Stream.next stream);
+          let v = parse_rhs stream in
 	  ( match v with
 	      | `Section tl -> `Section(id, tl)
 	      | `Parameter p -> `Parameter(id, p)
 	  )
-  and parse_tree_list =
-    parser
-      | [< t = parse_tree;
-	   r = semi_parse_tree_list
-	>] ->
-	  t :: r
-      | [< >] ->
-	  []
+      | _ -> raise Stream.Failure
 
-  and semi_parse_tree_list =
-    parser
-      | [< 'Kwd ";";
-	   tl = parse_tree_list;
-	>] -> tl
-      | [< >] -> []
-	  
-  and parse_tree_semi =
-    parser
-      | [< t = parse_tree;
-	   _ = semi_list
-	>] -> t
+  and parse_tree_list stream =
+    let t_opt =
+      try Some(parse_tree stream)
+      with Stream.Failure -> None in
+    match t_opt with
+      | Some t ->
+          let r = semi_parse_tree_list stream in
+          t :: r
+      | None ->
+          []
 
-  and semi_list =
-    parser
-      | [< 'Kwd ";"; _ = semi_list >] -> ()
-      | [< >] -> ()
+  and semi_parse_tree_list stream =
+    match Stream.peek stream with
+      | Some (Kwd ";") ->
+          ignore(Stream.next stream);
+          parse_tree_list stream
+      | _ ->
+          []
 
-  and parse_rhs =
-    parser
-      | [< 'Kwd "=";
-	   v = parse_param_value;
-	>] ->
-	  `Parameter v
-      | [< 'Kwd "{";
-	   tl = parse_tree_list;
-	   'Kwd "}"
-	>] ->
-	  `Section tl
+  and parse_tree_semi stream =
+    let t = parse_tree stream in
+    ignore(semi_list stream);
+    t
 
-  and parse_param_value =
-    parser
-      | [< 'Int n >] -> `Int n
-      | [< 'Float f >] -> `Float f
-      | [< 'String s >] -> `String s
-      | [< 'Ident "false" >] -> `Bool false
-      | [< 'Ident "true" >] -> `Bool true
+  and semi_list stream =
+    match Stream.peek stream with
+      | Some (Kwd ";") ->
+          ignore(Stream.next stream);
+          ignore(semi_list stream);
+      | _ ->
+          ()
+
+  and parse_rhs stream =
+    match Stream.peek stream with
+      | Some (Kwd "=") ->
+          ignore(Stream.next stream);
+          let v = parse_param_value stream in
+          `Parameter v
+      | Some (Kwd "{") ->
+          ignore(Stream.next stream);
+          let tl = parse_tree_list stream in
+          let tok = Stream.next stream in
+          if tok <> Kwd "}" then raise Stream.Failure;
+          `Section tl
+      | _ ->
+          raise Stream.Failure
+
+  and parse_param_value stream =
+    match Stream.peek stream with
+      | Some (Int n) -> ignore(Stream.next stream); `Int n
+      | Some (Float f) -> ignore(Stream.next stream); `Float f
+      | Some (String s) -> ignore(Stream.next stream); `String s
+      | Some (Ident "false") -> ignore(Stream.next stream); `Bool false
+      | Some (Ident "true") -> ignore(Stream.next stream); `Bool true
+      | _ ->
+          raise Stream.Failure
   in
 
   let line = ref 1 in

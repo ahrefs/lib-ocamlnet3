@@ -1080,7 +1080,9 @@ object(self)
      * If we ever hit the bounding of the buffer, raise Buffer_exceeded. This means
      * we don't have the header block yet.
      *)
-    IFDEF Testing THEN self # case "accept_header" ELSE () END;
+    #ifdef Testing
+       self # case "accept_header";
+    #endif
     waiting_for_next_message <- true;
     let l = Netbuffer.length recv_buf in
     let s = Netbuffer.unsafe_buffer recv_buf in
@@ -1088,7 +1090,9 @@ object(self)
     try
       (* (2) *)
       if block_start = l || (block_start+1 = l && s.[block_start] = '\013') then (
-	IFDEF Testing THEN self # case "accept_header/1" ELSE () END;
+	#ifdef Testing
+           self # case "accept_header/1";
+        #endif
 	raise Buffer_exceeded;
       );
       (* (2a) *)
@@ -1097,7 +1101,9 @@ object(self)
 	  http_find_line_start s block_start (l - block_start)
 	with
 	    Buffer_exceeded ->
-	      IFDEF Testing THEN self # case "accept_header/reqline_ex" ELSE () END;
+	      #ifdef Testing
+                 self # case "accept_header/reqline_ex";
+              #endif
 	      waiting_for_next_message <- false;
 	      if l-block_start > config#config_max_reqline_length then
 		raise (Bad_request `Request_line_too_long);
@@ -1111,7 +1117,9 @@ object(self)
 	  let (meth, uri, proto_s) = 
 	    parse_req_line s block_start (reqline_end - block_start) in
 	    (* or Not_found *)
-	  IFDEF Testing THEN self # case "accept_header/4" ELSE () END;
+	  #ifdef Testing
+             self # case "accept_header/4";
+          #endif
 	  let proto = protocol_of_string proto_s in
 	  ( match proto with
 	      | `Http((1,_),_) -> ()
@@ -1121,7 +1129,9 @@ object(self)
 	with
 	  | Not_found ->
 	      (* This is a bad request. Response should be "Bad Request" *)
-	      IFDEF Testing THEN self # case "accept_header/3" ELSE () END;
+	      #ifdef Testing
+                 self # case "accept_header/3";
+              #endif
 	      raise (Bad_request `Bad_request_line)
       in
       (* (3) *)
@@ -1131,7 +1141,9 @@ object(self)
 	  http_find_double_line_start s block_start (l - block_start)
 	with
 	    Buffer_exceeded -> 
-	      IFDEF Testing THEN self # case "accept_header/2" ELSE () END;
+	      #ifdef Testing
+                 self # case "accept_header/2";
+              #endif
 	      if l-block_start > config_max_header_length then
 		raise (Fatal_error `Message_too_long);
 	      raise Buffer_exceeded
@@ -1151,7 +1163,9 @@ object(self)
       let req_h = 
 	try Netmime.read_mime_header str 
 	with Failure _ -> 
-	  IFDEF Testing THEN self # case "accept_header/5" ELSE () END;
+	  #ifdef Testing
+             self # case "accept_header/5";
+          #endif
 	  raise(Bad_request `Bad_header) in
       (* TLS: check whether Host header (if set) equals the SNI host name *)
       ( match self#tls_session_props with
@@ -1193,20 +1207,28 @@ object(self)
 
     with
       | Buffer_exceeded ->
-	  IFDEF Testing THEN self # case "accept_header/exceeded" ELSE () END;
+	  #ifdef Testing
+             self # case "accept_header/exceeded";
+          #endif
 	  if recv_eof then (
 	    if l = block_start then (   (* Regular EOF *)
-	      IFDEF Testing THEN self # case "accept_header/regeof" ELSE () END;
+	      #ifdef Testing
+                self # case "accept_header/regeof";
+              #endif
 	      self # push_recv (`Eof, 0);
 	      `Restart_with (fun () -> `Restart)
 	    )
 	    else (
-	      IFDEF Testing THEN self # case "accept_header/eof" ELSE () END;
+	      #ifdef Testing
+                 self # case "accept_header/eof";
+              #endif
 	      raise(Bad_request `Unexpected_eof)
 	    )
 	  )
 	  else (
-	    IFDEF Testing THEN self # case "accept_header/restart" ELSE () END;
+	    #ifdef Testing
+               self # case "accept_header/restart";
+            #endif
 	    Netbuffer.delete recv_buf 0 block_start;
 	    `Restart_with (self # accept_header 0)
 	  )
@@ -1216,7 +1238,9 @@ object(self)
      * only checks the transfer encoding, and passes over to
      * [accept_body_identity] or [accept_body_chunked].
      *)
-    IFDEF Testing THEN self # case "accept_body_start" ELSE () END;
+    #ifdef Testing
+       self # case "accept_body_start";
+    #endif
     let is_http_1_1 =
       function
 	| `Http((1,1),_) -> true
@@ -1231,7 +1255,9 @@ object(self)
 	      let rfc2616_expect = 
 		List.exists (fun (tok,_,_) -> tok = "100-continue") expect_list in
 	      if rfc2068_expect || rfc2616_expect then (
-		IFDEF Testing THEN self # case "accept_body_start/100-continue" ELSE () END;
+		#ifdef Testing
+                  self # case "accept_body_start/100-continue";
+                #endif
 		self # push_recv (`Req_expect_100_continue, 0);
 		if resp#state = `Inhibited then
 		  resp # set_state `Queued   (* allow response from now on *)
@@ -1245,23 +1271,27 @@ object(self)
 	    [] | ["identity",_] -> false
 	  | _ -> true in
       if chunked_encoding then (
-	IFDEF Testing THEN self # case "accept_body_start/chunked" ELSE () END;
+	#ifdef Testing
+           self # case "accept_body_start/chunked";
+        #endif
 	`Continue (self # accept_body_chunked req_h resp pos)
       )
       else (
 	let remaining_length = 
 	  try Some(get_content_length req_h) with Not_found -> None in
-	IFDEF Testing THEN 
+	#ifdef Testing
 	  if remaining_length = None then
 	    self # case "accept_body_start/empty" 
 	  else
-	    self # case "accept_body_start/identity" 
-	ELSE () END;
+	    self # case "accept_body_start/identity";
+	#endif
 	`Continue (self # accept_body_identity req_h resp pos remaining_length)
       )
     with
 	Bad_header_field name ->
-	  IFDEF Testing THEN self # case "accept_body_start/bad_header_field" ELSE () END;
+	  #ifdef Testing
+             self # case "accept_body_start/bad_header_field";
+          #endif
 	  raise(Bad_request (`Bad_header_field name))
 
   method private accept_body_identity req_h resp pos remaining_length () : cont =
@@ -1270,7 +1300,9 @@ object(self)
      * the body is complete. [None] means there was neither [Content-length] nor
      * [Transfer-Encoding], so the body is empty (e.g. for GET).
      *)
-    IFDEF Testing THEN self # case "accept_body_identity" ELSE () END;
+    #ifdef Testing
+       self # case "accept_body_identity";
+    #endif
     let l = Netbuffer.length recv_buf in
     match remaining_length with
       | Some rl ->
@@ -1281,23 +1313,31 @@ object(self)
 	    self # push_recv (`Req_body(Netbuffer.sub recv_buf pos n, 0, n), n);
 	  let rl' = Int64.sub rl take_length in
 	  if rl' > 0L then (
-	    IFDEF Testing THEN self # case "accept_body_identity/exceeded" ELSE () END;
+	    #ifdef Testing
+               self # case "accept_body_identity/exceeded";
+            #endif
 	    (* We hit the buffer boundary *)
 	    if recv_eof then (
 	      (* This request was prematurely terminated by EOF. Simply drop it. *)
-	      IFDEF Testing THEN self # case "accept_body_identity/eof" ELSE () END;
+	      #ifdef Testing
+                self # case "accept_body_identity/eof";
+              #endif
 	      raise(Bad_request `Unexpected_eof)
 	    )
 	    else (
 	      (* Need to read the remaining part of the request: *)
-	      IFDEF Testing THEN self # case "accept_body_identity/restart" ELSE () END;
+	      #ifdef Testing
+                 self # case "accept_body_identity/restart";
+              #endif
 	      Netbuffer.clear recv_buf;
 	      `Restart_with(self # accept_body_identity req_h resp 0 (Some rl'))
 	    )
 	  )
 	  else (
 	    (* This was the last part of the message. *)
-	    IFDEF Testing THEN self # case "accept_body_identity/last" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_identity/last";
+            #endif
 	    self # push_recv (`Req_end, 0);
 	    pipeline_len <- pipeline_len + 1;
 	    if resp#state = `Inhibited then
@@ -1315,7 +1355,9 @@ object(self)
     (* Check for a chunk header at byte position [pos]. If complete, parse the number of
      * bytes the chunk will consist of, and continue with [accept_body_chunked_contents].
      *)
-    IFDEF Testing THEN self # case "accept_body_chunked" ELSE () END;
+    #ifdef Testing
+       self # case "accept_body_chunked";
+    #endif
     let l = Netbuffer.length recv_buf in
     let s = Netbuffer.unsafe_buffer recv_buf in
     try
@@ -1326,44 +1368,64 @@ object(self)
 	  let chunk_length =
 	    try int_of_string("0x" ^ hex_digits)
 	    with Failure _ -> 
-	      IFDEF Testing THEN self # case "accept_body_chunked/ch_large" ELSE () END;
+	      #ifdef Testing
+                self # case "accept_body_chunked/ch_large";
+              #endif
 	      raise(Bad_request (`Format_error "Chunk too large")) in
 	  (* Continue with chunk data or chunk end *)
 	  if chunk_length > 0 then (
-	    IFDEF Testing THEN self # case "accept_body_chunked/go_on" ELSE () END;
+	    #ifdef Testing
+               self # case "accept_body_chunked/go_on";
+            #endif
 	    `Continue(self # accept_body_chunked_contents req_h resp p chunk_length)
 	  )
 	  else (
-	    IFDEF Testing THEN self # case "accept_body_chunked/end" ELSE () END;
+	    #ifdef Testing
+               self # case "accept_body_chunked/end";
+            #endif
 	    `Continue(self # accept_body_chunked_end req_h resp p)
 	  )
 	with Not_found ->
-	  IFDEF Testing THEN self # case "accept_body_chunked/invalid_ch" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked/invalid_ch";
+          #endif
 	  raise(Bad_request (`Format_error "Invalid chunk"))
       )
     with
       | Buffer_exceeded -> 
-	  IFDEF Testing THEN self # case "accept_body_chunked/exceeded" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked/exceeded";
+          #endif
 	  if recv_eof then (
-	    IFDEF Testing THEN self # case "accept_body_chunked/eof" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_chunked/eof";
+            #endif
 	    raise(Bad_request `Unexpected_eof);
 	  );
 	  if pos > 0 then
 	    Netbuffer.delete recv_buf 0 pos;
 	  if Netbuffer.length recv_buf > 500 then (
-	    IFDEF Testing THEN self # case "accept_body_chunked/ch_hdr_large" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_chunked/ch_hdr_large";
+            #endif
 	    raise(Bad_request (`Format_error "Chunk header too large"));
 	  );
-	  IFDEF Testing THEN self # case "accept_body_chunked/restart" ELSE () END;
+	  #ifdef Testing
+             self # case "accept_body_chunked/restart";
+          #endif
 	  `Restart_with(self # accept_body_chunked req_h resp 0)
 
   method private accept_body_chunked_contents req_h resp pos remaining_length () : cont =
     (* Read the chunk body at [pos], at most [remaining_length] bytes *)
-    IFDEF Testing THEN self # case "accept_body_chunked_contents" ELSE () END;
+    #ifdef Testing
+      self # case "accept_body_chunked_contents";
+    #endif
     let l = Netbuffer.length recv_buf in
     let s = Netbuffer.unsafe_buffer recv_buf in
     if remaining_length > 0 then (
-      IFDEF Testing THEN self # case "accept_body_chunked_contents/data" ELSE () END;
+      #ifdef Testing
+         self # case "accept_body_chunked_contents/data";
+      #endif
       (* There are still data to read *)
       let have_length = l - pos in
       let take_length = min have_length remaining_length in
@@ -1375,43 +1437,63 @@ object(self)
 	`Continue
 	  (self # accept_body_chunked_contents req_h resp (pos+take_length) 0)
       else (
-	IFDEF Testing THEN self # case "accept_body_chunked_contents/exceeded" ELSE () END;
+	#ifdef Testing
+          self # case "accept_body_chunked_contents/exceeded";
+        #endif
 	(* We hit the buffer boundary. Delete the buffer *)
 	if recv_eof then (
-	  IFDEF Testing THEN self # case "accept_body_chunked_contents/eof" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_contents/eof";
+          #endif
 	  raise(Bad_request `Unexpected_eof);
 	);
 	Netbuffer.clear recv_buf;
-	IFDEF Testing THEN self # case "accept_body_chunked_contents/restart" ELSE () END;
+	#ifdef Testing
+           self # case "accept_body_chunked_contents/restart";
+        #endif
 	`Restart_with 
 	  (self # accept_body_chunked_contents req_h resp 0 rem_length')
       )
     ) else (
-      IFDEF Testing THEN self # case "accept_body_chunked_contents/end" ELSE () END;
+      #ifdef Testing
+        self # case "accept_body_chunked_contents/end";
+      #endif
       (* End of chunk reached. There must a (single) line end at the end of the chunk *)
       if (l > pos && s.[pos] = '\010') then (
-	IFDEF Testing THEN self # case "accept_body_chunked_contents/lf" ELSE () END;
+	#ifdef Testing
+          self # case "accept_body_chunked_contents/lf";
+        #endif
 	`Continue(self # accept_body_chunked req_h resp (pos+1))
       )
       else
 	if (l > pos+1 && s.[pos] = '\013' && s.[pos+1] = '\010') then (
-	  IFDEF Testing THEN self # case "accept_body_chunked_contents/crlf" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_contents/crlf";
+          #endif
 	  `Continue(self # accept_body_chunked req_h resp (pos+2))
 	)
 	else
 	  if l > pos+1 then (
-	    IFDEF Testing THEN self # case "accept_body_chunked_contents/no_eol" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_chunked_contents/no_eol";
+            #endif
 	    raise (Bad_request (`Format_error "Chunk not followed by line terminator"))
 	  )
 	  else (
-	    IFDEF Testing THEN self # case "accept_body_chunked_contents/e_exceeded" ELSE () END;
+	    #ifdef Testing
+               self # case "accept_body_chunked_contents/e_exceeded";
+            #endif
 	    (* We hit the buffer boundary *)
 	    if recv_eof then (
-	      IFDEF Testing THEN self # case "accept_body_chunked_contents/e_eof" ELSE () END;
+	      #ifdef Testing
+                self # case "accept_body_chunked_contents/e_eof";
+              #endif
 	      raise(Bad_request `Unexpected_eof);
 	    );
 	    Netbuffer.delete recv_buf 0 pos;
-	    IFDEF Testing THEN self # case "accept_body_chunked_contents/e_restart" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_chunked_contents/e_restart";
+            #endif
 
 	    `Restart_with (self # accept_body_chunked_contents req_h resp 0 0)
 	  )
@@ -1419,14 +1501,18 @@ object(self)
     
   method private accept_body_chunked_end req_h resp pos () : cont =
     (* Read the trailer *)
-    IFDEF Testing THEN self # case "accept_body_chunked_end" ELSE () END;
+    #ifdef Testing
+      self # case "accept_body_chunked_end";
+    #endif
     let l = Netbuffer.length recv_buf in
     let s = Netbuffer.unsafe_buffer recv_buf in
     let config_max_trailer_length = max 2 (config # config_max_trailer_length) in
     try
       (* Check if there is a trailer *)
       if l > pos && s.[pos] = '\010' then (
-	IFDEF Testing THEN self # case "accept_body_chunked_end/lf" ELSE () END;
+	#ifdef Testing
+          self # case "accept_body_chunked_end/lf";
+        #endif
 	self # push_recv (`Req_end, 0);
 	pipeline_len <- pipeline_len + 1;
 	if resp#state = `Inhibited then
@@ -1435,7 +1521,9 @@ object(self)
       )
       else 
 	if l > pos+1 && s.[pos] = '\013' && s.[pos+1] = '\010' then (
-	  IFDEF Testing THEN self # case "accept_body_chunked_end/crlf" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_end/crlf";
+          #endif
 	  self # push_recv (`Req_end, 0);
 	  pipeline_len <- pipeline_len + 1;
 	  if resp#state = `Inhibited then
@@ -1443,14 +1531,20 @@ object(self)
 	  `Continue(self # accept_header (pos+2))
 	)
 	else (
-	  IFDEF Testing THEN self # case "accept_body_chunked_end/trailer" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_end/trailer";
+          #endif
 	  (* Assume there is a trailer. *)
 	  let trailer_end = http_find_double_line_start s pos (l-pos) in
               (* or Buf_exceeded *)
-	  IFDEF Testing THEN self # case "accept_body_chunked_end/tr_found" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_end/tr_found";
+          #endif
 	  (* Now we are sure there is a trailer! *)
 	  if trailer_end - pos > config_max_trailer_length then (
-	    IFDEF Testing THEN self # case "accept_body_chunked_end/tr_long" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_chunked_end/tr_long";
+            #endif
 	    raise(Bad_request (`Format_error "Trailer too long"));
 	  );
 	  let ch = new Netchannels.input_string 
@@ -1459,7 +1553,9 @@ object(self)
 	  let req_tr =
 	    try Netmime.read_mime_header str 
 	    with Failure _ -> 
-	      IFDEF Testing THEN self # case "accept_body_chunked_end/bad_tr" ELSE () END;
+	      #ifdef Testing
+                self # case "accept_body_chunked_end/bad_tr";
+              #endif
 	      raise(Bad_request `Bad_trailer) in
 	  self # push_recv (`Req_trailer req_tr, trailer_end-pos);
 	  self # push_recv (`Req_end, 0);
@@ -1471,17 +1567,25 @@ object(self)
 
     with
 	Buffer_exceeded ->
-	  IFDEF Testing THEN self # case "accept_body_chunked_end/exceeded" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_end/exceeded";
+          #endif
 	  if recv_eof then (
-	    IFDEF Testing THEN self # case "accept_body_chunked_end/eof" ELSE () END;
+	    #ifdef Testing
+              self # case "accept_body_chunked_end/eof";
+            #endif
 	    raise(Bad_request `Unexpected_eof);
 	  );
 	  if l-pos > config_max_trailer_length then (
-	    IFDEF Testing THEN self # case "accept_body_chunked_end/tr_long" ELSE () END;
+	    #ifdef Testing 
+              self # case "accept_body_chunked_end/tr_long";
+            #endif
 	    raise(Bad_request (`Format_error "Trailer too long"));
 	  );
 	  Netbuffer.delete recv_buf 0 pos;
-	  IFDEF Testing THEN self # case "accept_body_chunked_end/restart" ELSE () END;
+	  #ifdef Testing
+            self # case "accept_body_chunked_end/restart";
+          #endif
 	  `Restart_with (self # accept_body_chunked_end req_h resp 0)
 
   (* ---- Process responses ---- *)

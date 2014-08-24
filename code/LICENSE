@@ -26,6 +26,9 @@ These license conditions apply to the libraries:
 The same holds for all files for which there are no other license
 terms.
 
+The cppo utility is from Martin Jambon and has its own license terms.
+It is only needed for building Ocamlnet.
+
 ======================================================================
 
 Copyright (c) 2001-2006 Patrick Doane and Gerd Stolpmann

@@ -324,7 +324,7 @@ class telnet_session =
 
 
     method offer_local_option p = 
-      if not (List.mem p offered_local_options) &
+      if not (List.mem p offered_local_options) &&
 	self # get_local_option p <> Accepted  then begin
 	offered_local_options <- p :: offered_local_options;
 	Queue.add (Telnet_will (char_of_option p)) output_queue
@@ -345,7 +345,7 @@ class telnet_session =
 
 
     method request_remote_option p = 
-      if not (List.mem p requested_remote_options) &
+      if not (List.mem p requested_remote_options) &&
 	 self # get_remote_option p <> Accepted then begin
 	requested_remote_options <- p ::requested_remote_options;
 	Queue.add (Telnet_do (char_of_option p)) output_queue
@@ -377,7 +377,7 @@ class telnet_session =
 
 
     method option_negotiation_is_over =
-      offered_local_options = [] & requested_remote_options = []
+      offered_local_options = [] && requested_remote_options = []
 
 
     method process_option_command cmd =
@@ -818,7 +818,7 @@ class telnet_session =
 	| _ -> ()
       end;
 
-      if input_timed_out & output_timed_out then begin
+      if input_timed_out && output_timed_out then begin
 	(* No network packet arrived for a period of time.
 	 * May happen while connecting to a server, or during operation.
 	 *)

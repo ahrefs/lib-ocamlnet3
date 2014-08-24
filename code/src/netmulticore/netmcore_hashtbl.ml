@@ -56,7 +56,7 @@ let resize mut tbl =
   let osize = Array.length odata in
   let nsize = min (2 * osize + 1) Sys.max_array_length in
   if nsize <> osize then (
-    let ndata = H.add mut (Array.create nsize Empty) in
+    let ndata = H.add mut (Array.make nsize Empty) in
     H.pin mut ndata;
     let rec insert_bucket bucket = 
       match bucket with

@@ -7,16 +7,16 @@
 
 (* representation types *)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 type int4 = int   (* faster on 64 bit platforms! *)
 type uint4 = int
   (* Note that values >= 0x8000_0000 are represented as negative ints, i.e.
      the bits 32-62 are all set to 1.
    *)
-ELSE
+#else
 type int4 = int32
 type uint4 = int32
-END
+#endif
 
 type int8 = int64
 type uint8 = int64
@@ -76,10 +76,10 @@ let rec cannot_represent s =
 (* cmp                                                                *)
 (**********************************************************************)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let lt_uint4 x y =
   if x < y then x >= 0 else y < x && y < 0
-ELSE
+#else
 let lt_uint4 x y =
   if x < y then 
     x >= 0l
@@ -95,7 +95,7 @@ let lt_uint4 x y =
          - if y < 0  && x >= 0 ==> x <u y
          - if y >= 0 && x >= 0 ==> x >u y
        *)
-END
+#endif
 
 let le_uint4 x y = not(lt_uint4 y x)
 let gt_uint4 x y = lt_uint4 y x
@@ -116,7 +116,7 @@ let ge_uint8 x y = not(lt_uint8 x y)
 
 (* compatibility interface *)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let mk_int4 (c3,c2,c1,c0) =
   let n3 = (Char.code c3) in
   let n2 = (Char.code c2) in
@@ -124,7 +124,7 @@ let mk_int4 (c3,c2,c1,c0) =
   let n0 = (Char.code c0) in
   (* be careful to set the sign correctly: *)
   ((n3 lsl 55) asr 31) lor (n2 lsl 16) lor (n1 lsl 8) lor n0
-ELSE
+#else
 let mk_int4 (c3,c2,c1,c0) =
   let n3 = Int32.of_int (Char.code c3) in
   let n2 = Int32.of_int (Char.code c2) in
@@ -137,7 +137,7 @@ let mk_int4 (c3,c2,c1,c0) =
        (Int32.logor
 	  (Int32.shift_left n1 8)
 	  n0))
-END
+#endif
 
 
 let mk_int8 (c7,c6,c5,c4,c3,c2,c1,c0) =
@@ -176,21 +176,21 @@ let mk_uint8 = mk_int8
 
 (* compatibility interface *)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let dest_int4 x =
   let n3 = (x lsr 24) land 0xff in
   let n2 = (x lsr 16) land 0xff in
   let n1 = (x lsr 8) land 0xff in
   let n0 = x land 0xff in
   (Char.chr n3, Char.chr n2, Char.chr n1, Char.chr n0)
-ELSE
+#else
 let dest_int4 x =
   let n3 = Int32.to_int (Int32.shift_right_logical x 24) land 0xff in
   let n2 = Int32.to_int (Int32.shift_right_logical x 16) land 0xff in
   let n1 = Int32.to_int (Int32.shift_right_logical x 8) land 0xff in
   let n0 = Int32.to_int (Int32.logand x 0xffl) in
   (Char.chr n3, Char.chr n2, Char.chr n1, Char.chr n0)
-END
+#endif
 
 let dest_int8 x =
   let n7 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 56)
@@ -226,29 +226,29 @@ let c_min_int_64 = Int64.of_int min_int
 
 let name_int_of_int4 = "int_of_int4"
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int_of_int4 x = x
-ELSE
+#else
 let int_of_int4 x =
   if x < (-0x4000_0000l) || x > 0x3fff_ffffl then
     cannot_represent name_int_of_int4;
   Int32.to_int x
-END
+#endif
 
 
 let name_int_of_uint4 = "int_of_uint4"
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int_of_uint4 x =
   (* x land 0xffff_ffff - "Integer literal exceeds the range..." grrrmpf *)
   (x lsl 31) lsr 31
-ELSE
+#else
 let int_of_uint4 x =
   if x >= 0l && x <= 0x3fff_ffffl then
     Int32.to_int x
   else
     cannot_represent name_int_of_uint4
-END
+#endif
 
 
 let name_int_of_int8 = "int_of_int8"
@@ -276,35 +276,35 @@ let int_of_uint8 x =
 
 let name_int4_of_int = "int4_of_int"
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int4_of_int i =
   let j = i asr 31 in
   if j = 0 || j = (-1) then 
     i
   else
     cannot_represent name_int4_of_int
-ELSE
+#else
 let int4_of_int i =
   Int32.of_int i
-END
+#endif
 
 
 let name_uint4_of_int = "uint4_of_int"
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let uint4_of_int i =
   let j = i asr 32 in
   if j = 0 then
     (i lsl 31) asr 31  (* fix sign *)
   else
     cannot_represent name_uint4_of_int
-ELSE
+#else
 let uint4_of_int i =
   if i >= 0 then
     Int32.of_int i
   else
     cannot_represent name_uint4_of_int
-END
+#endif
 
 
 let int8_of_int = Int64.of_int 
@@ -324,27 +324,27 @@ let uint8_of_int i =
 (* Int32 and Int64 support: int[32|64]_of_[u]intn                     *)
 (**********************************************************************)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int32_of_int4 x = Int32.of_int x 
-ELSE
+#else
 let int32_of_int4 x = x 
-END
+#endif
 
 let name_int32_of_uint4 = "int32_of_uint4"
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int32_of_uint4 x =
   if x >= 0 then
     Int32.of_int x
   else
     cannot_represent name_int32_of_uint4
-ELSE
+#else
 let int32_of_uint4 x =
   if x >= 0l then
     x
   else
     cannot_represent name_int32_of_uint4
-END
+#endif
 
 
 let c_int32_min_int_64 = Int64.of_int32 Int32.min_int 
@@ -369,26 +369,26 @@ let int32_of_uint8 x =
     cannot_represent name_int32_of_uint8
 
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int64_of_int4 = Int64.of_int
-ELSE
+#else
 let int64_of_int4 = Int64.of_int32 
-END
+#endif
 
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int64_of_uint4 x =
 if x >= 0 then
     Int64.of_int x
   else
     Int64.add (Int64.of_int x) 0x1_0000_0000L
-ELSE
+#else
 let int64_of_uint4 x =
   if x >= 0l then
     Int64.of_int32 x
   else
     Int64.add (Int64.of_int32 x) 0x1_0000_0000L
-END
+#endif
 
 
 let int64_of_int8 x = x 
@@ -407,11 +407,11 @@ let int64_of_uint8 x =
 (* Int32 and Int64 support: [u]intn_of_int[32|64]                     *)
 (**********************************************************************)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int4_of_int32 = Int32.to_int
-ELSE
+#else
 let int4_of_int32 x = x
-END
+#endif
 
 
 let name_uint4_of_int32 = "uint4_of_int32"
@@ -436,28 +436,28 @@ let uint8_of_int32 i =
 
 let name_int4_of_int64 = "int4_of_int64"
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let int4_of_int64 i =
   if i >= (-0x8000_0000L) && i <= 0x7fff_ffffL then
     Int64.to_int i
   else cannot_represent name_int4_of_int64
-ELSE
+#else
 let int4_of_int64 i =
   if i >= (-0x8000_0000L) && i <= 0x7fff_ffffL then
     Int64.to_int32 i
   else cannot_represent name_int4_of_int64
-END
+#endif
 
 let name_uint4_of_int64 = "uint4_of_int64"
 
 let uint4_of_int64 i =
   if i < 0L || i > 0xffff_ffffL then
     cannot_represent name_uint4_of_int64;
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
   Int64.to_int(Int64.shift_right (Int64.shift_left i 32) 32)  (* sign! *)
-ELSE
+#else
   Int64.to_int32 i
-END
+#endif
 
 
 let int8_of_int64 i = i 
@@ -474,13 +474,13 @@ let uint8_of_int64 i =
 (* logical_xxx_of_xxx                                                 *)
 (**********************************************************************)
 
-IFDEF WORDSIZE_64 THEN
+#ifdef WORDSIZE_64
 let logical_uint4_of_int32 x = Int32.to_int x
 let logical_int32_of_uint4 x = Int32.of_int x
-ELSE
+#else
 let logical_uint4_of_int32 x = x
 let logical_int32_of_uint4 x = x
-END
+#endif
 
 let logical_uint8_of_int64 x = x
 let logical_int64_of_uint8 x = x
@@ -552,11 +552,11 @@ module BE : ENCDEC = struct
   (* read_[u]intn                                                       *)
   (**********************************************************************)
   
-  IFDEF WORDSIZE_64 THEN
-    IFDEF USE_NETSYS_XDR THEN
+  #ifdef WORDSIZE_64
+    #ifdef USE_NETSYS_XDR
   let read_int4_unsafe =
     Netsys_xdr.s_read_int4_64_unsafe
-    ELSE
+    #else
   let read_int4_unsafe s pos =
     let n3 = Char.code (String.unsafe_get s pos) in
     let x = (n3 lsl 55) asr 31 in  (* sign! *)
@@ -566,8 +566,8 @@ module BE : ENCDEC = struct
     let x = x lor (n1 lsl 8) in
     let n0 = Char.code (String.unsafe_get s (pos+3)) in
     x lor n0
-     END
-   ELSE
+    #endif
+   #else
   let read_int4_unsafe s pos =
     let n3 = Int32.of_int (Char.code (String.unsafe_get s pos)) in
     let x = Int32.shift_left n3 24 in
@@ -577,7 +577,7 @@ module BE : ENCDEC = struct
     let x = Int32.logor x (Int32.shift_left n1 8) in
     let n0 = Int32.of_int (Char.code (String.unsafe_get s (pos+3))) in
     Int32.logor x n0
-   END
+   #endif
 (*
   seems to be slightly better than
 
@@ -597,20 +597,20 @@ module BE : ENCDEC = struct
     read_int4_unsafe s pos
       
 
-  IFDEF WORDSIZE_64 THEN
-    IFDEF USE_NETSYS_XDR THEN
-      DEFINE FAST_READ_INT8
-    END
-  END
+  #ifdef WORDSIZE_64
+    #ifdef USE_NETSYS_XDR
+      #define FAST_READ_INT8 defined
+    #endif
+  #endif
 
-  IFDEF FAST_READ_INT8 THEN
+  #ifdef FAST_READ_INT8
   let read_int8_unsafe s pos =
     let x1 = Netsys_xdr.s_read_int4_64_unsafe s pos in
     let x0 = Netsys_xdr.s_read_int4_64_unsafe s (pos+4) in
     Int64.logor
       (Int64.logand (Int64.of_int x0) 0xFFFF_FFFFL)
       (Int64.shift_left (Int64.of_int x1) 32)
-  ELSE
+  #else
   let read_int8_unsafe s pos =
     let n7 = Int64.of_int (Char.code (String.unsafe_get s pos)) in
     let x = Int64.shift_left n7 56 in
@@ -635,7 +635,7 @@ module BE : ENCDEC = struct
     
     let n0 = Int64.of_int (Char.code (String.unsafe_get s (pos+7))) in
     Int64.logor x n0
-  END      
+  #endif      
 
 
   let read_int8 s pos =
@@ -654,11 +654,11 @@ module BE : ENCDEC = struct
   (* write_[u]intn                                                      *)
   (**********************************************************************)
 
-  IFDEF WORDSIZE_64 THEN
-    IFDEF USE_NETSYS_XDR THEN
+  #ifdef WORDSIZE_64
+    #ifdef USE_NETSYS_XDR
   let write_int4_unsafe =
     Netsys_xdr.s_write_int4_64_unsafe
-    ELSE
+    #else
   let write_int4_unsafe s pos x =
     let n3 = (x lsr 24) land 0xff in
     String.unsafe_set s pos (Char.unsafe_chr n3);
@@ -669,8 +669,8 @@ module BE : ENCDEC = struct
     let n0 = x land 0xff in
     String.unsafe_set s (pos+3) (Char.unsafe_chr n0);
     ()
-    END
-  ELSE
+    #endif
+  #else
   let write_int4_unsafe s pos x =
     let n3 = Int32.to_int (Int32.shift_right_logical x 24) land 0xff in
     String.unsafe_set s pos (Char.unsafe_chr n3);
@@ -681,7 +681,8 @@ module BE : ENCDEC = struct
     let n0 = Int32.to_int (Int32.logand x 0xffl) in
     String.unsafe_set s (pos+3) (Char.unsafe_chr n0);
     ()
-   END ;;
+   #endif
+   ;;
 
 
   let write_int4 s pos x =
@@ -689,19 +690,19 @@ module BE : ENCDEC = struct
       raise Out_of_range;
     write_int4_unsafe s pos x
 
-  IFDEF WORDSIZE_64 THEN
-    IFDEF USE_NETSYS_XDR THEN
-      DEFINE FAST_WRITE_INT8
-    END
-  END
+  #ifdef WORDSIZE_64
+    #ifdef USE_NETSYS_XDR
+      #define FAST_WRITE_INT8 defined
+    #endif
+  #endif
 
-  IFDEF FAST_WRITE_INT8 THEN
+  #ifdef FAST_WRITE_INT8
   let write_int8_unsafe s pos x =
     Netsys_xdr.s_write_int4_64_unsafe s pos
       (Int64.to_int (Int64.shift_right x 32));
     Netsys_xdr.s_write_int4_64_unsafe s (pos+4)
       (Int64.to_int (Int64.logand x 0xFFFF_FFFFL))
-  ELSE
+  #else
   let write_int8_unsafe s pos x =
     let n7 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 56)
 			     0xffL) in
@@ -734,7 +735,7 @@ module BE : ENCDEC = struct
     let n0 = Int64.to_int (Int64.logand x 0xffL) in
     String.unsafe_set s (pos+7) (Char.unsafe_chr n0);
     ()
-  END
+  #endif
 
 
   let write_int8 s pos x =
@@ -803,7 +804,7 @@ module LE : ENCDEC = struct
   (* read_[u]intn                                                       *)
   (**********************************************************************)
   
-  IFDEF WORDSIZE_64 THEN
+  #ifdef WORDSIZE_64
 (*
     IFDEF USE_NETSYS_XDR THEN
   let read_int4_unsafe =
@@ -820,7 +821,7 @@ module LE : ENCDEC = struct
     let n0 = Char.code (String.unsafe_get s pos) in
     x lor n0
     (* END *)
-   ELSE
+   #else
   let read_int4_unsafe s pos =
     let n3 = Int32.of_int (Char.code (String.unsafe_get s (pos+3))) in
     let x = Int32.shift_left n3 24 in
@@ -830,7 +831,7 @@ module LE : ENCDEC = struct
     let x = Int32.logor x (Int32.shift_left n1 8) in
     let n0 = Int32.of_int (Char.code (String.unsafe_get s pos)) in
     Int32.logor x n0
-   END
+   #endif
 
   let read_int4 s pos =
     if pos < 0 || pos + 4 > String.length s then
@@ -882,7 +883,7 @@ module LE : ENCDEC = struct
   (* write_[u]intn                                                      *)
   (**********************************************************************)
 
-  IFDEF WORDSIZE_64 THEN
+  #ifdef WORDSIZE_64
 (*
     IFDEF USE_NETSYS_XDR THEN
   let write_int4_unsafe =
@@ -900,7 +901,7 @@ module LE : ENCDEC = struct
     String.unsafe_set s pos (Char.unsafe_chr n0);
     ()
    (* END *)
-  ELSE
+  #else
   let write_int4_unsafe s pos x =
     let n3 = Int32.to_int (Int32.shift_right_logical x 24) land 0xff in
     String.unsafe_set s (pos+3) (Char.unsafe_chr n3);
@@ -911,7 +912,8 @@ module LE : ENCDEC = struct
     let n0 = Int32.to_int (Int32.logand x 0xffl) in
     String.unsafe_set s pos (Char.unsafe_chr n0);
     ()
-   END ;;
+   #endif
+    ;;
 
 
   let write_int4 s pos x =
@@ -1017,8 +1019,9 @@ module LE : ENCDEC = struct
 end
 
 
-IFDEF HOST_IS_BIG_ENDIAN THEN
+#ifdef HOST_IS_BIG_ENDIAN
 module HO = BE
-ELSE
+#else
 module HO = LE
-END
+#endif
+;;

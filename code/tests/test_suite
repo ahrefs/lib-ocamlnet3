@@ -32,7 +32,6 @@ set -e
 dirs="netclient/hhamsters \
       netclient/http_bench \
       netplex/bench \
-      netplex/mutex \
       netstring/bench \
       nethttpd/bench \
       netshm/bench \

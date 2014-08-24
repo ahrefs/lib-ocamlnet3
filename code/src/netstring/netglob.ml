@@ -259,7 +259,7 @@ type eff_set =
     }
 
 let to_eset set =
-  let ascii = Array.create 128 false in
+  let ascii = Array.make 128 false in
   let non_ascii = Hashtbl.create 13 in
   List.iter
     (fun (k0,k1) ->

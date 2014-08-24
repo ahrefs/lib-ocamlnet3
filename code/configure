@@ -715,11 +715,11 @@ if [ $enable_gtk2 -gt 0 ]; then
 
     printf "%s" "Checking whether lablgtk2 has GMain.Io.remove... "
     mkdir -p tmp
-    cat <<EOF >tmp/gtk.ml
+    cat <<EOF >tmp/gtktest.ml
 let _ = GMain.Io.remove;;
 EOF
 
-    if ocamlfind ocamlc -package lablgtk2 -c tmp/gtk.ml >/dev/null 2>/dev/null;
+    if ocamlfind ocamlc -package lablgtk2 -c tmp/gtktest.ml >/dev/null 2>/dev/null;
     then
         echo "yes"
     else
@@ -730,21 +730,21 @@ EOF
     
     printf "%s" "Checking whether lablgtk2 has GMain.Io.add_watch with list support... "
     mkdir -p tmp
-    cat <<'EOF' >tmp/gtk.ml
+    cat <<'EOF' >tmp/gtktest.ml
 open GMain.Io
 let _ = (add_watch : cond:condition list -> callback:(condition list -> bool) -> ?prio:int -> channel -> id);;
 exit 0
 EOF
     # Note: this newer API is never broken in the sense checked below, i.e.
     # such lablgtk2 versions do not exist.
-    if ocamlfind ocamlc -package unix,lablgtk2 -linkpkg -o tmp/gtk tmp/gtk.ml >/dev/null 2>/dev/null && tmp/gtk; then
+    if ocamlfind ocamlc -package unix,lablgtk2 -linkpkg -o tmp/gtk tmp/gtktest.ml >/dev/null 2>/dev/null && tmp/gtk; then
         echo "yes"
-        gtk2_io_add_watch_supports_lists="-ppopt -DGTK2_IO_ADD_WATCH_SUPPORTS_LISTS"
+        gtk2_io_add_watch_supports_lists="-D GTK2_IO_ADD_WATCH_SUPPORTS_LISTS"
     else
         echo "no"
         printf "%s" "Checking whether lablgtk2's GMain.Io.add_watch is broken... "
         mkdir -p tmp
-        cat <<'EOF' >tmp/gtk.ml
+        cat <<'EOF' >tmp/gtktest.ml
 GMain.Main.init();;
 let ch = GMain.Io.channel_of_descr (Unix.stdout) in
 let w = GMain.Io.add_watch
@@ -757,7 +757,7 @@ if (Obj.magic w : int) > 0 then
 else
   exit 1
 EOF
-	if ocamlfind ocamlc -package unix,lablgtk2 -linkpkg -o tmp/gtk tmp/gtk.ml >/dev/null 2>/dev/null && tmp/gtk; then
+	if ocamlfind ocamlc -package unix,lablgtk2 -linkpkg -o tmp/gtk tmp/gtktest.ml >/dev/null 2>/dev/null && tmp/gtk; then
             echo "no"
         else
             echo "yes"
@@ -1057,6 +1057,9 @@ APXS = $apxs
 
 # ocamlrpcgen
 OCAMLRPCGEN_CPP = $cpp
+
+# cppo:
+CPPO_VERSION = 0.9.4
 
 _EOF_
 

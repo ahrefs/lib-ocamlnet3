@@ -4,7 +4,7 @@
  *)
 
 
-let net_db_dir = "@NET_DB_DIR@" ;;
+let net_db_dir = ref "@NET_DB_DIR@" ;;
 
 let net_db_hash = Hashtbl.create 20 ;;
 
@@ -16,7 +16,7 @@ let read_db name =
   with
       Not_found ->
 	if !file_db_is_enabled then begin
-	  let filename = Filename.concat net_db_dir name ^ ".netdb" in
+	  let filename = Filename.concat !net_db_dir name ^ ".netdb" in
 	  if Sys.file_exists filename then begin
 	    let ch = open_in_bin filename in
 	    try
@@ -43,7 +43,7 @@ let read_db name =
 let exists_db name =
   Hashtbl.mem net_db_hash name || (
     !file_db_is_enabled && (
-      let filename = Filename.concat net_db_dir name ^ ".netdb" in
+      let filename = Filename.concat !net_db_dir name ^ ".netdb" in
       Sys.file_exists filename
     ))
 ;;
@@ -56,4 +56,8 @@ let set_db name value =
 
 let disable_file_db () =
   file_db_is_enabled := false
+;;
+
+let override_file_db dir =
+  net_db_dir := dir
 ;;

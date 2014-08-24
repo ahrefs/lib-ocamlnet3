@@ -43,6 +43,28 @@ f tools/mkstublib
 f tools/stubcc
 p tools/.*\.ml
 
+d tools/cppo-0.9.4
+f tools/cppo-0.9.4/Changes
+f tools/cppo-0.9.4/cppo_command.ml
+f tools/cppo-0.9.4/cppo_eval.ml
+f tools/cppo-0.9.4/cppo.lexer.mll
+f tools/cppo-0.9.4/cppo_main.ml
+f tools/cppo-0.9.4/cppo_parser.mly
+f tools/cppo-0.9.4/cppo_types.ml
+f tools/cppo-0.9.4/LICENSE
+f tools/cppo-0.9.4/Makefile
+f tools/cppo-0.9.4/META
+f tools/cppo-0.9.4/README.md
+d tools/cppo-0.9.4/examples
+f tools/cppo-0.9.4/examples/debug.ml
+f tools/cppo-0.9.4/examples/french.ml
+f tools/cppo-0.9.4/examples/lexer.mll
+f tools/cppo-0.9.4/examples/Makefile
+d tools/cppo-0.9.4/ocamlbuild_plugin
+d tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.ml
+d tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.mli
+d tools/cppo-0.9.4/ocamlbuild_plugin/_tags
+
 d src/netstring
 f src/netstring/META.in
 f src/netstring/Makefile
@@ -63,20 +85,12 @@ x src/netstring/netmappings_jp.ml
 x src/netstring/netmappings_kr.ml
 x src/netstring/netmappings_other.ml
 f src/netstring/netmappings_min.ml
-# Also include netdate.mlp:
-f src/netstring/netdate.mlp
-x src/netstring/netdate.ml
 x src/netstring/netconst.ml
 f src/netstring/netconst.mlp
 f src/netstring/nethtml_scanner.mll
-f src/netstring/nethttp.mlp
 f src/netstring/netdb.mlp
 x src/netstring/netdb.ml
 f src/netstring/netaccel_c.c
-f src/netstring/netnumber.mlp
-x src/netstring/netnumber.ml
-f src/netstring/netstring_str.mlp
-x src/netstring/netstring_str.ml
 x src/netstring/netglob_lex.ml
 f src/netstring/netglob_lex.mll
 x src/netstring/netunichar.ml
