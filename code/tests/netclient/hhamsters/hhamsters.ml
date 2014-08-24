@@ -31,6 +31,11 @@ let () =
   let cache = create_aggressive_cache () in
   pipe # set_connection_cache cache;
 
+  (* twitter redirects to https now, but this client does not support it *)
+  let opts = pipe # get_options in
+  let opts' = { opts with maximum_redirections = 0 } in
+  pipe # set_options opts';
+
   (* twitter: sends immediately a close-connection, so no persistency *)
   main esys pipe 0 "http://twitter.com/hhamsters";
   Unixqueue.run esys;
