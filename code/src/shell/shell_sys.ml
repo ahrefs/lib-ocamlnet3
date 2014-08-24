@@ -575,7 +575,7 @@ let posix_run
        if ifd > !max_open_ht then max_open_ht := ifd
     )
     open_descr_ht;
-  let keep_open = Array.create (!max_open_ht+1) false in
+  let keep_open = Array.make (!max_open_ht+1) false in
   Hashtbl.iter
     (fun fd _ ->
        let ifd = Netsys_posix.int_of_file_descr fd in

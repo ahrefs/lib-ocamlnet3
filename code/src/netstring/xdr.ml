@@ -1875,7 +1875,7 @@ let rec unpack_term
     match t'.term with
       | T_string n ->
 	  let n' = Netnumber.logical_int32_of_uint4 n in
-	  let a = Array.create p "" in
+	  let a = Array.make p "" in
 	  let k' = 
 	    Netsys_xdr.s_read_string_array_unsafe str !k (k_end - !k) n' a in
 	  if k' = (-1) then raise_xdr_format_too_short();
@@ -1886,7 +1886,7 @@ let rec unpack_term
 	  else
 	    XV_array(Array.map (fun s -> XV_string s) a)
       | _ ->
-	  let a = Array.create p XV_void in
+	  let a = Array.make p XV_void in
 	  for i = 0 to p-1 do
 	    Array.unsafe_set a i (unpack t')
 	  done;

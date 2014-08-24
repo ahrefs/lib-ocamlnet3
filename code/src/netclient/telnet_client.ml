@@ -307,7 +307,7 @@ class telnet_session =
 
 
     method offer_local_option p = 
-      if not (List.mem p offered_local_options) &
+      if not (List.mem p offered_local_options) &&
 	self # get_local_option p <> Accepted  then begin
 	offered_local_options <- p :: offered_local_options;
 	Queue.add (Telnet_will (char_of_option p)) output_queue
@@ -328,7 +328,7 @@ class telnet_session =
 
 
     method request_remote_option p = 
-      if not (List.mem p requested_remote_options) &
+      if not (List.mem p requested_remote_options) &&
 	 self # get_remote_option p <> Accepted then begin
 	requested_remote_options <- p ::requested_remote_options;
 	Queue.add (Telnet_do (char_of_option p)) output_queue
@@ -360,7 +360,7 @@ class telnet_session =
 
 
     method option_negotiation_is_over =
-      offered_local_options = [] & requested_remote_options = []
+      offered_local_options = [] && requested_remote_options = []
 
 
     method process_option_command cmd =
@@ -667,7 +667,7 @@ class telnet_session =
 
       let timeout_value = options.connection_timeout in
 
-      if (Queue.length output_queue = 0 & Queue.length synch_queue = 0)
+      if (Queue.length output_queue = 0 && Queue.length synch_queue = 0)
       then begin
 	if polling_wr then begin
 	  let g = match group with
@@ -685,7 +685,7 @@ class telnet_session =
        * - The write_queue is not empty or the synch_queue is not empty
        *)
 
-      if (Queue.length output_queue > 0 or Queue.length synch_queue > 0)
+      if (Queue.length output_queue > 0 || Queue.length synch_queue > 0)
       then begin
 	if not polling_wr then begin
 	  let g = match group with
@@ -738,7 +738,7 @@ class telnet_session =
 	| _ -> ()
       end;
 
-      if input_timed_out & output_timed_out then begin
+      if input_timed_out && output_timed_out then begin
 	(* No network packet arrived for a period of time.
 	 * May happen while connecting to a server, or during operation.
 	 *)

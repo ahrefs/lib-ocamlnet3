@@ -521,7 +521,7 @@ let get_column_of_scanner (spec, target) =
 ;;
 
 let create_mime_scanner ~specials ~scan_options =
-  let is_spcl = Array.create 256 false in
+  let is_spcl = Array.make 256 false in
   List.iter
     (fun c -> is_spcl.( Char.code c ) <- true)
     specials;
@@ -1867,7 +1867,7 @@ let scan_multipart_body s ~start_pos ~end_pos ~boundary =
   in
 
   let l_s = String.length s in
-  if start_pos < 0 or end_pos < 0 or start_pos > l_s or end_pos >l_s then
+  if start_pos < 0 || end_pos < 0 || start_pos > l_s || end_pos >l_s then
     invalid_arg "Mimestring.scan_multipart_body";
   (* Set up a netstream beginning at ~start_pos and ending at ~end_pos: *)
   let len = end_pos - start_pos in

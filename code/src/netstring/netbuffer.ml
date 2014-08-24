@@ -263,7 +263,7 @@ let blit_from_string src srcpos b p n =
 let delete b k l =
   (* deletes l bytes at position k in b *)
   let n = b.buffer_length in
-  if k+l <> n & k <> n then
+  if k+l <> n && k <> n then
     String.blit b.buffer (k+l) b.buffer k (n-l-k);
   b.length <- b.length - l;
   ()

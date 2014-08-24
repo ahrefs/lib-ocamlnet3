@@ -832,7 +832,7 @@ let read_utf8 is_java slice_char slice_blen s_in p_in l_in =
 		2
 	      end
 	      else begin
-		if n2 < 128 or n2 > 191 then malformed_code();
+		if n2 < 128 || n2 > 191 then malformed_code();
 		let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
 		if p < 128 then malformed_code();
 		(* slice_char.(n) <- p; *)
@@ -852,8 +852,8 @@ let read_utf8 is_java slice_char slice_blen s_in p_in l_in =
 		Char.code(String.unsafe_get s_in (!p + 1)) in
 	      let n3 = (* Char.code (s_in.[!p + 2]) *)
 		Char.code(String.unsafe_get s_in (!p + 2)) in
-	      if n2 < 128 or n2 > 191 then malformed_code();
-	      if n3 < 128 or n3 > 191 then malformed_code();
+	      if n2 < 128 || n2 > 191 then malformed_code();
+	      if n3 < 128 || n3 > 191 then malformed_code();
 	      let p =
 		((n1 land 0b1111) lsl 12) lor
 		((n2 land 0b111111) lsl 6) lor
@@ -883,9 +883,9 @@ let read_utf8 is_java slice_char slice_blen s_in p_in l_in =
 		Char.code(String.unsafe_get s_in (!p + 2)) in
 	      let n4 = (* Char.code (s_in.[!p + 3]) *)
 		Char.code(String.unsafe_get s_in (!p + 3)) in
-	      if n2 < 128 or n2 > 191 then malformed_code();
-	      if n3 < 128 or n3 > 191 then malformed_code();
-	      if n4 < 128 or n4 > 191 then malformed_code();
+	      if n2 < 128 || n2 > 191 then malformed_code();
+	      if n3 < 128 || n3 > 191 then malformed_code();
+	      if n4 < 128 || n4 > 191 then malformed_code();
 	      let p = ((n1 land 0b111) lsl 18) lor
 		      ((n2 land 0b111111) lsl 12) lor
 		      ((n3 land 0b111111) lsl 6) lor
@@ -967,7 +967,7 @@ let read_utf16_lebe lo hi n_start enc slice_char slice_blen s_in p_in l_in =
 	  if p <= 0xdbff then begin
 	    let q = (Char.code s_in.[p_in + k + 2 + lo ]) lor
 		    ((Char.code s_in.[p_in + k + 2 + hi]) lsl 8) in
-	    if q < 0xdc00 or q > 0xdfff then malformed_code k n;
+	    if q < 0xdc00 || q > 0xdfff then malformed_code k n;
 	    let eff_p = (p lsl 10) + q + surrogate_offset in
 	    slice_char.(n) <- eff_p;
 	    slice_blen.(n) <- 4;
@@ -2602,7 +2602,7 @@ let init_load_slice cs enc =
     let bp = cs.cursor_slice_byte_pos in
     let ep = cs.cursor_range_pos + cs.cursor_range_len in
     let (slice_char, slice_blen) =
-      (Array.create slice_size (-1), Array.create slice_size 1) in
+      (Array.make slice_size (-1), Array.make slice_size 1) in
     let rd_chars, rd_bytes, _ =
       try
 	reader 
@@ -2644,7 +2644,7 @@ let init_load_slice cs enc =
 	  (cs.cursor_slice_char, cs.cursor_slice_blen)
 	  (* use old arrays again *)
 	else
-	  (Array.create slice_size (-1), Array.create slice_size 1)
+	  (Array.make slice_size (-1), Array.make slice_size 1)
 	  (* create new arrays with different size *)
       in
       (* Use the reader to decode the bytes and to put the characters into
@@ -2711,7 +2711,7 @@ let init_load_slice cs enc =
 	  (cs.cursor_slice_char, cs.cursor_slice_blen)
 	  (* use old arrays again *)
 	else
-	  (Array.create slice_size (-1), Array.create slice_size 1)
+	  (Array.make slice_size (-1), Array.make slice_size 1)
 	  (* create new arrays with different size *)
       in
       (* Go back 1 character (must always succeed): *)

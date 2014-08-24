@@ -267,7 +267,7 @@ let create_poll_array n =
     Poll_mem(s,n)
   )
   else (
-    let e = Array.create n null_poll_cell in
+    let e = Array.make n null_poll_cell in
     Poll_emu e
   )
 

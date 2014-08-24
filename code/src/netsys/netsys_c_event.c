@@ -89,7 +89,11 @@ void netsys_not_event_signal(struct not_event *ne)
 	*/
 	if (__sync_bool_compare_and_swap(&(ne->state), 0, 1)) {
 	    if (ne->fd2 >= 0) {
-		write(ne->fd2, "X", 1);
+                int n;
+		n = write(ne->fd2, "X", 1);
+                if (n == -1) {
+                    fprintf(stderr, "Cannot write to signaling pipe [netsys_c_event.c]\n");
+                }
 	    }
 	}
 
@@ -146,7 +150,11 @@ void netsys_not_event_signal(struct not_event *ne)
 	    int64 buf;
 	    buf = 1;
 	    if (ne->fd1 >= 0) {
-		write(ne->fd1, (char *) &buf, 8);
+                int n;
+		n = write(ne->fd1, (char *) &buf, 8);
+                if (n == -1) {
+                    fprintf(stderr, "Cannot write to signaling pipe [netsys_c_event.c]\n");
+                }
 	    };
 	    break;
 	}

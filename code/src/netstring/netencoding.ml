@@ -350,14 +350,14 @@ module Base64 = struct
       let c2 = next_char() in
       let c3 = next_char() in
 
-      if (c2 = '=' & c3 = '=') or (p_url & c2 = '.' & c3 = '.') then begin
+      if (c2 = '=' && c3 = '=') || (p_url && c2 = '.' && c3 = '.') then begin
 	let n0 = decode_char c0 in
 	let n1 = decode_char c1 in
 	let x0 = (n0 lsl 2) lor (n1 lsr 4) in
 	s.[ q ]   <- Char.chr x0;
       end
       else
-	if (c3 = '=') or (p_url & c3 = '.') then begin
+	if (c3 = '=') || (p_url && c3 = '.') then begin
 	  let n0 = decode_char c0 in
 	  let n1 = decode_char c1 in
 	  let n2 = decode_char c2 in
@@ -638,7 +638,7 @@ module QuotedPrintable = struct
 
   let decode_substring s ~pos ~len =
     
-    if len < 0 or pos < 0 or pos > String.length s then
+    if len < 0 || pos < 0 || pos > String.length s then
       invalid_arg "Netencoding.QuotedPrintable.decode";
     if pos + len > String.length s then
       invalid_arg "Netencoding.QuotedPrintable.decode";
@@ -664,7 +664,7 @@ module QuotedPrintable = struct
 		  match s.[pos+i+1] with
 		      '\r' ->
 			(* Official soft break *)
-			if i+2 < len & s.[pos+i+2] = '\n' then
+			if i+2 < len && s.[pos+i+2] = '\n' then
 			  count n (i+3)
 			else
 			  count n (i+2)
@@ -776,7 +776,7 @@ module Q = struct
 
   let encode_substring s ~pos ~len =
     
-    if len < 0 or pos < 0 or pos > String.length s then
+    if len < 0 || pos < 0 || pos > String.length s then
       invalid_arg "Netencoding.Q.encode_substring";
     if pos + len > String.length s then
       invalid_arg "Netencoding.Q.encode_substring";
@@ -828,7 +828,7 @@ module Q = struct
 
   let decode_substring s ~pos ~len =
     
-    if len < 0 or pos < 0 or pos > String.length s then
+    if len < 0 || pos < 0 || pos > String.length s then
       invalid_arg "Netencoding.Q.decode_substring";
     if pos + len > String.length s then
       invalid_arg "Netencoding.Q.decode_substring";
@@ -1303,7 +1303,7 @@ module Html = struct
 
   let rev_etable =
     (* Only code points 0 to 255: *)
-    let a = Array.create 256 "" in
+    let a = Array.make 256 "" in
     List.iter (fun (name,value) -> 
 		 if value <= 255 then
 		   a.(value) <- "&" ^ name ^ ";"
