@@ -1,4 +1,11 @@
+2014-08-24  Gerd Stolpmann  <gerd@zotac>
+
+	* Build: renaming file for a configure test to avoid a
+	  naming conflict (Richard Jones)
+
 2013-10-01  Gerd Stolpmann  <gerd@zotac>
+
+	* Release OCamlnet-3.7.4
 
 	* Https_client and aggressive connection caching: In previous
 	  versions there was a problem with the reinitialization of the
