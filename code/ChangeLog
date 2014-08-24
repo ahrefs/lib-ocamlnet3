@@ -1,3 +1,10 @@
+2014-08-25  Gerd Stolpmann  <gerd@zotac>
+
+	* Build: no longer requiring camlp4 (as it is not distributed with
+	  ocaml-4.02)
+
+	* Fixing some unit tests
+
 2014-08-24  Gerd Stolpmann  <gerd@zotac>
 
 	* Netexn: new exception representation in ocaml-4.02
