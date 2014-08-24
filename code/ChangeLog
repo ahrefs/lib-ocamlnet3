@@ -1,5 +1,7 @@
 2014-08-24  Gerd Stolpmann  <gerd@zotac>
 
+	* Netexn: new exception representation in ocaml-4.02
+
 	* Build: renaming file for a configure test to avoid a
 	  naming conflict (Richard Jones)
 

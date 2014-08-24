@@ -4,6 +4,32 @@
    the user to register a printer directly with the Ocaml stdlib.
    Of course, we register our printer there, too, but we have to be
    careful to avoid recursion
+
+   FORMAT OF EXCEPTIONS UNTIL 4.01:
+
+   - tag=0
+   - field(exn,0) is a block shared by all exceptions with the same
+     identity.
+   - field(field(exn,0),0) is the name as OCaml string
+   - field(exn,1): start of arguments
+
+   FORMAT OF EXCEPTIONS SINCE 4.02:
+
+   Exceptions without arguments: The exception is identical to the
+   exception descriptor:
+
+   - tag=object tag
+   - field(exn,0) is the name as OCaml string (NB. objects have in this
+     field a pointer to the method table)
+   - field(exn,1) is the OID (OCaml integer)
+
+   Exceptions with arguments:
+
+   - tag=0
+   - field(exn,0) is the exception descriptor object
+   - hence, field(field(exn,0),0) is the name
+   - hence, field(field(exn,0),1) is the OID
+   - field(exn,1): start of arguments
  *)
 
 type printer = exn -> string
@@ -15,14 +41,21 @@ let registry =
      *)
 
 let register_printer e f =
-  let anchor = Obj.field (Obj.repr e) 0 in
-  let name = String.copy (Obj.obj (Obj.field anchor 0) : string) in
-  
+  let e1 = Obj.repr e in
+  let descriptor = if Obj.tag e1 = 0 then Obj.field e1 0 else e1 in
+  let name = String.copy (Obj.obj (Obj.field descriptor 0) : string) in
+  let descr_is_object = (Obj.tag descriptor = Obj.object_tag) in
+
   let alist =
     try Hashtbl.find registry name with Not_found -> [] in
 
   let alist' =
-    (anchor, f) :: (List.remove_assq anchor alist) in
+    (descriptor, f) :: 
+      (if descr_is_object then
+         List.remove_assoc descriptor alist
+       else
+         List.remove_assq descriptor alist
+      ) in
   
   Hashtbl.replace registry name alist'
 
@@ -31,14 +64,19 @@ let register_printer e f =
  *)
 
 let to_string_opt (e : exn) : string option =
-  let anchor = Obj.field (Obj.repr e) 0 in
-  let name = String.copy (Obj.obj (Obj.field anchor 0) : string) in
+  let e1 = Obj.repr e in
+  let descriptor = if Obj.tag e1 = 0 then Obj.field e1 0 else e1 in
+  let name = String.copy (Obj.obj (Obj.field descriptor 0) : string) in
+  let descr_is_object = (Obj.tag descriptor = Obj.object_tag) in
 
   let f_opt =
     try
       let alist = Hashtbl.find registry name in
       try
-	Some(List.assq anchor alist)
+        if descr_is_object then
+          Some(List.assoc descriptor alist)
+        else
+	  Some(List.assq descriptor alist)
       with
 	| Not_found ->
 (*
