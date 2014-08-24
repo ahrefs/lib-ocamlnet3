@@ -158,7 +158,7 @@ netunichar.ml: unicode_charinfo.txt
 include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += tools_done netdb_done netdb.ml $(PMAP:.pmap=.ml)
-CLEAN_LIST += netconst.ml netstring_str.ml
+CLEAN_LIST += netconst.ml
 
 clean::
 	test ! -d mappings || rm -f $(PMAP)
