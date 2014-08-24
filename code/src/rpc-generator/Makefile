@@ -10,8 +10,6 @@ ALL_EXTRA = ocamlrpcgen$(EXEC_SUFFIX) rpcgen-packlist
 
 PACKLIST = rpcgen-packlist
 
-#OCAMLDEP_OPTIONS = -syntax camlp4o -package camlp4.macro
-
 INCLUDES += $(INC_NETSTRING)
 
 include $(TOP_DIR)/Makefile.rules

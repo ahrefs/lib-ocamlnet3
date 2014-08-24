@@ -10,8 +10,6 @@ INSTALL_EXTRA = netplex-packlist netplex_mt.cmo netplex_mt.cmx netplex_mt.o \
 		netplex_mt.p.cmx netplex_mt.p.o
 INSTOTHER = install-netplex-admin
 
-PP_OPTIONS = -syntax camlp4o -package camlp4
-
 include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += netplex-admin$(EXEC_SUFFIX) \

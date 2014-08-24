@@ -16,6 +16,7 @@ PKGLIST ?= netstring cgi
 
 .PHONY: all
 all:
+	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) all )
 	for pkg in $(PKGLIST); do \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
@@ -24,6 +25,7 @@ all:
 
 .PHONY: opt
 opt:
+	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) opt )
 	for pkg in $(PKGLIST); do \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
@@ -64,6 +66,7 @@ clean:
 			( cd $$pkg && $(MAKE) -f Makefile.pre clean); \
 	done
 	if test -f doc/Makefile; then cd doc && $(MAKE) clean; fi
+	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) clean )
 
 .PHONY: clean-doc
 clean-doc:

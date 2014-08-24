@@ -20,6 +20,7 @@ CAMLP4    = camlp4
 OCAMLMKLIB = $(TOP_DIR)/tools/mkstublib
 OCAMLDOC  = $(OCAMLFIND) ocamldoc
 STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
+CPPO      = $(TOP_DIR)/tools/cppo-$(CPPO_VERSION)/cppo
 
 TOOLS_DIR = $(TOP_DIR)/tools
 COLLECT_FILES = $(TOOLS_DIR)/collect_files

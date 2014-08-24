@@ -197,10 +197,11 @@ let std_error_response =
   Nethttpd_util.std_error_response
 
 
-let (default_file_service : ('a,'b) service_factory) handlers cfg addr uri_path =
-  restrict_file_service_config cfg addr;
-  let spec = read_file_service_config cfg addr uri_path in
-  Nethttpd_services.file_service spec
+let default_file_service : ('a,'b) service_factory =
+  fun handlers cfg addr uri_path ->
+    restrict_file_service_config cfg addr;
+    let spec = read_file_service_config cfg addr uri_path in
+    Nethttpd_services.file_service spec
 
 
 let restrict_dynamic_service_config cfg addr =

@@ -6,6 +6,6 @@ GENERATE = META
 
 INSTALL_EXTRA += LICENSE
 
-PP_OPTIONS = -package "camlp4, camlp4.macro" -syntax "camlp4o"
+PP_OPTIONS = -pp $(CPPO)
 
 include $(TOP_DIR)/Makefile.rules

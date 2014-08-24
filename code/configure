@@ -706,7 +706,7 @@ EOF
     # such lablgtk2 versions do not exist.
     if ocamlfind ocamlc -package unix,lablgtk2 -linkpkg -o tmp/gtk tmp/gtktest.ml >/dev/null 2>/dev/null && tmp/gtk; then
         echo "yes"
-        gtk2_io_add_watch_supports_lists="-ppopt -DGTK2_IO_ADD_WATCH_SUPPORTS_LISTS"
+        gtk2_io_add_watch_supports_lists="-D GTK2_IO_ADD_WATCH_SUPPORTS_LISTS"
     else
         echo "no"
         printf "%s" "Checking whether lablgtk2's GMain.Io.add_watch is broken... "
@@ -1047,6 +1047,9 @@ APXS = $apxs
 
 # ocamlrpcgen
 OCAMLRPCGEN_CPP = $cpp
+
+# cppo:
+CPPO_VERSION = 0.9.4
 
 _EOF_
 
