@@ -57,7 +57,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 
-PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS)"
+PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
 
 INSTOTHER = install-netdb
 PACKLIST = netdb-packlist
@@ -148,20 +148,6 @@ OCAMLOPT_OPTIONS_FOR_netnumber.ml = -inline 10
 OCAMLOPT_OPTIONS_FOR_xdr.ml = -inline 5
 OCAMLC_OPTIONS_FOR_netstring_top.ml = -I +compiler-libs
 
-# regexps:
-
-netstring_str.ml: netstring_str.mlp
-	$(CAMLP4)  pa_o.cmo pa_op.cmo pr_o.cmo \
-	    -parser Camlp4MacroParser $(REGEXP_DEFS) \
-	    -impl netstring_str.mlp > netstring_str.ml || \
-	      rm -f netstring_str.ml
-
-#netstring_pcre.cmo: netstring_pcre.cmi
-#netstring_pcre.cmx: netstring_pcre.cmi
-
-netstring_str.cmo: netstring_str.cmi
-netstring_str.cmx: netstring_str.cmi
-
 unicode_charinfo.txt:
 	ocaml ../../tools/unicode_extract.ml > unicode_charinfo.txt
 
@@ -172,7 +158,7 @@ netunichar.ml: unicode_charinfo.txt
 include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += tools_done netdb_done netdb.ml $(PMAP:.pmap=.ml)
-CLEAN_LIST += netconst.ml netnumber.ml netstring_str.ml
+CLEAN_LIST += netconst.ml netstring_str.ml
 
 clean::
 	test ! -d mappings || rm -f $(PMAP)

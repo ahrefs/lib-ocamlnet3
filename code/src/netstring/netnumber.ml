@@ -1,4 +1,4 @@
-(* $Id: netnumber.mlp 1701 2012-02-14 14:48:46Z gerd $ *)
+(* $Id$ *)
 
 (* NOTE: Parts of this implementation depend very much of representation
  * details of O'Caml 3.xx. It is not guaranteed that this works in future

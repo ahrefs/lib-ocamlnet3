@@ -1,4 +1,4 @@
-(* $Id: nethttp.mlp 1875 2013-08-13 20:41:36Z gerd $ 
+(* $Id$ 
  * ----------------------------------------------------------------------
  * Nethttp: Basic definitions for the HTTP protocol
  *)
