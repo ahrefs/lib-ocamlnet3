@@ -3026,26 +3026,18 @@ let transmitter
 	  (* This is only used if we announced a body in the header, but
 	     finally do not send it (because we got an error from the server).
 
-             If we haven't started sending the request body, we simply
-             go on. Otherwise, close the connection.
-
-             NB. Because there is a race condition between client and
-             server, there is no better way!
+             We need to close the connection in this case. Unconditionally,
+             because we got out of sync (the server cannot know whether we've
+             seen the error before we start sending the request body, so the
+             server cannot know what to do).
 	   *)
-          let unclean = state <> Handshake in
-          if unclean then (
-	    state <- Finishing;
-	    io # add Send_eof;
-	    io # write_e esys
-	    ++ (fun () ->
-		state <- Sent_request;
-		eps_e (`Done ()) esys
-	       )
-          )
-          else (
-	    state <- Sent_request;
-	    eps_e (`Done ()) esys
-          )
+	  state <- Finishing;
+	  io # add Send_eof;
+	  io # write_e esys
+	  ++ (fun () ->
+	      state <- Sent_request;
+	      eps_e (`Done ()) esys
+	     )
 	in
 
 	let (fin_e, signal) = Uq_engines.signal_engine esys in
