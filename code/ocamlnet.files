@@ -84,9 +84,6 @@ x src/netstring/netmappings_jp.ml
 x src/netstring/netmappings_kr.ml
 x src/netstring/netmappings_other.ml
 f src/netstring/netmappings_min.ml
-# Also include netdate.mlp:
-f src/netstring/netdate.mlp
-x src/netstring/netdate.ml
 x src/netstring/netconst.ml
 f src/netstring/netconst.mlp
 f src/netstring/nethtml_scanner.mll

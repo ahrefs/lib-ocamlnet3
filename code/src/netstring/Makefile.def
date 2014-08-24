@@ -57,7 +57,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 
-#PP_OPTIONS = -package camlp4 -syntax camlp4o
+PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS)"
 
 INSTOTHER = install-netdb
 PACKLIST = netdb-packlist
@@ -134,15 +134,6 @@ tools_done:
 	cd tools && $(MAKE)
 	touch tools_done
 
-netdate.ml: netdate.mlp
-	$(CAMLP4) pa_o.cmo pa_op.cmo pr_o.cmo -impl netdate.mlp > netdate.ml
-
-nethttp.ml: nethttp.mlp
-	$(CAMLP4) pa_o.cmo pa_op.cmo pr_o.cmo -impl nethttp.mlp > nethttp.ml
-
-netdate.cmo: netdate.cmi
-netdate.cmx: netdate.cmi
-
 netconst.ml: netconst.mlp
 	sed -e 's/@VERSION@/$(VERSION)/' netconst.mlp >netconst.ml
 
@@ -150,16 +141,8 @@ netconst.cmo: netconst.cmi
 netconst.cmx: netconst.cmi
 
 # netnumber:
-NETNUMBER_DEFS = -DWORDSIZE_$(WORD_SIZE) -DHOST_IS_$(ENDIANESS) \
-                 -DUSE_NETSYS_XDR
-
-netnumber.ml: netnumber.mlp
-	$(CAMLP4)  pa_o.cmo pa_op.cmo pr_o.cmo \
-	    -parser Camlp4MacroParser $(NETNUMBER_DEFS) \
-	    -impl netnumber.mlp > netnumber.ml || rm -f netnumber.ml
-
-netnumber.cmo: netnumber.cmi
-netnumber.cmx: netnumber.cmi
+NETNUMBER_DEFS = -D WORDSIZE_$(WORD_SIZE) -D HOST_IS_$(ENDIANESS) \
+                 -D USE_NETSYS_XDR
 
 OCAMLOPT_OPTIONS_FOR_netnumber.ml = -inline 10
 OCAMLOPT_OPTIONS_FOR_xdr.ml = -inline 5
@@ -188,7 +171,7 @@ netunichar.ml: unicode_charinfo.txt
 
 include $(TOP_DIR)/Makefile.rules
 
-CLEAN_LIST += tools_done netdb_done netdb.ml netdate.ml $(PMAP:.pmap=.ml)
+CLEAN_LIST += tools_done netdb_done netdb.ml $(PMAP:.pmap=.ml)
 CLEAN_LIST += netconst.ml netnumber.ml netstring_str.ml
 
 clean::

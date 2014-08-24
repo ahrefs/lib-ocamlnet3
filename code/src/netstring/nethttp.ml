@@ -1,4 +1,4 @@
-(* $Id$ 
+(* $Id: nethttp.mlp 1875 2013-08-13 20:41:36Z gerd $ 
  * ----------------------------------------------------------------------
  * Nethttp: Basic definitions for the HTTP protocol
  *)
@@ -769,25 +769,35 @@ module Header = struct
      * comma (i.e. [Special ','], or when it finds [End]. These tokens
      * must not be swallowed.
      *)
-    match stream with parser
-      | [< expr = subparser; rest = parse_comma_separated_rest subparser >] ->
-	  expr :: rest
-      | [< >] ->
-	  []
+    let expr_opt = subparser stream in
+    match expr_opt with
+      | Some expr ->
+          expr ::
+            parse_comma_separated_rest subparser stream
+      | None ->
+          []
 
   and parse_comma_separated_rest subparser stream =
-    match stream with parser
-      | [< '(Special ','); _ = parse_commas; list = parse_comma_separated_list subparser >] ->
-	  list
-      | [< 'End >] ->
-	  []
+    match Stream.peek stream with
+      | Some(Special ',') ->
+          Stream.junk stream;
+          ignore(parse_commas stream);
+          parse_comma_separated_list subparser stream
+      | _ ->
+          []
 
   and parse_commas stream =
-    match stream with parser
-      | [< '(Special ','); _ = parse_commas >] ->
-	  ()
-      | [< >] ->
-	  ()
+    match Stream.peek stream with
+      | Some(Special ',') ->
+          Stream.junk stream;
+          parse_commas stream
+      | _ ->
+          ()
+
+  let parse_end stream =
+    match Stream.peek stream with
+      | Some End -> Stream.junk stream; ()
+      | _ -> raise Stream.Failure
 
   let merge_lists mh fieldparser fieldname =
     let fields = mh # multiple_field fieldname in
@@ -803,10 +813,13 @@ module Header = struct
       | Stream.Error _ ->
 	  raise (Bad_header_field fn_name)
 
-  let parse_comma_separated_field ?specials mh fn_name f_parse fieldname =
+  let parse_comma_separated_field ?specials mh fn_name f_parse fieldname  =
     let fieldparser field =
       try
-	parse_comma_separated_list f_parse (scan_value ?specials field)
+        let stream = scan_value ?specials field in
+	let r = parse_comma_separated_list f_parse stream in
+        parse_end stream;
+        r
       with
 	| Stream.Failure
 	| Stream.Error _ ->
@@ -817,44 +830,50 @@ module Header = struct
 	      
   let parse_token_list mh fn_name fieldname =
     let parse_token stream =
-      match stream with parser 
-	| [< '(Atom tok) >] -> tok
-    in
+      match Stream.peek stream with
+        | Some (Atom tok) -> Stream.junk stream; Some tok
+        | _ -> None in
     parse_comma_separated_field mh fn_name parse_token fieldname
 
   let parse_token_or_qstring stream =
-    match stream with parser
-      | [< '(Atom tok) >] -> tok
-      | [< '(QString v) >] -> v
+    match Stream.peek stream with
+      | Some(Atom tok) -> Stream.junk stream; tok
+      | Some(QString v) -> Stream.junk stream; v
+      | _ -> raise Stream.Failure
 
   let rec parse_params stream =
-    match stream with parser
-      | [< '(Special ';'); 
-	   '(Atom name); '(Special '='); v = parse_token_or_qstring;
-	   rest = parse_params
-	>]->
-	  (name,v) :: rest
-      | [< >] ->
-	  []
+    match Stream.npeek 3 stream with
+      | [ Special ';'; Atom name; Special '=' ] ->
+          for k=1 to 3 do Stream.junk stream done;
+          let v = parse_token_or_qstring stream in
+          (name,v) :: parse_params stream
+      | _ ->
+          []
 
   let parse_extended_token_list mh fn_name fieldname =
     (* token [ '=' (token|qstring) ( ';' token '=' (token|qstring) ) * ] *)
     let rec parse_extended_token stream =
-      match stream with parser
-	| [< '(Atom tok); extension = parse_equation >] ->
-	    ( match extension with
-		  Some (eq_val, params) ->
-		    (tok, Some eq_val, params)
+      match Stream.peek stream with
+        | Some(Atom tok) ->
+            Stream.junk stream;
+            let extension = parse_equation stream in
+            ( match extension with
+		| Some (eq_val, params) ->
+		    Some (tok, Some eq_val, params)
 		| None ->
-		    (tok, None, [])
+		    Some (tok, None, [])
 	    )
+        | _ ->
+            None
     and parse_equation stream =
-      match stream with parser
-	| [< '(Special '='); v = parse_token_or_qstring; params = parse_params >] ->
-	    Some (v, params)
-	| [< >] ->
-	    None
-    in
+      match Stream.peek stream with
+        | Some(Special '=') ->
+            Stream.junk stream;
+            let v = parse_token_or_qstring stream in
+            let params = parse_params stream in
+            Some (v, params)
+        | _ ->
+            None in
     parse_comma_separated_field mh fn_name parse_extended_token fieldname
 
   let qstring_indicator_re =
@@ -902,9 +921,13 @@ module Header = struct
   let parse_parameterized_token_list mh fn_name fieldname =
     (* token ( ';' token '=' (token|qstring) ) * *)
     let rec parse_parameterized_token stream =
-      match stream with parser
-	| [< '(Atom tok); params = parse_params >] ->
-	    (tok, params)
+      match Stream.peek stream with
+        | Some (Atom tok) ->
+            Stream.junk stream;
+            let params = parse_params stream in
+            Some(tok, params)
+        | _ ->
+            None
     in
     parse_comma_separated_field mh fn_name parse_parameterized_token fieldname
 
@@ -1115,52 +1138,74 @@ module Header = struct
     Netstring_str.split comma_split_re
       
   let parse_opt_eq_token stream =
-    match stream with parser
-      | [< '(Special '='); 
-	   v = (fun stream ->
-		  match stream with parser
-		    | [< '(Atom v) >] -> v
-		    | [< '(QString v) >] -> v);
-	>] -> Some v
-      | [< >] -> None
+    match Stream.peek stream with
+      | Some(Special '=') ->
+          Stream.junk stream;
+          ( match Stream.peek stream with
+              | Some (Atom v) -> Stream.junk stream; Some v
+              | Some (QString v) -> Stream.junk stream; Some v
+              | _ -> raise Stream.Failure
+          )
+      | _ ->
+          None
+
+  let parse_cc_directive_1 stream =
+    match Stream.npeek 3 stream with
+      | (Atom "no-cache") :: _ ->
+          Stream.junk stream;
+          ( match parse_opt_eq_token stream with
+              | None -> `No_cache []
+              | Some names -> `No_cache(comma_split names)
+          )
+      | (Atom "no-store") :: _ ->
+          Stream.junk stream;
+          `No_store
+      | [ Atom "max-age"; Special '='; Atom seconds ] ->
+          for k = 1 to 3 do Stream.junk stream done;
+          `Max_age(int_of_string seconds)
+      | (Atom "max-stale") :: _ ->
+          Stream.junk stream;
+          ( match parse_opt_eq_token stream with
+              | None -> `Max_stale None
+              | Some seconds -> `Max_stale(Some(int_of_string seconds))
+          )
+      | [ Atom "min-fresh"; Special '='; Atom seconds ] ->
+          for k = 1 to 3 do Stream.junk stream done;
+          `Min_fresh(int_of_string seconds)
+      | ( Atom "no-transform") :: _ ->
+          Stream.junk stream;
+          `No_transform
+      | ( Atom "only-if-cached") :: _ ->
+          Stream.junk stream;
+          `Only_if_cached
+      | ( Atom "public") :: _ ->
+          Stream.junk stream;
+          `Public
+      | ( Atom "private") :: _ ->
+          ( match parse_opt_eq_token stream with
+              | None -> `Private []
+              | Some names -> `Private(comma_split names)
+          )
+      | ( Atom "must-revalidate") :: _ ->
+          Stream.junk stream;
+          `Must_revalidate
+      | ( Atom "proxy-revalidate") :: _ ->
+          Stream.junk stream;
+          `Proxy_revalidate
+      | [ Atom "s-maxage"; Special '='; Atom seconds ] ->
+          for k = 1 to 3 do Stream.junk stream done;
+          `S_maxage(int_of_string seconds)
+      | ( Atom extension ) :: _ ->
+          Stream.junk stream;
+          let val_opt = parse_opt_eq_token stream in
+          `Extension(extension, val_opt)
+      | _ ->
+          raise Stream.Failure
 
   let parse_cc_directive stream =
-    match stream with parser
-      | [< '(Atom "no-cache"); name_opt = parse_opt_eq_token >] ->
-	  ( match name_opt with
-	      | None -> `No_cache []
-	      | Some names -> `No_cache(comma_split names)
-	  )
-      | [< '(Atom "no-store") >] -> 
-	  `No_store
-      | [< '(Atom "max-age"); '(Special '='); '(Atom seconds) >] ->
-	  `Max_age(int_of_string seconds)
-      | [< '(Atom "max-stale"); delta_opt = parse_opt_eq_token >] ->
-	  ( match delta_opt with
-	      | None -> `Max_stale None
-	      | Some seconds -> `Max_stale(Some(int_of_string seconds))
-	  )
-      | [< '(Atom "min-fresh"); '(Special '='); '(Atom seconds) >] ->
-	  `Min_fresh(int_of_string seconds)
-      | [< '(Atom "no-transform") >] -> 
-	  `No_transform
-      | [< '(Atom "only-if-cached") >] -> 
-	  `Only_if_cached
-      | [< '(Atom "public") >] -> 
-	  `Public
-      | [< '(Atom "private"); name_opt = parse_opt_eq_token >] ->
-	  ( match name_opt with
-	      | None -> `Private []
-	      | Some names -> `Private(comma_split names)
-	  )
-      | [< '(Atom "must-revalidate") >] -> 
-	  `Must_revalidate
-      | [< '(Atom "proxy-revalidate") >] -> 
-	  `Proxy_revalidate
-      | [< '(Atom "s-maxage"); '(Special '='); '(Atom seconds)>] ->
-	  `S_maxage(int_of_string seconds)
-      | [< '(Atom extension); val_opt = parse_opt_eq_token >] ->
-	  `Extension(extension, val_opt)
+    try
+      Some (parse_cc_directive_1 stream)
+    with Stream.Failure -> None
 
   let get_cache_control mh =
     parse_comma_separated_field
@@ -1231,28 +1276,34 @@ module Header = struct
     mh # update_field "Content-MD5" s
 
   let parse_byte_range_resp_spec stream =
-    match stream with parser
-      | [< '(Special '*') >] -> 
-	  None
-      | [< '(Atom first); '(Special '-'); '(Atom last) >] -> 
-	  Some(Int64.of_string first, Int64.of_string last)
+    match Stream.npeek 3 stream with
+      | (Special '*') :: _ ->
+          Stream.junk stream;
+          None
+      | [ Atom first; Special '-'; Atom last ] ->
+          for k = 1 to 3 do Stream.junk stream done;
+          Some(Int64.of_string first, Int64.of_string last)
+      | _ ->
+          raise Stream.Failure
 
   let parse_byte_range_resp_length stream =
-    match stream with parser
-      | [< '(Special '*') >] -> 
+    match Stream.peek stream with
+      | Some (Special '*') -> 
+          Stream.junk stream;
 	  None
-      | [< '(Atom length) >] ->
+      | Some (Atom length) ->
+          Stream.junk stream;
 	  Some(Int64.of_string length)
+      | _ ->
+          raise Stream.Failure
 
   let parse_content_range_spec stream =
-    match stream with parser
-      | [< '(Atom "bytes"); 
-	  br=parse_byte_range_resp_spec; 
-	  '(Special '/');
-	  l=parse_byte_range_resp_length;
-	  'End
-         >] ->
-	  `Bytes(br,l)
+    if Stream.next stream <> Atom "bytes" then raise Stream.Failure;
+    let br = parse_byte_range_resp_spec stream in
+    if Stream.next stream <> Special '/' then raise Stream.Failure;
+    let l = parse_byte_range_resp_length stream in
+    if Stream.next stream <> End then raise Stream.Failure;
+    `Bytes(br,l)
 
   let get_content_range mh =
     let s = mh # field "Content-Range" in
@@ -1297,15 +1348,20 @@ module Header = struct
     mh # update_field "Date" (string_of_date d)
 
   let parse_etag_token stream =
-    match stream with parser
-      | [< '(Atom "W"); '(Special '/'); '(QString e) >] ->
+    match Stream.npeek 3 stream with
+      | [ Atom "W"; Special '/'; QString e ] ->
+          for k = 1 to 3 do Stream.junk stream done;
 	  `Weak e
-      | [< '(QString e) >] ->
+      | (QString e) :: _ ->
+          Stream.junk stream;
 	  `Strong e
+      | _ ->
+          raise Stream.Failure
 
   let parse_etag stream =
-    match stream with parser
-      | [< etag=parse_etag_token; 'End >] -> etag
+    let etag = parse_etag_token stream in
+    parse_end stream;
+    etag
 
   let get_etag mh =
     let s = mh # field "ETag" in
@@ -1359,9 +1415,14 @@ module Header = struct
     mh # update_field "Host" s
 
   let parse_etag_or_star_tok stream =
-    match stream with parser
-      | [< '(Special '*') >] -> None
-      | [< etag=parse_etag_token >] -> Some etag
+    match Stream.peek stream with
+      | Some (Special '*') ->
+          Stream.junk stream; Some None
+      | _ ->
+          try 
+            Some(Some(parse_etag_token stream))
+          with
+            | Stream.Failure -> None
 
   let get_etag_list mh fn_name fieldname =
     let specials = [ ','; ';'; '='; '/'; '*' ] in
@@ -1445,8 +1506,13 @@ module Header = struct
     mh # update_field "Max-Forwards" (string_of_int n)
 
   let parse_pragma_directive stream =
-    match stream with parser
-      | [< '(Atom tok); param_opt = parse_opt_eq_token >] -> (tok, param_opt)
+    match Stream.peek stream with
+      | Some (Atom tok) ->
+          Stream.junk stream;
+          let param_opt = parse_opt_eq_token stream in
+          Some (tok, param_opt)
+      | _ ->
+          None
 
   let get_pragma mh =
     parse_comma_separated_field
@@ -1463,36 +1529,43 @@ module Header = struct
     mh # update_field "Pragma" s
 
   let parse_opt_last_pos stream =
-    match stream with parser
-      | [< '(Atom last) >] -> Some(Int64.of_string last)
-      | [< >] -> None
+    match Stream.peek stream with
+      | Some(Atom last) ->
+          Stream.junk stream;
+          Some(Int64.of_string last)
+      | _ ->
+          None
 
   let rec parse_byte_range_spec stream =
-    match stream with parser
-      | [< '(Atom first); '(Special '-'); last=parse_opt_last_pos; 
-	   r=parse_byte_range_spec_rest
-	>] ->
+    match Stream.npeek 2 stream with
+      | [ Atom first; Special '-' ] ->
+          Stream.junk stream; 
+          Stream.junk stream; 
+          let last = parse_opt_last_pos stream in
+	  let r = parse_byte_range_spec_rest stream in
 	  (Some (Int64.of_string first), last) :: r
-      | [< '(Special '-'); '(Atom suffix_length);
-	   r=parse_byte_range_spec_rest
-	>] ->
+      | [ Special '-'; Atom suffix_length ] ->
+          Stream.junk stream; 
+          Stream.junk stream; 
+	  let r = parse_byte_range_spec_rest stream in
 	  (None, Some(Int64.of_string suffix_length)) :: r
-      | [< >] ->
+      | _ ->
 	  []
 
   and parse_byte_range_spec_rest stream =
-    match stream with parser
-      | [< '(Special ','); _=parse_commas; r=parse_byte_range_spec >] -> r
-      | [< >] -> []
+    match Stream.peek stream with
+      | Some (Special ',') ->
+          Stream.junk stream;
+          parse_commas stream;
+          parse_byte_range_spec stream
+      | _ -> []
 
   let parse_ranges_specifier stream =
-    match stream with parser
-      | [< '(Atom "bytes"); 
-	  '(Special '=');
-	  r=parse_byte_range_spec; 
-	  'End
-         >] ->
-	  `Bytes r
+    if Stream.next stream <> Atom "bytes" then raise Stream.Failure;
+    if Stream.next stream <> Special '=' then raise Stream.Failure;
+    let r = parse_byte_range_spec stream in
+    if Stream.next stream <> End then raise Stream.Failure;
+    `Bytes r
 
   let get_range mh =
     let s = mh # field "Range" in
@@ -1611,32 +1684,36 @@ module Header = struct
 
   let parse_challenges mh fn_name fieldname =
     let rec parse_auth_params stream =
-      match stream with parser
-	| [< '(Atom ap_name); '(Special '='); ap_val = parse_token_or_qstring;
-             rest = parse_auth_param_rest
-	  >] ->
+      match Stream.npeek 2 stream with
+        | [ Atom ap_name; Special '=' ] ->
+            Stream.junk stream;
+            Stream.junk stream;
+            let ap_val = parse_token_or_qstring stream in
+            let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
+        | _ ->
+            raise Stream.Failure
 
     and parse_auth_param_rest stream =
       match Stream.npeek 3 stream with
-	| [ (Special ','); (Atom _); (Special '=') ] ->
-	    ( match stream with parser
-		| [< '(Special ',');
-		     '(Atom ap_name); '(Special '='); 
-		     ap_val = parse_token_or_qstring;
-		     rest = parse_auth_param_rest
-		  >] ->
-		    (ap_name, ap_val) :: rest
-		| [< >] ->    (* should not happen... *)
-		    []
-	    )
+	| [ (Special ','); (Atom ap_name); (Special '=') ] ->
+            Stream.junk stream;
+            Stream.junk stream;
+            Stream.junk stream;
+            let ap_val = parse_token_or_qstring stream in
+	    let rest = parse_auth_param_rest stream in
+	    (ap_name, ap_val) :: rest
 	| _ ->
 	    []
 
     and parse_challenge stream =
-      match stream with parser
-	| [< '(Atom auth_scheme); auth_params = parse_auth_params >] ->
-	    (auth_scheme, auth_params)
+      match Stream.peek stream with
+        | Some (Atom auth_scheme) ->
+            Stream.junk stream;
+            let auth_params = parse_auth_params stream in
+	    Some(auth_scheme, auth_params)
+        | _ ->
+            None
     in
     parse_comma_separated_field mh fn_name parse_challenge fieldname
       
@@ -1669,28 +1746,35 @@ module Header = struct
 
   let parse_credentials mh fn_name fieldname =
     let rec parse_creds stream =
-      match stream with parser
-	| [< '(Atom auth_name);
-	     params = parse_auth_params
-	  >] ->
+      match Stream.peek stream with 
+	| Some (Atom auth_name) ->
+            Stream.junk stream;
+	    let params = parse_auth_params stream in
 	    (auth_name, params)
+        | _ ->
+            raise Stream.Failure
 	     
     and parse_auth_params stream =
-      match stream with parser
-	| [< '(Atom ap_name); '(Special '='); ap_val = parse_token_or_qstring;
-             rest = parse_auth_param_rest
-	  >] ->
+      match Stream.npeek 2 stream with
+	| [ Atom ap_name; Special '=' ] ->
+            Stream.junk stream;
+            Stream.junk stream;
+            let ap_val = parse_token_or_qstring stream in
+            let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
+        | _ ->
+            raise Stream.Failure
 
     and parse_auth_param_rest stream =
-      match stream with parser
-	| [< '(Special ',');
-	     '(Atom ap_name); '(Special '='); 
-	     ap_val = parse_token_or_qstring;
-	     rest = parse_auth_param_rest
-	  >] ->
+      match Stream.npeek 3 stream with
+	| [ Special ','; Atom ap_name; Special '=' ] ->
+            Stream.junk stream;
+            Stream.junk stream;
+            Stream.junk stream;
+            let ap_val = parse_token_or_qstring stream in
+	    let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
-	| [< >] ->
+	| _ ->
 	    []
     in
 
@@ -1800,9 +1884,6 @@ module Header = struct
     mh # update_field "Cookie" s
 
 
-    (* CHECK
-       let nv_re = Pcre.regexp "^([a-zA-Z0-9_.]+)(=(.*))?$"
-     *)
   let nv_re = Netstring_str.regexp "^\\([^=;]+\\)\\(=\\(.*\\)\\)?$"
 
 
