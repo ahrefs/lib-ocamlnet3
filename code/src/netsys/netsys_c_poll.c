@@ -391,9 +391,8 @@ CAMLprim value netsys_interrupt_aggreg(value pav)
     pa = *(Poll_aggreg_val(pav));
     if (pa->cancel_fd >= 0) {
 	uint64_t buf;
-	int p;
 	buf = 1;
-	p = write(pa->cancel_fd, (char *) &buf, 8);
+	write(pa->cancel_fd, (char *) &buf, 8);
     };
     return Val_unit;
 #else
@@ -464,8 +463,7 @@ CAMLprim value netsys_poll_event_sources(value pav, value tmov)
     for (k=0; k<code; k++) {
 	if (ee[k].data.u64 == 1) {  /* This is the reserved cancel_fd */
 	    uint64_t buf;
-	    int p;
-	    p = read(pa->cancel_fd, (char *) &buf, 8);
+	    read(pa->cancel_fd, (char *) &buf, 8);
 	}
 	else {
 	    r_item = caml_alloc(3,0);

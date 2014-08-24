@@ -555,10 +555,9 @@ CAMLprim value netsys_value_area_remove(value memv)
 {
 #ifdef FANCY_PAGE_TABLES
     struct caml_bigarray *b = Bigarray_val(memv);
-    int code;
-    code = caml_page_table_remove(In_static_data,
-				  b->data,
-				  b->data + b->dim[0]);
+    caml_page_table_remove(In_static_data,
+                           b->data,
+                           b->data + b->dim[0]);
     /* Silently ignore errors... */
     return Val_unit;
 #else

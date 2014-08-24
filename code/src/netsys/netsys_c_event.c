@@ -72,8 +72,10 @@ struct not_event *netsys_not_event_of_value(value nev)
 
 void netsys_not_event_signal(struct not_event *ne)
 {
+#ifndef HAVE_GCC_COMPARE_AND_SWAP
 #ifdef HAVE_POSIX_SIGNALS
     sigset_t set, oldset;
+#endif
 #endif
 
 #ifdef HAVE_POLL
@@ -87,8 +89,7 @@ void netsys_not_event_signal(struct not_event *ne)
 	*/
 	if (__sync_bool_compare_and_swap(&(ne->state), 0, 1)) {
 	    if (ne->fd2 >= 0) {
-		int code;
-		code = write(ne->fd2, "X", 1);
+		write(ne->fd2, "X", 1);
 	    }
 	}
 
@@ -145,8 +146,7 @@ void netsys_not_event_signal(struct not_event *ne)
 	    int64 buf;
 	    buf = 1;
 	    if (ne->fd1 >= 0) {
-		int code;
-		code = write(ne->fd1, (char *) &buf, 8);
+		write(ne->fd1, (char *) &buf, 8);
 	    };
 	    break;
 	}

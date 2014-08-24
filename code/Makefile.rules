@@ -25,7 +25,8 @@ CPPO      = $(TOP_DIR)/tools/cppo-$(CPPO_VERSION)/cppo
 # Set here which warnings we want to have:
 # 3: whether to report deprecated features. This is disabled because we are
 #    massively using mutable strings (deprecated in 4.02)
-WARNINGS  = -w -3
+# 25: "all clauses guarded". I like this.
+WARNINGS  = -w -3-25
 
 TOOLS_DIR = $(TOP_DIR)/tools
 COLLECT_FILES = $(TOOLS_DIR)/collect_files

@@ -3780,8 +3780,10 @@ object(self)
 	  Netsys_win32.pipe_listen psrv backlog;
 	  let fd = Netsys_win32.pipe_server_descr psrv in
 	  accept fd
+(*
       | _ ->
 	  raise Addressing_method_not_supported
+ *)
 end
 ;;
 

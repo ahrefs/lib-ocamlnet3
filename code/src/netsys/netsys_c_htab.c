@@ -105,7 +105,7 @@ int netsys_htab_init(struct htab *t, unsigned long n)
 
 void netsys_htab_clear(struct htab *t) 
 {
-    unsigned long k, size;
+    unsigned long size;
     struct htab_cell *table;
 
     size = t->table_size;

@@ -99,8 +99,8 @@ let make_bijection unimap =
     m_from_size := !m_from_size * 2
   done;
 
-  let m_to_unicode   = Array.create (!max_localcode+1) None in
-  let m_from_unicode = Array.create !m_from_size [] in
+  let m_to_unicode   = Array.make (!max_localcode+1) None in
+  let m_from_unicode = Array.make !m_from_size [] in
 
   List.iter
     (fun (localcode, unicode) ->
