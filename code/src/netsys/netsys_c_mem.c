@@ -182,7 +182,7 @@ CAMLprim value netsys_map_file(value fdv,
     void *addr, *eff_addr;
     intnat size;
     uintnat basize;
-    int64 pos0;
+    int64_t pos0;
     uintnat pagesize, delta;
 
     /* Avoid here seeking at all costs. On some systems, shared memory
@@ -190,7 +190,7 @@ CAMLprim value netsys_map_file(value fdv,
     */
     fd = Int_val(fdv);
     pos0 = Int64_val(posv);
-    if (((int64) ((off_t) pos0)) != pos0)
+    if (((int64_t) ((off_t) pos0)) != pos0)
 	failwith("Netsys_mem: large files not supported on this OS");
     pos = pos0;
     addr = (void *) Nativeint_val(addrv);
@@ -912,8 +912,8 @@ int netsys_init_value_1(struct htab *t,
 				    caml_id = 'b';
 				    break;
 				}
-			    case 'i': /* int32 */
-			    case 'j': /* int64 */
+			    case 'i': /* int32_t */
+			    case 'j': /* int64_t */
 			    case 'n': /* nativeint */
 				if (!enable_customs) {
 #ifdef DEBUG
