@@ -188,7 +188,7 @@ let handle_request config output_type arg_store exn_handler f ~log fd =
 (* [handle_connection fd .. f] handle an accept()ed connection,
    reading incoming records on the file descriptor [fd] and running
    [f] for each incoming request. *)
-let handle_connection fd ~config output_type arg_store exn_handler f =
+let handle_connection config output_type arg_store exn_handler f fd =
   Netlog.Debug.track_fd 
     ~owner:"Netcgi_scgi"
     ~descr:("connection from " ^ 
@@ -217,35 +217,37 @@ let run
     ?(output_type=(`Direct "":Netcgi.output_type))
     ?(arg_store=(fun _ _ _ -> `Automatic))
     ?(exn_handler=(fun _ f -> f()))
+    ?socket
     ?sockaddr
     ?port (* no default in the spec *)
     f =
   (* Socket to listen to *)
-  let sockaddr = 
-    match sockaddr with
-      | None -> (
-          match port with
-              (* Either port or sockaddr need to be specified *)
-            | None -> 
-                invalid_arg "Netcgi_scgi.run: neither sockaddr not port passed"
-            | Some port -> 
-                Unix.ADDR_INET(Unix.inet_addr_loopback, port)
-        )
-      | Some sockaddr -> sockaddr in
-  let sock =
-    Unix.socket (Unix.domain_of_sockaddr sockaddr) Unix.SOCK_STREAM 0 in
-  Unix.setsockopt sock Unix.SO_REUSEADDR true;
-  Unix.bind sock sockaddr;
-  Unix.listen sock 5;
-  Netlog.Debug.track_fd
-    ~owner:"Netcgi_scgi"
-    ~descr:("master " ^ Netsys.string_of_sockaddr sockaddr)
-    sock;
+  let sock = match socket with
+    | Some s -> s
+    | None ->
+        let saddr = match (sockaddr, port) with
+          | (Some sa, _) -> sa
+          | (None, Some p) -> Unix.ADDR_INET(Unix.inet_addr_loopback, p)
+          | (None, None) ->
+              invalid_arg "Netcgi_scgi.run: \
+                           neither socket nor sockaddr or port passed"
+        in
+        let sock =
+          Unix.socket (Unix.domain_of_sockaddr saddr) Unix.SOCK_STREAM 0 in
+        Unix.setsockopt sock Unix.SO_REUSEADDR true;
+        Unix.bind sock saddr;
+        Unix.listen sock 5;
+        Netlog.Debug.track_fd
+          ~owner:"Netcgi_scgi"
+          ~descr:("master " ^ Netsys.string_of_sockaddr saddr)
+          sock;
+        sock
+  in
   while true do
     let (fd, server) = Unix.accept sock in
     try
       if allow server then
-	handle_connection fd ~config output_type arg_store exn_handler f;
+	handle_connection config output_type arg_store exn_handler f fd;
     with
       | e when config.default_exn_handler ->
 	  ()

@@ -792,7 +792,7 @@ let run ?(config=Netcgi.default_config)
     ?(output_type=(`Direct "":Netcgi.output_type))
     ?(arg_store=(fun _ _ _ -> `Automatic))
     ?(exn_handler=(fun _ f -> f()))
-    ?(default_socket = fcgi_listensock)
+    ?socket
     ?sockaddr
     ?port
     f =
@@ -801,26 +801,29 @@ let run ?(config=Netcgi.default_config)
      spec).  The requests are all sent through that pipe.  Thus there is
      a single connection. *)
 
-  let sockaddr1 =
-    match port with
-      | None -> sockaddr
-      | Some p -> Some(Unix.ADDR_INET(Unix.inet_addr_loopback,p)) in
-  let sock = match sockaddr1 with
-    | None ->
-	(* FastCGI launched by the web server *)
-	default_socket
-    | Some sockaddr ->
-	(* FastCGI on a distant machine, listen on the given socket. *)
-	let sock =
-	  Unix.socket (Unix.domain_of_sockaddr sockaddr) Unix.SOCK_STREAM 0 in
-	Unix.setsockopt sock Unix.SO_REUSEADDR true;
-	Unix.bind sock sockaddr;
-	Unix.listen sock 5;
-	Netlog.Debug.track_fd
-	  ~owner:"Netcgi_fcgi"
-	  ~descr:("master " ^ Netsys.string_of_sockaddr sockaddr)
-	  sock;
-	sock
+  let sock = match (socket, sockaddr, port) with
+    | (Some s, _, _) -> s
+    | (None, None, None) ->
+        (* FastCGI launched by the web server *)
+        fcgi_listensock
+    | (None, Some _, _)
+    | (None, _, Some _) ->
+        let saddr = match (sockaddr, port) with
+          | (Some sa, _) -> sa
+          | (None, Some p) -> Unix.ADDR_INET(Unix.inet_addr_loopback, p)
+          | _ -> failwith "not reached"
+        in
+        (* FastCGI on a distant machine, listen on the given socket. *)
+        let sock =
+          Unix.socket (Unix.domain_of_sockaddr saddr) Unix.SOCK_STREAM 0 in
+        Unix.setsockopt sock Unix.SO_REUSEADDR true;
+        Unix.bind sock saddr;
+        Unix.listen sock 5;
+        Netlog.Debug.track_fd
+          ~owner:"Netcgi_fcgi"
+          ~descr:("master " ^ Netsys.string_of_sockaddr saddr)
+          sock;
+        sock
   in
   let max_conns = 1 (* single process/thread *) in
   while true do

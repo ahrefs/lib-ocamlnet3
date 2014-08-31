@@ -73,7 +73,7 @@ val run :
   ?output_type:output_type ->
   ?arg_store:arg_store ->
   ?exn_handler:exn_handler ->
-  ?default_socket:Unix.file_descr ->
+  ?socket:Unix.file_descr ->
   ?sockaddr:Unix.sockaddr ->
   ?port:int ->
   (cgi -> unit) -> unit
@@ -94,8 +94,8 @@ val run :
       @param exn_handler See {!Netcgi.exn_handler}.  Default: delegate
       all exceptions to the default handler.
 
-      @param default_socket is the descriptor to use if neither [sockaddr]
-      nor [port] is set. Defaults to [Unix.stdin].
+      @param socket is a listening socket to use. Overrides [sockaddr]
+      and [port].
 
       @param sockaddr tells on what socket to contact the script.  If
       not specified, the script expects to be launched by the web
@@ -152,7 +152,4 @@ val handle_connection :
         connection, overriding any indication by the web server.
 
         The other arguments are just like for [run].
-
-        The return value indicates whether the connection can be kept
-        open or must be closed.
     *)
