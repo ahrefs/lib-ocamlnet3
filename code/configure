@@ -3,6 +3,9 @@
 # $Id$
 
 #######################################################################
+# Constants:
+cppo_version=0.9.4
+
 # Helpers:
 
 # Split $PATH into words:
@@ -31,7 +34,6 @@ get_path () {
         fi
     done
 }
-
 #######################################################################
 # Defaults
 
@@ -371,7 +373,7 @@ done
 # Check OS
 
 with_rpc_xti=0
-
+with_cppo_tweak=0
 printf "%s" "Checking operating system... "
 u=`uname`
 case "$u" in
@@ -381,6 +383,7 @@ case "$u" in
 		path_sep=";"   # this is only for OCAMLPATH, ";" is correct for Cygwin
 		case `ocamlc -config | grep os_type` in
 		    *Win32*)
+                        with_cppo_tweak=1
                         if [ $cpp_set = 0 ]; then
                             cpp=`realpath /bin/cpp | cygpath -m -f -`
                         fi
@@ -392,6 +395,7 @@ case "$u" in
         MINGW*)
 		echo "MinGW"
 		exec_suffix=".exe"
+		with_cppo_tweak=2
 		path_sep=";"
 		mingw_lib=`get_path gcc`
 		mingw_lib=`dirname "$mingw_lib"`/../lib
@@ -483,7 +487,7 @@ printf "%s" "Checking word size... "
 cat <<_EOF_ >tmp/t.ml
 print_endline(string_of_int(Sys.word_size))
 _EOF_
-word_size="$(ocaml tmp/t.ml)"
+word_size="$(ocaml tmp/t.ml | tr -d '\r')"
 echo "$word_size bit"
 
 printf "%s" "Checking endianess... "
@@ -520,7 +524,7 @@ fi
 
 printf "Checking for GPROF... "
 
-stdlib=`ocamlc -where`
+stdlib=`ocamlc -where | tr -d '\r'`
 if [ -f $stdlib/std_exit.p.cmx ]; then
     echo "found"
     have_gprof=1
@@ -972,6 +976,23 @@ fi
 ######################################################################
 # Write Makefile.conf
 
+if [ $with_cppo_tweak -ne 0 ]; then
+    # Under Windows, calling cppo by relative path is difficult. If we
+    # use forward slashes, we need to escape these for cmd.exe. If we
+    # use backward slashes, the escaping is difficult for sh+make.
+    # The workaround is to call cppo implicitly by PATH search.
+    xdir="$(readlink -f "$(dirname "$0")")"
+    if [ $with_cppo_tweak -eq 1 ]; then
+        xdir="$(cygpath "${xdir}")"
+    fi
+    xdir="${xdir}/tools/cppo-${cppo_version}"
+    export_path="export PATH:=${xdir}:\$(PATH)"
+    cppo="cppo-ocamlnet.exe"
+else
+    export_path=""
+    cppo="\$(TOP_DIR)/tools/cppo-${cppo_version}/cppo"
+fi
+
 echo "Writing Makefile.conf"
 cat <<_EOF_ >Makefile.conf
 # Makefike.conf written by configure
@@ -1059,8 +1080,9 @@ APXS = $apxs
 OCAMLRPCGEN_CPP = $cpp
 
 # cppo:
-CPPO_VERSION = 0.9.4
-
+CPPO = $cppo
+CPPO_VERSION = $cppo_version
+$export_path
 _EOF_
 
 if [ $with_gnutls -gt 0 ]; then

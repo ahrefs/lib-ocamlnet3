@@ -20,7 +20,8 @@ CAMLP4    = camlp4
 OCAMLMKLIB = $(TOP_DIR)/tools/mkstublib
 OCAMLDOC  = $(OCAMLFIND) ocamldoc
 STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
-CPPO      = $(TOP_DIR)/tools/cppo-$(CPPO_VERSION)/cppo
+
+# CPPO: is set by Makefile.conf
 
 # Set here which warnings we want to have:
 # 3: whether to report deprecated features. This is disabled because we are

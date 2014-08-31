@@ -2,6 +2,11 @@
 
 (** GSS-API Definition *)
 
+(* TODO:
+   - OID/SASL name translation from RFC-5801
+   - flag the disallows GS2 for this mechanism
+ *)
+
 (** This is mainly a translation of RFC 2743/2744 to Ocaml. *)
 
 (** {2 Types} *)

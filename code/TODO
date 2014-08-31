@@ -1,5 +1,3 @@
-Merge fix from trunk: 1952 (OS X setlocale)
-
  - Netcgi_common.cgi_delegation
 
 TLS:
@@ -102,6 +100,10 @@ LATER:
 
 cleanup of all hex digit routines
   - should go to Netencoding
+
+Shell_sys: 
+ - there is no way to wait for a started process
+ - get the subprocess watcher
 
 out-of-heap values: implement this better
 

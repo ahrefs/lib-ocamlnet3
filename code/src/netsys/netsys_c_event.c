@@ -147,7 +147,7 @@ void netsys_not_event_signal(struct not_event *ne)
 
     case NE_EVENTFD:
 	{
-	    int64 buf;
+	    int64_t buf;
 	    buf = 1;
 	    if (ne->fd1 >= 0) {
                 int n;
@@ -399,7 +399,7 @@ CAMLprim value netsys_consume_not_event(value nev)
 {
 #ifdef HAVE_POLL
     struct not_event *ne;
-    int64 n;
+    int64_t n;
     char buf[1];
     int code, ok, e;
     CAMLparam1(nev);

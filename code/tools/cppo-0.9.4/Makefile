@@ -58,6 +58,7 @@ OCAMLBUILD_ML = ocamlbuild_cppo.ml
 
 all: $(ML)
 	ocamlc -o cppo$(EXE) -dtypes unix.cma $(ML)
+	cp cppo$(EXE) cppo-ocamlnet$(EXE)
 
 opt: $(ML)
 	ocamlopt -o cppo$(EXE) -dtypes unix.cmxa $(ML)

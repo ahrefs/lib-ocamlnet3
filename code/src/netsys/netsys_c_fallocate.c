@@ -20,16 +20,16 @@ CAMLprim value netsys_have_posix_fallocate(value dummy) {
 CAMLprim value netsys_fallocate(value fd, value start, value len) {
 #ifdef HAVE_POSIX_FALLOCATE
     int r;
-    int64 start_int, len_int;
+    int64_t start_int, len_int;
     off_t start_off, len_off;
     /* Att: off_t might be 64 bit even on 32 bit systems! */
 
     start_int = Int64_val(start);
     len_int = Int64_val(len);
 
-    if ( ((int64) ((off_t) start_int)) != start_int )
+    if ( ((int64_t) ((off_t) start_int)) != start_int )
 	failwith("Netsys.fadvise: large files not supported on this OS");
-    if ( ((int64) ((off_t) len_int)) != len_int )
+    if ( ((int64_t) ((off_t) len_int)) != len_int )
 	failwith("Netsys.fadvise: large files not supported on this OS");
 
     start_off = start_int;
