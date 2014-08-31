@@ -1,5 +1,7 @@
 2014-08-31  Gerd Stolpmann  <gerd@e130>
 
+	* Release ocamlnet-3.7.5
+
 	* Windows: various fixes, including int sizes for 64-bit Windows,
 	  the invocation of cppo, and CR characters. Also, unixsupport.h
 	  is now used instead of declaring the prototypes directly.
