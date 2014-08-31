@@ -1,3 +1,7 @@
+Shell_sys: 
+ - there is no way to wait for a started process
+ - get the subprocess watcher
+
 out-of-heap values: implement this better
 
 - Bug: Rpc_proxy + authenticated request + message timeout. 
