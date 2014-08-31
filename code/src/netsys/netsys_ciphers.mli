@@ -13,7 +13,7 @@ type padding =
       - [`None]: no padding. The text to encrypt/decrypt must be a multiple
          of [block_constraint] bytes
       - [`Length]: Pad the last block with n bytes of code n
-      - [`_08000]: Pad with one byte 0x80 and as many zeros as needed to fill
+      - [`_8000]: Pad with one byte 0x80 and as many zeros as needed to fill
         the block (this may add one or two blocks)
       - [`CTS]: Use "Ciphertext Stealing". There is a minimum length of the
         message to encrypt of two blocks.

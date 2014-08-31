@@ -1,6 +1,10 @@
 (* $Id$ *)
 
+(** Helpers for crypto modes *)
+
 module Symmetric_cipher : sig
+  (** Access symmetric ciphers *)
+
   type sc_ctx =
       { set_iv : string -> unit;
         set_header : string -> unit;

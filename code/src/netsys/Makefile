@@ -29,7 +29,7 @@ DOBJECTS = netsys.mli netsys_posix.mli netsys_pollset.mli netlog.mli \
 	   netsys_rng.mli netsys_crypto_types.mli \
 	   netsys_types.mli netsys_mem.mli netsys_tmp.mli \
 	   netsys_sem.mli netsys_pmanage.mli netsys_crypto.mli netsys_tls.mli \
-	   netsys_ciphers.mli netsys_digests.mli \
+	   netsys_ciphers.mli netsys_digests.mli netsys_crypto_modes.mli \
 	   netsys_gssapi.mli
 LINK_OPTIONS = $(NETSYS_LINK_OPTIONS)
 
