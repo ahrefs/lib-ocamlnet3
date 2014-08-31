@@ -53,7 +53,17 @@ let () = ctx # set_iv iv
 let s_enc = ctx # encrypt_string s
 ]}
 
-{2 Supported ciphers, digests, etc.}
+Compute the SHA1 digest of a string [s]:
+
+{[
+let digest = Netsys_digests.find "SHA1-160"
+let ctx = digest # create()
+let () = ctx # add_substring s 0 (String.length s)
+let result = ctx # finish()
+]}
+
+
+{2 Supported ciphers}
 
 If using nettls-gnutls as provider, you can normally expect:
 
@@ -76,3 +86,20 @@ If using a recent version of GnuTLS/Nettls:
    VIA Padlock)
  - AES in GCM mode, also with an acceleration option
  - CAMELLIA in GCM mode
+
+{2 Supported digests}
+
+If using nettls-gnutls as provider, you can normally expect:
+
+ - MD2
+ - MD4
+ - MD5
+ - SHA1
+ - SHA2-256
+
+If using a recent version of GnuTLS/Nettls:
+
+ - SHA2 with block sizes 224, 256, 384 and 512 bits
+ - SHA3 with block sizes 224, 256, 384 and 512 bits
+ - RIPEMD (160 bits)
+ - GOSTHASH94 (256 bits)

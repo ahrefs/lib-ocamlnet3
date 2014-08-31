@@ -94,9 +94,6 @@ Related external articles:
        {- {!Intro.rpc_local}}
        {- {!Intro.rpc_authdh}}
        {- {!Intro.rpc_xti}}
-       {- {!Intro.rpc_ssl}}
-       {- {!Intro.netgssapi}}
-       {- {!Intro.netmech_scram}}
      }
   }
   {- {!Intro.ch_comp}
@@ -191,7 +188,7 @@ for other libraries.
    Netasn1
    Netgssapi_support
    Netmech_scram
-   Netmech_scram_gssapi}
+   Netmech_scram_gssapi
    Rtypes
    Xdr
    Xdr_mstring
@@ -242,7 +239,8 @@ Extensions for [equeue] to integrate the event queue into user interfaces
 made with lablgtk and lablgtk2
 
 {!modules:
-  Uq_gtk}
+  Uq_gtk
+}
 
 {3:equeue_tcl The [equeue-tcl] extension}
 
@@ -250,7 +248,8 @@ Extension for [equeue] to integrate the event queue into user interfaces
 made with labltk
 
 {!modules:
-  Uq_tcl}
+  Uq_tcl
+}
 
 {2:netplex The [netplex] library: generic server framework}
 
@@ -331,6 +330,7 @@ other Ocamlnet libraries.
     Netsys_crypto_modes
     Netsys_tls
     Netsys_ciphers
+    Netsys_digests
     Netsys_gssapi
 }
 
