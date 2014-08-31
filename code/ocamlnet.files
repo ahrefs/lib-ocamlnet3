@@ -47,7 +47,7 @@ d tools/cppo-0.9.4
 f tools/cppo-0.9.4/Changes
 f tools/cppo-0.9.4/cppo_command.ml
 f tools/cppo-0.9.4/cppo_eval.ml
-f tools/cppo-0.9.4/cppo.lexer.mll
+f tools/cppo-0.9.4/cppo_lexer.mll
 f tools/cppo-0.9.4/cppo_main.ml
 f tools/cppo-0.9.4/cppo_parser.mly
 f tools/cppo-0.9.4/cppo_types.ml
@@ -61,9 +61,9 @@ f tools/cppo-0.9.4/examples/french.ml
 f tools/cppo-0.9.4/examples/lexer.mll
 f tools/cppo-0.9.4/examples/Makefile
 d tools/cppo-0.9.4/ocamlbuild_plugin
-d tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.ml
-d tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.mli
-d tools/cppo-0.9.4/ocamlbuild_plugin/_tags
+f tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.ml
+f tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.mli
+f tools/cppo-0.9.4/ocamlbuild_plugin/_tags
 
 d src/netstring
 f src/netstring/META.in
