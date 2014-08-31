@@ -47,7 +47,7 @@ d tools/cppo-0.9.4
 f tools/cppo-0.9.4/Changes
 f tools/cppo-0.9.4/cppo_command.ml
 f tools/cppo-0.9.4/cppo_eval.ml
-f tools/cppo-0.9.4/cppo.lexer.mll
+f tools/cppo-0.9.4/cppo_lexer.mll
 f tools/cppo-0.9.4/cppo_main.ml
 f tools/cppo-0.9.4/cppo_parser.mly
 f tools/cppo-0.9.4/cppo_types.ml
