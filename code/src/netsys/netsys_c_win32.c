@@ -11,7 +11,6 @@ static int debug = 0;
 
 #ifdef _WIN32
 
-#include "unixsupport_w32.c"
 #include <wincrypt.h>
 #include <stdarg.h>
 
