@@ -1,3 +1,13 @@
+2014-08-31  Gerd Stolpmann  <gerd@e130>
+
+	* Windows: various fixes, including int sizes for 64-bit Windows,
+	  the invocation of cppo, and CR characters. Also, unixsupport.h
+	  is now used instead of declaring the prototypes directly.
+	  (Andreas Hauptmann)
+
+	* C99: use int64_t instead of int64 in C code. The latter is gone
+	  in OCaml-4.02. (Richard Jones)
+
 2014-08-25  Gerd Stolpmann  <gerd@zotac>
 
 	* Build: no longer requiring camlp4 (as it is not distributed with
