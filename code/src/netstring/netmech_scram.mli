@@ -2,20 +2,18 @@
 
 (** SCRAM mechanism for authentication (RFC 5802) *)
 
-(** This implements SCRAM-SHA-1 for GSSAPI. Other profiles may be added later.
+(** This implements SCRAM for GSSAPI. Other profiles may be added later.
 
     As we do not implement SASLprep, usernames and passwords are restricted
     to US-ASCII.
  *)
 
-type ptype = [ `GSSAPI ]
+type ptype = [ `GSSAPI | `SASL ]
   (** Currently only the variant for [`GSSAPI] is supported *)
-
-type mechanism = [ `SHA_1 ]
 
 type profile =
     { ptype : ptype;
-      mechanism : mechanism;       (** Which mechanism *)
+      hash_function : Netsys_digests.iana_hash_fn; (** Which hash function *)
       return_unknown_user : bool;  (** Whether servers exhibit the fact that the
 				       user is unknown *)
       iteration_count_limit : int; (** Largest supported iteration number *)
@@ -78,12 +76,15 @@ exception Server_error of server_error
 
 
 val profile : ?return_unknown_user:bool -> ?iteration_count_limit:int ->
-              ptype -> profile
+              ptype -> Netsys_digests.iana_hash_fn -> profile
   (** Creates a profile *)
 
 val string_of_server_error : server_error -> string
 val server_error_of_string : string -> server_error
   (** Conversion *)
+
+val mechanism_name : profile -> string
+  (** The official name of the mechanism *)
 
 
 (** {2 Clients} *)
@@ -103,7 +104,7 @@ val server_error_of_string : string -> server_error
 val create_client_session : profile -> string -> string -> client_session
   (** [create_client_session p username password]: Creates a new client
       session for profile [p] so that the client authenticates as user
-      [username], and proves its identify with the given [password].
+      [username], and proves its identity with the given [password].
    *)
 
 val client_configure_channel_binding : client_session -> string -> unit
@@ -199,8 +200,8 @@ val create_server_session :
 val create_salt : unit -> string
   (** Creates a random string suited as salt *)
 
-val salt_password : string -> string -> int -> string
-  (** [let salted_password = salt_password password salt iteration_count]
+val salt_password : profile -> string -> string -> int -> string
+  (** [let salted_password = salt_password profile password salt iteration_count]
 
       As we do not implement [SASLprep] only passwords consisting of
       US-ASCII characters are accepted ([Invalid_encoding] otherwise).

@@ -13,13 +13,11 @@
 
 open Printf
 
-type ptype = [ `GSSAPI ]
-
-type mechanism = [ `SHA_1 ]
+type ptype = [ `GSSAPI | `SASL ]
 
 type profile =
     { ptype : ptype;
-      mechanism : mechanism;
+      hash_function : Netsys_digests.iana_hash_fn;
       return_unknown_user : bool;
       iteration_count_limit : int;
     }
@@ -136,12 +134,17 @@ let () =
 
 
 let profile ?(return_unknown_user=false) ?(iteration_count_limit=100000) 
-	    pt =
+	    pt h =
   { ptype = pt;
-    mechanism = `SHA_1;
+    hash_function = h;
     return_unknown_user = return_unknown_user;
     iteration_count_limit = iteration_count_limit;
   }
+
+let mechanism_name p =
+  let iana_name = List.assoc p.hash_function Netsys_digests.iana_rev_alist in
+  let uc = String.uppercase iana_name in
+  "SCRAM-" ^ uc
 
 
 let saslprep s =
@@ -470,25 +473,26 @@ let decode_sf_message s =
 
 
 
-let sha1() =
-  try Netsys_digests.find "SHA1-160"
+let hash p =
+  try Netsys_digests.iana_find p.hash_function
   with Not_found ->
-    failwith "Netmech_scram: cannot find digest SHA1-160. Is the crypto \
-              support initialized?"
+    let name = List.assoc p.hash_function Netsys_digests.name_rev_alist in
+    failwith ("Netmech_scram: cannot find digest " ^ name ^ 
+                ". Is the crypto support initialized?")
 
-let sha1_string s =
-  let dg = sha1() in
+let hash_string p s =
+  let dg = hash p in
   Netsys_digests.digest_string dg s
 
-let hmac_sha1 key =
-  Netsys_digests.hmac (sha1()) key
+let hmac p key =
+  Netsys_digests.hmac (hash p) key
 
-let hmac_sha1_string key str =
-  let dg = hmac_sha1 key in
+let hmac_string p key str =
+  let dg = hmac p key in
   Netsys_digests.digest_string dg str
 
-let hmac_sha1_mstrings key ms_list =
-  let dg = hmac_sha1 key in
+let hmac_mstrings p key ms_list =
+  let dg = hmac p key in
   Netsys_digests.digest_mstrings dg ms_list
 
 let int_s i =
@@ -499,15 +503,15 @@ let int_s i =
   s.[3] <- Char.chr (i land 0xff);
   s
 
-let hi str salt i =
+let hi p str salt i =
   let rec uk k =
     if k=1 then
-      let u = hmac_sha1_string str (salt ^ int_s 1) in
+      let u = hmac_string p str (salt ^ int_s 1) in
       let h = u in
       (u,h)
     else (
       let (u_pred, h_pred) = uk (k-1) in
-      let u = hmac_sha1_string str u_pred in
+      let u = hmac_string p str u_pred in
       let h = Netauth.xor_s u h_pred in
       (u,h)
     ) in
@@ -606,13 +610,14 @@ let client_import s =
   ( Marshal.from_string s 0 : client_session)
 
 
-let salt_password password salt iteration_count =
-  let sp = hi (saslprep password) salt iteration_count in
+let salt_password p password salt iteration_count =
+  let sp = hi p (saslprep password) salt iteration_count in
   (* eprintf "salt_password(%S,%S,%d) = %S\n" password salt iteration_count sp; *)
   sp
 
 
 let client_emit_message cs =
+  let p = cs.cs_profile in
   catch_error cs
     (fun () ->
        match cs.cs_state with
@@ -634,9 +639,10 @@ let client_emit_message cs =
 	     let s1 =
 	       match cs.cs_s1 with None -> assert false | Some s1 -> s1 in
 	     let salted_pw = 
-	       salt_password cs.cs_password s1.s1_salt s1.s1_iteration_count in
-	     let client_key = hmac_sha1_string salted_pw "Client Key" in
-	     let stored_key = sha1_string client_key in
+	       salt_password 
+                 p cs.cs_password s1.s1_salt s1.s1_iteration_count in
+	     let client_key = hmac_string p salted_pw "Client Key" in
+	     let stored_key = hash_string p client_key in
 	     let cf_no_proof =
 	       encode_cf_message { cf_chanbind = cs.cs_chanbind;
 				   cf_nonce = s1.s1_nonce;
@@ -647,20 +653,21 @@ let client_emit_message cs =
 	       encode_c1_message c1 ^ "," ^ 
 		 cs.cs_s1_raw ^ "," ^ 
 		 cf_no_proof in
-	     let client_signature = hmac_sha1_string stored_key auth_message in
-	     let p = Netauth.xor_s client_key client_signature in
+	     let client_signature = hmac_string p stored_key auth_message in
+	     let proof = Netauth.xor_s client_key client_signature in
 	     let cf =
 	       { cf_chanbind = cs.cs_chanbind;
 		 cf_nonce = s1.s1_nonce;
 		 cf_extensions = [];
-		 cf_proof = Some p;
+		 cf_proof = Some proof;
 	       } in
 	     cs.cs_cf <- Some cf;
 	     cs.cs_state <- `CF;
 	     cs.cs_auth_message <- auth_message;
 	     cs.cs_salted_pw <- salted_pw;
 	     cs.cs_proto_key <- Some ( lsb128
-					 (hmac_sha1_string
+					 (hmac_string
+                                            p
 					    stored_key
 					    ("GSS-API session key" ^ 
 					       client_key ^ auth_message)));
@@ -675,6 +682,7 @@ let client_emit_message cs =
 
 
 let client_recv_message cs message =
+  let p = cs.cs_profile in
   catch_error cs
     (fun () ->
        match cs.cs_state with
@@ -704,9 +712,9 @@ let client_recv_message cs message =
 		 | `Verifier v ->
 		     let salted_pw = cs.cs_salted_pw in
 		     let server_key =
-		       hmac_sha1_string salted_pw "Server Key" in
+		       hmac_string p salted_pw "Server Key" in
 		     let server_signature =
-		       hmac_sha1_string server_key cs.cs_auth_message in
+		       hmac_string p server_key cs.cs_auth_message in
 		     if v <> server_signature then
 		       raise Invalid_server_signature;
 		     cs.cs_state <- `Connected;
@@ -802,6 +810,7 @@ exception Skip_proto
 
 
 let server_emit_message ss =
+  let p = ss.ss_profile in
   match ss.ss_state with
     | `C1 ->
 	let m =
@@ -875,9 +884,9 @@ let server_emit_message ss =
 		    ss.ss_s1_raw ^ "," ^ 
 		    cf_no_proof in
 		let server_key =
-		  hmac_sha1_string spw "Server Key" in
+		  hmac_string p spw "Server Key" in
 		let server_signature =
-		  hmac_sha1_string server_key auth_message in
+		  hmac_string p server_key auth_message in
 		let sf =
 		  { sf_error_or_verifier = `Verifier server_signature;
 		    sf_extensions = []
@@ -894,6 +903,7 @@ let server_emit_message ss =
 
 
 let server_recv_message ss message =
+  let p = ss.ss_profile in
   match ss.ss_state with
     | `Start ->
 	dlog (sprintf "Server state `Start receiving message: %s" message);
@@ -921,21 +931,22 @@ let server_recv_message ss message =
 	       let cf = decode_cf_message true message in
 	       if s1.s1_nonce <> cf.cf_nonce then
 		 raise (Invalid_proof "nonce mismatch");
-	       let client_key = hmac_sha1_string salted_pw "Client Key" in
-	       let stored_key = sha1_string client_key in
+	       let client_key = hmac_string p salted_pw "Client Key" in
+	       let stored_key = hash_string p client_key in
 	       let cf_no_proof = strip_cf_proof message in
 	       let auth_message =
 		 ss.ss_c1_raw ^ "," ^ 
 		   ss.ss_s1_raw ^ "," ^ 
 		   cf_no_proof in
 	       let client_signature =
-                 hmac_sha1_string stored_key auth_message in
-	       let p = Netauth.xor_s client_key client_signature in
-	       if Some p <> cf.cf_proof then
+                 hmac_string p stored_key auth_message in
+	       let proof = Netauth.xor_s client_key client_signature in
+	       if Some proof <> cf.cf_proof then
 		 raise (Invalid_proof "bad client signature");
 	       ss.ss_cf <- Some cf;
 	       ss.ss_proto_key <- Some ( lsb128
-					   (hmac_sha1_string
+					   (hmac_string
+                                              p
 					      stored_key
 					      ("GSS-API session key" ^ 
 						 client_key ^ auth_message)));
@@ -1166,12 +1177,20 @@ end
 module Cryptosystem = struct
   (* RFC 3961 section 5.3 *)
 
+  let p =
+    (* actually, we need only hash_function here *)
+    { ptype = `GSSAPI;
+      hash_function = `SHA_1;
+      return_unknown_user = true;
+      iteration_count_limit = 10000
+    }
+
   module C = AES_CTS
     (* Cipher *)
 
   module I = struct   (* Integrity *)
-    let hmac = hmac_sha1_string  (* hmac-sha1 *)
-    let hmac_mstrings = hmac_sha1_mstrings
+    let hmac = hmac_string p  (* hmac-sha1 *)
+    let hmac_mstrings = hmac_mstrings p
     let h = 12
   end
 
