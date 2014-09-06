@@ -26,7 +26,13 @@ Ocamlnet-4 adds:
 Development of Ocamlnet-4 starts
 ======================================================================
 
+2014-09-06  Gerd Stolpmann  <gerd@e130>
+
+	* Fixing bad format strings (Damien Doligez)
+
 2014-08-31  Gerd Stolpmann  <gerd@e130>
+
+	* Release ocamlnet-3.7.5
 
 	* Windows: various fixes, including int sizes for 64-bit Windows,
 	  the invocation of cppo, and CR characters. Also, unixsupport.h

@@ -1124,7 +1124,7 @@ module Header = struct
 	Failure _ -> raise(Bad_header_field "Nethttp.get_age")
 
   let set_age mh v =
-    mh # update_field "Age" (Printf.sprintf "%0.f" v)
+    mh # update_field "Age" (Printf.sprintf "%.0f" v)
 
   let get_allow mh =
     parse_token_list mh "Nethttp.get_allow" "Allow"
