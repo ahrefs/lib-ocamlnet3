@@ -22,9 +22,21 @@ type profile =
       iteration_count_limit : int;
     }
 
+type cb =
+    [ `None
+    | `None_but_advertise
+    | `Require of string * string
+    | `GSSAPI of string
+    ]
+
+type gs2_header =
+    { gs2_cb : cb;
+      gs2_authzname : string option
+    }
 
 type client_first =  (* actually client_first_bare *)
     { c1_username : string;  (* "=xx" encoding not yet applied *)
+      c1_gs2 : gs2_header;
       c1_nonce : string;     (* anything but comma *)
       c1_extensions : (string * string) list
     }
@@ -37,7 +49,7 @@ type server_first =
     }
 
 type client_final =
-    { cf_chanbind : string;
+    { cf_gs2 : gs2_header;
       cf_nonce : string;     (* anything but comma *)
       cf_extensions : (string * string) list;
       cf_proof : string option;   (* decoded *)
@@ -87,8 +99,9 @@ type client_session =
       mutable cs_auth_message : string;
       mutable cs_proto_key : string option;
       cs_username : string;
+      cs_authzname : string;
       cs_password : string;
-      mutable cs_chanbind : string;
+      mutable cs_cb : cb;
     }
 
 
@@ -106,7 +119,7 @@ type server_session =
       mutable ss_spw: string option;
       mutable ss_err : server_error option;
       mutable ss_proto_key : string option;
-      ss_authenticate_opt : (string -> (string * string * int)) option;
+      ss_authenticate_opt : (string -> string -> (string * string * int)) option
     }
 
 (* Exported: *)
@@ -253,8 +266,70 @@ let decode_saslname s =
   s'
 
 
-let encode_c1_message c1 =
-  (* No gs2-header in GSS-API *)
+let encode_gs2 gs2 =
+  (match gs2.gs2_cb with
+     | `None -> "n"
+     | `None_but_advertise -> "y"
+     | `Require(v,_) -> "p=" ^ v
+     | `GSSAPI _ -> assert false
+  ) ^ 
+    (match gs2.gs2_authzname with
+       | None -> ""
+       | Some name -> ",a=" ^ encode_saslname name
+    (* RFC 4422 does not allow SASLprep for the auth string *)
+    ) ^ ","
+
+let gs2_re = Netstring_str.regexp "\\(y|n|p=[^,]*\\),\\(a=[^,]*\\)?,"
+
+let decode_gs2 ?(cb_includes_data=false) s =
+  match Netstring_str.string_match gs2_re s 0 with
+    | Some m ->
+         let m_end = Netstring_str.match_end m in
+         let rest = String.sub s m_end (String.length s - m_end) in
+         let cb = Netstring_str.matched_group m 1 s in
+         let gs2_cb =
+           if cb = "n" then
+             `None
+           else if cb = "y" then
+             `None_but_advertise
+           else (
+             let (n,v) = n_value_split cb in
+             if n <> "p" then
+               raise(Invalid_encoding("decode_gs2", s));
+             let data =
+               if cb_includes_data then
+                 rest
+               else
+                 "" in
+             `Require(v, data)
+           ) in
+         let authzname = 
+           try Netstring_str.matched_group m 2 s with Not_found -> "" in
+         let gs2_authzname =
+           if authzname = "" then
+             None
+           else (
+             let (authzname_n, authzname_v) = n_value_split authzname in
+             if authzname_n <> "a" then
+               raise(Invalid_encoding("decode_gs2", s));
+	     let authzname_v = decode_saslname authzname_v in
+             (* No SASLprep. RFC 4422 is very clear that the auth string can
+                use any Unicode chars.
+              *)
+             Some authzname_v
+           ) in
+         let gs2 = { gs2_cb; gs2_authzname } in
+         (gs2, rest)
+    | _ ->
+         raise(Invalid_encoding("decode_gs2", s))
+
+
+let encode_c1_message ptype c1 =
+  ( if ptype = `SASL then
+      encode_gs2 c1.c1_gs2
+    else
+      ""
+  ) ^
   "n=" ^ encode_saslname(username_saslprep c1.c1_username) ^ 
   ",r=" ^ c1.c1_nonce ^ 
   (if c1.c1_extensions <> [] then 
@@ -264,8 +339,7 @@ let encode_c1_message c1 =
   )  
 
 
-let decode_c1_message s =
-  let l = List.map n_value_split (comma_split s) in
+let decode_c1_message_after_gs2 s l gs2_header =
   match l with
     | [] ->
 	raise(Invalid_encoding("decode_c1_mesage: empty", s))
@@ -278,12 +352,25 @@ let decode_c1_message s =
 	  raise(Invalid_username_encoding("Netmech_scram.decode_c1_message",
 					  s));
 	{ c1_username = username;
+          c1_gs2 = gs2_header;
 	  c1_nonce = nonce;
 	  c1_extensions = l'
 	}
     | _ ->
 	raise(Invalid_encoding("decode_c1_mesage", s))
 
+let decode_c1_message ptype s =
+  match ptype with
+    | `GSSAPI ->
+         let l1 = comma_split s in
+         let l2 = List.map n_value_split l1 in
+         let gs2 = { gs2_authzname = None; gs2_cb = `None } in
+         decode_c1_message_after_gs2 s l2 gs2 
+    | `SASL ->
+         let (gs2, rest) = decode_gs2 s in
+         let l1 = comma_split s in
+         let l2 = List.map n_value_split l1 in
+         decode_c1_message_after_gs2 s l2 gs2
 
 let encode_s1_message s1 =
   "r=" ^ s1.s1_nonce ^
@@ -333,8 +420,19 @@ let decode_s1_message s =
    the gs2-header.)
  *)
 	
-let encode_cf_message cf =
-  "c=" ^ Netencoding.Base64.encode cf.cf_chanbind ^ 
+let encode_cf_message ptype cf =
+  let cbind_input =
+    ( match ptype with
+        | `GSSAPI ->
+             ""
+        | `SASL ->
+             encode_gs2 cf.cf_gs2
+    )  ^
+      ( match cf.cf_gs2.gs2_cb with
+          | `Require(_,data) -> data
+          | _ -> ""
+      ) in
+  "c=" ^ Netencoding.Base64.encode cbind_input ^ 
   ",r=" ^ cf.cf_nonce ^ 
   ( if cf.cf_extensions <> [] then
       "," ^ 
@@ -348,7 +446,7 @@ let encode_cf_message cf =
   )
 
 
-let decode_cf_message expect_proof s =
+let decode_cf_message ptype expect_proof s =
   let l = List.map n_value_split (comma_split s) in
   match l with
     | [] ->
@@ -359,6 +457,16 @@ let decode_cf_message expect_proof s =
 	  with _ ->
 	    raise(Invalid_encoding("decode_cf_mesage: invalid c",
 				   s)) in
+        let cf_gs2 =
+          match ptype with
+            | `GSSAPI ->
+                 { gs2_authzname = None;
+                   gs2_cb = `GSSAPI chanbind
+                 }
+            | `SASL ->
+                 let gs2, _ = decode_gs2 ~cb_includes_data:true chanbind in
+                 gs2 in
+
 	let p, l'' =
 	  if expect_proof then
 	    match List.rev l' with
@@ -374,7 +482,7 @@ let decode_cf_message expect_proof s =
 					 s))
 	  else
 	    None, l' in
-	{ cf_chanbind = chanbind;
+	{ cf_gs2;
 	  cf_nonce = nonce;
 	  cf_extensions = l'';
 	  cf_proof = p
@@ -535,8 +643,9 @@ let create_nonce() =
 let create_salt = create_nonce
 
 
-let create_client_session profile username password =
+let create_client_session2 profile username authzname password =
   ignore(saslprep username);
+  ignore(saslprep authzname);
   ignore(saslprep password);  (* Check for errors *)
   { cs_profile = profile;
     cs_state = `Start;
@@ -548,10 +657,15 @@ let create_client_session profile username password =
     cs_auth_message = "";
     cs_salted_pw = "";
     cs_username = username;
+    cs_authzname = authzname;
     cs_password = password;
     cs_proto_key = None;
-    cs_chanbind = "";
+    cs_cb = `None
   }
+
+let create_client_session profile username password =
+  create_client_session2 profile username username password
+
  
 
 let client_emit_flag cs =
@@ -591,19 +705,29 @@ let client_protocol_key cs =
 let client_user_name cs =
   cs.cs_username
 
+let client_authz_name cs =
+  cs.cs_authzname
+
+let client_password cs =
+  cs.cs_password
+
 let client_configure_channel_binding cs cb =
   ( match cs.cs_state with
       | `Start | `C1 | `S1 -> ()
       | _ -> failwith "Netmech_scram.client_configure_channel_binding"
   );
-  cs.cs_chanbind <- cb
+  ( match cs.cs_profile.ptype, cb with
+      | _, `None -> ()
+      | `GSSAPI, `GSSAPI _ -> ()
+      | `SASL, (`None_but_advertise | `Require _) -> ()
+      | _ -> failwith "Netmech_scram.client_configure_channel_binding"
+  );
+  cs.cs_cb <- cb
 
 let client_channel_binding cs =
-  cs.cs_chanbind
+  cs.cs_cb
 
 let client_export cs =
-  if not (client_finish_flag cs) then
-    failwith "Netmech_scram.client_export: context not yet established";
   Marshal.to_string cs []
 
 let client_import s =
@@ -618,18 +742,23 @@ let salt_password p password salt iteration_count =
 
 let client_emit_message cs =
   let p = cs.cs_profile in
+  let gs2 =
+    { gs2_authzname = Some cs.cs_authzname;
+      gs2_cb = cs.cs_cb
+    } in
   catch_error cs
     (fun () ->
        match cs.cs_state with
 	 | `Start ->
 	     let c1 =
 	       { c1_username = cs.cs_username;
+                 c1_gs2 = gs2;
 		 c1_nonce = create_nonce();
 		 c1_extensions = []
 	       } in
 	     cs.cs_c1 <- Some c1;
 	     cs.cs_state <- `C1;
-	     let m = encode_c1_message c1 in
+	     let m = encode_c1_message p.ptype c1 in
 	     dlog (sprintf "Client state `Start emitting message: %s" m);
 	     m
 	       
@@ -644,19 +773,21 @@ let client_emit_message cs =
 	     let client_key = hmac_string p salted_pw "Client Key" in
 	     let stored_key = hash_string p client_key in
 	     let cf_no_proof =
-	       encode_cf_message { cf_chanbind = cs.cs_chanbind;
-				   cf_nonce = s1.s1_nonce;
-				   cf_extensions = [];
-				   cf_proof = None
-				 } in
+	       encode_cf_message
+                 p.ptype
+                 { cf_gs2 = gs2;
+		   cf_nonce = s1.s1_nonce;
+		   cf_extensions = [];
+		   cf_proof = None
+		 } in
 	     let auth_message =
-	       encode_c1_message c1 ^ "," ^ 
+	       encode_c1_message p.ptype c1 ^ "," ^ 
 		 cs.cs_s1_raw ^ "," ^ 
 		 cf_no_proof in
 	     let client_signature = hmac_string p stored_key auth_message in
 	     let proof = Netauth.xor_s client_key client_signature in
 	     let cf =
-	       { cf_chanbind = cs.cs_chanbind;
+	       { cf_gs2 = gs2;
 		 cf_nonce = s1.s1_nonce;
 		 cf_extensions = [];
 		 cf_proof = Some proof;
@@ -671,7 +802,7 @@ let client_emit_message cs =
 					    stored_key
 					    ("GSS-API session key" ^ 
 					       client_key ^ auth_message)));
-	     let m = encode_cf_message cf in
+	     let m = encode_cf_message p.ptype cf in
 	     dlog (sprintf "Client state `S1 emitting message: %s" m);
 	     m
 	       
@@ -732,7 +863,7 @@ let client_recv_message cs message =
     ()
 
 
-let create_server_session profile auth =
+let create_server_session2 profile auth =
   (* auth: called as: let (salted_pw, salt, i) = auth username *)
   { ss_profile = profile;
     ss_state = `Start;
@@ -748,6 +879,10 @@ let create_server_session profile auth =
     ss_err = None;
     ss_proto_key = None;
   }
+
+
+let create_server_session profile auth =
+  create_server_session2 profile (fun username _ -> auth username)
 
 
 let server_emit_flag ss =
@@ -770,12 +905,22 @@ let server_protocol_key ss =
   ss.ss_proto_key
 
 let server_export ss =
-  if not (server_finish_flag ss) then
-    failwith "Netmech_scram.server_export: context not yet established";
   Marshal.to_string { ss with ss_authenticate_opt = None } []
 
 let server_import s =
-  ( Marshal.from_string s 0 : server_session)
+  let ss = ( Marshal.from_string s 0 : server_session) in
+  if ss.ss_state <> `Connected then
+    failwith "Netmech_scram.server_import: session not finished";
+  ss
+
+let server_import_any2 s auth =
+  let ss = ( Marshal.from_string s 0 : server_session) in
+  { ss with ss_authenticate_opt = Some auth }
+
+let server_import_any s auth =
+  server_import_any2 
+    s
+    (fun username _ -> auth username)
 
 
 let catch_condition ss f arg =
@@ -820,7 +965,12 @@ let server_emit_message ss =
 		| None -> raise Skip_proto | Some c1 -> c1 in
 	    let (spw, salt, i) = 
 	      match ss.ss_authenticate_opt with
-		| Some auth -> auth c1.c1_username
+		| Some auth ->
+                     let authzname =
+                       match c1.c1_gs2.gs2_authzname with
+                         | None -> c1.c1_username
+                         | Some n -> n in
+                     auth c1.c1_username authzname
 		| None -> assert false in
 	    let s1 =
 	      { s1_nonce = c1.c1_nonce ^ create_nonce();
@@ -902,6 +1052,18 @@ let server_emit_message ss =
 	failwith "Netmech_scram.server_emit_message"
 
 
+let gs2_compatibility c1_gs2 cf_gs2 =
+  (* check whether the GS2 headers from c1 and cf are the same *)
+  c1_gs2.gs2_authzname = cf_gs2.gs2_authzname &&
+    match c1_gs2.gs2_cb, cf_gs2.gs2_cb with
+      | `None, `None -> true
+      | `None_but_advertise, `None_but_advertise -> true
+      | `Require(ty1,_), `Require(ty2,_) -> ty1=ty2
+      | `None, `GSSAPI _ -> true  (* c1_gs2 does not really exist... *)
+      | `GSSAPI _, `GSSAPI _ -> true
+      | _ -> false
+               
+
 let server_recv_message ss message =
   let p = ss.ss_profile in
   match ss.ss_state with
@@ -910,7 +1072,7 @@ let server_recv_message ss message =
 
 	catch_condition ss
 	  (fun () ->
-	     let c1 = decode_c1_message message in
+	     let c1 = decode_c1_message p.ptype message in
 	     ss.ss_c1 <- Some c1;
 	  ) ();
 	ss.ss_c1_raw <- message;
@@ -922,13 +1084,16 @@ let server_recv_message ss message =
 	catch_condition ss
 	  (fun () ->
 	     try
+               let c1 =
+                 match ss.ss_c1 with
+                   | None -> assert false | Some c1 -> c1 in
 	       let s1 =
 		 match ss.ss_s1 with
 		   | None -> raise Skip_proto | Some s1 -> s1 in
 	       let salted_pw =
 		 match ss.ss_spw with
 		   | None -> raise Skip_proto | Some spw -> spw in
-	       let cf = decode_cf_message true message in
+	       let cf = decode_cf_message p.ptype true message in
 	       if s1.s1_nonce <> cf.cf_nonce then
 		 raise (Invalid_proof "nonce mismatch");
 	       let client_key = hmac_string p salted_pw "Client Key" in
@@ -943,6 +1108,8 @@ let server_recv_message ss message =
 	       let proof = Netauth.xor_s client_key client_signature in
 	       if Some proof <> cf.cf_proof then
 		 raise (Invalid_proof "bad client signature");
+               if not(gs2_compatibility c1.c1_gs2 cf.cf_gs2) then
+                 raise (Invalid_proof "invalid gs2 header");
 	       ss.ss_cf <- Some cf;
 	       ss.ss_proto_key <- Some ( lsb128
 					   (hmac_string
@@ -961,14 +1128,20 @@ let server_recv_message ss message =
 
 let server_channel_binding ss =
   match ss.ss_cf with
-    | None -> None
-    | Some cf -> Some(cf.cf_chanbind)
+    | None -> `None
+    | Some cf -> cf.cf_gs2.gs2_cb
 
 
 let server_user_name ss =
   match ss.ss_c1 with
     | None -> None
     | Some c1 -> Some c1.c1_username
+
+
+let server_authz_name ss =
+  match ss.ss_c1 with
+    | None -> None
+    | Some c1 -> c1.c1_gs2.gs2_authzname
 
 
 (* Encryption for GSS-API *)

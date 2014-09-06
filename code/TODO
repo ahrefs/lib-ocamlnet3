@@ -1,6 +1,10 @@
+Nethm on MacOS: do not use record locking on shared memory fd.
+
  - Netcgi_common.cgi_delegation
 
 TLS:
+ - how to get unique identifiers for tls-unique channel binding?
+   (RFC 5929)
 
  - check that downcasts are also possible for endpoints
  - Netsys_tls.recv: check performance

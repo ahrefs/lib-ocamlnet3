@@ -24,7 +24,7 @@ module type SASL_MECHANISM =
     type credentials
 
     val init_credentials :
-          (string * string * (string * string)) list ->
+          (string * string * (string * string) list) list ->
             credentials
       (** Supply the mechanism with credentials. These are given as list
           [(type,value,params)]. The mechanism may pick any element
@@ -112,7 +112,7 @@ module type SASL_MECHANISM =
           server_session -> string
       (** Serializes the session as string *)
 
-    val server_resume_sesson :
+    val server_resume_session :
           lookup:(string -> string -> credentials option) ->
           string -> 
              server_session
@@ -186,7 +186,7 @@ module type SASL_MECHANISM =
           client_session -> string
       (** Serializes the session as string *)
 
-    val client_resume_sesson :
+    val client_resume_session :
           string -> 
              client_session
       (** Unserializes the session *)

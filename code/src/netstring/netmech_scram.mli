@@ -107,16 +107,33 @@ val create_client_session : profile -> string -> string -> client_session
       [username], and proves its identity with the given [password].
    *)
 
-val client_configure_channel_binding : client_session -> string -> unit
-  (** Instruct the client to require a channel binding. The passed string
-      is the [c] parameter (before encoding it via Base64. The function
-      needs to be called before sending the second message to the server.
-      It fails if called too late.
+val create_client_session2 : profile -> string -> string -> string -> 
+                             client_session
+  (** [create_client_session p username authzname password]: Like
+      [create_client_session], but also sets the authorization name
+      (only processed for the SASL profile).
    *)
-(* SASL: The string would have to include the gs2-header. For a SASL-enabled
-   profile we would need some additional functions
-   (client_negotiate_channel_binding).
- *)
+
+type cb =
+    [ `None
+    | `None_but_advertise
+    | `Require of string * string
+    | `GSSAPI of string
+    ]
+  (** Possible channel bindings:
+       - [`None]: this is the default
+       - [`None_but_advertise]: the client supports channel binding and
+         advertises this. For this time, the SCRAM protocol is run without
+         channel binding, though. (Only available in the SASL profile.)
+       - [`Require(type,data)]: Require channel binding. E.g. type="tls-unique",
+         and [data] is set to the channel identifier (RFC 5929).
+         (Only available in the SASL profile.)
+       - [`GSSAPI data]: use this channel binding for GSS-API
+   *)
+
+val client_configure_channel_binding : client_session -> cb -> unit
+  (** Sets whether to request channel binding.
+   *)
 
 val client_emit_flag : client_session -> bool
   (** Whether [client_emit_message] can now be called *)
@@ -130,8 +147,8 @@ val client_finish_flag : client_session -> bool
 val client_error_flag : client_session -> bool
   (** Whether an error occurred, and the protocol cannot advance anymore *)
 
-val client_channel_binding : client_session -> string
-  (** Returns the channel binding ("" of none) *)
+val client_channel_binding : client_session -> cb
+  (** Returns the channel binding *)
 
 val client_emit_message : client_session -> string
   (** Emits the next message to be sent to the server *)
@@ -147,11 +164,15 @@ val client_protocol_key : client_session -> string option
 val client_user_name : client_session -> string
   (** The user name *)
 
+val client_authz_name : client_session -> string
+  (** The authorization name *)
+
+val client_password : client_session -> string
+  (** The password *)
+
 val client_export : client_session -> string
 val client_import : string -> client_session
   (** Exports a client session as string, and imports the string again.
-      Only established sessions are allowed to be exported
-      (for which [client_finish_flag] is true).
 
       The export format is just a marshalled Ocaml value.
    *)
@@ -197,6 +218,18 @@ val create_server_session :
       See [salt_password] below.
    *)
 
+val create_server_session2 : 
+      profile -> (string -> string -> string * string * int) -> server_session
+  (** Same as [create_server_session], but the authentication callback
+      gets two arguments:
+
+      {[
+      let (salted_password, salt, iteration_count) = auth username authzname
+      ]}
+
+      where [authzname] is the passed authorization name (or "" if na).
+   *)
+
 val create_salt : unit -> string
   (** Creates a random string suited as salt *)
 
@@ -230,8 +263,8 @@ val server_protocol_key : server_session -> string option
       as soon as the second client message has been received.
    *)
 
-val server_channel_binding : server_session -> string option
-  (** Returns the channel binding requirement (the "c" parameter). It is
+val server_channel_binding : server_session -> cb
+  (** Returns the channel binding requirement. It is
       up to the application to enforce the binding. This information is 
       available as soon as the second client message has been received
    *)
@@ -241,13 +274,24 @@ val server_user_name : server_session -> string option
       even before the authentication is completed!
    *)
 
+val server_authz_name : server_session -> string option
+  (** The authorization name as transmitted from the client. This is returned
+      here
+      even before the authentication is completed!
+   *)
+
 val server_export : server_session -> string
 val server_import : string -> server_session
+val server_import_any : string -> (string -> string * string * int) ->
+                        server_session
+val server_import_any2 : string -> (string -> string -> string * string * int) ->
+                         server_session
   (** Exports a server session as string, and imports the string again.
-      Only established sessions are allowed to be exported
-      (for which [server_finish_flag] is true).
-
-      The export format is just a marshalled Ocaml value.
+      [server_import] can only import established sessions.
+      [server_import_any] can also import unfinished sessions, but one needs
+      to pass the authentication function as for [server_create_session].
+      [server_import_any2] uses the modified auth function as in
+      [server_create_session2].
    *)
 
 

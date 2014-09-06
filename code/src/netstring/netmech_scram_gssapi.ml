@@ -363,8 +363,8 @@ object(self)
 	    (* Finally check channel bindings: *)
 	    let scram_cb =
 	      match Netmech_scram.server_channel_binding sess with
-		| None -> assert false
-		| Some d -> d in
+		| `GSSAPI d -> d
+                | _ -> assert false in
 	    if scram_cb <> !(context # server_cb) then
 	      raise(Routine_error `Bad_bindings);
 	    let ret_flags =
@@ -926,7 +926,8 @@ object(self)
 	      let ctx =
 		Ctx_client sess in
 	      let context = new scram_context ctx scram_ret_flags in
-	      (context # server_cb) := cb_data;
+              Netmech_scram.client_configure_channel_binding 
+                sess (`GSSAPI cb_data);
 	      ContextBCT.store contexts context;
 	      (context, sess, false)
 	  | Some c -> 
