@@ -104,7 +104,7 @@ object (self)
             oc # output_string l;
             oc # output_string 
 	      (if String.length l > 0 && 
-		 l.[String.length l - 2] = '\r' then "\n" else "\r\n")
+		 l.[String.length l - 1] = '\r' then "\n" else "\r\n")
 	done;
 	assert false
       with End_of_file -> () );
