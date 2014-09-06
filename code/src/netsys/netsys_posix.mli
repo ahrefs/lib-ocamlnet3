@@ -195,7 +195,8 @@ val at_fdcwd : Unix.file_descr
       functions
    *)
 
-type at_flag = AT_EACCESS | AT_SYMLINK_NOFOLLOW | AT_REMOVEDIR
+type at_flag = AT_EACCESS | AT_SYMLINK_NOFOLLOW | AT_SYMLINK_FOLLOW |
+               AT_REMOVEDIR
   (** Flags one can pass to "at" functions. Not all functions support
       all flags
    *)

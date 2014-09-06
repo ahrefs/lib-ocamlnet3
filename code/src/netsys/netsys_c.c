@@ -428,8 +428,12 @@ CAMLprim value netsys_at_fdcwd(value dummy)
 #define AT_SYMLINK_NOFOLLOW 0
 #endif
 
+#ifndef AT_SYMLINK_FOLLOW
+#define AT_SYMLINK_FOLLOW 0
+#endif
+
 static int at_flags_table[] = {
-    AT_EACCESS, AT_SYMLINK_NOFOLLOW, AT_REMOVEDIR
+    AT_EACCESS, AT_SYMLINK_NOFOLLOW, AT_SYMLINK_FOLLOW, AT_REMOVEDIR
 };
 #endif
 
