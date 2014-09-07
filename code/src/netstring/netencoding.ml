@@ -3,12 +3,17 @@
  *
  *)
 
-let hexdigit =
+let hexdigit_uc =
   [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
      '8'; '9'; 'A'; 'B'; 'C'; 'D'; 'E'; 'F'; |]
 
+let hexdigit_lc =
+  [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
+     '8'; '9'; 'a'; 'b'; 'c'; 'd'; 'e'; 'f'; |]
 
-let to_hex s =
+
+let to_hex ?(lc=false) s =
+  let hexdigit = if lc then hexdigit_lc else hexdigit_uc in
   let l = String.length s in
   let u = String.create (2*l) in
   for k = 0 to l-1 do
@@ -537,8 +542,8 @@ module QuotedPrintable = struct
 
     let add_quoted c =
       t.[ !k ]   <- '=';
-      t.[ !k+1 ] <- hexdigit.( Char.code c lsr 4 );
-      t.[ !k+2 ] <- hexdigit.( Char.code c land 15 )
+      t.[ !k+1 ] <- hexdigit_uc.( Char.code c lsr 4 );
+      t.[ !k+2 ] <- hexdigit_uc.( Char.code c land 15 )
     in
 
     let add_soft_break() =
@@ -811,8 +816,8 @@ module Q = struct
 
     let add_quoted c =
       t.[ !k ]   <- '=';
-      t.[ !k+1 ] <- hexdigit.( Char.code c lsr 4 );
-      t.[ !k+2 ] <- hexdigit.( Char.code c land 15 )
+      t.[ !k+1 ] <- hexdigit_uc.( Char.code c lsr 4 );
+      t.[ !k+2 ] <- hexdigit_uc.( Char.code c land 15 )
     in
 
     for i = 0 to len - 1 do

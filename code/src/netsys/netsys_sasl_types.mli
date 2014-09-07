@@ -40,7 +40,9 @@ type client_state =
           - [`Emit]: a new client response can be emitted.
           - [`OK]: the authentication protocol succeeded
           - [`Auth_error]: authentication error (it is unspecified which)
-          - [`Stale]: The client session is refused as too old
+          - [`Stale]: The client session is refused as too old. The password,
+            though, is correct. Otherwise this is the same as [`Emit], i.e.
+            the authentication process can continue.
        *)
 
 
@@ -70,18 +72,12 @@ module type SASL_MECHANISM =
           [(type,value,params)]. The mechanism may pick any element
           of this list which are considered as equivalent.
 
-          Types are defined per mechanism. The following types
-          are commonly used:
+          Types are defined per mechanism. All mechanisms understand the
+          "password" type, which is just the cleartext password, e.g.
 
-           - "password": The [value] is the password (UTF-8).
-           - "salted-password": The [value] is computed as
-             [Hi(password,salt,i)] where the Hi function is defined as
-             in RFC-5802. It is required that [salt] and [i] are given as
-             numeric parameters, and the name of the hash function must be
-             set in the parameter [h] (e.g. [h="SHA1"]).
-           - "digest-md5": The [value] is computed as
-             [MD5(username ^ ":" ^ realm ^ ":" ^ password)]. The
-             [realm] must be given as parameter.
+          {[
+            [ "password", "ThE sEcReT", [] ]
+          ]}
        *)
 
     type server_session
@@ -123,12 +119,58 @@ module type SASL_MECHANISM =
        *)
 
     val server_process_response_restart :
-          server_session -> string -> unit
+          server_session -> string -> bool -> bool
       (** Process the response from the client when another session can be
           continued. The string argument is the initial client response.
           This function must only be called when the state reaches
           [`Restart id] after [server_process_response], and in this case
-          the old session with [id] can be restarted.
+          the old session with [id] can be restarted. This function
+          should be called with the same message string as
+          [server_process_repsonse] was just called with.
+
+          If the bool arg is true, a stale response is created. This is
+          a special restart which forces the client to run through the
+          authentication process again, although everything else was
+          successful. (If the protocol does not support the stale flag, it
+          is silently ignored.)
+
+          Returns true if the restart is successful. If not, false is
+          returned. In this case, the [server_session] object can (and
+          should) still be used, but the caller must treat it as new
+          session. In particular, the session ID may change.
+
+          All in all, the idea of this function is best illustrated by
+          this authentication snippet how to process responses
+          (the session cache functions need to be written by the user
+          of this module):
+
+          {[
+  let update_cache() =
+    match server_session_id session with
+      | None -> ()
+      | Some id ->
+          replace_in_session_cache id (server_stash_session session) in
+
+  let rec check_state_after_response() =
+    match server_state session with
+      | `Restart id ->
+           let old_session_s, time = find_in_session_cache id in
+           let old_session = server_resume_session ~lookup old_session_s in
+           let set_stale = current_time - time > limit in
+           let cont = server_process_response_restart session msg set_stale in
+           if not cont then 
+             delete_in_session_cache id;
+           (* Now check server_state again, should be `Emit now *)
+           check_state_after_response()
+      | `Emit ->
+           let out_msg = server_emit_challenge session in
+           update_cache();
+           ...
+      | ... ->
+  in
+  server_process_response session msg;
+
+          ]}
        *)
 
     val server_emit_challenge :

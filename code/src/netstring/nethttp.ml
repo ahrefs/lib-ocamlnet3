@@ -1974,3 +1974,6 @@ module Header = struct
 
 
 end
+
+
+let qstring_of_value = Header.qstring_of_value

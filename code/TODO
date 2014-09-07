@@ -4,13 +4,15 @@ Nethm on MacOS: do not use record locking on shared memory fd.
 
 SASL:
  - GS2-style channel bindings - DONE
- - PLAIN
- - CRAM-MD5
+ - PLAIN - DONE
+ - CRAM-MD5 - DONE
+    * TODO: saslprep if available
  - DIGEST-MD5
  - Complete SCRAM:
     * session ID
     * props
     * better prefix for export
+    * "SCRAM-SHA-1-salted-password"
  - support module Netsys_sasl
  - implement for POP
  - implement for SMTP

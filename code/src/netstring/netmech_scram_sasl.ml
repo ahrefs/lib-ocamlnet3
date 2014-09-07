@@ -6,11 +6,19 @@ module type PROFILE =
   sig
     val hash_function : Netsys_digests.iana_hash_fn
     val iteration_count_limit : int
+    val announce_channel_binding : bool
   end
 
 module SHA1 = struct
   let hash_function = `SHA_1
   let iteration_count_limit = 100000
+  let announce_channel_binding = false
+end
+
+module SHA1_PLUS = struct
+  let hash_function = `SHA_1
+  let iteration_count_limit = 100000
+  let announce_channel_binding = true
 end
 
 module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
@@ -27,7 +35,11 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let default_iteration_count = 4096
 
   let mechanism_name =
-    Netmech_scram.mechanism_name profile
+    let n = Netmech_scram.mechanism_name profile in
+    if P.announce_channel_binding then
+      n ^ "-PLUS"
+    else
+      n
 
   let client_first = `Required
   let server_sends_final_data = true
@@ -47,7 +59,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       let (_, value, params) =
         List.find
           (function
-            | ("salted-password", _, _) -> true
+            | ("SCRAM-salted-password", _, _) -> true
             | _ -> false
           )
           c in
@@ -61,7 +73,8 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
            let pw = extract_password c in
            let salt = Netmech_scram.create_salt() in
            let i = fallback_i in
-           let value = Netmech_scram.salt_password profile pw salt i in
+           let h = profile.Netmech_scram.hash_function in
+           let value = Netmech_scram.salt_password h pw salt i in
            (value, salt, i)
 
   type server_session =
@@ -112,7 +125,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_process_response ss msg =
     Netmech_scram.server_recv_message ss.ss msg
 
-  let server_process_response_restart ss msg =
+  let server_process_response_restart ss msg set_stale =
     failwith "Netmech_scram_sasl.server_process_response_restart: \
               not available"
              
@@ -256,3 +269,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_authz_name cs =
     Netmech_scram.client_authz_name cs.cs
 end
+
+
+module SCRAM_SHA1 = SCRAM(SHA1)
+module SCRAM_SHA1_PLUS = SCRAM(SHA1_PLUS)

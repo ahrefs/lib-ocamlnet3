@@ -218,8 +218,9 @@ val create_server_session2 :
 val create_salt : unit -> string
   (** Creates a random string suited as salt *)
 
-val salt_password : profile -> string -> string -> int -> string
-  (** [let salted_password = salt_password profile password salt iteration_count]
+val salt_password :  Netsys_digests.iana_hash_fn -> 
+                     string -> string -> int -> string
+  (** [let salted_password = salt_password h password salt iteration_count]
 
       As we do not implement [SASLprep] only passwords consisting of
       US-ASCII characters are accepted ([Invalid_encoding] otherwise).

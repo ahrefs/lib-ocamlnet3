@@ -1031,3 +1031,6 @@ end
 
 val rev_split : (char -> bool) -> string -> string list
   (* See netcgi_common.mli *)
+
+val qstring_of_value : string -> string
+  (* quoted string *)

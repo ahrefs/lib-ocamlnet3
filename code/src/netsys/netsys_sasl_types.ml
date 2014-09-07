@@ -40,7 +40,7 @@ module type SASL_MECHANISM =
     val server_process_response :
           server_session -> string -> unit
     val server_process_response_restart :
-          server_session -> string -> unit
+          server_session -> string -> bool -> bool
     val server_emit_challenge :
           server_session -> string
     val server_stash_session :

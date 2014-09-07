@@ -363,4 +363,4 @@ module Html :
 
 
 (* TODO: module with hex routines *)
-val to_hex : string -> string
+val to_hex : ?lc:bool -> string -> string
