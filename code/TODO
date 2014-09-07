@@ -10,6 +10,7 @@ SASL:
  - Complete SCRAM:
     * session ID
     * props
+    * better prefix for export
  - support module Netsys_sasl
  - implement for POP
  - implement for SMTP

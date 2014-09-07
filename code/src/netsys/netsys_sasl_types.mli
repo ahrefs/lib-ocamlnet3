@@ -19,6 +19,31 @@ type cb =
       This type is shared by SASL and GSSAPI providers.
    *)
 
+type server_state =
+  [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
+  (** The state of the server session:
+          - [`Wait]: it is waited for the client response.
+          - [`Emit]: a new server challenge can be emitted.
+          - [`OK]: the authentication protocol succeeded
+          - [`Auth_error]: authentication error (it is unspecified which)
+          - [`Restart session_id]: this state can be entered after getting
+            the first client response. It means that the saved session
+            [session_id] may be restarted by calling 
+            [server_process_response_restart] with the client response.
+   *)
+
+
+type client_state =
+  [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
+      (** The state of the client session:
+          - [`Wait]: it is waited for the server challenge.
+          - [`Emit]: a new client response can be emitted.
+          - [`OK]: the authentication protocol succeeded
+          - [`Auth_error]: authentication error (it is unspecified which)
+          - [`Stale]: The client session is refused as too old
+       *)
+
+
 module type SASL_MECHANISM = 
   sig
     val mechanism_name : string
@@ -60,19 +85,6 @@ module type SASL_MECHANISM =
        *)
 
     type server_session
-
-    type server_state =
-           [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
-      (** The state of the server session:
-          - [`Wait]: it is waited for the client response.
-          - [`Emit]: a new server challenge can be emitted.
-          - [`OK]: the authentication protocol succeeded
-          - [`Auth_error]: authentication error (it is unspecified which)
-          - [`Restart session_id]: this state can be entered after getting
-            the first client response. It means that the saved session
-            [session_id] may be restarted by calling 
-            [server_process_response_restart] with the client response.
-       *)
 
     val server_state : server_session -> server_state
 
@@ -155,16 +167,6 @@ module type SASL_MECHANISM =
       (** Whether the client suggests or demands channel binding *)
 
     type client_session
-
-    type client_state =
-           [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
-      (** The state of the client session:
-          - [`Wait]: it is waited for the server challenge.
-          - [`Emit]: a new client response can be emitted.
-          - [`OK]: the authentication protocol succeeded
-          - [`Auth_error]: authentication error (it is unspecified which)
-          - [`Stale]: The client session is refused as too old
-       *)
 
     val client_state : client_session -> client_state
 

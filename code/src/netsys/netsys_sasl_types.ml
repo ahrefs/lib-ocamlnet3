@@ -7,6 +7,13 @@ type cb =
     | `GSSAPI of string
     ]
 
+type server_state =
+  [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
+
+type client_state =
+  [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
+
+
 module type SASL_MECHANISM = 
   sig
     val mechanism_name : string
@@ -21,8 +28,6 @@ module type SASL_MECHANISM =
             credentials
 
     type server_session
-    type server_state =
-           [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
 
     val server_state : server_session -> server_state
 
@@ -52,8 +57,6 @@ module type SASL_MECHANISM =
 
     type client_session
 
-    type client_state =
-           [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
     val client_state : client_session -> client_state
 
     val create_client_session :

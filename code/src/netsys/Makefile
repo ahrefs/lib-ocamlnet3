@@ -14,7 +14,7 @@ OBJECTS  = netsys_conf.cmo netsys_types.cmo \
 	   netsys_pollset_win32.cmo netsys_pollset_generic.cmo \
 	   netsys_xdr.cmo netsys_tmp.cmo \
 	   netsys_sem.cmo netsys_pmanage.cmo \
-	   netsys_gssapi.cmo netsys_sasl_types.cmo
+	   netsys_gssapi.cmo netsys_sasl_types.cmo netsys_sasl_util.cmo
 COBJECTS = netsys_c.o netsys_c_poll.o netsys_c_fadvise.o \
 	   netsys_c_fallocate.o netsys_c_ioprio.o netsys_c_locale.o \
            netsys_c_multicast.o netsys_c_sem.o netsys_c_shm.o \

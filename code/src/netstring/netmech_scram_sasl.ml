@@ -5,19 +5,11 @@ open Printf
 module type PROFILE = 
   sig
     val hash_function : Netsys_digests.iana_hash_fn
-    val return_unknown_user : bool
     val iteration_count_limit : int
   end
 
-module SHA1_permissive = struct
+module SHA1 = struct
   let hash_function = `SHA_1
-  let return_unknown_user = true
-  let iteration_count_limit = 100000
-end
-
-module SHA1_restrictive = struct
-  let hash_function = `SHA_1
-  let return_unknown_user = false
   let iteration_count_limit = 100000
 end
 
@@ -27,7 +19,8 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     let open Netmech_scram in
     { ptype = `SASL;
       hash_function = P.hash_function;
-      return_unknown_user = P.return_unknown_user;
+      return_unknown_user = false;
+        (* The SASL API does not allow to indicate unknown users anyway *)
       iteration_count_limit = P.iteration_count_limit;
     }
 
@@ -39,8 +32,6 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_first = `Required
   let server_sends_final_data = true
   let supports_authz = true
-  let plus_channel_binding = false
-       (* this describes the non-PLUS variant *)
 
   type credentials =
       (string * string * (string * string) list) list
@@ -49,15 +40,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let init_credentials l =
     (l:credentials)
 
-  let extract_password (c:credentials) =
-    let (_, value, _) =
-      List.find
-        (function
-          | ("password", _, _) -> true
-          | _ -> false
-        )
-        c in
-    value
+  let extract_password = Netsys_sasl_util.extract_password
 
   let extract_salted_password ~fallback_i (c:credentials) =
     try
@@ -86,9 +69,6 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
         ss_fallback_i : int;
       }
 
-  type server_state =
-    [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
-      
   let server_state ss =
     if Netmech_scram.server_emit_flag ss.ss then
       `Emit
@@ -113,14 +93,11 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_known_params = [ "i" ]
 
   let create_server_session ~lookup ~params () =
-    List.iter
-      (fun (name,_,critical) ->
-         if critical && not(List.mem name server_known_params) then
-           failwith ("Netmech_scram_sasl.create_server_session: Cannot \
-                      process critical parameter: " ^ name)
-      )
-      params;
-    let params = List.map (fun (n,v,_) -> (n,v)) params in
+    let params = 
+      Netsys_sasl_util.preprocess_params
+        "Netmech_scram_sasl.create_server_session:"
+        server_known_params
+        params in
     let fallback_i =
       try int_of_string (List.assoc "i" params)
       with Not_found -> default_iteration_count in
@@ -146,10 +123,10 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     Netmech_scram.server_channel_binding ss.ss
                                       
   let server_stash_session ss =
-    sprintf "t=SCRAM,i=%d;" ss.ss_fallback_i ^ 
+    sprintf "server,t=SCRAM,i=%d;" ss.ss_fallback_i ^ 
       Netmech_scram.server_export ss.ss
     
-  let ss_re = Netstring_str.regexp "t=SCRAM,i=\\([^,;]*\\);"
+  let ss_re = Netstring_str.regexp "server,t=SCRAM,i=\\([^,;]*\\);"
   
   let server_resume_session ~lookup s =
     match Netstring_str.string_match ss_re s 0 with
@@ -191,10 +168,6 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       { mutable cs : Netmech_scram.client_session;
       }
 
-  type client_state =
-    [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
-
-
   let client_state cs =
     if Netmech_scram.client_emit_flag cs.cs then
       `Emit
@@ -210,13 +183,11 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_known_params = []
 
   let create_client_session ~user ~authz ~creds ~params () =
-    List.iter
-      (fun (name,_,critical) ->
-         if critical && not(List.mem name client_known_params) then
-           failwith ("Netmech_scram_sasl.create_client_session: Cannot \
-                      process critical parameter: " ^ name)
-      )
-      params;
+    let _params = 
+      Netsys_sasl_util.preprocess_params
+        "Netmech_scram_sasl.create_client_session:"
+        client_known_params
+        params in
     let pw =
       try extract_password creds
       with Not_found ->
@@ -257,10 +228,19 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     Netmech_scram.client_emit_message cs.cs
                                       
   let client_stash_session cs =
-    Netmech_scram.client_export cs.cs
+    "client,t=SCRAM;" ^ 
+      Netmech_scram.client_export cs.cs
       
+  let cs_re = Netstring_str.regexp "client,t=SCRAM;"
+
   let client_resume_session s =
-    { cs = Netmech_scram.client_import s }
+    match Netstring_str.string_match cs_re s 0 with
+      | None ->
+           failwith "Netmech_scram_sasl.client_resume_session"
+      | Some m ->
+           let data_pos = Netstring_str.match_end m in
+           let data = String.sub s data_pos (String.length s - data_pos) in
+           { cs = Netmech_scram.client_import data }
       
   let client_session_id cs =
     (* FIXME: use nonce *)
