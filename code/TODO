@@ -2,6 +2,22 @@ Nethm on MacOS: do not use record locking on shared memory fd.
 
  - Netcgi_common.cgi_delegation
 
+SASL:
+ - GS2-style channel bindings
+ - PLAIN
+ - CRAM-MD5
+ - DIGEST-MD5
+ - Complete SCRAM:
+    * session ID
+    * props
+ - support module Netsys_sasl
+ - implement for POP
+ - implement for SMTP
+ - implement for HTTP client
+ - implement for HTTP server
+ - GS2 bridge
+
+
 TLS:
  - how to get unique identifiers for tls-unique channel binding?
    (RFC 5929)
@@ -10,15 +26,15 @@ TLS:
  - Netsys_tls.recv: check performance
 
  - Also add `PEM_data to TLS config. Support that in Netplex parser.
- - document Netplex config for TLS
- - document new Netplex directives in netplex_admin.txt
+ - document Netplex config for TLS - DONE
+ - document new Netplex directives in netplex_admin.txt - DONE
  - Rpc_ssl: integrate into main rpc lib - DONE
  - remove watchdog
- - pop: also basic TLS support (like smtp)
+ - pop: also basic TLS support (like smtp) - DONE
  - telnet: add a "starttls" method (to be used by ftp client) - DONE
  - FTP: rfc4217 - DONE
    test servers: ftp.pca.dfn.de
- - delete openssl support
+ - delete openssl support - DONE
 
 
  - DONE: ensure that clients use a safe default config that only accepts
@@ -108,8 +124,6 @@ cleanup of all hex digit routines
 Shell_sys: 
  - there is no way to wait for a started process
  - get the subprocess watcher
-
-out-of-heap values: implement this better
 
 out-of-heap values: implement this better
 

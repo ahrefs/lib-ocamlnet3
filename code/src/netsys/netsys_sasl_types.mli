@@ -1,6 +1,23 @@
 (* SASL provider definition *)
 
-(* TODO: channel binding *)
+type cb =
+    [ `None
+    | `SASL_none_but_advertise
+    | `SASL_require of string * string
+    | `GSSAPI of string
+    ]
+  (** Possible channel bindings:
+       - [`None]: this is the default
+       - [`SASL_none_but_advertise]: the client supports channel binding and
+         advertises this. For this time, the SCRAM protocol is run without
+         channel binding, though. (Only available in the SASL profile.)
+       - [`SASL_require(type,data)]: Require channel binding. E.g. type="tls-unique",
+         and [data] is set to the channel identifier (RFC 5929).
+         (Only available in the SASL profile.)
+       - [`GSSAPI data]: use this channel binding for GSS-API
+
+      This type is shared by SASL and GSSAPI providers.
+   *)
 
 module type SASL_MECHANISM = 
   sig
@@ -18,8 +35,6 @@ module type SASL_MECHANISM =
        *)
     val supports_authz : bool
       (** whether the authorization name can be transmitted *)
-    val plus_channel_binding : bool
-      (** Whether this is a "PLUS" SASL mechanism (RFC-5801) *)
 
     type credentials
 
@@ -134,6 +149,9 @@ module type SASL_MECHANISM =
     val server_authz : server_session -> string
       (** The name the client authorizes as (or [Not_found]) *)
 
+    val server_channel_binding : server_session -> cb
+      (** Whether the client suggests or demands channel binding *)
+
     type client_session
 
     type client_state =
@@ -166,6 +184,9 @@ module type SASL_MECHANISM =
           to the mechanism.
        *)
 
+    val client_configure_channel_binding : client_session -> cb -> unit
+      (** Configure GS2-style channel binding *)
+
     val client_restart : client_session -> unit
       (** Restart the session for another authentication round. The session
           must be in state [`OK].
@@ -181,6 +202,15 @@ module type SASL_MECHANISM =
     val client_emit_response :
           client_session -> string
       (** Emit a new response. The state must be [`Emit]. *)
+
+    val client_channel_binding : client_session -> cb
+      (** Whether the client suggests or demands channel binding *)
+
+    val client_user_name : client_session -> string
+      (** The user name *)
+
+    val client_authz_name : client_session -> string
+      (** The authorization name *)
 
     val client_stash_session :
           client_session -> string

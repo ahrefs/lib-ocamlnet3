@@ -141,6 +141,9 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
              
   let server_emit_challenge ss =
     Netmech_scram.server_emit_message ss.ss
+
+  let server_channel_binding ss =
+    Netmech_scram.server_channel_binding ss.ss
                                       
   let server_stash_session ss =
     sprintf "t=SCRAM,i=%d;" ss.ss_fallback_i ^ 
@@ -226,7 +229,13 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
         authz
         pw in
     { cs }
+
+  let client_configure_channel_binding cs cb =
+    Netmech_scram.client_configure_channel_binding cs.cs cb
       
+  let client_channel_binding cs =
+    Netmech_scram.client_channel_binding cs.cs
+
   let client_restart cs =
     if client_state cs <> `OK then
       failwith "Netmech_scram_sasl.client_restart: unfinished auth";
@@ -260,4 +269,10 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_prop cs key =
     (* FIXME *)
     raise Not_found
+
+  let client_user_name cs =
+    Netmech_scram.client_user_name cs.cs
+
+  let client_authz_name cs =
+    Netmech_scram.client_authz_name cs.cs
 end

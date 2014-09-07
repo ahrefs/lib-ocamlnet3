@@ -22,12 +22,7 @@ type profile =
       iteration_count_limit : int;
     }
 
-type cb =
-    [ `None
-    | `None_but_advertise
-    | `Require of string * string
-    | `GSSAPI of string
-    ]
+type cb = Netsys_sasl_types.cb
 
 type gs2_header =
     { gs2_cb : cb;
@@ -269,8 +264,8 @@ let decode_saslname s =
 let encode_gs2 gs2 =
   (match gs2.gs2_cb with
      | `None -> "n"
-     | `None_but_advertise -> "y"
-     | `Require(v,_) -> "p=" ^ v
+     | `SASL_none_but_advertise -> "y"
+     | `SASL_require(v,_) -> "p=" ^ v
      | `GSSAPI _ -> assert false
   ) ^ 
     (match gs2.gs2_authzname with
@@ -291,7 +286,7 @@ let decode_gs2 ?(cb_includes_data=false) s =
            if cb = "n" then
              `None
            else if cb = "y" then
-             `None_but_advertise
+             `SASL_none_but_advertise
            else (
              let (n,v) = n_value_split cb in
              if n <> "p" then
@@ -301,7 +296,7 @@ let decode_gs2 ?(cb_includes_data=false) s =
                  rest
                else
                  "" in
-             `Require(v, data)
+             `SASL_require(v, data)
            ) in
          let authzname = 
            try Netstring_str.matched_group m 2 s with Not_found -> "" in
@@ -429,7 +424,7 @@ let encode_cf_message ptype cf =
              encode_gs2 cf.cf_gs2
     )  ^
       ( match cf.cf_gs2.gs2_cb with
-          | `Require(_,data) -> data
+          | `SASL_require(_,data) -> data
           | _ -> ""
       ) in
   "c=" ^ Netencoding.Base64.encode cbind_input ^ 
@@ -719,7 +714,7 @@ let client_configure_channel_binding cs cb =
   ( match cs.cs_profile.ptype, cb with
       | _, `None -> ()
       | `GSSAPI, `GSSAPI _ -> ()
-      | `SASL, (`None_but_advertise | `Require _) -> ()
+      | `SASL, (`SASL_none_but_advertise | `SASL_require _) -> ()
       | _ -> failwith "Netmech_scram.client_configure_channel_binding"
   );
   cs.cs_cb <- cb
@@ -1057,8 +1052,8 @@ let gs2_compatibility c1_gs2 cf_gs2 =
   c1_gs2.gs2_authzname = cf_gs2.gs2_authzname &&
     match c1_gs2.gs2_cb, cf_gs2.gs2_cb with
       | `None, `None -> true
-      | `None_but_advertise, `None_but_advertise -> true
-      | `Require(ty1,_), `Require(ty2,_) -> ty1=ty2
+      | `SASL_none_but_advertise, `SASL_none_but_advertise -> true
+      | `SASL_require(ty1,_), `SASL_require(ty2,_) -> ty1=ty2
       | `None, `GSSAPI _ -> true  (* c1_gs2 does not really exist... *)
       | `GSSAPI _, `GSSAPI _ -> true
       | _ -> false

@@ -1,12 +1,18 @@
 (* $Id$ *)
 
+type cb =
+    [ `None
+    | `SASL_none_but_advertise
+    | `SASL_require of string * string
+    | `GSSAPI of string
+    ]
+
 module type SASL_MECHANISM = 
   sig
     val mechanism_name : string
     val client_first : [`Required | `Optional | `No]
     val server_sends_final_data : bool
     val supports_authz : bool
-    val plus_channel_binding : bool
 
     type credentials
 
@@ -42,6 +48,7 @@ module type SASL_MECHANISM =
     val server_prop : server_session -> string -> string
     val server_user : server_session -> string
     val server_authz : server_session -> string
+    val server_channel_binding : server_session -> cb
 
     type client_session
 
@@ -56,11 +63,15 @@ module type SASL_MECHANISM =
           params:(string * string * bool) list -> 
           unit ->
             client_session
+    val client_configure_channel_binding : client_session -> cb -> unit
     val client_restart : client_session -> unit
     val client_process_challenge :
           client_session -> string -> unit
     val client_emit_response :
           client_session -> string
+    val client_channel_binding : client_session -> cb
+    val client_user_name : client_session -> string
+    val client_authz_name : client_session -> string
     val client_stash_session :
           client_session -> string
     val client_resume_session :

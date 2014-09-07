@@ -20,6 +20,8 @@ type profile =
     }
   (** Profile *)
 
+type cb = Netsys_sasl_types.cb
+  (** Using the same channel binding type as for SASL *)
 
 type server_error =
     [ `Invalid_encoding
@@ -112,23 +114,6 @@ val create_client_session2 : profile -> string -> string -> string ->
   (** [create_client_session p username authzname password]: Like
       [create_client_session], but also sets the authorization name
       (only processed for the SASL profile).
-   *)
-
-type cb =
-    [ `None
-    | `None_but_advertise
-    | `Require of string * string
-    | `GSSAPI of string
-    ]
-  (** Possible channel bindings:
-       - [`None]: this is the default
-       - [`None_but_advertise]: the client supports channel binding and
-         advertises this. For this time, the SCRAM protocol is run without
-         channel binding, though. (Only available in the SASL profile.)
-       - [`Require(type,data)]: Require channel binding. E.g. type="tls-unique",
-         and [data] is set to the channel identifier (RFC 5929).
-         (Only available in the SASL profile.)
-       - [`GSSAPI data]: use this channel binding for GSS-API
    *)
 
 val client_configure_channel_binding : client_session -> cb -> unit
