@@ -3,7 +3,7 @@ Nethm on MacOS: do not use record locking on shared memory fd.
  - Netcgi_common.cgi_delegation
 
 SASL:
- - GS2-style channel bindings
+ - GS2-style channel bindings - DONE
  - PLAIN
  - CRAM-MD5
  - DIGEST-MD5

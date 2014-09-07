@@ -48,7 +48,7 @@ module type SASL_MECHANISM =
           Types are defined per mechanism. The following types
           are commonly used:
 
-           - "password": The [value] is the password.
+           - "password": The [value] is the password (UTF-8).
            - "salted-password": The [value] is computed as
              [Hi(password,salt,i)] where the Hi function is defined as
              in RFC-5802. It is required that [salt] and [i] are given as
@@ -86,6 +86,8 @@ module type SASL_MECHANISM =
           name (which is the empty string if not applicable). If the [lookup]
           function returns [None], the user can either not be found, or the
           user does not have the privileges for the authorization name.
+
+          User name and authorization name are passed in UTF-8 encoding.
 
           The parameters are given as list [(name,value,critical)]. 
           Critical parameters must be interpreted by the mechanism, and
@@ -176,6 +178,8 @@ module type SASL_MECHANISM =
       (** The new client session authenticate as [user] and authorizes as
           [authz] (empty string if not applicable). The credentials are
           [creds].
+
+          [user] and [authz] must be encoded in UTF-8.
 
           The parameters are given as list [(name,value,critical)]. 
           Critical parameters must be interpreted by the mechanism, and
