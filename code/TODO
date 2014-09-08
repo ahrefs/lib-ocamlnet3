@@ -1,3 +1,5 @@
+Netmulticore2: see list of ideas on trac
+
 Nethm on MacOS: do not use record locking on shared memory fd.
 
  - Netcgi_common.cgi_delegation
