@@ -1,6 +1,12 @@
 Netmulticore2: see list of ideas on trac
 
 Nethm on MacOS: do not use record locking on shared memory fd.
+ - use second file in /tmp
+ - put the name of the file into the shared memory segment
+Extend Netshm for multi-threading
+ - record locking is per process
+Use Netshm as optional backend for Netplex_sharedvar
+ - needs to be enabled by the user (because of kernel resource management)
 
  - Netcgi_common.cgi_delegation
 
