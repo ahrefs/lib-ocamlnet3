@@ -1,5 +1,12 @@
 (* $Id$ *)
 
+(** SCRAM as SASL mechanism
+
+    {b This module needs the SHA-1 hash function. In order to use it,
+    initialize crypto support, e.g. by including the [nettls-gnutls]
+    packages and calling {!Nettls_gnutls.init}.}
+ *)
+
 
 (** The profile sets some basic parameters. The common profile to use
     is {!Netmech_scram_sasl.SHA1}

@@ -1,6 +1,11 @@
 (* $Id$ *)
 
-(** The SCRAM security mechanism for GSS-API *)
+(** The SCRAM security mechanism for GSS-API 
+
+    {b This module needs the SHA-1 hash function. In order to use it,
+    initialize crypto support, e.g. by including the [nettls-gnutls]
+    packages and calling {!Nettls_gnutls.init}.}
+*)
 
 (** See RFC 5802 *)
 

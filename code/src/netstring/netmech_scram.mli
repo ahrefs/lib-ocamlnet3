@@ -6,6 +6,10 @@
 
     As we do not implement SASLprep, usernames and passwords are restricted
     to US-ASCII.
+
+    {b This module needs the SHA-1 hash function. In order to use it,
+    initialize crypto support, e.g. by including the [nettls-gnutls]
+    packages and calling {!Nettls_gnutls.init}.}
  *)
 
 type ptype = [ `GSSAPI | `SASL ]
