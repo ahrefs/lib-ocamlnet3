@@ -1657,10 +1657,12 @@ class digest_auth_session enable_auth_in_advance options
     let digest_auth_list =
       List.filter 
 	(fun (scheme,params) -> 
+           let algorithm_lc =
+             try String.lowercase (List.assoc "algorithm" params)
+             with Not_found -> "md5" in
 	   String.lowercase scheme = "digest"
 	    && List.mem_assoc "realm" params
-	    && (try List.mem (List.assoc "algorithm" params) ["MD5";"MD5-sess"]
-		with Not_found -> true)
+	    && List.mem algorithm_lc ["md5";"md5-sess"]
 	    && (try contains_auth (List.assoc "qop" params)
 		with Not_found -> true)
 	    && List.mem_assoc "nonce" params
@@ -1710,6 +1712,7 @@ class digest_auth_session enable_auth_in_advance options
   let algorithm =
     try List.assoc "algorithm" digest_request
     with Not_found -> "MD5" in
+  let algorithm_lc = String.lowercase algorithm in
   let qop =
     if List.mem_assoc "qop" digest_request then "auth" else "" in
     (* "" = RFC 2069 mode *)
@@ -1756,10 +1759,14 @@ object(self)
       | Some v -> v
       | None ->
 	  let v =
-	    match algorithm with
-	      | "MD5" ->
+	    match algorithm_lc with
+	      | "md5" ->
 		  key#user ^ ":" ^ realm ^ ":" ^ key#password
-	      | "MD5-sess" ->
+	      | "md5-sess" ->
+                  (* We do so as described in RFC-2617 although this was not
+                     intended, and makes RFC-2617 incompatible with RFC-2831.
+                     The latter would not hex-encode the digest.
+                   *)
 		  (self # fn_h
 		     (key#user ^ ":" ^ realm ^ ":" ^ key#password)) ^ 
 		  ":" ^ nonce ^ ":" ^ self#first_cnonce
@@ -1793,7 +1800,7 @@ object(self)
     in
     let creds =
       Printf.sprintf
-	"Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"%s\",response=\"%s\",algorithm=%s,cnonce=\"%s\",%s%snc=%08d"
+	"Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"%s\",response=\"%s\",algorithm=%s,cnonce=\"%s\",%s%snc=%08x"
 	key#user
 	realm
 	nonce
