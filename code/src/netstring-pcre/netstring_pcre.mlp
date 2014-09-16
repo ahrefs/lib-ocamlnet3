@@ -3,7 +3,7 @@
  *
  *)
 
-IFDEF HAVE_PCRE THEN
+#ifdef HAVE_PCRE
 
 type regexp = Pcre.regexp;;
 type split_result = Pcre.split_result =
@@ -231,7 +231,7 @@ let bounded_full_split sep s max =
   Pcre.full_split ~rex:sep ~max:max' s
 ;;
 
-ELSE
+#else
 type regexp
 type split_result =
   | Text of string
@@ -297,4 +297,4 @@ let first_chars _ _ =
 let last_chars _ _ = 
   invalid_arg "Netstring_pcre: unavailable"
 
-ENDIF
+#endif
