@@ -16,7 +16,6 @@ OCAMLDEP  = $(OCAMLFIND) ocamldep $(OCAMLDEP_OPTIONS) $(PP_OPTIONS)
 OCAMLFIND = ocamlfind
 OCAMLYACC = ocamlyacc
 OCAMLLEX  = ocamllex
-CAMLP4    = camlp4
 OCAMLMKLIB = $(TOP_DIR)/tools/mkstublib
 OCAMLDOC  = $(OCAMLFIND) ocamldoc
 STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc

@@ -1,3 +1,7 @@
+2014-09-16  Gerd Stolpmann  <gerd@e130>
+
+	* netstring-pcre: removing dependency on camlp4 (an oversight).
+
 2014-09-06  Gerd Stolpmann  <gerd@e130>
 
 	* Fixing bad format strings (Damien Doligez)
