@@ -133,12 +133,12 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_prop ss key =
     raise Not_found
 
-  let server_user ss =
+  let server_user_name ss =
     match ss.suser with
       | None -> raise Not_found
       | Some name -> name
 
-  let server_authz ss =
+  let server_authz_name ss =
     ""
 
   type client_session =

@@ -102,11 +102,6 @@ module type SASL_MECHANISM =
           unknown critical parameters must be rejected by a [Failure]
           exception. Non-critical parameters are ignored if they are unknown
           to the mechanism.
-
-          Common parameters include:
-           - "realm"
-           - "digest-uri"
-
        *)
 
     val server_process_response :
@@ -199,10 +194,10 @@ module type SASL_MECHANISM =
           be the "digest-uri" sent by the client.
        *)
 
-    val server_user : server_session -> string
+    val server_user_name : server_session -> string
       (** The name the client has authenticated as (or [Not_found]) *)
 
-    val server_authz : server_session -> string
+    val server_authz_name : server_session -> string
       (** The name the client authorizes as (or [Not_found]) *)
 
     val server_channel_binding : server_session -> cb

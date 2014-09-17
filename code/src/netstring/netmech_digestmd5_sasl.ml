@@ -371,12 +371,12 @@ eprintf "compute_response user=%s authz=%s realm=%s password=%s nonce=%s cnonce=
                     | _ -> raise Not_found
           )
 
-  let server_user ss =
+  let server_user_name ss =
     match ss.sresponse with
       | None -> raise Not_found
       | Some(rp,_,_) -> to_utf8 rp.r_utf8 rp.r_user
 
-  let server_authz ss =
+  let server_authz_name ss =
     match ss.sresponse with
       | None -> raise Not_found
       | Some(rp,_,_) ->

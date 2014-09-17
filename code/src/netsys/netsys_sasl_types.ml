@@ -51,8 +51,8 @@ module type SASL_MECHANISM =
              server_session
     val server_session_id : server_session -> string option
     val server_prop : server_session -> string -> string
-    val server_user : server_session -> string
-    val server_authz : server_session -> string
+    val server_user_name : server_session -> string
+    val server_authz_name : server_session -> string
     val server_channel_binding : server_session -> cb
 
     type client_session

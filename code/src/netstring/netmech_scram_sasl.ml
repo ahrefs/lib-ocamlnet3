@@ -167,12 +167,12 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     (* FIXME: export parameters *)
     raise Not_found
 
-  let server_user ss =
+  let server_user_name ss =
     match Netmech_scram.server_user_name ss.ss with
       | None -> raise Not_found
       | Some name -> name
       
-  let server_authz ss =
+  let server_authz_name ss =
     match Netmech_scram.server_authz_name ss.ss with
       | None -> raise Not_found
       | Some name -> name
