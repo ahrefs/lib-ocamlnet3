@@ -8,6 +8,16 @@
 open Netchannels
 open Printf
 
+module Debug = struct
+  let enable = ref false
+end
+
+let dlog = Netlog.Debug.mk_dlog "Netpop" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Netpop" Debug.enable
+
+let () =
+  Netlog.Debug.register_module "Netpop" Debug.enable
+
 type state =
   [ `Authorization
   | `Transaction
@@ -15,6 +25,7 @@ type state =
   ]
 
 exception Protocol_error
+exception Authentication_error
 exception Err_status of string
 exception Bad_state
 
@@ -38,7 +49,7 @@ let md5_string s =
 
 (* Sending Commands *)
 let send_command oc line =
-(*  Printf.printf "C: %s\n" line; flush stdout; *)
+  dlogr (fun () -> sprintf "C: %s" line);
   oc # output_string line;
   oc # output_string "\r\n";
   oc # flush ();
@@ -46,8 +57,13 @@ let send_command oc line =
 
 (* Receiving Responses *)
 
-let trim s l r =
-  String.sub s l (String.length s - r - l)
+let trim s l =
+  if l >= String.length s then
+    ""
+  else
+    let r =
+      if s.[String.length s-1] = '\r' then 1 else 0 in
+    String.sub s l (String.length s - r - l)
 
 let word s p0 =
   let len = String.length s in
@@ -70,19 +86,31 @@ let int s p = map_fst int_of_string (word s p)
 
 let status_response (ic : in_obj_channel) f =
   let line = ic # input_line () in
-(*  Printf.printf "S: %s\n" (trim line 0 1); flush stdout; *)
+  dlogr (fun () -> sprintf "S: %s" (trim line 0));
   match word line 0 with
     | "+OK", p  -> f line p
-    | "-ERR", p -> raise (Err_status (trim line p 1))
+    | "-ERR", p -> raise (Err_status (trim line p))
     | _         -> raise Protocol_error
 ;;
 
 let ignore_status ic = status_response ic (fun _ _ -> ())
 
+let sasl_response (ic : in_obj_channel) =
+  let line = ic # input_line () in
+  dlogr (fun () -> sprintf "S: %s" (trim line 0));
+  match word line 0 with
+    | "+OK", _ -> `Ok
+    | "-ERR", _ -> raise Authentication_error
+    | "+", p ->
+        let s = trim line (p+1) in
+        `Challenge (Netencoding.Base64.decode s)
+    | _ -> raise Protocol_error
+
+
 let multiline_response ic f init = 
   let rec loop acc = 
     let line = ic # input_line () in
-(*    Printf.printf "S: %s\n" (trim line 0 1); flush stdout; *)
+(*    Printf.printf "S: %s\n" (trim line 0); flush stdout; *)
     let len = String.length line in
     if len = 0 then raise Protocol_error
     else
@@ -97,20 +125,25 @@ let multiline_response ic f init =
 let body_response ic =
   (* make a more efficient implementation *)
   let lines = multiline_response ic (fun s p acc ->
-    (trim s p 1) :: acc
+    (trim s p) :: acc
   ) [] in
   new input_string (String.concat "\n" (List.rev lines))
 ;;
 
+let space_re = Netstring_str.regexp " "
+
+let final_sasl_states = [ `OK; `Auth_error ]
+
 class client
   (ic0 : in_obj_channel)
   (oc0 : out_obj_channel) =
-  let greeting = status_response ic0 (fun s p -> trim s p 1) in
+  let greeting = status_response ic0 (fun s p -> trim s p) in
 object (self)
   val mutable ic = ic0
   val mutable oc = oc0
   val mutable tls_endpoint = None
   val mutable state : state = `Authorization
+  val mutable capabilities = []
 
   (* Current State *)
   
@@ -119,6 +152,8 @@ object (self)
     if state <> state' then raise Bad_state
   method private transition state' =
     state <- state'
+
+  method capabilities = capabilities
 
   (* General Commands *)
 
@@ -130,6 +165,30 @@ object (self)
     oc # close_out();
     ic # close_in();
 
+  method capa() =
+    send_command oc "CAPA";
+    try
+      ignore_status ic;  (* or raise Err_status *)
+      let lines =
+        List.rev
+          (multiline_response
+             ic
+             (fun line p acc -> 
+                trim line p :: acc)
+             []
+          ) in
+      let capas =
+        List.map
+          (fun line -> 
+             let l = Netstring_str.split space_re line in
+             (List.hd l, List.tl l)
+          )
+          lines in
+      capabilities <- capas;
+      capas
+    with
+      | Err_status _ -> []
+
   (* Authorization Commands *)
 
   method user ~user =
@@ -140,7 +199,10 @@ object (self)
   method pass ~pass =
     self#check_state `Authorization;
     send_command oc (sprintf "PASS %s" pass);
-    ignore_status ic;
+    ( try
+        ignore_status ic;
+      with Err_status _ -> raise Authentication_error
+    );
     self#transition `Transaction;
 
   method apop ~user ~pass =
@@ -153,7 +215,57 @@ object (self)
     with Not_found -> raise Protocol_error
     in
     send_command oc (sprintf "APOP %s %s" user digest);
-    ignore_status ic;
+    ( try 
+        ignore_status ic
+      with Err_status _ -> raise Authentication_error
+    );
+    self#transition `Transaction;
+
+  method auth mech user authz creds params =
+    self#check_state `Authorization;
+    let sess =
+      Netsys_sasl.Client.create_session ~mech ~user ~authz ~creds ~params () in
+    let first = ref true in
+    let state = ref  (Netsys_sasl.Client.state sess) in
+    while not (List.mem !state final_sasl_states) do
+      let msg =
+        match Netsys_sasl.Client.state sess with
+          | `Emit | `Stale -> Some (Netsys_sasl.Client.emit_response sess)
+          | `Wait | `OK -> None
+          | _ -> assert false in
+      let command =
+        if !first then 
+          "AUTH " ^
+            Netsys_sasl.Info.mechanism_name mech ^
+              ( match msg with
+                  | Some "" -> " ="
+                  | Some s -> " " ^ Netencoding.Base64.encode s
+                  | None -> ""
+              )
+        else
+          match msg with
+            | Some s -> Netencoding.Base64.encode s
+            | None -> "" in
+      send_command oc command;
+      first := false;
+      match sasl_response ic with
+        | `Challenge data ->
+            ( match Netsys_sasl.Client.state sess with
+                | `OK | `Auth_error -> ()
+                | `Emit | `Stale -> assert false
+                | `Wait ->
+                    Netsys_sasl.Client.process_challenge sess data
+            );
+            state := Netsys_sasl.Client.state sess;
+            if !state = `OK then state := `Wait  (* we cannot stop now *)
+        | `Ok ->
+            state := Netsys_sasl.Client.state sess;
+            if !state <> `OK then state := `Auth_error
+        | _ ->
+            raise Protocol_error
+    done;
+    if !state = `Auth_error then raise Authentication_error;
+    assert(!state = `OK);
     self#transition `Transaction;
 
   (* Transaction Commands *)
@@ -163,7 +275,7 @@ object (self)
     let parse_line s p set =
       let mesg_num, p  = int s p in
       let mesg_size, p = int s p in
-      let ext          = trim s p 1 in
+      let ext          = trim s p in
       Hashtbl.add set mesg_num (mesg_size, ext);
       set
     in
@@ -210,7 +322,7 @@ object (self)
     self#check_state `Transaction;
     let parse_line s p set =
       let mesg_num, p  = int s p in
-      let unique_id    = trim s p 1 in
+      let unique_id    = trim s p in
       Hashtbl.add set mesg_num unique_id;
       set
     in
@@ -232,7 +344,7 @@ object (self)
       status_response ic (fun s p ->
 	let count, p = int s p in
 	let size, p  = int s p in
-	let ext      = trim s p 1 in
+	let ext      = trim s p in
 	(count, size, ext)
       )
     with _ -> raise Protocol_error;
@@ -274,14 +386,66 @@ class connect ?proxy addr timeout =
   client ic oc
 
 
+let authenticate ?tls_config ?(tls_required=false) ?tls_peer
+                 ?(sasl_mechs=[]) ?(sasl_params=[]) ?(user="") ?(authz="")
+                 ?(creds=[])
+                 (client : client) =
+  ignore(client # capa());
+  if List.mem_assoc "STLS" client#capabilities && 
+     client#tls_endpoint=None &&
+     tls_config <> None
+  then (
+    match tls_config with
+      | None -> assert false
+      | Some config -> 
+          client # stls ~peer_name:tls_peer config;
+          ignore(client # capa())
+  );
+  if tls_required && client#tls_endpoint=None then
+    raise
+      (Netsys_types.TLS_error "TLS required by SMTP client but not avalable");
+  let srv_mechs = 
+    try
+      List.assoc
+        "SASL"
+        client#capabilities
+    with Not_found -> [] in
+  if sasl_mechs <> [] && srv_mechs <> [] then (
+    let sel_mech =
+      try
+        List.find
+          (fun mech ->
+             let name = Netsys_sasl.Info.mechanism_name mech in
+             List.mem name srv_mechs
+          )
+          sasl_mechs
+      with
+        | Not_found ->
+            dlog "None of the server's AUTH mechanisms is supported by us";
+            raise Authentication_error in
+    let x_sasl_params =
+      (* add digest-uri for DIGEST-MD5 *)
+      if List.exists (fun (n,_,_) -> n = "digest-uri") sasl_params then
+        sasl_params
+      else
+        let peer =
+          match tls_peer with Some s -> s | None -> "" in
+        ("digest-uri", "pop/" ^ peer, false) :: sasl_params in
+    client # auth sel_mech user authz creds x_sasl_params;
+  )
+
+
 (*
 #use "topfind";;
-#require "pop,nettls-gnutls";;
-let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "pop.kundenserver.de", 110), Uq_client.default_connect_options);;
+#require "netclient,nettls-gnutls";;
+Netpop.Debug.enable := true;;
+let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "localhost", 110), Uq_client.default_connect_options);;
 let tls = Netsys_crypto.current_tls();;
 let tc = Netsys_tls.create_x509_config ~system_trust:true ~peer_auth:`Required tls;;
 let c  = new Netpop.connect addr 300.0;;
-c#stls ~peer_name:(Some "pop.kundenserver.de") tc;;
+c#stls ~peer_name:(Some "gps.dynxs.de") tc;;
 c#stat;;
+
+Netpop.authenticate ~sasl_mechs:[ (module Netmech_digestmd5_sasl.DIGEST_MD5) ] ~user:"gerd" ~creds:["password", "secret", []] c;;
 
  *)

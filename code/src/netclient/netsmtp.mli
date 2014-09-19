@@ -48,6 +48,16 @@ object
     (** [auth mech user authz creds params]: 
         Performs a SASL authentication using the AUTH command. See
         {!Netsys_sasl.Client.create_session} for details.
+
+        Example:
+   {[
+client # auth
+  (module Netmech_digestmd5_sasl.DIGEST_MD5)
+  "user"
+  ""
+  [ "password", "sEcReT", [] ]
+  []
+   ]}
      *)
 
   method authenticated : bool
@@ -189,6 +199,17 @@ let tls_config =
      (Netsys_crypto.current_tls())
       ]}
 
+      SASL example:
+
+{[
+Netsmtp.authenticate
+  ~sasl_mechs:[ (module Netmech_scram_sasl.SCRAM_SHA1);
+                (module Netmech_digestmd5_sasl.DIGEST_MD5);
+              ]
+  ~user:"tom"
+  ~creds:[ "password", "sEcReT", [] ]
+  client
+]}
    *)
 
 val sendmail : client -> Netmime.complex_mime_message -> unit

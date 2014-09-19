@@ -18,6 +18,7 @@ type state =
   ]
 
 exception Protocol_error
+exception Authentication_error
 exception Err_status of string
 exception Bad_state
 
@@ -38,7 +39,15 @@ object
   method state : state
     (** Current state of this session. *)
 
+  method capabilities : (string * string list) list
+    (** The result of the last [capa] command *)
+
   (* General Commands *)
+
+  method capa : unit -> (string * string list) list
+    (** Requests a list of capabilities  (RFC 2449). Returns the empty list
+        if [capa] is not understood.
+     *)
 
   method quit : unit -> unit
     (** Requests the server to end this session. If the session is 
@@ -64,6 +73,23 @@ object
     (** Specifies the user and password using APOP authentication.
      * APOP is a more secure method of authentication than what is
      * provided by the [user]/[pass] command sequence.
+     *)
+
+  method auth : Netsys_sasl.sasl_mechanism -> string -> string -> 
+                Netsys_sasl.credentials -> (string * string * bool) list -> unit
+    (** [auth mech user authz creds params]: 
+        Performs a SASL authentication using the AUTH command (RFC 5034). See
+        {!Netsys_sasl.Client.create_session} for details about SASL.
+
+        Example:
+   {[
+client # auth
+  (module Netmech_digestmd5_sasl.DIGEST_MD5)
+  "user"
+  ""
+  [ "password", "sEcReT", [] ]
+  []
+   ]}
      *)
 
   (* Transaction Commands *)
@@ -136,8 +162,78 @@ class connect : ?proxy:#Uq_engines.client_endpoint_connector ->
 {[
   let addr =
     `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "www.domain.com", 110),
-            Uq_engines.default_connect_options) in
+            Uq_client.default_connect_options) in
   let client =
     new Netpop.connect addr 60.0
 ]}
    *)
+
+
+val authenticate : ?tls_config:Netsys_crypto_types.tls_config ->
+                   ?tls_required:bool ->
+                   ?tls_peer:string ->
+                   ?sasl_mechs:Netsys_sasl.sasl_mechanism list ->
+                   ?sasl_params:(string * string * bool) list ->
+                   ?user:string ->
+                   ?authz:string ->
+                   ?creds:Netsys_sasl.credentials ->
+                   client -> unit
+  (** Authenticates the session:
+
+      - requests capabilitlies
+      - if the server supports TLS, and [tls_config] is set, the
+        TLS session is started, and the capabilities are refreshed.
+      - if SASL support is announced by the server, one of the [sasl_mechs]
+        is taken and used for authentication. If [sasl_mechs] is empty,
+        this authentication step is skipped.
+
+      Options:
+
+      - [tls_config]: if set, TLS is tried on the connection
+      - [tls_required]: if set, it is even required that TLS is supported.
+        If not, a {!Netsys_types.TLS_error} exception is raised.
+      - [tls_peer]: the host name of the server (only needed for TLS, and
+        only needed if the TLS configuration authenticates the server, or
+        if the SNI extension is active)
+      - [sasl_mechs]: available SASL mechanisms (in order of preference).
+        If you pass mechanisms, you'll normally also need to pass [user]
+        and [creds].
+      - [sasl_params]: parameters for SASL. A "digest-uri" parameter is
+        always generated, and need not to be set
+      - [user]: the user name to authenticate as
+      - [authz]: the identity to act as (authorization name)
+      - [creds]: credentials
+
+     You can get a simple TLS configuration with:
+
+     {[
+let tls_config =
+  Netsys_tls.create_x509_config
+    ~system_trust:true
+    ~peer_auth:`Required
+    (Netsys_crypto.current_tls())
+     ]}
+
+      SASL example:
+
+{[
+Netpop.authenticate
+  ~sasl_mechs:[ (module Netmech_scram_sasl.SCRAM_SHA1);
+                (module Netmech_digestmd5_sasl.DIGEST_MD5);
+              ]
+  ~user:"tom"
+  ~creds:[ "password", "sEcReT", [] ]
+  client
+]}
+   *)
+
+
+(** {1 Debugging} *)
+
+module Debug : sig
+  val enable : bool ref
+    (** Enables {!Netlog}-style debugging of this module  By default,
+        the exchanged Telnet commands are logged. This can be extended
+        by setting the [verbose_input] and [verbose_output] options.
+     *)
+end
