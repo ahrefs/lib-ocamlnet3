@@ -927,7 +927,7 @@ echo "Effective options:"
 print_options
 echo
 
-pkglist="netsys netshm netstring equeue shell rpc-generator rpc rpc-auth-local pop smtp netclient netcgi2 netplex netcgi2-plex"
+pkglist="netsys netshm netstring equeue shell rpc-generator rpc rpc-auth-local netclient netcgi2 netplex netcgi2-plex"
 
 full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache nettls-gnutls"
 

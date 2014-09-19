@@ -173,20 +173,6 @@ f src/netcgi2-plex/META.in
 p src/netcgi2-plex/.*\.ml
 p src/netcgi2-plex/.*\.mli
 
-d src/pop
-f src/pop/META.in
-f src/pop/Makefile
-f src/pop/Makefile.pre
-p src/pop/.*\.ml
-p src/pop/.*\.mli
-
-d src/smtp
-f src/smtp/META.in
-f src/smtp/Makefile
-f src/smtp/Makefile.pre
-p src/smtp/.*\.ml
-p src/smtp/.*\.mli
-
 d src/nethttpd
 f src/nethttpd/META.in
 f src/nethttpd/Makefile

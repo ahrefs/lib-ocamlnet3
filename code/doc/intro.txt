@@ -532,7 +532,7 @@ processes, and sending messages between them.
 
 {2:netclient The [netclient] library: HTTP, FTP, Telnet}
 
-This library includes clients for HTTP, Telnet, and FTP.
+This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
 
 {!modules:
    Http_client
@@ -542,24 +542,9 @@ This library includes clients for HTTP, Telnet, and FTP.
    Ftp_data_endpoint
    Ftp_fs
    Telnet_client
+   Netpop
+   Netsmtp
 }
-
-
-{2:pop The [pop] library: POP protocol}
-
-This is a simple POP 3 client.
-
-{!modules:
-    Netpop}
-
-{2:smtp The [smtp] library: SMTP protocol}
-
-This is a simple SMTP client.
-
-{!modules:
-    Netsmtp}
-
-
 
 {1 Trailer}
 
