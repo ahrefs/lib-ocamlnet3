@@ -346,9 +346,10 @@ object
 end
 
 
-class input_netbuffer b : nb_in_obj_channel =
+class input_netbuffer ?(keep_data=false) b : nb_in_obj_channel =
 object (self)
   val mutable b = b
+  val mutable offset = 0
   val mutable eof = false
   val mutable closed = false
   val mutable ch_pos = 0
@@ -358,16 +359,19 @@ object (self)
 
   method input buf pos len =
     if closed then self # complain_closed();
-    if pos < 0 || len < 0 || pos+len > String.length buf then
+    if pos < 0 || len < 0 || pos > String.length buf - len then
       invalid_arg "input";
 
-    let n = min len (Netbuffer.length b) in
+    let n = min len (Netbuffer.length b - offset) in
     if n = 0 && len>0 then begin
       if eof then raise End_of_file else raise Buffer_underrun
     end
     else begin
-      Netbuffer.blit b 0 buf pos n;
-      Netbuffer.delete b 0 n;
+      Netbuffer.blit b offset buf pos n;
+      if keep_data then
+        offset <- offset + n
+      else
+        Netbuffer.delete b 0 n;
       ch_pos <- ch_pos + n;
       n
     end
@@ -394,20 +398,27 @@ object (self)
   method input_line() =
     if closed then self # complain_closed();
     try
-      let k = Netbuffer.index_from b 0 '\n' in
+      let k = Netbuffer.index_from b offset '\n' in
       (* CHECK: Are the different end of line conventions important here? *)
-      let line = Netbuffer.sub b 0 k in
-      Netbuffer.delete b 0 (k+1);
+      let line = Netbuffer.sub b offset (k - offset) in
+      if keep_data then
+        offset <- offset + k + 1
+      else
+        Netbuffer.delete b 0 (k+1);
       ch_pos <- ch_pos + k + 1;
       line
     with
 	Not_found ->
 	  if eof then begin
-	    if Netbuffer.length b = 0 then raise End_of_file;
+            let n = Netbuffer.length b - offset in
+	    if n=0 then raise End_of_file;
 	    (* Implicitly add linefeed at the end of the file: *)
-	    let line = Netbuffer.contents b in
-	    Netbuffer.clear b;
-	    ch_pos <- ch_pos + (Netbuffer.length b);
+	    let line = Netbuffer.sub b offset n in
+            if keep_data then
+              offset <- offset + n
+            else
+	      Netbuffer.clear b;
+	    ch_pos <- ch_pos + n;
 	    line
 	  end
 	  else raise Buffer_underrun
@@ -431,8 +442,8 @@ end
 ;;
 
 
-let create_input_netbuffer b =
-  let ch = new input_netbuffer b in
+let create_input_netbuffer ?keep_data b =
+  let ch = new input_netbuffer ?keep_data b in
   (ch :> in_obj_channel), (ch # shutdown)
 ;;
 

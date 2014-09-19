@@ -337,4 +337,6 @@ val sendmail : ?mailer:string -> ?crlf:bool -> Netmime.complex_mime_message -> u
    * With [crlf] one can determine the EOL convention for the message piped to
    * the mailer program: If [crlf], CR/LF is used, if [not crlf], only LF is
    * used. The default is [false] for Unix systems.
+   *
+   * See also {!Netsmtp.sendmail} for a way to send emails via SMTP.
    *)

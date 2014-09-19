@@ -7,12 +7,24 @@
 
 open Netchannels
 open Unix
+open Printf
 
 exception Protocol_error
+exception Authentication_error
 exception Transient_error of int * string
 exception Permanent_error of int * string
 
 let tcp_port = 25
+
+module Debug = struct
+  let enable = ref false
+end
+
+let dlog = Netlog.Debug.mk_dlog "Netsmtp" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Netsmtp" Debug.enable
+
+let () =
+  Netlog.Debug.register_module "Netsmtp" Debug.enable
 
 (* Helpers *)
 
@@ -35,7 +47,14 @@ let read_status ic =
       (int_of_char l.[0] - int_of_char '0') ,
       int_of_string (String.sub l 0 3) ,
       List.rev ((trim l 4 1)::acc)
-  in read []
+  in
+  let (flag,code,msgs) = read [] in
+  List.iter
+    (fun msg ->
+       dlogr (fun () -> sprintf "S: %d %s" code msg)
+    )
+    msgs;
+    (flag,code,msgs)
 
 let handle_answer ic =
   let flag, code, msg = read_status ic in
@@ -47,6 +66,8 @@ let handle_answer ic =
 
 let ignore_answer ic = ignore (handle_answer ic)
 
+let final_sasl_states = [ `OK; `Auth_error ]
+
 (* class *)
 
 class client
@@ -56,34 +77,95 @@ object (self)
   val mutable ic = ic0
   val mutable oc = oc0
   val mutable tls_endpoint = None
+  val mutable ehlo = []
+  val mutable authenticated = false
 
   initializer
     ignore_answer ic
 
   method private smtp_cmd cmd =
+    dlogr (fun () -> sprintf "C: %s" cmd);
     oc # output_string cmd;
     oc # output_string "\r\n";
     oc # flush ()
 
   method helo ?host () =
     try
-      oc # output_string "EHLO ";
       self # smtp_cmd (
+       "EHLO " ^ 
         match host with
           | None -> (Uq_resolver.get_host_by_name (gethostname ())).h_name
           | Some s -> s
       );
-      snd (handle_answer ic)
+      ehlo <- snd (handle_answer ic);
+      ehlo
     with
       | Permanent_error _ ->
-          oc # output_string "HELO ";
           self # smtp_cmd (
+            "HELO " ^ 
             match host with
               | None -> (Uq_resolver.get_host_by_name (gethostname ())).h_name
               | Some s -> s
           );
-          snd (handle_answer ic)
+          ehlo <- snd (handle_answer ic);
+          ehlo
 
+  method helo_response = ehlo
+
+  method auth mech user authz creds params =
+    let sess =
+      Netsys_sasl.Client.create_session ~mech ~user ~authz ~creds ~params () in
+    let first = ref true in
+    let state = ref  (Netsys_sasl.Client.state sess) in
+    while not (List.mem !state final_sasl_states) do
+      let msg =
+        match Netsys_sasl.Client.state sess with
+          | `Emit | `Stale -> Some (Netsys_sasl.Client.emit_response sess)
+          | `Wait | `OK -> None
+          | _ -> assert false in
+      let command =
+        if !first then 
+          "AUTH " ^
+            Netsys_sasl.Info.mechanism_name mech ^
+              ( match msg with
+                  | Some "" -> " ="
+                  | Some s -> " " ^ Netencoding.Base64.encode s
+                  | None -> ""
+              )
+        else
+          match msg with
+            | Some s -> Netencoding.Base64.encode s
+            | None -> "" in
+      self # smtp_cmd command;
+      first := false;
+      match handle_answer ic with
+        | 334, challenge ->
+            let s =
+              try 
+                match challenge with
+                  | [] -> ""
+                  | [s1] -> Netencoding.Base64.decode s1
+                  | _ -> raise Protocol_error
+              with Invalid_argument _ -> raise Protocol_error in
+            ( match Netsys_sasl.Client.state sess with
+                | `OK | `Auth_error -> ()
+                | `Emit | `Stale -> assert false
+                | `Wait ->
+                    Netsys_sasl.Client.process_challenge sess s
+            );
+            state := Netsys_sasl.Client.state sess;
+            if !state = `OK then state := `Wait  (* we cannot stop now *)
+        | 235, _ ->
+            state := Netsys_sasl.Client.state sess;
+            if !state <> `OK then state := `Auth_error
+        | _ ->
+            raise Protocol_error
+    done;
+    if !state = `Auth_error then raise Authentication_error;
+    assert(!state = `OK);
+    authenticated <- true
+
+  method authenticated = authenticated
 
   method mail email =
     self # smtp_cmd (Printf.sprintf "MAIL FROM: <%s>" email);
@@ -179,14 +261,145 @@ class connect ?proxy addr timeout =
   client ic oc
 
 
+let space_re = Netstring_str.regexp " "
+
+let auth_mechanisms l =
+  let l_split =
+    List.map
+      (fun s ->
+         Netstring_str.split space_re s
+      )
+      l in
+  try
+    let tokens =
+      try List.find (fun toks -> toks <> [] && List.hd toks = "AUTH") l_split
+      with Not_found -> ["AUTH"] in
+    List.tl tokens
+  with Not_found -> []
+  
+
+
+let authenticate ?host ?tls_config ?(tls_required=false) ?tls_peer
+                 ?(sasl_mechs=[]) ?(sasl_params=[]) ?(user="") ?(authz="")
+                 ?(creds=[])
+                 (client : client) =
+  ignore(client # helo ?host());
+  if List.mem "STARTTLS" client#helo_response && 
+     client#tls_endpoint=None &&
+     tls_config <> None
+  then (
+    match tls_config with
+      | None -> assert false
+      | Some config -> 
+          client # starttls ~peer_name:tls_peer config;
+          ignore(client # helo ?host())
+  );
+  if tls_required && client#tls_endpoint=None then
+    raise
+      (Netsys_types.TLS_error "TLS required by SMTP client but not avalable");
+  let srv_mechs = auth_mechanisms client#helo_response in
+  if sasl_mechs <> [] && srv_mechs <> [] then (
+    let sel_mech =
+      try
+        List.find
+          (fun mech ->
+             let name = Netsys_sasl.Info.mechanism_name mech in
+             List.mem name srv_mechs
+          )
+          sasl_mechs
+      with
+        | Not_found ->
+            dlog "None of the server's AUTH mechanisms is supported by us";
+            raise Authentication_error in
+    let x_sasl_params =
+      (* add digest-uri for DIGEST-MD5 *)
+      if List.exists (fun (n,_,_) -> n = "digest-uri") sasl_params then
+        sasl_params
+      else
+        let peer =
+          match tls_peer with Some s -> s | None -> "" in
+        ("digest-uri", "smtp/" ^ peer, false) :: sasl_params in
+    client # auth sel_mech user authz creds x_sasl_params;
+  )
+
+
+let sendmail client msg =
+  let (hdr, _) = msg in
+  let senders =
+    hdr # multiple_field "from" in
+  let parsed_senders =
+    List.flatten
+      (List.map Netaddress.parse senders) in
+  let parsed_sender =
+    match parsed_senders with
+      | [sender] -> Some sender
+      | [] -> None
+      | _ -> failwith "Netsmtp.sendmail: multiple senders (From header)" in
+  let sender_mbox =
+    match parsed_sender with
+      | Some(`Mailbox mbox) -> mbox
+      | Some (`Group _) -> failwith "Netsmtp.sendmail: sender is a group"
+      | None -> new Netaddress.mailbox [] ("",None) in
+  let sender_mbox_s =
+    match sender_mbox # spec with
+      | (local, None) -> local
+      | (local, Some domain) -> local ^ "@" ^ domain in
+  let receivers =
+    hdr # multiple_field "to" @
+      hdr # multiple_field "cc" @
+        hdr # multiple_field "bcc" in
+  let parsed_receivers =
+    List.flatten
+      (List.map Netaddress.parse receivers) in
+  let mailboxes =
+    List.flatten
+      (List.map
+         (fun addr ->
+            match addr with
+              | `Mailbox mbox -> [mbox]
+              | `Group g -> g#mailboxes
+         )
+         parsed_receivers
+      ) in
+  if mailboxes = [] then
+    failwith "Netsmtp.sendmail: no receivers (To/Cc/Bcc headers)";
+  
+  client # mail sender_mbox_s;
+    
+  List.iter
+    (fun mbox ->
+       let (local,domain) = mbox#spec in
+       let s =
+         match domain with
+           | None -> local
+           | Some dom -> local ^ "@" ^ dom in
+       client # rcpt s
+    )
+    mailboxes;
+
+  let buf = Netbuffer.create 1000 in
+  let ch1 = new Netchannels.output_netbuffer buf in
+  Netmime.write_mime_message ch1 msg;
+  let ch2, set_eof = Netchannels.create_input_netbuffer buf in
+  set_eof();
+
+  client # data ch2
+
+
+
 (*
 #use "topfind";;
-#require "smtp,nettls-gnutls";;
-let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "localhost", 25), Uq_engines.default_connect_options);;
+#require "netclient,nettls-gnutls";;
+Netsmtp.Debug.enable := true;;
+let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "localhost", 25), Uq_client.default_connect_options);;
 let tls = Netsys_crypto.current_tls();;
 let tc = Netsys_tls.create_x509_config ~trust:[`PEM_file "/etc/ssl/certs/ca-certificates.crt" ] ~peer_auth:`None tls;;
 let c  = new Netsmtp.connect addr 300.0;;
 c#helo();;
 c#starttls tc;;
+c # auth (module Netmech_digestmd5_sasl.DIGEST_MD5) "gerd" "" [ "password", "secret", [] ] [ "digest-uri", "smtp/smtp", true];;
+
+
+Netsmtp.authenticate ~tls_config:tc ~sasl_mechs:[ (module Netmech_digestmd5_sasl.DIGEST_MD5); (module Netmech_crammd5_sasl.CRAM_MD5) ] ~user:"gerd" ~creds:["password", "secret", []] c ;;
 
  *)

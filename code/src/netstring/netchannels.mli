@@ -417,6 +417,7 @@ class input_string :
 
 
 val create_input_netbuffer :
+  ?keep_data:bool ->
   Netbuffer.t ->
     in_obj_channel   *   (* shutdown: *) (unit -> unit)
   (** Creates an input channel and a shutdown function for a netbuffer. 
@@ -432,6 +433,8 @@ val create_input_netbuffer :
    * If the netbuffer becomes empty, the input methods raise [Buffer_underrun]
    * when the EOF condition has not yet been set, and they raise
    * [End_of_file] when the EOF condition has been recorded.
+   *
+   * [keep_data]: do not delete read data from the buffer
    *)
 
 val lexbuf_of_in_obj_channel : in_obj_channel -> Lexing.lexbuf
