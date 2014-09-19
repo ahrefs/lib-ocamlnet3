@@ -1,3 +1,9 @@
+2014-09-19  Gerd Stolpmann  <gerd@zotac>
+
+	* Netsmtp: implementing SASL authentication for SMTP.
+	* Adding a framework for SASL, and a number of mechanisms
+	  (PLAIN, CRAM-MD5, DIGEST-MD5, SCRAM-SHA1).
+
 2014-08-31  Gerd Stolpmann  <gerd@e130>
 
 	* fcgi/scgi/ajp connectors: exporting a handle_connection function,
