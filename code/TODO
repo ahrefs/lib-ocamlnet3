@@ -15,19 +15,25 @@ SASL:
  - PLAIN - DONE
  - CRAM-MD5 - DONE
     * TODO: saslprep if available
- - DIGEST-MD5
+ - DIGEST-MD5 - DONE
  - Complete SCRAM:
     * session ID
     * props
     * better prefix for export
-    * "SCRAM-SHA-1-salted-password"
- - support module Netsys_sasl
- - implement for POP
- - implement for SMTP
- - implement for HTTP client
- - implement for HTTP server
+    * "SCRAM-SHA-1-salted-password" (CHECK: LDAP profile)
+ - support module Netsys_sasl - DONE
+ - implement for POP - DONE
+ - implement for SMTP  - DONE
  - GS2 bridge
 
+HTTP:
+ - enhance digest and support new algorithms
+   (httpauth-digest, see http://www.ietf.org/mail-archive/web/http-auth/current/maillist.html)
+ - SCRAM for HTTP
+   (httpauth-scram-auth. Very interesting:
+    http://www.ietf.org/mail-archive/web/http-auth/current/msg01769.html)
+ - Server-side authentication?
+ - Auth framework? RFC 7235
 
 TLS:
  - how to get unique identifiers for tls-unique channel binding?
