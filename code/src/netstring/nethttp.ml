@@ -745,6 +745,9 @@ module Header = struct
   open Netmime
   open Mimestring
 
+  type auth_challenge = string * (string * string) list
+  type auth_credentials = string * (string * string) list
+
   (* As scanner we use the scanner for mail header fields from Mimestring. It
    * is very configurable.
    *)
@@ -1974,6 +1977,46 @@ module Header = struct
 
 
 end
+
+
+module type HTTP_MECHANISM =
+  sig
+    val mechanism_name : string
+    val available : unit -> bool
+    val restart_supported : bool
+    type credentials
+    val init_credentials :
+          (string * string * (string * string) list) list ->
+            credentials
+    val client_match : params:(string * string * bool) list -> 
+                       Header.auth_challenge ->
+                         (string * string option) option
+    type client_session
+    val client_state : client_session -> Netsys_sasl_types.client_state
+    val create_client_session :
+          user:string ->
+          creds:credentials ->
+          params:(string * string * bool) list -> 
+          unit ->
+            client_session
+    val client_configure_channel_binding : client_session -> 
+                                           Netsys_sasl_types.cb -> unit
+    val client_restart : client_session -> unit
+    val client_process_challenge :
+          client_session -> #http_header_ro -> Header.auth_challenge -> unit
+    val client_emit_response :
+          client_session -> Header.auth_credentials * (string * string) list
+    val client_channel_binding : client_session -> Netsys_sasl_types.cb
+    val client_user_name : client_session -> string
+    val client_stash_session :
+          client_session -> string
+    val client_resume_session :
+          string -> 
+             client_session
+    val client_session_id : client_session -> string option
+    val client_prop : client_session -> string -> string
+  end
+
 
 
 let qstring_of_value = Header.qstring_of_value

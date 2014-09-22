@@ -12,8 +12,13 @@
     packages and calling {!Nettls_gnutls.init}.}
  *)
 
-type ptype = [ `GSSAPI | `SASL ]
-  (** Currently only the variant for [`GSSAPI] is supported *)
+type ptype = [ `GSSAPI | `SASL | `HTTP ]
+  (** Profile types:
+       - [`GSSAPI]: as defined in RFC 5802, the gs2-header is omitted
+       - [`SASL]: as defined in RFC 5802
+       - [`HTTP]: at the moment this follows draft-ietf-httpauth-scram-auth-03,
+         and uses a different [gs2-header]
+   *)
 
 type profile =
     { ptype : ptype;
@@ -142,6 +147,14 @@ val client_channel_binding : client_session -> cb
 val client_emit_message : client_session -> string
   (** Emits the next message to be sent to the server *)
 
+val client_emit_message_kv : client_session -> 
+                               string option * (string * string) list
+  (** Emits the next message to be sent to the server. The message is not
+      encoded as a single string, but as [(gs2_opt, kv)] where
+      [gs2_opt] is the optional GS2 header (the production [gs2-header] from
+      the RFC), and [kv] contains the parameters as key/value pairs.
+   *)
+
 val client_recv_message : client_session -> string -> unit
   (** Receives the next message from the server *)
 
@@ -244,6 +257,11 @@ val server_error_flag : server_session -> bool
 
 val server_emit_message : server_session -> string
   (** Emits the next message to be sent to the client *)
+
+val server_emit_message_kv : server_session -> (string * string) list
+  (** Emits the next message to be sent to the client. The message is returned
+      as a list of key/value pairs.
+   *)
 
 val server_recv_message : server_session -> string -> unit
   (** Receives the next message from the client *)
@@ -375,3 +393,9 @@ module Debug : sig
   val enable : bool ref
     (** Enable debugging of this module *)
 end
+
+
+(**/**)
+
+val test_nonce : string option ref
+val test_salt : string option ref

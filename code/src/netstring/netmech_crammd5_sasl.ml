@@ -12,6 +12,7 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_first = `No
   let server_sends_final_data = false
   let supports_authz = false
+  let available() = true
 
   type credentials =
       (string * string * (string * string) list) list

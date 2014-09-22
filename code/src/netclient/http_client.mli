@@ -892,37 +892,54 @@ object
     (** The password in cleartext *)
   method realm : string
     (** The realm *)
-  method domain : string list
+  method domain : Neturl.url list
     (** The domain URIs defining the protection space. The domain URIs
-     * are absolute URIs. The list must not be empty for content accesses.
-     * For proxy keys the list must be empty.
+     * are absolute URIs. For proxy keys the list must be empty.
      *
      * Normally, this is just a list with one element. The URI must include
-     * the protocol scheme, the host name, and "/" as path. The port number
-     * is optional. Example: "http://localhost/". If the key is applicable
-     * to all domains, set this to ["*"].
+     * the protocol scheme, the host name, the port, and a path (at minimum "/"). 
+     * The key is valid for all request URIs
+     * for which this domain string is a prefix of the request URI.
+     * Examples: "http://localhost:80/" would cover all of "localhost".
+     * "http://localhost:80/space/" would cover all URIs at this or below this
+     * URI. "https://localhost:443/" would cover all of "localhost" when accessed
+     * via TLS.
+     *
+     * If the key is applicable to all domains, set this to [].
+     *)
+  method credentials : (string * string * (string * string) list) list
+    (** The key in the common "credentials" format that is used by
+        generic mechanisms. See {!Nethttp.HTTP_MECHANISM.init_credentials}
+        for details.
      *)
 end
 
 
 val key : user:string -> password:string -> realm:string -> 
-          domain:string list -> key
+          domain:Neturl.url list -> key
   (** Create a key object *)
+
+val key_creds : user:string ->
+                creds:(string * string * (string * string) list) list ->
+                http_options -> key
+  (** Create a key object from a list of credentials *)
+
 
 
 class type key_handler =
 object
   method inquire_key :
-            domain:string list -> realms:string list -> auth:string -> key
+            domain:Neturl.url option -> realm:string -> auth:string -> key
     (** The method is called when a new session must be authenticated.
-      * The [domain] is the URI list describing the protection space. URIs
-      * currently have the form "http://host:port/path", i.e. the port is
-      * always written out. The [realms] parameter is a list
-      * of realm identifiers. In [auth] the name of the authentication 
+      * The [domain] is the URI from the request. URIs
+      * must have the form "http://host:port/path", i.e. the port is
+      * always written out. If the request doesn't have a URI, or if the
+      * request is directed to a proxy, [domain] will be [None].
+      * The [realm] parameter is the realm identifier.
+      * In [auth] the name of the authentication 
       * method is passed (lowercase characters). The method must
       * search (or query for) a key, and return it. The key must refer to
-      * one of the passed realms. The domain of the key must be exactly
-      * the same as the passed [domain] (unless [domain=["*"]]).
+      * one of the passed realms. 
       * If the method raises [Not_found],
       * authentication will fail.
      *)
@@ -954,7 +971,9 @@ object
   method auth_scheme : string
     (** The authentication scheme, e.g. "basic" *)
   method auth_domain : Neturl.url list
-    (** The list of domain URIs defines the protection space.
+    (** The list of domain URIs defines the protection space. For requests
+        of the same protection space the mechanism may perform 
+        re-authentication. Setting this to [] disables re-authentication.
 
 	{b Change:} Since Ocamlnet-3.3, this is a list of {!Neturl.url},
 	and no longer a list of strings.
@@ -963,24 +982,26 @@ object
     (** The realm *)
   method auth_user : string
     (** The user identifier *)
-  method auth_in_advance : bool
-    (** Whether "authentication in advance" is enabled *)
   method authenticate : http_call -> (string * string) list
     (** Returns a list of additional headers that will authenticate 
       * the passed call for this session. (This is usually only one
       * header, [authorization].)
       *
-      * If the call is authenticated in advance, it does not contain
+      * If a re-authentication needs to be done, the call does not contain
       * any authentication information. If the call is authenticated
       * in reaction to a 401 status, the response header contains 
       * the [www-authenticate] field(s).
      *)
-  (* Maybe future addition: method post_authenticate
-   * Needed for auth-int
-   *)
+  method auth_session_id : string option
+     (** An optional ID which is only needed for multi-step authentication
+         protocols (i.e. which require more than one challenge/response step).
+         This is ID is first
+         retrieved after a successful [authenticate]. After a re-authentication
+         the ID may change.
+      *)
   method invalidate : http_call -> bool
     (** The session is notified that authentication failed. (This
-      * method is not called for authentication-in-advance, but only
+      * method is not called for failed re-authentications, but only
       * if an authentication attempt after a 401 status failed.)
       * The method can return [true] if another authentication should
       * be started immediately.
@@ -1001,29 +1022,34 @@ object
      *)
   method create_proxy_session : http_call -> http_options ref -> auth_session option
     (** Same for proxy authentication *)
-  method skip_challenge : string option
-    (** If non-None, this method allows to skip the challenge entirely
+  method identify_session : http_call -> http_options ref -> 
+                            (string * string * string) option
+    (** Extracts (mech_name,realm,sess_id) if possible. Only needed for
+        multi-step challenge/response authentication.
+     *)
+  method identify_proxy_session : http_call -> http_options ref -> 
+                                  (string * string * string) option
+    (** Same for proxies *)
+  method skip_challenge : bool
+    (** If true, this method allows to skip the challenge entirely
         for authentication. This means that the credentials are added to
         the HTTP request before any previous response was seen from the
         server. This adds additional security risks, and may cause that
         credentials are sent to servers that forge their identity.
-        This is {b only} supported for basic authentication. The string
-        describes the URL space to which this applies (e.g.
-        "http://the-server/subdir"). Set the string to "*" to enable
-        everywhere. As no challenge is known, the realm string is
-        simply assumed to be "anywhere".
+        This is {b only} supported for basic authentication. As no challenge
+        is known, the realm string is simply assumed to be "anywhere".
      *)
   method skip_challenge_session : http_call -> http_options ref -> auth_session option
     (** Create a session for the case that the challenge was skipped *)
 end
 
 class basic_auth_handler : 
-        ?enable_auth_in_advance:bool -> ?skip_challenge:string option ->
+        ?enable_reauth:bool -> ?skip_challenge:bool ->
         #key_handler -> auth_handler
   (** Basic authentication. Authentication information is obtained by
     * the passed key_handler.
     *
-    * [enable_auth_in_advance]: If set to [true], a quicker authentication
+    * [enable_reauth]: If set to [true], a quicker authentication
     * mode is enabled: when a request is sent out, it is checked whether
     * a previous request/response cycle exists that needed authentication.
     * If so, the same credentials are added to the request. Normally,
@@ -1036,15 +1062,12 @@ class basic_auth_handler :
     * by the server. 
     * This adds additional security risks, and may cause that
     * credentials are sent to servers that forge their identity.
-    * The string
-    * describes the URL space to which this applies (e.g.
-    * "http://the-server/subdir"). Set the string to "*" to enable
-    * everywhere. As no challenge is known, the realm string is
+    * As no challenge is known, the realm string is
     * simply assumed to be "anywhere".
    *)
 
 class digest_auth_handler : 
-        ?enable_auth_in_advance:bool -> #key_handler -> auth_handler
+         #key_handler -> auth_handler
   (** Digest authentication. Authentication information is obtained by
     * the passed key_handler.
     *
@@ -1055,35 +1078,21 @@ class digest_auth_handler :
     *   mode "auth-int" has been omitted.
     * - The information of the [Authentication-Info] header is completely
     *   ignored
-    *
-    * [enable_auth_in_advance]: If set to [true], authentication can be
-    * done in advance, i.e. before the server requests authentication.
-    * This reduces the number of messages exchanged with the server, but
-    * may be an additional security risk.
    *)
 
 class unified_auth_handler : #key_handler -> auth_handler
   (** Support both digest and basic authentication, with preference to
       digest.
 
-      Note that there is no way of authenticating in advance, as it is
-      not known in advance which mechanism is used.
+      Note that there is no way of enabling the [skip_challenge] mode,
+      as it is not known in advance which mechanism will be used.
    *)
 
 
-(** {b Deprecated.} For (limited) backwards compatibility: *)
-class basic_auth_method :
-  object
-    method name : string 
-    method set_realm : string -> string -> string -> unit
-	(* set_realm realm user password:
-	 * adds that (user,password) should be used for the given realm
-	 *)
-    method as_auth_handler : auth_handler
-  end
-
-(** {b Deprecated.} For (limited) backwards compatibility: *)
-class digest_auth_method : basic_auth_method
+class generic_auth_handler : #key_handler ->
+                             (module Nethttp.HTTP_MECHANISM) list ->
+                               auth_handler
+  (** Authenticate with the passed generic HTTP mechanisms *)
 
 
 (** {1 Transport} *)
@@ -1222,9 +1231,6 @@ class pipeline :
         (** Set the connection cache. This must happen before the first
           * call is added.
           *)
-
-    method add_authentication_method : basic_auth_method -> unit
-	(** adds an old-style authentication method *)
 
     method add_auth_handler : auth_handler -> unit
 	(** adds a new-style authentication handler *)

@@ -45,6 +45,11 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_sends_final_data = true
   let supports_authz = true
 
+  let available() =
+    try ignore(Netsys_digests.iana_find profile.hash_function); true
+    with Not_found -> false
+
+
   type credentials =
       (string * string * (string * string) list) list
 

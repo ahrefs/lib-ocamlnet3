@@ -34,6 +34,7 @@ HTTP:
     http://www.ietf.org/mail-archive/web/http-auth/current/msg01769.html)
  - Server-side authentication?
  - Auth framework? RFC 7235
+ - cookie jar for Http_client
 
 TLS:
  - how to get unique identifiers for tls-unique channel binding?

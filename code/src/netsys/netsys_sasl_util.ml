@@ -5,15 +5,18 @@
 type credentials =
     (string * string * (string * string) list) list
 
-let extract_password (c:credentials) =
-  let (_, value, _) =
+let extract_password2 (c:credentials) =
+  let (_, value, params) =
     List.find
       (function
         | ("password", _, _) -> true
         | _ -> false
       )
       c in
-  value
+  (value,params)
+
+let extract_password (c:credentials) =
+  fst(extract_password2 c)
     
 
 let preprocess_params err_prefix known_params params =

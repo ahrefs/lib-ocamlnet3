@@ -549,7 +549,7 @@ object
   method auth_domain : Neturl.url list
   method auth_realm : string
   method auth_user : string
-  method auth_in_advance : bool
+  method auth_session_id : string option
   method authenticate : http_call -> (string * string) list
   method invalidate : http_call -> bool
 end
@@ -1334,21 +1334,111 @@ class connect the_query (* host:port only *) =
 (***                  AUTHENTICATION METHODS                        ***)
 (**********************************************************************)
 
+let check_neturl fn_name neturl =
+  (* Whether all required parts are provided *)
+  if not(Neturl.url_provides
+           ~scheme:true ~host:true ~port:true ~path:true neturl)
+  then
+    failwith(fn_name ^ ": This URL is incomplete (required: \
+                        scheme://host:port/path): " ^ 
+               Neturl.string_of_url neturl)
+
+
+let norm_neturl neturl =
+  (* Returns the neturl as normalized string (esp. normalized % sequences) *)
+  check_neturl "norm_neturl" neturl;
+  let neturl' =
+    Neturl.make_url 
+      ~encoded:false
+      ~scheme:(Neturl.url_scheme neturl)
+      ~host:(Neturl.url_host neturl)
+      ~port:(Neturl.url_port neturl)
+      ~path:(try Neturl.url_path neturl with Not_found -> [])
+      ?query:(try Some(Neturl.url_query neturl) with Not_found -> None)
+      ?fragment:(try Some(Neturl.url_fragment neturl) with Not_found -> None)
+      (Neturl.url_syntax_of_url neturl) in
+  Neturl.string_of_url neturl'
+
+
+let prefixes_of_neturl s_url =
+  (* Returns a list of all legal prefixes of the absolute URI s.
+   * The prefixes are in Neturl format.
+   *)
+  let rec rev_path_prefixes rev_path =
+    match rev_path with
+      | [] -> []
+      | [ "" ] -> [ rev_path; [] ]
+      | [ ""; "" ] -> assert false
+      | [ _; "" ] -> rev_path :: rev_path_prefixes [ "" ]
+      | "" :: rev_path' ->
+	  if rev_path' = [ ""; "" ] then
+	    rev_path :: rev_path_prefixes [ "" ]
+	  else
+	    rev_path :: rev_path_prefixes rev_path'
+      | _ :: rev_path' ->
+	  rev_path :: (rev_path_prefixes ("" :: rev_path'))
+  in
+  let path_prefixes path =
+    List.map List.rev (rev_path_prefixes (List.rev path)) in
+  let s_nofrag_url = Neturl.remove_from_url ~fragment:true s_url in
+  let s_noquery_url = Neturl.remove_from_url ~query:true s_nofrag_url in
+  let path = Neturl.url_path s_noquery_url in
+  s_url :: s_nofrag_url ::
+    (List.map
+       (fun prefix -> Neturl.modify_url ~path:prefix s_noquery_url
+       )
+       (path_prefixes path))
+
+
 class type key =
 object
   method user : string
   method password : string
   method realm : string
-  method domain : string list
+  method domain : Neturl.url list
+  method credentials : (string * string * (string * string) list) list
 end
 
 
 let key ~user ~password ~realm ~domain =
+  List.iter (check_neturl "key") domain;
+  let domain_params =
+    List.map (fun uri -> ("domain-uri", norm_neturl uri)) domain in
+  let creds =
+    [ "password", password, ("realm", realm) :: domain_params ] in
   ( object
       method user = user
       method password = password
       method realm = realm
       method domain = domain
+      method credentials = creds
+    end
+  )
+
+let key_creds ~user ~creds options : key =
+  let password, params =
+    try Netsys_sasl_util.extract_password2 creds
+    with Not_found ->
+      raise(Invalid_argument "Http_client.key_creds: no password") in
+  let realm =
+    try List.assoc "realm" params
+    with Not_found -> 
+      "default realm" in
+  let domain_strings =
+    List.map snd (List.find_all (fun (n,_) -> n = "domain-uri") params) in
+  let domain =
+    List.map
+      (fun url ->
+         fst(parse_url (ref options) url)
+      )
+      domain_strings in
+  List.iter (check_neturl "key_creds") domain;
+  ( object
+      method user = user
+      method password = password
+      method realm = realm
+      method domain = domain
+      method credentials = creds
     end
   )
 
@@ -1356,7 +1446,7 @@ let key ~user ~password ~realm ~domain =
 class type key_handler =
 object
   method inquire_key :
-            domain:string list -> realms:string list -> auth:string -> key
+           domain:Neturl.url option -> realm:string -> auth:string -> key
   method invalidate_key : key -> unit
 end
 
@@ -1364,88 +1454,86 @@ end
 class key_ring ?uplink () =
 object(self)
   val mutable keys = (Hashtbl.create 10 : 
-			(string list * string, key * bool) Hashtbl.t)
+			(string * string, key * bool) Hashtbl.t)
     (* Maps (domain, realm) to (key, from_uplink) *)
 
-  method inquire_key ~domain ~realms ~(auth:string) =
-    let l =
-      List.flatten
-	(List.map
-	   (fun realm ->
-	      try
-		[ Hashtbl.find keys (domain, realm) ]
-	      with
-		  Not_found ->
-                    try 
-		      [ Hashtbl.find keys (["*"], realm) ]
-                    with Not_found -> []
-           )
-	   realms) in
-    match l with
-      | (key,_) :: _ ->
-	  key
-      | [] ->
-	  ( match uplink with
-	      | None -> raise Not_found
-	      | Some h ->
-		  let key = h # inquire_key ~domain ~realms ~auth in
-		  (* or Not_found *)
-		  Hashtbl.replace keys (key#domain, key#realm) (key,true);
-		  key
-	  )
+  method inquire_key ~domain ~realm ~(auth:string) =
+    let prefixes =
+      match domain with
+        | Some dom ->
+            List.map
+              norm_neturl
+              (prefixes_of_neturl dom)
+        | None ->
+            [] in
+    try
+      try
+        let prefix =
+          List.find
+            (fun prefix -> Hashtbl.mem keys (prefix,realm))
+            prefixes in
+        fst(Hashtbl.find keys (prefix, realm))
+      with
+        | Not_found ->
+	    fst(Hashtbl.find keys ("*", realm))
+    with Not_found ->
+      match uplink with
+	| None -> raise Not_found
+	| Some h ->
+	    let key = h # inquire_key ~domain ~realm ~auth in
+	    (* or Not_found *)
+            List.iter
+              (fun dom_uri ->
+                 let dom_uri_s = norm_neturl dom_uri in
+	         Hashtbl.replace keys (dom_uri_s, key#realm) (key,true)
+              )
+              key#domain;
+	    key
 
   method invalidate_key (key : key) =
-    let domain = key # domain in
+    let domains = key # domain in
+    let domain_strings =
+      if domains = [] then
+        [ "*" ]
+      else
+        List.map norm_neturl domains in
     let realm = key # realm in
-    try
-      let (_, from_uplink) = Hashtbl.find keys (domain, realm) in
-      Hashtbl.remove keys (domain, realm);
-      if from_uplink then
-	( match uplink with
-	    | None -> assert false
-	    | Some h -> h # invalidate_key key
-	)
-    with
-	Not_found -> ()
+    List.iter
+      (fun dom_uri_s ->
+         try
+           let (_, from_uplink) = Hashtbl.find keys (dom_uri_s, realm) in
+           Hashtbl.remove keys (dom_uri_s, realm);
+           if from_uplink then
+	     ( match uplink with
+	         | None -> assert false
+	         | Some h -> h # invalidate_key key
+	     )
+         with
+	     Not_found -> ()
+      )
+      domain_strings
+
 
   method clear () =
     Hashtbl.clear keys
 
   method add_key key =
-    let domain = key # domain in
+    let domains = key # domain in
     let realm = key # realm in
 
-    (* The domain must be the full URL with no parts omitted. For developers
-       who cannot read do some cleanups here:
-     *)
-    let domain_fixedup =
-      List.map
-        (fun dom ->
-           try
-             let (u1, _) = parse_url_0 default_schemes dom in
-             let u2 = Neturl.default_url ~path:[ "" ] u1 in
-             let u3 = 
-               Neturl.remove_from_url
-                 ~user:true ~user_param:true ~password:true u2 in
-             Neturl.string_of_url u3
-           with
-             | Not_found ->
-                  dom
-        )
-        domain in
-    let key_fixedup =
-      if domain = domain_fixedup then
-        key
-      else
-        ( object
-            method user = key#user
-            method password = key#password
-            method realm = key#realm
-            method domain = domain_fixedup
-          end
-        ) in
+    List.iter (check_neturl "add_key") domains;
 
-    Hashtbl.replace keys (domain_fixedup, realm) (key_fixedup, false)
+    let domain_strings =
+      if domains = [] then
+        [ "*" ]
+      else
+        List.map norm_neturl domains in
+
+    List.iter
+      (fun dom_s ->
+         Hashtbl.replace keys (dom_s, realm) (key, false)
+      )
+      domain_strings
 
   method keys =
     Hashtbl.fold
@@ -1458,10 +1546,9 @@ end
 
 class proxy_key_handler user password : key_handler =
 object
-  method inquire_key ~domain ~realms ~auth =
+  method inquire_key ~domain ~realm ~auth =
     try
-      let realm = List.hd realms in
-      key ~domain ~realm ~user ~password
+      key ~domain:[] ~realm ~user ~password
     with _ -> raise Not_found
   method invalidate_key _ = ()
   
@@ -1473,7 +1560,11 @@ class type auth_handler =
 object
   method create_session : http_call -> http_options ref -> auth_session option
   method create_proxy_session : http_call -> http_options ref -> auth_session option
-  method skip_challenge : string option
+  method identify_session : http_call -> http_options ref -> 
+                            (string * string * string) option
+  method identify_proxy_session : http_call -> http_options ref -> 
+                                  (string * string * string) option
+  method skip_challenge : bool
   method skip_challenge_session : http_call -> http_options ref -> auth_session option
 end
 
@@ -1493,116 +1584,139 @@ let no_port url = (* or Not_found *)
     | _ -> raise Not_found
     
 
-class core_basic_auth_session 
-        enable_auth_in_advance key_handler for_proxy 
-        domain_uri realms
+let get_all_challenges call is_proxy =
+  let challenges =
+    try
+      if is_proxy then
+	Nethttp.Header.get_proxy_authenticate call#response_header
+      else
+	Nethttp.Header.get_www_authenticate call#response_header
+    with
+      | Not_found -> raise Not_applicable
+      | Nethttp.Bad_header_field _ -> raise Not_applicable in  
+  List.map
+    (fun (name,params) ->
+     (String.lowercase name, 
+      List.map (fun (n,v) -> (String.lowercase n,v)) params)
+    )
+    challenges
+
+
+let get_challenges mech_name call is_proxy =
+  let challenges_lc = get_all_challenges call is_proxy in
+  let mech_name_lc = String.lowercase mech_name in
+  let mech_challenges =
+    List.filter
+      (fun (name, params) ->
+         name = mech_name_lc && List.mem_assoc "realm" params
+      )
+      challenges_lc in
+  mech_challenges
+
+
+let get_realms mech_name call is_proxy =
+  let mech_challenges = get_challenges mech_name call is_proxy in
+  let mech_params =
+    List.map snd mech_challenges in
+  List.map
+    (fun params ->
+       (List.assoc "realm" params, params)
+    )
+    mech_params
+
+
+let rec iterate f args =
+  match args with
+    | arg :: args' ->
+        ( try
+            f arg
+          with
+            | Not_applicable ->
+                iterate f args'
+        )
+    | [] ->
+        raise Not_applicable
+
+
+let format_credentials is_proxy (creds:Nethttp.Header.auth_credentials) =
+  let hdr = new Netmime.basic_mime_header [] in
+  if is_proxy then
+    Nethttp.Header.set_proxy_authorization hdr creds
+  else
+    Nethttp.Header.set_authorization hdr creds;
+  hdr#fields
+
+
+let core_basic_auth_session 
+        enable_reauth key_handler is_proxy 
+        domain realm
         : auth_session =
-  let domain = 
-    List.map Neturl.string_of_url domain_uri in
-  let alt_domain =
-    List.map (fun u -> Neturl.string_of_url (no_port u)) domain_uri in
   let key =
     (* Return the selected key, or raise Not_applicable *)
     try
-      key_handler # inquire_key ~domain ~realms ~auth:"basic"
+      key_handler # inquire_key ~domain ~realm ~auth:"basic"
     with
-	Not_found -> 
-          try
-            key_handler # inquire_key ~domain:alt_domain ~realms ~auth:"basic"
-          with
-	      Not_found -> 
-            raise Not_applicable
-  in
-  (* Check the key: *)
-  let () =
-    if not (List.mem key#realm realms) then raise Not_applicable;
-    let d = key#domain in
-    if d <> domain && d <> alt_domain && d <> ["*"] then
-      raise Not_applicable;
-  in
-object(self)
-  method auth_scheme = "basic"
-  method auth_domain = domain_uri
-  method auth_realm = key # realm
-  method auth_user = key # user
-  method auth_in_advance = enable_auth_in_advance
-  method authenticate call =
-    let basic_cookie = 
-      Netencoding.Base64.encode 
-	(key#user ^ ":" ^ key#password) in
-    let cred = "Basic " ^ basic_cookie in
-    let field_name = 
-      if for_proxy then "Proxy-Authorization" else "Authorization" in
-    [ field_name, cred ]
-  method invalidate call =
-    key_handler # invalidate_key key;
-    false
-end
+	Not_found ->  raise Not_applicable in
+  let domains =
+    match domain with
+      | None -> []
+      | Some d -> [d] in
+  ( object(self)
+      method auth_scheme = "basic"
+      method auth_domain = if enable_reauth then domains else []
+      method auth_realm = key # realm
+      method auth_user = key # user
+      method auth_session_id = None
+      method authenticate call =
+        let basic_cookie = 
+          Netencoding.Base64.encode 
+	    (key#user ^ ":" ^ key#password) in
+        let creds = ("Basic", [ "credentials", basic_cookie]) in
+        format_credentials is_proxy creds
+      method invalidate call =
+        key_handler # invalidate_key key;
+        false
+    end
+  )
 
 
-
-class basic_auth_session enable_auth_in_advance 
-                         key_handler init_call for_proxy
-                         : auth_session =
-  let domain_uri = if for_proxy then [] else [ get_domain_uri init_call ] in
-  let basic_realms =
-    (* Return all "Basic" realms in www-authenticate, or raise Not_applicable *)
-    let auth_list = 
-      try
-	if for_proxy then
-	  Nethttp.Header.get_proxy_authenticate init_call#response_header
-	else
-	  Nethttp.Header.get_www_authenticate init_call#response_header
-      with
-	| Not_found -> raise Not_applicable
-	| Nethttp.Bad_header_field _ -> raise Not_applicable in
-    let basic_auth_list =
-      List.filter 
-	(fun (scheme,_) -> String.lowercase scheme = "basic") auth_list in
-    let basic_auth_realm_list =
-      List.flatten
-	(List.map 
-	   (fun (_,params) ->
-	      try
-		let (_,realm) =
-		  List.find (fun (pname,_) -> 
-			       String.lowercase pname = "realm") params in
-		[realm]
-	      with 
-		  Not_found -> [])
-	   basic_auth_list) in
-    if basic_auth_realm_list = [] then
-      raise Not_applicable
-    else
-      basic_auth_realm_list
-  in
-  core_basic_auth_session
-    enable_auth_in_advance key_handler for_proxy domain_uri basic_realms
+let basic_auth_session enable_reauth
+                       key_handler call is_proxy
+    : auth_session =
+  let domain = if is_proxy then None else Some(get_domain_uri call) in
+  let realms = get_realms "basic" call is_proxy in
+  iterate
+    (fun (realm,params) ->
+       core_basic_auth_session
+         enable_reauth key_handler is_proxy domain realm
+    )
+    realms
 
 
-class basic_auth_handler ?(enable_auth_in_advance=false)
-                         ?(skip_challenge=None)
+class basic_auth_handler ?(enable_reauth=false)
+                         ?(skip_challenge=false)
                          (key_handler : #key_handler)
                          : auth_handler =
 object(self)
   method create_session call options =
     try
-      Some(new basic_auth_session enable_auth_in_advance key_handler call false)
+      Some(basic_auth_session enable_reauth key_handler call false)
     with
 	Not_applicable ->
 	  None
   method create_proxy_session call options =
     try
-      Some(new basic_auth_session enable_auth_in_advance key_handler call true)
+      Some(basic_auth_session enable_reauth key_handler call true)
     with
 	Not_applicable ->
 	  None
+  method identify_session _ _ = None
+  method identify_proxy_session _ _ = None
   method skip_challenge = skip_challenge
   method skip_challenge_session call options =
     try
-      let domain_uri = [ get_domain_uri call ] in
-      Some(new core_basic_auth_session
-               false key_handler false domain_uri ["anywhere"])
+      Some(core_basic_auth_session
+             false key_handler false None "anywhere")
     with
 	Not_applicable ->
 	  None
@@ -1614,10 +1728,13 @@ let contains_auth v =
   List.mem "auth" (split_words v)
 
 
-class digest_auth_session enable_auth_in_advance options
-                          key_handler (init_call : http_call) for_proxy
-                          : auth_session =
+let digest_auth_session_for_realm options
+                                  (key_handler : #key_handler)
+                                  (init_call : http_call) is_proxy
+                                  (realm, params)
+      : auth_session =
   let normalize_domain s =
+    (* FIXME: also normalize port *)
     try
       let (nu1,_) =
 	parse_url
@@ -1626,105 +1743,49 @@ class digest_auth_session enable_auth_in_advance options
       Neturl.remove_from_url
 	~user:true ~user_param:true ~password:true ~fragment:true nu1
     with
-      | Neturl.Malformed_URL -> raise Not_found
+      | Neturl.Malformed_URL -> raise Not_found in
 
-(*
-    if s <> "" && s.[0] = '/' then
-      init_call#private_api#request_uri_with
-	~path:None ~remove_particles:true ()
-      ^ s
-    else
-      ( try
-	  let (is_https,_,_,host,port,path) = parse_http_url s in
-	  let scheme = if is_https then "https" else "http" in
-	  scheme ^ "://" ^ host ^ ":" ^ string_of_int port ^ path
-	with
-	  | Not_found -> s
-      )
- *)
-  in
-  let digest_request =
-    (* Return the "Digest" params in www-authenticate, or raise Not_applicable *)
-    let auth_list = 
-      try
-	if for_proxy then
-	  Nethttp.Header.get_proxy_authenticate init_call#response_header
-	else
-	  Nethttp.Header.get_www_authenticate init_call#response_header
-      with
-	| Not_found -> raise Not_applicable
-	| Nethttp.Bad_header_field _ -> raise Not_applicable in
-    let digest_auth_list =
-      List.filter 
-	(fun (scheme,params) -> 
-           let algorithm_lc =
-             try String.lowercase (List.assoc "algorithm" params)
-             with Not_found -> "md5" in
-	   String.lowercase scheme = "digest"
-	    && List.mem_assoc "realm" params
-	    && List.mem algorithm_lc ["md5";"md5-sess"]
-	    && (try contains_auth (List.assoc "qop" params)
-		with Not_found -> true)
-	    && List.mem_assoc "nonce" params
-	) 
-	auth_list in
-    match  digest_auth_list with
-      | [] ->
-	  raise Not_applicable
-      | (_,params) :: _ ->
-	  (* Restriction: only the first request can be processed *)
-	  params
-  in
-  let domain_url =
-    if for_proxy then [] else
+  let algorithm_lc =
+    try String.lowercase (List.assoc "algorithm" params)
+    with Not_found -> "md5" in
+  
+  if not (List.mem algorithm_lc [ "md5"; "md5-sess" ]) then
+    raise Not_applicable;
+  if not (try contains_auth (List.assoc "qop" params)
+	  with Not_found -> true) then
+    raise Not_applicable;
+  if not (List.mem_assoc "nonce" params) then
+    raise Not_applicable;
+
+  let domain = if is_proxy then None else Some(get_domain_uri init_call) in
+  let auth_domain =
+    if is_proxy then [] else
       try 
 	List.map
 	  normalize_domain
-	  (split_words (List.assoc "domain" digest_request))
+	  (split_words (List.assoc "domain" params))
       with
 	  Not_found -> [ get_domain_uri init_call ] in
+(*
   let domain =
     List.map Neturl.string_of_url domain_url in
-  let alt_domain =
-    List.map (fun u -> Neturl.string_of_url (no_port u)) domain_url in
-  let realm =
-    try List.assoc "realm" digest_request
-    with Not_found -> assert false in
+ *)
   let key =
     (* Return the selected key, or raise Not_applicable *)
     try
-      key_handler # inquire_key ~domain ~realms:[realm] ~auth:"digest"
+      key_handler # inquire_key ~domain ~realm ~auth:"digest"
     with
-	Not_found -> 
-          try
-            key_handler # inquire_key ~domain:alt_domain ~realms:[realm]
-                                      ~auth:"digest"
-          with
-	      Not_found -> raise Not_applicable
-  in
-  (* Check the key: *)
-  let () =
-    if key#realm <> realm then raise Not_applicable;
-    let d = key#domain in
-    if d <> domain && d <> alt_domain && d <> ["*"] then
-      raise Not_applicable;
-  in
-  let algorithm =
-    try List.assoc "algorithm" digest_request
-    with Not_found -> "MD5" in
-  let algorithm_lc = String.lowercase algorithm in
+	Not_found -> raise Not_applicable in
   let qop =
-    if List.mem_assoc "qop" digest_request then "auth" else "" in
+    if List.mem_assoc "qop" params then "auth" else "" in
     (* "" = RFC 2069 mode *)
-  let nonce =
-    try List.assoc "nonce" digest_request
-    with Not_found -> assert false in
+  let nonce = List.assoc "nonce" params in
   let cnonce_init0 = 
     try 
       let s = String.make 8 'X' in
       let () = Netsys_rng.fill_random s in
       s
-    with _ -> string_of_float (Unix.gettimeofday()) in
+    with _ -> string_of_float (Unix.gettimeofday()) in   (* FIXME *)
 object(self)
   val mutable cnonce_init = cnonce_init0
   val mutable cnonce_incr = 0
@@ -1806,7 +1867,7 @@ object(self)
 	nonce
 	call#effective_request_uri
 	digest
-	algorithm
+	algorithm_lc
 	cnonce
 	(match opaque with
 	   | None -> ""
@@ -1817,14 +1878,14 @@ object(self)
 	   | _ -> assert false)
 	nc in
     let field_name =
-      if for_proxy then "Proxy-Authorization" else "Authorization" in
+      if is_proxy then "Proxy-Authorization" else "Authorization" in
     [ field_name, creds ]
 
   method auth_scheme = "digest"
-  method auth_domain = domain_url
+  method auth_domain = auth_domain
   method auth_realm = key # realm
   method auth_user = key # user
-  method auth_in_advance = enable_auth_in_advance
+  method auth_session_id = Some nonce
 
   method invalidate call =
     (* Check if the [stale] flag is set for our nonce: *)
@@ -1853,25 +1914,35 @@ object(self)
 end
 
 
-class digest_auth_handler ?(enable_auth_in_advance=false) 
-                         (key_handler : #key_handler)
-                         : auth_handler =
+let digest_auth_session options
+                        key_handler (call : http_call) is_proxy =
+  let realms = get_realms "digest" call is_proxy in
+  iterate
+    (fun (realm,params) ->
+       digest_auth_session_for_realm
+         options key_handler call is_proxy (realm,params)
+    )
+    realms
+
+
+class digest_auth_handler (key_handler : #key_handler)
+      : auth_handler =
 object(self)
   method create_session call options =
     try
-      Some(new digest_auth_session
-	     enable_auth_in_advance options key_handler call false)
+      Some(digest_auth_session options key_handler call false)
     with
 	Not_applicable ->
 	  None
   method create_proxy_session call options =
     try
-      Some(new digest_auth_session 
-	     enable_auth_in_advance options key_handler call true)
+      Some(digest_auth_session options key_handler call true)
     with
 	Not_applicable ->
 	  None
-  method skip_challenge = None
+  method identify_session _ _  = None
+  method identify_proxy_session _ _  = None
+  method skip_challenge = false
   method skip_challenge_session _ _ = assert false
 end
 
@@ -1879,113 +1950,294 @@ end
 class unified_auth_handler (key_handler : #key_handler) : auth_handler =
 object(self)
   method create_session call options =
-    try Some(new digest_auth_session false options key_handler call false)
+    try Some(digest_auth_session options key_handler call false)
     with Not_applicable ->
-      try Some(new basic_auth_session false key_handler call false)
+      try Some(basic_auth_session false key_handler call false)
       with Not_applicable ->
 	None
   method create_proxy_session call options =
-    try Some(new digest_auth_session false options key_handler call true)
+    try Some(digest_auth_session options key_handler call true)
     with Not_applicable ->
-      try Some(new basic_auth_session false key_handler call true)
+      try Some(basic_auth_session false key_handler call true)
       with Not_applicable ->
 	None
-  method skip_challenge = None
+  method identify_session _ _  = None
+  method identify_proxy_session _ _  = None
+  method skip_challenge = false
   method skip_challenge_session _ _ = assert false
 end
 
 
+let generic_auth_session_for_challenge
+      (key_handler : #key_handler) mech call is_proxy initial_challenge
+    : auth_session =
+  let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let realm, id_option =
+    match M.client_match ~params:[] initial_challenge with
+      | Some r -> r
+      | None -> raise Not_applicable in
+  let domain = if is_proxy then None else Some(get_domain_uri call) in
+  let domains =
+    [] in   (* FIXME: must come from M *)
+(*
+    match domain with
+      | None -> []
+      | Some d -> [d] in
+ *)
+  let key =
+    try key_handler # inquire_key ~domain ~realm ~auth:M.mechanism_name
+    with Not_found -> raise Not_applicable in
+  let creds =
+    M.init_credentials key#credentials in
+  let session =
+    M.create_client_session
+      ~user:key#user ~creds ~params:[] () in
+  let first = ref true in
+  ( object
+      method auth_scheme = M.mechanism_name
+      method auth_domain = domains
+      method auth_realm = key#realm
+      method auth_user = key#user
+      method authenticate auth_call =
+        let challenge =
+          if !first then (
+            (* First authentication: just assume that the call is the same *)
+            assert(call = auth_call);
+            initial_challenge
+          )
+          else (
+            (* Subsequent authentications: figure out the right challenge *)
+            (* NB. We assume here that the session ID never changes. CHECK *)
+            let challenges =
+              get_challenges M.mechanism_name auth_call is_proxy in
+            try
+              List.find
+                (fun ch ->
+                   match M.client_match ~params:[] ch with
+                     | Some(r,Some id) -> r = realm && Some id = id_option
+                     | _ -> false
+                )
+                challenges
+            with Not_found ->
+              failwith "generic_auth_session: session does not match"
+          ) in
+        first := false;
+        ( match M.client_state session with
+            | `OK ->
+                (* re-authentication *)
+                M.client_restart session
+            | `Wait ->
+                M.client_process_challenge
+                  session call#response_header challenge
+            | `Emit | `Stale ->
+                ()   (* strange, but just let's skip the challenge *)
+            | `Auth_error ->
+                ()
+        );
+        match M.client_state session with
+          | `OK ->
+              []
+          | `Emit | `Stale ->
+              let (creds, new_headers) = M.client_emit_response session in
+              format_credentials is_proxy creds @ new_headers
+          | `Wait ->
+              assert false
+          | `Auth_error ->
+              failwith "Authentication error"  (* CHECK *)
 
-let norm_neturl neturl =
-  (* Returns the neturl as normalized string (esp. normalized % sequences) *)
-  assert(Neturl.url_provides ~port:true neturl);
-  let neturl' =
-    Neturl.make_url 
-      ~encoded:false
-      ~scheme:(Neturl.url_scheme neturl)
-      ~host:(Neturl.url_host neturl)
-      ~path:(try Neturl.url_path neturl with Not_found -> [])
-      ?query:(try Some(Neturl.url_query neturl) with Not_found -> None)
-      ?fragment:(try Some(Neturl.url_fragment neturl) with Not_found -> None)
-      (Neturl.url_syntax_of_url neturl) in
-  Neturl.string_of_url neturl'
+      method invalidate call =
+        true  (* FIXME *)
+
+      method auth_session_id =
+        M.client_session_id session
+    end
+  )
 
 
-let prefixes_of_neturl s_url =
-  (* Returns a list of all legal prefixes of the absolute URI s.
-   * The prefixes are in Neturl format.
-   *)
-  let rec rev_path_prefixes rev_path =
-    match rev_path with
-      | [] -> []
-      | [ "" ] -> [ rev_path; [] ]
-      | [ ""; "" ] -> assert false
-      | [ _; "" ] -> rev_path :: rev_path_prefixes [ "" ]
-      | "" :: rev_path' ->
-	  if rev_path' = [ ""; "" ] then
-	    rev_path :: rev_path_prefixes [ "" ]
-	  else
-	    rev_path :: rev_path_prefixes rev_path'
-      | _ :: rev_path' ->
-	  rev_path :: (rev_path_prefixes ("" :: rev_path'))
-  in
-  let path_prefixes path =
-    List.map List.rev (rev_path_prefixes (List.rev path)) in
-  let s_nofrag_url = Neturl.remove_from_url ~fragment:true s_url in
-  let s_noquery_url = Neturl.remove_from_url ~query:true s_nofrag_url in
-  let path = Neturl.url_path s_noquery_url in
-  s_url :: s_nofrag_url ::
-    (List.map
-       (fun prefix -> Neturl.modify_url ~path:prefix s_noquery_url
-       )
-       (path_prefixes path))
+let generic_auth_session (key_handler : #key_handler) mech call is_proxy 
+    : auth_session =
+  let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let mech_challenges =
+    get_challenges M.mechanism_name call is_proxy in
+  let matching_challenges =
+    List.filter
+      (fun challenge ->
+         M.client_match ~params:[] challenge <> None
+      )
+      mech_challenges in
+  iterate
+    (generic_auth_session_for_challenge
+       key_handler mech call is_proxy
+    )
+    matching_challenges
+  
 
+class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
+  let mechs =
+    List.filter
+      (fun m -> 
+         let module M = (val m : Nethttp.HTTP_MECHANISM) in
+         M.available()
+      )
+      mechs in
+
+  let find_mech challenges is_proxy call =
+    let mech =
+      List.find
+        (fun m ->
+         let module M = (val m : Nethttp.HTTP_MECHANISM) in
+           let mname = String.lowercase M.mechanism_name in
+           List.exists
+             (fun (ch_mech,_) -> String.lowercase ch_mech = mname)
+             challenges
+        )
+        mechs in
+    mech in
+
+  let create_session is_proxy call options =
+    try
+      let all_challenges = get_all_challenges call is_proxy in
+      let mech = find_mech all_challenges is_proxy call in
+      Some (generic_auth_session key_handler mech call is_proxy)
+    with
+      | Not_found -> None in
+
+  let identify_session is_proxy (call : http_call) options =
+    try
+      let all_challenges = get_all_challenges call is_proxy in
+      let mech = find_mech all_challenges is_proxy call in
+      let module M = (val mech) in
+      let challenges = get_challenges M.mechanism_name call is_proxy in
+      let challenges_m =
+        List.map
+          (fun ch ->
+             (ch, M.client_match ~params:[] ch)
+          )
+          challenges in
+      let (challenge, sess_data) =
+        List.find
+          (fun (ch, m) ->
+             match m with
+               | Some(_, Some _) -> true
+               | _ -> false
+          )
+          challenges_m in
+      let (realm, session_id) =
+        match sess_data with
+          | Some(r, Some sid) -> (r,sid)
+          | _ -> raise Not_found in
+      Some(M.mechanism_name, realm, session_id)
+    with
+      | Not_found -> None in
+  (object(self)
+     method create_session =
+       create_session false
+     method create_proxy_session =
+       create_session true
+     method identify_session =
+       identify_session false
+     method identify_proxy_session =
+       identify_session true
+     method skip_challenge = false
+     method skip_challenge_session _ _ = assert false
+   end
+  )
+
+
+let cache_limit = 1000
+  (* Currently, an arbitrary limit. FIXME *)
 
 
 class auth_cache =
 object(self)
   val mutable auth_handlers = []
-  val sessions = Hashtbl.create 10
-    (* Only sessions that can be used for authentication in advance. 
-     * The hash table maps domain URIs to sessions.
-     *)
+  val mutable sessions_by_id1 = Hashtbl.create 10
+  val mutable sessions_by_id2 = Hashtbl.create 10
+  val mutable sessions_by_dom1 = Hashtbl.create 10
+  val mutable sessions_by_dom2 = Hashtbl.create 10
 
   method add_auth_handler (h : auth_handler) =
     auth_handlers <- auth_handlers @ [h]
 
-  method create_session (call : http_call) options =
-    (* Create a new session after a 401 reply *)
-    let rec find l =
-      match l with
-	| [] -> None
-	| h :: l' ->
-	    ( match h # create_session call options with
-		| None ->
-		    find l'
-		| Some s ->
-		    Some s
-	    )
-    in
-    find auth_handlers
+  method private add_session_by_id sess =
+    match sess#auth_session_id with
+      | None -> ()
+      | Some id ->
+          let triple = (sess#auth_scheme, sess#auth_realm, id) in
+          Hashtbl.replace sessions_by_id1 triple sess;
+          if Hashtbl.length sessions_by_id1 >= cache_limit then (
+            sessions_by_id2 <- sessions_by_id1;
+            sessions_by_id1 <- Hashtbl.create 19
+          )
 
-  method tell_successful_session (sess : auth_session) =
+  method private find_session_by_id ((mech, realm, id) as triple) =
+    try
+      Hashtbl.find sessions_by_id1 triple
+    with
+      | Not_found ->
+          Hashtbl.find sessions_by_id2 triple
+
+
+  method auth_response (call : http_call) options =
+    (* Resume an existing session or create a new session, after a 401 *)
+    let create() =
+      List.fold_left
+        (fun acc_opt handler ->
+           match acc_opt with
+             | None ->
+                 ( match handler # create_session call options with
+                     | Some sess ->
+                         self # add_session_by_id sess;
+                         Some sess
+                     | None ->
+                         None
+                 )
+             | Some acc ->
+                 acc_opt
+        )
+        None
+        auth_handlers in
+    let old_session_opt =
+      List.fold_left
+        (fun acc_opt handler ->
+           match acc_opt with
+             | None ->
+                 handler # identify_session call options
+             | Some acc ->
+                 acc_opt
+        )
+        None
+        auth_handlers in
+    match old_session_opt with
+      | Some triple ->
+          ( try 
+              Some(self # find_session_by_id triple)
+            with Not_found ->
+              create()
+          )
+      | None ->
+          create()
+
+  method mark_successful_session (sess : auth_session) =
     (* Called by [postprocess_complete_message] when authentication was
      * successful. If enabled, [sess] can be used for authentication
      * in advance.
      *)
-    if sess # auth_in_advance then (
-      List.iter
-	(fun dom_uri ->
-	   try
-	     let dom_uri' = norm_neturl dom_uri in
-	     Hashtbl.replace sessions dom_uri' sess
-	   with
-	     | Neturl.Malformed_URL -> ()
-	)
-	sess#auth_domain
+    List.iter
+      (fun dom_uri ->
+         try
+	   let dom_uri' = norm_neturl dom_uri in
+	   Hashtbl.replace sessions_by_dom1 dom_uri' sess
+	 with
+	   | Neturl.Malformed_URL -> ()
+      )
+      sess#auth_domain;
+    if Hashtbl.length sessions_by_dom1 > cache_limit then (
+      sessions_by_dom2 <- sessions_by_dom1;
+      sessions_by_dom1 <- Hashtbl.create 19
     )
 
-  method tell_failed_session (sess : auth_session) =
+  method mark_failed_session (sess : auth_session) =
     (* Called by [postprocess_complete_message] when authentication 
      * failed
      *)
@@ -1993,7 +2245,8 @@ object(self)
       (fun dom_uri ->
 	 try
 	   let dom_uri' = norm_neturl dom_uri in
-	   Hashtbl.remove sessions dom_uri'
+	   Hashtbl.remove sessions_by_dom1 dom_uri';
+	   Hashtbl.remove sessions_by_dom2 dom_uri'
 	 with
 	   | Neturl.Malformed_URL -> ()
       )
@@ -2016,82 +2269,32 @@ object(self)
         let string_prefix =
 	  List.find (* or Not_found *)
 	    (fun string_prefix ->
-	       Hashtbl.mem sessions string_prefix
+	       Hashtbl.mem sessions_by_dom1 string_prefix ||
+	         Hashtbl.mem sessions_by_dom2 string_prefix
 	    )
 	    string_prefixes in
-        Hashtbl.find sessions string_prefix
+        try Hashtbl.find sessions_by_dom1 string_prefix
+        with Not_found ->
+          Hashtbl.find sessions_by_dom2 string_prefix
       with
         | Not_found ->
-             (* Also try skip_challenge authentication *)
-             let h =
-               List.find (* or Not_found *)
-                 (fun handler ->
-                    match handler#skip_challenge with
-                      | None -> false
-                      | Some skip_space ->
-                           skip_space="*" || List.mem skip_space string_prefixes
-                 )
-                 auth_handlers in
-             ( match
-                 h # skip_challenge_session call options
-               with
-                 | Some sess -> sess
-                 | None -> raise Not_found
-             )
+            (* Also try skip_challenge authentication *)
+            let h =
+              List.find (* or Not_found *)
+                (fun handler ->
+                   handler#skip_challenge
+                )
+                auth_handlers in
+            ( match
+                h # skip_challenge_session call options
+              with
+                | Some sess -> sess
+                | None -> raise Not_found
+            )
     with
       | Neturl.Malformed_URL ->
 	  raise Not_found
 end
-
-
-(* Backwards compatibility: *)
-
-class key_backing_store =
-object(self)
-  val db = (Hashtbl.create 10 : (string, (string*string)) Hashtbl.t)
-  method set_realm realm user password =
-    Hashtbl.replace db realm (user,password)
-  method inquire_key ~domain ~realms ~(auth:string) =
-    let realm = List.find (fun realm -> Hashtbl.mem db realm) realms in
-    let (user, password) = Hashtbl.find db realm in
-    ( object
-	method user = user
-	method password = password
-	method realm = realm
-	method domain = (domain : string list)
-      end
-    )
-  method invalidate_key (_ : key) = ()
-end
-
-
-class auth_method name (mk_auth_handler : key_ring -> auth_handler) =
-  let key_bs =
-    new key_backing_store in
-  let key_ring = 
-    new key_ring ~uplink:key_bs () in
-  let auth_handler = 
-    mk_auth_handler key_ring in
-object(self)
-  method name = (name : string)
-  method set_realm realm user password =
-    key_bs # set_realm realm user password
-  method as_auth_handler =
-    auth_handler
-end
-
-
-class basic_auth_method =
-  auth_method 
-    "basic"
-    (fun kr -> 
-       new basic_auth_handler ~enable_auth_in_advance:true kr)
-
-class digest_auth_method =
-  auth_method
-    "digest"
-    (fun kr -> 
-       new digest_auth_handler ~enable_auth_in_advance:true kr)
 
 
 (**********************************************************************)
@@ -4612,11 +4815,11 @@ let fragile_pipeline
 		| `In_reply sess ->
 		    (* A previous attempt failed. *)
 		    let continue = sess # invalidate msg in
-		    if not continue then auth_cache # tell_failed_session sess;
+		    if not continue then auth_cache # mark_failed_session sess;
 		    continue
 	    in
 	    if try_again then (
-	      match auth_cache # create_session msg options with
+	      match auth_cache # auth_response msg options with
 		| None ->
 		    (* Authentication failed immediately *)
 		    default_action_e()
@@ -4638,7 +4841,7 @@ let fragile_pipeline
 		| `None -> ()
 		| `In_advance _ -> ()
 		| `In_reply session ->
-		    auth_cache # tell_successful_session session
+		    auth_cache # mark_successful_session session
 	    );
 	    default_action_e()
 	| _ ->
@@ -5075,9 +5278,6 @@ class pipeline =
     method connection_cache = conn_cache
 
     method set_connection_cache cc = conn_cache <- cc
-
-    method add_authentication_method ( m : auth_method ) =
-      self # add_auth_handler (m # as_auth_handler)
 
     method add_auth_handler (h : auth_handler) =
       auth_cache # add_auth_handler h
@@ -5576,22 +5776,12 @@ module Convenience =
 
     class simple_key_handler : key_handler =
     object
-      method inquire_key ~domain ~realms ~auth =
+      method inquire_key ~domain ~realm ~auth =
 	if !this_user <> "" then
-	  ( object
-	      method user = !this_user
-	      method password = !this_password
-	      method realm = List.hd realms 
-	      method domain = domain
-	    end )
+          key ~user:!this_user ~password:!this_password ~realm ~domain:[]
 	else
 	  if !http_user <> "" then
-	    ( object
-		method user = !http_user
-		method password = !http_password
-		method realm = List.hd realms 
-		method domain = domain
-	      end )
+            key ~user:!http_user ~password:!this_password ~realm ~domain:[]
 	  else
 	    raise Not_found
       method invalidate_key (_ : key) = ()
@@ -5600,11 +5790,11 @@ module Convenience =
 
     let auth_basic =
       new basic_auth_handler 
-	~enable_auth_in_advance:true (new simple_key_handler)
+	~enable_reauth:true (new simple_key_handler)
 
     let auth_digest =
       new digest_auth_handler 
-	~enable_auth_in_advance:true (new simple_key_handler)
+	(new simple_key_handler)
 
     let get_default_pipe() =
 

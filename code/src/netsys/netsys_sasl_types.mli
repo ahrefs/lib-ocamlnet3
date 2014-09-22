@@ -63,6 +63,10 @@ module type SASL_MECHANISM =
     val supports_authz : bool
       (** whether the authorization name can be transmitted *)
 
+    val available : unit -> bool
+      (** Whether the mechanism is available, in particular whether the
+          required crypto support is linked in
+       *)
     type credentials
 
     val init_credentials :

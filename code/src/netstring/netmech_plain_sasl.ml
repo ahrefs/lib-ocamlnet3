@@ -5,6 +5,7 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_first = `Required
   let server_sends_final_data = false
   let supports_authz = true
+  let available() = true
 
   type credentials =
       (string * string * (string * string) list) list

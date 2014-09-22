@@ -13,7 +13,7 @@
 
 open Printf
 
-type ptype = [ `GSSAPI | `SASL ]
+type ptype = [ `GSSAPI | `SASL | `HTTP ]
 
 type profile =
     { ptype : ptype;
@@ -261,7 +261,7 @@ let decode_saslname s =
   s'
 
 
-let encode_gs2 gs2 =
+let encode_gs2_sasl gs2 =
   (match gs2.gs2_cb with
      | `None -> "n"
      | `SASL_none_but_advertise -> "y"
@@ -269,15 +269,50 @@ let encode_gs2 gs2 =
      | `GSSAPI _ -> assert false
   ) ^ 
     (match gs2.gs2_authzname with
-       | None -> ""
+       | None | Some "" -> ","
        | Some name -> ",a=" ^ encode_saslname name
     (* RFC 4422 does not allow SASLprep for the auth string *)
     ) ^ ","
 
-let gs2_re = Netstring_str.regexp "\\(y|n|p=[^,]*\\),\\(a=[^,]*\\)?,"
+let encode_gs2_http gs2 =
+  (match gs2.gs2_cb with
+     | `None -> "n"
+     | `SASL_none_but_advertise -> "y"
+     | `SASL_require(v,_) -> "p=" ^ v
+     | `GSSAPI _ -> assert false
+  ) ^ ","
 
-let decode_gs2 ?(cb_includes_data=false) s =
-  match Netstring_str.string_match gs2_re s 0 with
+let encode_gs2 ptype gs2 =
+  match ptype with
+    | `SASL -> encode_gs2_sasl gs2
+    | `HTTP -> "g=" ^ encode_gs2_http gs2
+    | `GSSAPI -> assert false
+
+
+let encode_cbind_input ptype gs2 =
+  ( match ptype with
+      | `SASL -> encode_gs2_sasl gs2
+      | `HTTP -> encode_gs2_http gs2
+      | `GSSAPI -> ""
+  ) ^ 
+    ( match gs2.gs2_cb with
+        | `SASL_require(_,data) -> data
+        | _ -> ""
+    )
+
+
+
+let gs2_sasl_re = Netstring_str.regexp "\\(y\\|n\\|p=[^,]*\\),\\(a=[^,]*\\)?,"
+
+let gs2_http_re = Netstring_str.regexp "\\(y\\|n\\|p=[^,]*\\),"
+
+let decode_gs2 ?(cb_includes_data=false) ptype s =
+  let re, has_authz =
+    match ptype with
+      | `SASL -> gs2_sasl_re, true
+      | `HTTP -> gs2_http_re, false
+      | `GSSAPI -> assert false in
+  match Netstring_str.string_match re s 0 with
     | Some m ->
          let m_end = Netstring_str.match_end m in
          let rest = String.sub s m_end (String.length s - m_end) in
@@ -290,7 +325,7 @@ let decode_gs2 ?(cb_includes_data=false) s =
            else (
              let (n,v) = n_value_split cb in
              if n <> "p" then
-               raise(Invalid_encoding("decode_gs2", s));
+               raise(Invalid_encoding("decode_gs2 [1]", s));
              let data =
                if cb_includes_data then
                  rest
@@ -298,15 +333,17 @@ let decode_gs2 ?(cb_includes_data=false) s =
                  "" in
              `SASL_require(v, data)
            ) in
-         let authzname = 
-           try Netstring_str.matched_group m 2 s with Not_found -> "" in
+         let authzname =
+           if has_authz then
+             try Netstring_str.matched_group m 2 s with Not_found -> ""
+           else "" in
          let gs2_authzname =
            if authzname = "" then
              None
            else (
              let (authzname_n, authzname_v) = n_value_split authzname in
              if authzname_n <> "a" then
-               raise(Invalid_encoding("decode_gs2", s));
+               raise(Invalid_encoding("decode_gs2 [2]", s));
 	     let authzname_v = decode_saslname authzname_v in
              (* No SASLprep. RFC 4422 is very clear that the auth string can
                 use any Unicode chars.
@@ -319,19 +356,39 @@ let decode_gs2 ?(cb_includes_data=false) s =
          raise(Invalid_encoding("decode_gs2", s))
 
 
+let remove_gs2 ptype s =
+  match ptype with
+    | `GSSAPI -> s
+    | `SASL -> snd(decode_gs2 ptype s)
+    | `HTTP ->
+        if String.length s < 2 || s.[0] <> 'g' || s.[1] <> '=' then
+          raise(Invalid_encoding("decode_c1_message",s));
+        let s1 = String.sub s 2 (String.length s - 2) in
+        snd(decode_gs2 ptype s1)
+
+
 let encode_c1_message ptype c1 =
-  ( if ptype = `SASL then
-      encode_gs2 c1.c1_gs2
-    else
-      ""
-  ) ^
-  "n=" ^ encode_saslname(username_saslprep c1.c1_username) ^ 
-  ",r=" ^ c1.c1_nonce ^ 
-  (if c1.c1_extensions <> [] then 
-      "," ^ 
-	String.concat "," (List.map (fun (n,v) -> n ^ "=" ^ v) c1.c1_extensions)
-   else ""
-  )  
+  let gs2_header =
+    match ptype with
+      | `SASL -> Some(encode_gs2 ptype c1.c1_gs2)
+      | `HTTP -> let g = encode_gs2 ptype c1.c1_gs2 in Some("g=" ^ g)
+      | `GSSAPI -> None in
+  (gs2_header,
+   [ "n", encode_saslname(username_saslprep c1.c1_username);
+     "r", c1.c1_nonce;
+   ] @ c1.c1_extensions
+  )
+
+
+let format_msg l =
+  String.concat "," (List.map (fun (n,v) -> n ^ "=" ^ v) l)
+
+let format_client_msg (gs2_opt,l) =
+  (match gs2_opt with
+     | None -> ""
+     | Some gs2_header -> gs2_header
+  ) ^ 
+    format_msg l
 
 
 let decode_c1_message_after_gs2 s l gs2_header =
@@ -362,20 +419,25 @@ let decode_c1_message ptype s =
          let gs2 = { gs2_authzname = None; gs2_cb = `None } in
          decode_c1_message_after_gs2 s l2 gs2 
     | `SASL ->
-         let (gs2, rest) = decode_gs2 s in
-         let l1 = comma_split s in
+         let (gs2, rest) = decode_gs2 ptype s in
+         let l1 = comma_split rest in
          let l2 = List.map n_value_split l1 in
          decode_c1_message_after_gs2 s l2 gs2
+    | `HTTP ->
+         if String.length s < 2 || s.[0] <> 'g' || s.[1] <> '=' then
+           raise(Invalid_encoding("decode_c1_message",s));
+         let s1 = String.sub s 2 (String.length s - 2) in
+         let (gs2, rest) = decode_gs2 ptype s1 in
+         let l1 = comma_split rest in
+         let l2 = List.map n_value_split l1 in
+         decode_c1_message_after_gs2 s l2 gs2
+                  
 
 let encode_s1_message s1 =
-  "r=" ^ s1.s1_nonce ^
-  ",s=" ^ Netencoding.Base64.encode s1.s1_salt ^ 
-  ",i=" ^ string_of_int s1.s1_iteration_count ^ 
-  ( if s1.s1_extensions <> [] then
-      "," ^ 
-	String.concat "," (List.map (fun (n,v) -> n ^ "=" ^ v) s1.s1_extensions)
-   else ""
-  )  
+  [ "r", s1.s1_nonce;
+    "s", Netencoding.Base64.encode s1.s1_salt;
+    "i", string_of_int s1.s1_iteration_count;
+  ] @ s1.s1_extensions
 
 
 let decode_s1_message s =
@@ -416,30 +478,16 @@ let decode_s1_message s =
  *)
 	
 let encode_cf_message ptype cf =
-  let cbind_input =
-    ( match ptype with
-        | `GSSAPI ->
-             ""
-        | `SASL ->
-             encode_gs2 cf.cf_gs2
-    )  ^
-      ( match cf.cf_gs2.gs2_cb with
-          | `SASL_require(_,data) -> data
-          | _ -> ""
-      ) in
-  "c=" ^ Netencoding.Base64.encode cbind_input ^ 
-  ",r=" ^ cf.cf_nonce ^ 
-  ( if cf.cf_extensions <> [] then
-      "," ^ 
-	String.concat "," (List.map (fun (n,v) -> n ^ "=" ^ v) cf.cf_extensions)
-   else ""
-  ) ^ 
-  ( match cf.cf_proof with
-      | None -> ""
-      | Some p ->
-	  ",p=" ^ Netencoding.Base64.encode p
-  )
-
+  let cbind_input = encode_cbind_input ptype cf.cf_gs2 in
+  [ "c", Netencoding.Base64.encode cbind_input;
+    "r", cf.cf_nonce;
+  ] @ cf.cf_extensions @
+    ( match cf.cf_proof with
+        | None -> []
+        | Some p ->
+	    [ "p", Netencoding.Base64.encode p ]
+    )
+      
 
 let decode_cf_message ptype expect_proof s =
   let l = List.map n_value_split (comma_split s) in
@@ -458,8 +506,8 @@ let decode_cf_message ptype expect_proof s =
                  { gs2_authzname = None;
                    gs2_cb = `GSSAPI chanbind
                  }
-            | `SASL ->
-                 let gs2, _ = decode_gs2 ~cb_includes_data:true chanbind in
+            | `SASL | `HTTP ->
+                 let gs2,_ = decode_gs2 ~cb_includes_data:true ptype chanbind in
                  gs2 in
 
 	let p, l'' =
@@ -541,15 +589,10 @@ let () =
 let encode_sf_message sf =
   ( match sf.sf_error_or_verifier with
       | `Error e ->
-	  "e=" ^ string_of_server_error e
+	  [ "e", string_of_server_error e ]
       | `Verifier v ->
-	  "v=" ^ Netencoding.Base64.encode v
-  ) ^
-  ( if sf.sf_extensions <> [] then
-      "," ^ 
-	String.concat "," (List.map (fun (n,v) -> n ^ "=" ^ v) sf.sf_extensions)
-   else ""
-  )
+	  [ "v", Netencoding.Base64.encode v ]
+  ) @ sf.sf_extensions
 
 
 let decode_sf_message s =
@@ -629,13 +672,25 @@ let lsb128 s =
   String.sub s (l-16) 16
 
 
-let create_nonce() =
+let create_random() =
   let s = String.make 16 ' ' in
   Netsys_rng.fill_random s;
   Digest.to_hex s
 
 
-let create_salt = create_nonce
+let test_nonce = ref None
+
+let create_nonce() =
+  match !test_nonce with
+    | None -> create_random()
+    | Some s -> s
+
+let test_salt = ref None
+
+let create_salt() =
+  match !test_salt with
+    | None -> create_random()
+    | Some s -> s
 
 
 let create_client_session2 profile username authzname password =
@@ -659,7 +714,7 @@ let create_client_session2 profile username authzname password =
   }
 
 let create_client_session profile username password =
-  create_client_session2 profile username username password
+  create_client_session2 profile username "" password
 
  
 
@@ -714,7 +769,7 @@ let client_configure_channel_binding cs cb =
   ( match cs.cs_profile.ptype, cb with
       | _, `None -> ()
       | `GSSAPI, `GSSAPI _ -> ()
-      | `SASL, (`SASL_none_but_advertise | `SASL_require _) -> ()
+      | (`SASL | `HTTP), (`SASL_none_but_advertise | `SASL_require _) -> ()
       | _ -> failwith "Netmech_scram.client_configure_channel_binding"
   );
   cs.cs_cb <- cb
@@ -735,7 +790,7 @@ let salt_password h password salt iteration_count =
   sp
 
 
-let client_emit_message cs =
+let client_emit_message_kv cs =
   let p = cs.cs_profile in
   let h = p.hash_function in
   let gs2 =
@@ -754,9 +809,13 @@ let client_emit_message cs =
 	       } in
 	     cs.cs_c1 <- Some c1;
 	     cs.cs_state <- `C1;
-	     let m = encode_c1_message p.ptype c1 in
-	     dlog (sprintf "Client state `Start emitting message: %s" m);
-	     m
+	     let (gs2_opt,m) = encode_c1_message p.ptype c1 in
+	     dlogr
+               (fun () ->
+                  let ms = format_client_msg (gs2_opt,m) in
+                  sprintf "Client state `Start emitting message: %s" ms
+               );
+	     (gs2_opt,m)
 	       
 	 | `S1 ->
 	     let c1 =
@@ -769,17 +828,20 @@ let client_emit_message cs =
 	     let client_key = hmac_string h salted_pw "Client Key" in
 	     let stored_key = hash_string h client_key in
 	     let cf_no_proof =
-	       encode_cf_message
-                 p.ptype
-                 { cf_gs2 = gs2;
-		   cf_nonce = s1.s1_nonce;
-		   cf_extensions = [];
-		   cf_proof = None
-		 } in
+               format_msg
+	         (encode_cf_message
+                    p.ptype
+                    { cf_gs2 = gs2;
+		      cf_nonce = s1.s1_nonce;
+		      cf_extensions = [];
+		      cf_proof = None
+		    } 
+                 ) in
+             let c1_str =
+               format_client_msg (None, snd (encode_c1_message p.ptype c1)) in
 	     let auth_message =
-	       encode_c1_message p.ptype c1 ^ "," ^ 
-		 cs.cs_s1_raw ^ "," ^ 
-		 cf_no_proof in
+	       c1_str ^ "," ^  cs.cs_s1_raw ^ "," ^ cf_no_proof in
+             dlogr (fun () -> "Client auth_message: " ^ auth_message);
 	     let client_signature = hmac_string h stored_key auth_message in
 	     let proof = Netauth.xor_s client_key client_signature in
 	     let cf =
@@ -799,13 +861,22 @@ let client_emit_message cs =
 					    ("GSS-API session key" ^ 
 					       client_key ^ auth_message)));
 	     let m = encode_cf_message p.ptype cf in
-	     dlog (sprintf "Client state `S1 emitting message: %s" m);
-	     m
+	     dlogr
+               (fun () ->
+                  let ms = format_msg m in
+	          sprintf "Client state `S1 emitting message: %s" ms
+               );
+	     (None,m)
 	       
 	 | _ ->
 	     failwith "Netmech_scram.client_emit_message"
     )
     ()
+
+
+let client_emit_message cs =
+  let (gs2_opt,m) = client_emit_message_kv cs in
+  format_client_msg (gs2_opt,m)
 
 
 let client_recv_message cs message =
@@ -951,7 +1022,7 @@ let catch_condition ss f arg =
 exception Skip_proto
 
 
-let server_emit_message ss =
+let server_emit_message_kv ss =
   let p = ss.ss_profile in
   let h = p.hash_function in
   match ss.ss_state with
@@ -980,7 +1051,7 @@ let server_emit_message ss =
 	    ss.ss_s1 <- Some s1;
 	    ss.ss_spw <- Some spw;
 	    let s1 = encode_s1_message s1 in
-	    ss.ss_s1_raw <- s1;
+	    ss.ss_s1_raw <- format_msg s1;
 	    s1
 	  with Not_found | Skip_proto ->
 	    (* continue with a dummy auth *)
@@ -1003,10 +1074,13 @@ let server_emit_message ss =
 				   `Invalid_proof);
 	    (* This will keep the client off being successful *)
 	    let s1 = encode_s1_message s1 in
-	    ss.ss_s1_raw <- s1;
+	    ss.ss_s1_raw <- format_msg s1;
 	    s1
 	in
-	dlog (sprintf "Server state `C1 emitting message: %s" m);
+	dlogr
+          (fun () ->
+             sprintf "Server state `C1 emitting message: %s" (format_msg m)
+          );
 	m
 	  
     | `CF ->
@@ -1019,7 +1093,11 @@ let server_emit_message ss =
 		ss.ss_sf <- Some sf;
 		ss.ss_state <- `Error;
 		let m = encode_sf_message sf in
-		dlog (sprintf "Server state `CF[Err] emitting message: %s" m);
+		dlogr
+                  (fun () ->
+                    let ms = format_msg m in
+                    sprintf "Server state `CF[Err] emitting message: %s" ms
+                  );
 		m
 		  
 	    | None ->
@@ -1027,8 +1105,9 @@ let server_emit_message ss =
 		  match ss.ss_spw with
 		    | None -> assert false | Some spw -> spw in
 		let cf_no_proof = strip_cf_proof ss.ss_cf_raw in
+                let c1_bare = remove_gs2 p.ptype ss.ss_c1_raw in
 		let auth_message =
-		  ss.ss_c1_raw ^ "," ^ 
+		  c1_bare ^ "," ^ 
 		    ss.ss_s1_raw ^ "," ^ 
 		    cf_no_proof in
 		let server_key =
@@ -1042,12 +1121,20 @@ let server_emit_message ss =
 		ss.ss_sf <- Some sf;
 		ss.ss_state <- `Connected;
 		let m = encode_sf_message sf in
-		dlog (sprintf "Server state `CF emitting message: %s" m);
+		dlogr
+                  (fun () ->
+                     sprintf "Server state `CF emitting message: %s" 
+                             (format_msg m)
+                  );
 		m
 	)
 	  
     | _ ->
 	failwith "Netmech_scram.server_emit_message"
+
+
+let server_emit_message ss =
+  format_msg (server_emit_message_kv ss)
 
 
 let gs2_compatibility c1_gs2 cf_gs2 =
@@ -1098,10 +1185,12 @@ let server_recv_message ss message =
 	       let client_key = hmac_string h salted_pw "Client Key" in
 	       let stored_key = hash_string h client_key in
 	       let cf_no_proof = strip_cf_proof message in
+               let c1_bare = remove_gs2 p.ptype ss.ss_c1_raw in
 	       let auth_message =
-		 ss.ss_c1_raw ^ "," ^ 
+		 c1_bare ^ "," ^ 
 		   ss.ss_s1_raw ^ "," ^ 
 		   cf_no_proof in
+               dlogr (fun () -> "Server auth_message: " ^ auth_message);
 	       let client_signature =
                  hmac_string h stored_key auth_message in
 	       let proof = Netauth.xor_s client_key client_signature in
@@ -1456,3 +1545,66 @@ module Cryptosystem = struct
     String.sub (I.hmac_mstrings s_keys.kc message) 0 I.h
 
 end
+
+
+(* SASL *)
+(*
+#use "topfind";;
+#require "netstring,nettls-gnutls";;
+open Netmech_scram;;
+Debug.enable := true;;
+let p = { ptype = `SASL; hash_function = `SHA_1; return_unknown_user=false;
+         iteration_count_limit = 100000 };;
+
+test_nonce := Some "fyko+d2lbbFgONRv9qkxdawL";;
+let cs = create_client_session p "user" "pencil";;
+let c1 = client_emit_message cs;;
+assert(c1 = "n,,n=user,r=fyko+d2lbbFgONRv9qkxdawL");;
+client_recv_message cs "r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,s=QSXCR+Q6sek8bf92,i=4096";;
+let c2 = client_emit_message cs;;
+assert(c2 = "c=biws,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=");;
+client_recv_message cs "v=rmF9pqV8S7suAoZWja4dJRkFsKQ=";;
+assert(client_finish_flag cs);;
+
+test_nonce := Some "3rfcNHYJY1ZVvWVs7j";;
+let salt = Netencoding.Base64.decode "QSXCR+Q6sek8bf92";;
+let ss = create_server_session p (fun _ -> salt_password `SHA_1 "pencil" salt 4096, salt, 4096);;
+server_recv_message ss "n,,n=user,r=fyko+d2lbbFgONRv9qkxdawL";;
+let s1 = server_emit_message ss;;
+assert(s1 = "r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,s=QSXCR+Q6sek8bf92,i=4096");;
+server_recv_message ss "c=biws,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=";;
+let s2 = server_emit_message ss;;
+assert(s2 = "v=rmF9pqV8S7suAoZWja4dJRkFsKQ=");;
+assert(server_finish_flag ss);;
+ *)
+
+(* HTTP *)
+(*
+#use "topfind";;
+#require "netstring,nettls-gnutls";;
+open Netmech_scram;;
+Debug.enable := true;;
+let p = { ptype = `HTTP; hash_function = `SHA_1; return_unknown_user=false;
+         iteration_count_limit = 100000 };;
+
+test_nonce := Some "fyko+d2lbbFgONRv9qkxdawL";;
+let cs = create_client_session p "user" "pencil";;
+let c1 = client_emit_message cs;;
+assert(c1 = "g=n,n=user,r=fyko+d2lbbFgONRv9qkxdawL");;
+client_recv_message cs "r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,s=QSXCR+Q6sek8bf92,i=4096";;
+let c2 = client_emit_message cs;;
+assert(c2 = "c=biw=,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=z0TYz4fr26P2eJYbU4IPQL2HBXA=");;
+client_recv_message cs "v=AE3w3+i1bvD1L/NrfGjiOwMRJQA=";;
+assert(client_finish_flag cs);;
+
+test_nonce := Some "3rfcNHYJY1ZVvWVs7j";;
+let salt = Netencoding.Base64.decode "QSXCR+Q6sek8bf92";;
+let ss = create_server_session p (fun _ -> salt_password `SHA_1 "pencil" salt 4096, salt, 4096);;
+server_recv_message ss "g=n,n=user,r=fyko+d2lbbFgONRv9qkxdawL";;
+let s1 = server_emit_message ss;;
+assert(s1 = "r=fyko+d2lbbFgONRv9qkxdawLfyko+d2lbbFgONRv9qkxdawL,s=QSXCR+Q6sek8bf92,i=4096");;
+server_recv_message ss "c=biw=,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=z0TYz4fr26P2eJYbU4IPQL2HBXA=";;
+let s2 = server_emit_message ss;;
+assert(s2 = "v=AE3w3+i1bvD1L/NrfGjiOwMRJQA=");;
+assert(server_finish_flag ss);;
+ *)

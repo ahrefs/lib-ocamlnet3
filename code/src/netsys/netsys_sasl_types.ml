@@ -20,6 +20,7 @@ module type SASL_MECHANISM =
     val client_first : [`Required | `Optional | `No]
     val server_sends_final_data : bool
     val supports_authz : bool
+    val available : unit -> bool
 
     type credentials
 
