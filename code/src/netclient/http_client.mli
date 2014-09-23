@@ -950,7 +950,8 @@ end
 
 
 (** The [key_ring] is a cache for keys. The optional [uplink] handler
-  * is invoked when no matching key is found in the cache.
+  * is invoked when no matching key is found in the cache. The [uplink]
+    is intended for interactively asking the user for a password.
  *)
 class key_ring : ?uplink : #key_handler -> unit ->
 object
@@ -1055,7 +1056,8 @@ class basic_auth_handler :
     * If so, the same credentials are added to the request. Normally,
     * the request would be sent without credentials first, and only after
     * getting the authentication challenge the request is resent with the
-    * credentials.
+    * credentials. Reauthentication is only done for the same realm and the
+    * same domain. The path of the request URI, however, may be different.
     *
     * [skip_challenge]: This option enables a mode so that the credentials
     * are added to HTTP requests even before any response has been seen

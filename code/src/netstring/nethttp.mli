@@ -1172,6 +1172,11 @@ module type HTTP_MECHANISM =
           client session. Not all mechanisms support this.
        *)
 
+    val client_domain_uri : client_session -> string list
+      (** After successful authentication, this function may return the
+          URIs defining the authentication space.
+       *)
+
     val client_prop : client_session -> string -> string
       (** Get a mechanism-specific property of the session. Commonly supported
           keys:

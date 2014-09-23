@@ -2014,6 +2014,7 @@ module type HTTP_MECHANISM =
           string -> 
              client_session
     val client_session_id : client_session -> string option
+    val client_domain_uri : client_session -> string list
     val client_prop : client_session -> string -> string
   end
 

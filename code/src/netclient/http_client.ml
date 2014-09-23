@@ -287,6 +287,14 @@ let default_schemes =
   ]
 
 
+let get_default_port options scheme =
+  try
+    let (_, _, port_opt, _) =
+      List.find (fun (n,_,_,_) -> n = scheme) options.schemes in
+    port_opt
+  with Not_found -> None
+
+
 let comma_re = Netstring_str.regexp "[ \t\n\r]*,[ \t\n\r]*" ;;
 
 let split_words_by_commas s =
@@ -1337,7 +1345,7 @@ class connect the_query (* host:port only *) =
 let check_neturl fn_name neturl =
   (* Whether all required parts are provided *)
   if not(Neturl.url_provides
-           ~scheme:true ~host:true ~port:true ~path:true neturl)
+           ~scheme:true ~host:true ~port:true (* ~path:true *) neturl)
   then
     failwith(fn_name ^ ": This URL is incomplete (required: \
                         scheme://host:port/path): " ^ 
@@ -1362,32 +1370,39 @@ let norm_neturl neturl =
 
 let prefixes_of_neturl s_url =
   (* Returns a list of all legal prefixes of the absolute URI s.
-   * The prefixes are in Neturl format.
+   * The prefixes are in Neturl format. Duplicate results may be returned.
    *)
-  let rec rev_path_prefixes rev_path =
-    match rev_path with
-      | [] -> []
-      | [ "" ] -> [ rev_path; [] ]
-      | [ ""; "" ] -> assert false
-      | [ _; "" ] -> rev_path :: rev_path_prefixes [ "" ]
-      | "" :: rev_path' ->
-	  if rev_path' = [ ""; "" ] then
-	    rev_path :: rev_path_prefixes [ "" ]
-	  else
-	    rev_path :: rev_path_prefixes rev_path'
-      | _ :: rev_path' ->
-	  rev_path :: (rev_path_prefixes ("" :: rev_path'))
-  in
-  let path_prefixes path =
-    List.map List.rev (rev_path_prefixes (List.rev path)) in
-  let s_nofrag_url = Neturl.remove_from_url ~fragment:true s_url in
-  let s_noquery_url = Neturl.remove_from_url ~query:true s_nofrag_url in
-  let path = Neturl.url_path s_noquery_url in
-  s_url :: s_nofrag_url ::
-    (List.map
-       (fun prefix -> Neturl.modify_url ~path:prefix s_noquery_url
-       )
-       (path_prefixes path))
+  try
+    let rec rev_path_prefixes rev_path =
+      match rev_path with
+        | [] -> []
+        | [ "" ] -> [ rev_path ]
+        | [ ""; "" ] -> assert false
+        | [ _; "" ] -> rev_path :: rev_path_prefixes [ "" ]
+        | "" :: rev_path' ->
+	    if rev_path' = [ ""; "" ] then
+	      rev_path :: rev_path_prefixes [ "" ]
+	    else
+	      rev_path :: rev_path_prefixes rev_path'
+        | _ :: rev_path' ->
+	    rev_path :: (rev_path_prefixes ("" :: rev_path'))
+    in
+    let path_prefixes path =
+      List.map List.rev (rev_path_prefixes (List.rev path)) in
+    let s_nofrag_url = Neturl.remove_from_url ~fragment:true s_url in
+    let s_noquery_url = Neturl.remove_from_url ~query:true s_nofrag_url in
+    let path = try Neturl.url_path s_noquery_url with Not_found -> [ "" ] in
+    s_url :: s_nofrag_url ::
+      (List.map
+         (fun prefix -> Neturl.modify_url ~path:prefix s_noquery_url
+         )
+         (path_prefixes path))
+  with
+    | ex ->
+        dlogr (fun () -> sprintf "exn from prefixes_of_neturl: %s" 
+                                 (Netexn.to_string ex));
+        [ s_url ]
+
 
 
 class type key =
@@ -1458,6 +1473,15 @@ object(self)
     (* Maps (domain, realm) to (key, from_uplink) *)
 
   method inquire_key ~domain ~realm ~(auth:string) =
+    dlogr
+      (fun () ->
+         sprintf "inquiring key for auth=%s realm=%S domains=%s"
+                 auth realm
+                 ( match domain with
+                     | None -> "-"
+                     | Some url -> norm_neturl url
+                 )
+      );
     let prefixes =
       match domain with
         | Some dom ->
@@ -1466,20 +1490,32 @@ object(self)
               (prefixes_of_neturl dom)
         | None ->
             [] in
+    dlogr
+      (fun () ->
+         sprintf "checking prefixes for key: %s"
+                 (String.concat "," prefixes)
+      );
     try
       try
         let prefix =
           List.find
             (fun prefix -> Hashtbl.mem keys (prefix,realm))
             prefixes in
-        fst(Hashtbl.find keys (prefix, realm))
+        let key = fst(Hashtbl.find keys (prefix, realm)) in
+        dlogr (fun () -> sprintf "found key for domain prefix=%s"  prefix);
+        key
       with
         | Not_found ->
-	    fst(Hashtbl.find keys ("*", realm))
+            let key = fst(Hashtbl.find keys ("*", realm)) in
+            dlog "found key for domain prefix=*";
+            key
     with Not_found ->
       match uplink with
-	| None -> raise Not_found
+	| None -> 
+            dlog "no key, no uplink";
+            raise Not_found
 	| Some h ->
+            dlog "forwarding to uplink key handler";
 	    let key = h # inquire_key ~domain ~realm ~auth in
 	    (* or Not_found *)
             List.iter
@@ -1575,16 +1611,28 @@ let get_domain_uri (call : http_call) =
   call # private_api # request_uri_with
     ~path:(Some "/") ~remove_particles:true ()
 
-let no_port url = (* or Not_found *)
-  match Neturl.url_scheme url with
-    | "http" ->
-         Neturl.undefault_url ~port:80 url
-    | "https" ->
-         Neturl.undefault_url ~port:443 url
-    | _ -> raise Not_found
+let get_uri_with_path  (call : http_call) =
+  call # private_api # request_uri_with
+    ~remove_particles:true ()
+
+
+
+let with_port options url =
+  match get_default_port options (Neturl.url_scheme url) with
+    | Some port ->
+        Neturl.default_url ~port url
+    | None ->
+        (* CHECK: we really need a port number here, so set it 99999 for
+           unknown schemes. This is better than failing.
+         *)
+        Neturl.default_url ~port:99999 url
     
 
 let get_all_challenges call is_proxy =
+  (* Returns all challenges in the www-authenticate or proxy-authenticate
+     header(s). The mechanism names are converted to lowercase as well as
+     the parameter names.
+   *)
   let challenges =
     try
       if is_proxy then
@@ -1603,6 +1651,7 @@ let get_all_challenges call is_proxy =
 
 
 let get_challenges mech_name call is_proxy =
+  (* Get only the challenges for mechanism [mech_name] *)
   let challenges_lc = get_all_challenges call is_proxy in
   let mech_name_lc = String.lowercase mech_name in
   let mech_challenges =
@@ -1649,21 +1698,23 @@ let format_credentials is_proxy (creds:Nethttp.Header.auth_credentials) =
 
 let core_basic_auth_session 
         enable_reauth key_handler is_proxy 
-        domain realm
+        request_domain auth_domain realm
         : auth_session =
+  (* If enable_reauth, we return [auth_domain] when [auth_domain] is called.
+     Usually [auth_domain] is set to the current URI after setting the path to
+     "/". That means that any further request for the same domain will be
+     reauthenticated. See [auth_cache] below, where [auth_domain] is
+     interpreted.
+   *)
   let key =
     (* Return the selected key, or raise Not_applicable *)
     try
-      key_handler # inquire_key ~domain ~realm ~auth:"basic"
+      key_handler # inquire_key ~domain:request_domain ~realm ~auth:"basic"
     with
 	Not_found ->  raise Not_applicable in
-  let domains =
-    match domain with
-      | None -> []
-      | Some d -> [d] in
   ( object(self)
       method auth_scheme = "basic"
-      method auth_domain = if enable_reauth then domains else []
+      method auth_domain = if enable_reauth then auth_domain else []
       method auth_realm = key # realm
       method auth_user = key # user
       method auth_session_id = None
@@ -1675,7 +1726,7 @@ let core_basic_auth_session
         format_credentials is_proxy creds
       method invalidate call =
         key_handler # invalidate_key key;
-        false
+        false  (* No automatic retry *)
     end
   )
 
@@ -1683,12 +1734,15 @@ let core_basic_auth_session
 let basic_auth_session enable_reauth
                        key_handler call is_proxy
     : auth_session =
-  let domain = if is_proxy then None else Some(get_domain_uri call) in
+  let request_domain =
+    if is_proxy then None else Some(get_uri_with_path call) in
+  let auth_domain =
+    if is_proxy then [] else [get_domain_uri call] in
   let realms = get_realms "basic" call is_proxy in
   iterate
     (fun (realm,params) ->
        core_basic_auth_session
-         enable_reauth key_handler is_proxy domain realm
+         enable_reauth key_handler is_proxy request_domain auth_domain realm
     )
     realms
 
@@ -1716,7 +1770,7 @@ object(self)
   method skip_challenge_session call options =
     try
       Some(core_basic_auth_session
-             false key_handler false None "anywhere")
+             false key_handler false None [] "anywhere")
     with
 	Not_applicable ->
 	  None
@@ -1728,22 +1782,25 @@ let contains_auth v =
   List.mem "auth" (split_words v)
 
 
+let normalize_domain options (call : http_call) s =
+  try
+    let (nu1,_) =
+      parse_url
+	~base_url:(call#private_api#request_uri_with())
+	options s in
+    with_port !options
+      (Neturl.remove_from_url
+	 ~user:true ~user_param:true ~password:true ~fragment:true nu1
+      )
+  with
+    | Neturl.Malformed_URL -> raise Not_found
+
+
 let digest_auth_session_for_realm options
                                   (key_handler : #key_handler)
                                   (init_call : http_call) is_proxy
                                   (realm, params)
       : auth_session =
-  let normalize_domain s =
-    (* FIXME: also normalize port *)
-    try
-      let (nu1,_) =
-	parse_url
-	  ~base_url:(init_call#private_api#request_uri_with())
-	  options s in
-      Neturl.remove_from_url
-	~user:true ~user_param:true ~password:true ~fragment:true nu1
-    with
-      | Neturl.Malformed_URL -> raise Not_found in
 
   let algorithm_lc =
     try String.lowercase (List.assoc "algorithm" params)
@@ -1757,23 +1814,20 @@ let digest_auth_session_for_realm options
   if not (List.mem_assoc "nonce" params) then
     raise Not_applicable;
 
-  let domain = if is_proxy then None else Some(get_domain_uri init_call) in
+  let request_domain =
+    if is_proxy then None else Some(get_uri_with_path init_call) in
   let auth_domain =
     if is_proxy then [] else
       try 
 	List.map
-	  normalize_domain
+	  (normalize_domain options init_call)
 	  (split_words (List.assoc "domain" params))
       with
 	  Not_found -> [ get_domain_uri init_call ] in
-(*
-  let domain =
-    List.map Neturl.string_of_url domain_url in
- *)
   let key =
     (* Return the selected key, or raise Not_applicable *)
     try
-      key_handler # inquire_key ~domain ~realm ~auth:"digest"
+      key_handler # inquire_key ~domain:request_domain ~realm ~auth:"digest"
     with
 	Not_found -> raise Not_applicable in
   let qop =
@@ -1969,6 +2023,7 @@ end
 
 
 let generic_auth_session_for_challenge
+      options
       (key_handler : #key_handler) mech call is_proxy initial_challenge
     : auth_session =
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
@@ -1976,16 +2031,11 @@ let generic_auth_session_for_challenge
     match M.client_match ~params:[] initial_challenge with
       | Some r -> r
       | None -> raise Not_applicable in
-  let domain = if is_proxy then None else Some(get_domain_uri call) in
-  let domains =
-    [] in   (* FIXME: must come from M *)
-(*
-    match domain with
-      | None -> []
-      | Some d -> [d] in
- *)
+  let request_domain =
+    if is_proxy then None else Some(get_uri_with_path call) in
   let key =
-    try key_handler # inquire_key ~domain ~realm ~auth:M.mechanism_name
+    try key_handler # inquire_key ~domain:request_domain ~realm
+                                  ~auth:M.mechanism_name
     with Not_found -> raise Not_applicable in
   let creds =
     M.init_credentials key#credentials in
@@ -1993,9 +2043,10 @@ let generic_auth_session_for_challenge
     M.create_client_session
       ~user:key#user ~creds ~params:[] () in
   let first = ref true in
+  let cur_auth_domain = ref [] in
   ( object
       method auth_scheme = M.mechanism_name
-      method auth_domain = domains
+      method auth_domain = !cur_auth_domain
       method auth_realm = key#realm
       method auth_user = key#user
       method authenticate auth_call =
@@ -2025,10 +2076,11 @@ let generic_auth_session_for_challenge
         ( match M.client_state session with
             | `OK ->
                 (* re-authentication *)
+                cur_auth_domain := [];
                 M.client_restart session
             | `Wait ->
                 M.client_process_challenge
-                  session call#response_header challenge
+                  session auth_call#response_header challenge
             | `Emit | `Stale ->
                 ()   (* strange, but just let's skip the challenge *)
             | `Auth_error ->
@@ -2036,6 +2088,15 @@ let generic_auth_session_for_challenge
         );
         match M.client_state session with
           | `OK ->
+              (* Save the protection space: *)
+              let auth_domain_s = M.client_domain_uri session in
+              let auth_domain =
+                try
+                  List.map
+                    (normalize_domain options auth_call)
+                    auth_domain_s
+                with Not_found -> [] in
+              cur_auth_domain := auth_domain;
               []
           | `Emit | `Stale ->
               let (creds, new_headers) = M.client_emit_response session in
@@ -2043,6 +2104,7 @@ let generic_auth_session_for_challenge
           | `Wait ->
               assert false
           | `Auth_error ->
+              cur_auth_domain := [];
               failwith "Authentication error"  (* CHECK *)
 
       method invalidate call =
@@ -2054,7 +2116,8 @@ let generic_auth_session_for_challenge
   )
 
 
-let generic_auth_session (key_handler : #key_handler) mech call is_proxy 
+let generic_auth_session options
+                         (key_handler : #key_handler) mech call is_proxy 
     : auth_session =
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
   let mech_challenges =
@@ -2067,7 +2130,7 @@ let generic_auth_session (key_handler : #key_handler) mech call is_proxy
       mech_challenges in
   iterate
     (generic_auth_session_for_challenge
-       key_handler mech call is_proxy
+       options key_handler mech call is_proxy
     )
     matching_challenges
   
@@ -2098,7 +2161,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
     try
       let all_challenges = get_all_challenges call is_proxy in
       let mech = find_mech all_challenges is_proxy call in
-      Some (generic_auth_session key_handler mech call is_proxy)
+      Some (generic_auth_session options key_handler mech call is_proxy)
     with
       | Not_found -> None in
 
@@ -2223,6 +2286,11 @@ object(self)
      * successful. If enabled, [sess] can be used for authentication
      * in advance.
      *)
+    let auth_domain = sess#auth_domain in
+    dlogr
+      (fun () -> sprintf "mark_successful_session domains=%s"
+                         (String.concat "," (List.map norm_neturl auth_domain))
+      );
     List.iter
       (fun dom_uri ->
          try
@@ -2231,7 +2299,7 @@ object(self)
 	 with
 	   | Neturl.Malformed_URL -> ()
       )
-      sess#auth_domain;
+      auth_domain;
     if Hashtbl.length sessions_by_dom1 > cache_limit then (
       sessions_by_dom2 <- sessions_by_dom1;
       sessions_by_dom1 <- Hashtbl.create 19
@@ -2241,6 +2309,11 @@ object(self)
     (* Called by [postprocess_complete_message] when authentication 
      * failed
      *)
+    let auth_domain = sess#auth_domain in
+    dlogr
+      (fun () -> sprintf "mark_failed_session domains=%s"
+                         (String.concat "," (List.map norm_neturl auth_domain))
+      );
     List.iter
       (fun dom_uri ->
 	 try
@@ -2250,12 +2323,16 @@ object(self)
 	 with
 	   | Neturl.Malformed_URL -> ()
       )
-      sess#auth_domain;
+      auth_domain;
 
 
-  method find_session_in_advance (call : http_call) options =
-    (* Find a session suitable for authentication in advance *)
+  method find_session_for_reauth (call : http_call) options =
+    (* Find a session suitable for reauthentication. We haven't seen a 401
+       yet and need to prepare [call].
+     *)
     let uri = call # private_api # request_uri_with() in
+    dlogr (fun () -> sprintf "find_session_for_reauth uri=%S" 
+                             (norm_neturl uri));
     (* We are not only looking for [uri], but also for all prefixes of [uri] *)
     try
       let prefixes = prefixes_of_neturl uri in
@@ -2265,6 +2342,8 @@ object(self)
              (fun p -> try [norm_neturl p] with _ -> [])
              prefixes
           ) in
+      dlogr (fun () -> sprintf "checking prefixes: %s"
+                               (String.concat "," string_prefixes));
       try
         let string_prefix =
 	  List.find (* or Not_found *)
@@ -2273,11 +2352,15 @@ object(self)
 	         Hashtbl.mem sessions_by_dom2 string_prefix
 	    )
 	    string_prefixes in
-        try Hashtbl.find sessions_by_dom1 string_prefix
-        with Not_found ->
-          Hashtbl.find sessions_by_dom2 string_prefix
+        let sess =
+          try Hashtbl.find sessions_by_dom1 string_prefix
+          with Not_found ->
+            Hashtbl.find sessions_by_dom2 string_prefix in
+        dlogr (fun () -> sprintf "found session for prefix: %s" string_prefix);
+        sess
       with
         | Not_found ->
+            dlog "no session found";
             (* Also try skip_challenge authentication *)
             let h =
               List.find (* or Not_found *)
@@ -2285,16 +2368,37 @@ object(self)
                    handler#skip_challenge
                 )
                 auth_handlers in
+            dlog "trying skip_challenge";
             ( match
                 h # skip_challenge_session call options
               with
-                | Some sess -> sess
+                | Some sess -> 
+                    dlog "successful with skip_challenge";
+                    sess
                 | None -> raise Not_found
             )
     with
       | Neturl.Malformed_URL ->
 	  raise Not_found
 end
+
+
+(*
+#use "topfind";;
+#require "netclient,nettls-gnutls";;
+open Http_client;;
+Debug.enable := true;;
+let ring = new key_ring();;
+ring # add_key (key ~user:"gerd" ~realm:"Private @ gps.dynxs.de" ~password:"XXX" ~domain:[]);;
+let p = new pipeline;;
+let h = new unified_auth_handler ring;;
+p # add_auth_handler h;;
+let c = new get "https://gps.dynxs.de/private/";;
+p # add c;;
+p # run()
+
+ *)
+
 
 
 (**********************************************************************)
@@ -4927,9 +5031,9 @@ let robust_pipeline
 
     method add urgent (m : http_call) f_done =
       (* Check whether we can authenticate in advance: *)
-      if m # private_api # auth_state = `None then (
-	try
-	  let sess = auth_cache # find_session_in_advance m options in
+      m # private_api # set_auth_state `None;
+      ( try
+	  let sess = auth_cache # find_session_for_reauth m options in
 	  m # private_api # set_auth_state (`In_advance sess)
 	with
 	    Not_found -> ()
