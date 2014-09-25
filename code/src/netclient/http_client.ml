@@ -403,8 +403,20 @@ type 'session auth_state =  (* 'session = auth_session, defined below *)
          (* Authentication has not yet been tried *)
     | `In_advance of 'session
          (* This session had been tried before a 401 response was seen *)
-    | `In_reply of 'session
+    | `In_reply of 'session * (string * string) list
          (* This session was tried after a 401 response was seen *)
+    | `Auth_error
+         (* Failure *)
+    | `OK
+         (* The auth protocol ran until the end *)
+    ]
+
+
+(* What is reported to the user: *)
+type 'a auth_status =
+    [ `Continue of 'a
+    | `OK
+    | `Auth_error
     ]
 
 class type http_call =
@@ -558,8 +570,8 @@ object
   method auth_realm : string
   method auth_user : string
   method auth_session_id : string option
-  method authenticate : http_call -> (string * string) list
-  method invalidate : http_call -> bool
+  method authenticate : http_call -> bool -> (string * string) list auth_status
+  method invalidate : http_call -> unit
 end
 
 
@@ -1355,17 +1367,23 @@ let check_neturl fn_name neturl =
 let norm_neturl neturl =
   (* Returns the neturl as normalized string (esp. normalized % sequences) *)
   check_neturl "norm_neturl" neturl;
-  let neturl' =
-    Neturl.make_url 
-      ~encoded:false
-      ~scheme:(Neturl.url_scheme neturl)
-      ~host:(Neturl.url_host neturl)
-      ~port:(Neturl.url_port neturl)
-      ~path:(try Neturl.url_path neturl with Not_found -> [])
-      ?query:(try Some(Neturl.url_query neturl) with Not_found -> None)
-      ?fragment:(try Some(Neturl.url_fragment neturl) with Not_found -> None)
-      (Neturl.url_syntax_of_url neturl) in
-  Neturl.string_of_url neturl'
+  try
+    let neturl' =
+      Neturl.make_url 
+        ~encoded:false
+        ~scheme:(Neturl.url_scheme neturl)
+        ~host:(Neturl.url_host neturl)
+        ~port:(Neturl.url_port neturl)
+        ~path:(try Neturl.url_path neturl with Not_found -> [])
+        ?query:(try Some(Neturl.url_query neturl) with Not_found -> None)
+        ?fragment:(try Some(Neturl.url_fragment neturl) with Not_found -> None)
+        (Neturl.url_syntax_of_url neturl) in
+    Neturl.string_of_url neturl'
+  with
+    | error ->
+        (* Log error because this might hard to track down otherwise: *)
+        dlog (sprintf "norm_neturl: %s" (Netexn.to_string error));
+        raise error
 
 
 let prefixes_of_neturl s_url =
@@ -1399,7 +1417,8 @@ let prefixes_of_neturl s_url =
          (path_prefixes path))
   with
     | ex ->
-        dlogr (fun () -> sprintf "exn from prefixes_of_neturl: %s" 
+        (* Log error because this might hard to track down otherwise: *)
+        dlogr (fun () -> sprintf "prefixes_of_neturl: %s" 
                                  (Netexn.to_string ex));
         [ s_url ]
 
@@ -1475,7 +1494,7 @@ object(self)
   method inquire_key ~domain ~realm ~(auth:string) =
     dlogr
       (fun () ->
-         sprintf "inquiring key for auth=%s realm=%S domains=%s"
+         sprintf "key_ring: inquiring key for auth=%s realm=%S domains=%s"
                  auth realm
                  ( match domain with
                      | None -> "-"
@@ -1492,7 +1511,7 @@ object(self)
             [] in
     dlogr
       (fun () ->
-         sprintf "checking prefixes for key: %s"
+         sprintf "key_ring: checking prefixes for key: %s"
                  (String.concat "," prefixes)
       );
     try
@@ -1502,20 +1521,21 @@ object(self)
             (fun prefix -> Hashtbl.mem keys (prefix,realm))
             prefixes in
         let key = fst(Hashtbl.find keys (prefix, realm)) in
-        dlogr (fun () -> sprintf "found key for domain prefix=%s"  prefix);
+        dlogr (fun () ->
+               sprintf "key_ring: found key for domain prefix=%s"  prefix);
         key
       with
         | Not_found ->
             let key = fst(Hashtbl.find keys ("*", realm)) in
-            dlog "found key for domain prefix=*";
+            dlog "key_ring: found key for domain prefix=*";
             key
     with Not_found ->
       match uplink with
 	| None -> 
-            dlog "no key, no uplink";
+            dlog "key_ring: no key, no uplink";
             raise Not_found
 	| Some h ->
-            dlog "forwarding to uplink key handler";
+            dlog "key_ring: forwarding request to uplink key handler";
 	    let key = h # inquire_key ~domain ~realm ~auth in
 	    (* or Not_found *)
             List.iter
@@ -1712,21 +1732,31 @@ let core_basic_auth_session
       key_handler # inquire_key ~domain:request_domain ~realm ~auth:"basic"
     with
 	Not_found ->  raise Not_applicable in
+  let special_code =
+    if is_proxy then 407 else 401 in
+  let first_attempt =
+    ref true in
   ( object(self)
       method auth_scheme = "basic"
       method auth_domain = if enable_reauth then auth_domain else []
       method auth_realm = key # realm
       method auth_user = key # user
       method auth_session_id = None
-      method authenticate call =
-        let basic_cookie = 
-          Netencoding.Base64.encode 
-	    (key#user ^ ":" ^ key#password) in
-        let creds = ("Basic", [ "credentials", basic_cookie]) in
-        format_credentials is_proxy creds
+      method authenticate call reauth_flag =
+        let code = call # private_api # response_code in
+        if reauth_flag || code = special_code then
+          if reauth_flag || !first_attempt then (
+            first_attempt := false;
+            let basic_cookie = 
+              Netencoding.Base64.encode 
+	        (key#user ^ ":" ^ key#password) in
+            let creds = ("Basic", [ "credentials", basic_cookie]) in
+            `Continue (format_credentials is_proxy creds)
+          )
+          else `Auth_error
+        else `OK
       method invalidate call =
         key_handler # invalidate_key key;
-        false  (* No automatic retry *)
     end
   )
 
@@ -1793,59 +1823,87 @@ let normalize_domain options (call : http_call) s =
 	 ~user:true ~user_param:true ~password:true ~fragment:true nu1
       )
   with
-    | Neturl.Malformed_URL -> raise Not_found
+    | Neturl.Malformed_URL ->
+        dlog (sprintf "digest: cannot parse 'domain' parameter: %s" s);
+        raise Not_found
+
+
+(* TODO:
+    - if the HTTP code is not 401/407: auth is successful
+    - if we get a new challenge: continue, but with new cnonce. 
+      If the stale flag is NOT set we need to request the key again
+ *)
 
 
 let digest_auth_session_for_realm options
                                   (key_handler : #key_handler)
                                   (init_call : http_call) is_proxy
-                                  (realm, params)
+                                  (init_realm, init_params)
       : auth_session =
 
-  let algorithm_lc =
-    try String.lowercase (List.assoc "algorithm" params)
-    with Not_found -> "md5" in
+  let decode call realm params =
+    let algorithm_lc =
+      try String.lowercase (List.assoc "algorithm" params)
+      with Not_found -> "md5" in
   
-  if not (List.mem algorithm_lc [ "md5"; "md5-sess" ]) then
-    raise Not_applicable;
-  if not (try contains_auth (List.assoc "qop" params)
-	  with Not_found -> true) then
-    raise Not_applicable;
-  if not (List.mem_assoc "nonce" params) then
-    raise Not_applicable;
+    if not (List.mem algorithm_lc [ "md5"; "md5-sess" ]) then
+      raise Not_applicable;
+    if not (try contains_auth (List.assoc "qop" params)
+	    with Not_found -> true) then
+      raise Not_applicable;
+    if not (List.mem_assoc "nonce" params) then
+      raise Not_applicable;
 
-  let request_domain =
-    if is_proxy then None else Some(get_uri_with_path init_call) in
-  let auth_domain =
-    if is_proxy then [] else
-      try 
-	List.map
-	  (normalize_domain options init_call)
-	  (split_words (List.assoc "domain" params))
-      with
-	  Not_found -> [ get_domain_uri init_call ] in
+    let request_domain =
+      if is_proxy then None else Some(get_uri_with_path call) in
+    let auth_domain =
+      if is_proxy then [] else
+        try 
+	  List.map
+	    (normalize_domain options call)
+	    (split_words (List.assoc "domain" params))
+        with
+	    Not_found -> [ get_domain_uri call ] in
+    let qop =
+      if List.mem_assoc "qop" params then "auth" else "" in
+      (* "" = RFC 2069 mode *)
+    let nonce = List.assoc "nonce" params in
+    
+    (algorithm_lc, qop, nonce, request_domain, auth_domain) in
+
+  let (algorithm_lc, qop, init_nonce, init_request_domain, auth_domain) =
+    decode init_call init_realm init_params in  (* or Not_applicable *)
+
   let key =
     (* Return the selected key, or raise Not_applicable *)
     try
-      key_handler # inquire_key ~domain:request_domain ~realm ~auth:"digest"
+     key_handler # inquire_key
+        ~domain:init_request_domain ~realm:init_realm ~auth:"digest"
     with
 	Not_found -> raise Not_applicable in
-  let qop =
-    if List.mem_assoc "qop" params then "auth" else "" in
-    (* "" = RFC 2069 mode *)
-  let nonce = List.assoc "nonce" params in
-  let cnonce_init0 = 
-    try 
-      let s = String.make 8 'X' in
-      let () = Netsys_rng.fill_random s in
-      s
-    with _ -> string_of_float (Unix.gettimeofday()) in   (* FIXME *)
+
+  let special_code =
+    if is_proxy then 407 else 401 in
+
 object(self)
-  val mutable cnonce_init = cnonce_init0
+  val mutable cnonce_init = ""
   val mutable cnonce_incr = 0
   val mutable nc = 0
   val mutable opaque = None
   val mutable a1 = None
+  val mutable nonce = init_nonce
+
+  initializer (
+    self # init_cnonce()
+  )
+
+  method private init_cnonce() =
+    cnonce_init <- 
+      try 
+        let s = String.make 8 'X' in
+        let () = Netsys_rng.fill_random s in
+        s
+      with _ -> string_of_float (Unix.gettimeofday())   (* FIXME *)
 
   method private first_cnonce =
     Digest.to_hex
@@ -1876,14 +1934,14 @@ object(self)
 	  let v =
 	    match algorithm_lc with
 	      | "md5" ->
-		  key#user ^ ":" ^ realm ^ ":" ^ key#password
+		  key#user ^ ":" ^ init_realm ^ ":" ^ key#password
 	      | "md5-sess" ->
                   (* We do so as described in RFC-2617 although this was not
                      intended, and makes RFC-2617 incompatible with RFC-2831.
                      The latter would not hex-encode the digest.
                    *)
 		  (self # fn_h
-		     (key#user ^ ":" ^ realm ^ ":" ^ key#password)) ^ 
+		     (key#user ^ ":" ^ init_realm ^ ":" ^ key#password)) ^ 
 		  ":" ^ nonce ^ ":" ^ self#first_cnonce
 	      | _ ->
 		  assert false
@@ -1896,7 +1954,46 @@ object(self)
     let uri = call # effective_request_uri in
     meth ^ ":" ^ uri
 
-  method authenticate call =
+  method authenticate call reauth_flag =
+    let code = call # private_api # response_code in
+    if reauth_flag then (
+      self # do_authenticate call
+    )
+    else if code = special_code then (
+      (* First decode the call again, and check whether core params did not
+         change
+       *)
+      try
+        let this_realm, these_params =
+          match get_realms "digest" call is_proxy with
+            | [ r, p ] -> (r,p)
+            | _ -> raise Not_applicable in
+        if this_realm <> init_realm then raise Not_applicable;
+        let (this_alg_lc, this_qop, this_nonce, this_request_domain, 
+             this_auth_domain) =
+          decode call this_realm these_params in  (* or Not_applicable *)
+        if this_alg_lc <> algorithm_lc || this_qop <> qop then
+          raise Not_applicable;
+        (* If the nonce changes, we need to reset other stuff: *)
+        if nonce <> this_nonce then (
+          self # init_cnonce();
+          nc <- 0;
+          nonce <- this_nonce;
+          (* Accept this only if the stale flag is set *)
+          let stale =
+            String.lowercase 
+              (try List.assoc "stale" these_params with Not_found -> "")
+              = "true" in
+          if not stale then raise Not_applicable;
+        );
+        self # do_authenticate call
+      with
+        | Not_applicable -> `Auth_error
+    )
+    else `OK
+
+
+  method private do_authenticate call =
     let cnonce = self#next_cnonce() in
     let nc = self # next_nc() in
     let digest =
@@ -1917,7 +2014,7 @@ object(self)
       Printf.sprintf
 	"Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"%s\",response=\"%s\",algorithm=%s,cnonce=\"%s\",%s%snc=%08x"
 	key#user
-	realm
+	init_realm
 	nonce
 	call#effective_request_uri
 	digest
@@ -1933,38 +2030,17 @@ object(self)
 	nc in
     let field_name =
       if is_proxy then "Proxy-Authorization" else "Authorization" in
-    [ field_name, creds ]
+    `Continue [ field_name, creds ]
 
   method auth_scheme = "digest"
   method auth_domain = auth_domain
   method auth_realm = key # realm
   method auth_user = key # user
   method auth_session_id = Some nonce
+    (* CHECK: this nonce can change! This may affect auth_cache *)
 
   method invalidate call =
-    (* Check if the [stale] flag is set for our nonce: *)
-    let is_stale =
-      try
-	let auth_list = 
-	  Nethttp.Header.get_www_authenticate call#response_header in
-	List.exists
-	  (fun (scheme,params) -> 
-	     String.lowercase scheme = "digest"
-	      && (try List.assoc "realm" params = realm
-		  with Not_found -> false) 
-	      && (try List.assoc "nonce" params = nonce
-		  with Not_found -> false)
-	      && (try String.lowercase (List.assoc "stale" params) = "true"
-		  with Not_found -> false)
-	  ) 
-	  auth_list
-      with
-	| Not_found -> false  (* No www-authenticate header *)
-	| Nethttp.Bad_header_field _ -> false in
-    is_stale || (
-      key_handler # invalidate_key key;
-      false
-    )
+    key_handler # invalidate_key key;
 end
 
 
@@ -2046,10 +2122,11 @@ let generic_auth_session_for_challenge
   let cur_auth_domain = ref [] in
   ( object
       method auth_scheme = M.mechanism_name
-      method auth_domain = !cur_auth_domain
+      method auth_domain = [] (* !cur_auth_domain *) (* FIXME: disable reauth *)
       method auth_realm = key#realm
       method auth_user = key#user
-      method authenticate auth_call =
+      method authenticate auth_call reauth_flag =
+        assert (not reauth_flag);   (* FIXME *)
         let challenge =
           if !first then (
             (* First authentication: just assume that the call is the same *)
@@ -2097,18 +2174,18 @@ let generic_auth_session_for_challenge
                     auth_domain_s
                 with Not_found -> [] in
               cur_auth_domain := auth_domain;
-              []
+              `OK
           | `Emit | `Stale ->
               let (creds, new_headers) = M.client_emit_response session in
-              format_credentials is_proxy creds @ new_headers
+              `Continue (format_credentials is_proxy creds @ new_headers)
           | `Wait ->
               assert false
           | `Auth_error ->
               cur_auth_domain := [];
-              failwith "Authentication error"  (* CHECK *)
+              `Auth_error
 
       method invalidate call =
-        true  (* FIXME *)
+        key_handler # invalidate_key key;
 
       method auth_session_id =
         M.client_session_id session
@@ -2331,7 +2408,7 @@ object(self)
        yet and need to prepare [call].
      *)
     let uri = call # private_api # request_uri_with() in
-    dlogr (fun () -> sprintf "find_session_for_reauth uri=%S" 
+    dlogr (fun () -> sprintf "find_session_for_reauth: uri=%S" 
                              (norm_neturl uri));
     (* We are not only looking for [uri], but also for all prefixes of [uri] *)
     try
@@ -2342,7 +2419,7 @@ object(self)
              (fun p -> try [norm_neturl p] with _ -> [])
              prefixes
           ) in
-      dlogr (fun () -> sprintf "checking prefixes: %s"
+      dlogr (fun () -> sprintf "find_session_for_reauth: checking prefixes: %s"
                                (String.concat "," string_prefixes));
       try
         let string_prefix =
@@ -2356,11 +2433,12 @@ object(self)
           try Hashtbl.find sessions_by_dom1 string_prefix
           with Not_found ->
             Hashtbl.find sessions_by_dom2 string_prefix in
-        dlogr (fun () -> sprintf "found session for prefix: %s" string_prefix);
+        dlogr (fun () -> sprintf "find_session_for_reauth: found prefix: %s"
+                                 string_prefix);
         sess
       with
         | Not_found ->
-            dlog "no session found";
+            dlog "find_session_for_reauth: no session found";
             (* Also try skip_challenge authentication *)
             let h =
               List.find (* or Not_found *)
@@ -2368,12 +2446,12 @@ object(self)
                    handler#skip_challenge
                 )
                 auth_handlers in
-            dlog "trying skip_challenge";
+            dlog "find_session_for_reauth: trying skip_challenge";
             ( match
                 h # skip_challenge_session call options
               with
                 | Some sess -> 
-                    dlog "successful with skip_challenge";
+                    dlog "find_session_for_reauth: successful skip_challenge";
                     sess
                 | None -> raise Not_found
             )
@@ -3215,15 +3293,37 @@ let transmitter
 	let cah = 
 	  match msg # private_api # auth_state with
 	    | `None -> []
-	    | `In_advance session 
-	    | `In_reply session ->
-		session # authenticate msg in
+	    | `In_advance session -> 
+		( match session # authenticate msg true with
+                    | `Continue headers -> headers
+                    | `OK -> []
+                    | `Auth_error -> []    (* Cannot deal with it here *)
+                )
+	    | `In_reply(_,headers) ->
+                headers
+            | `OK ->
+                []
+            | `Auth_error ->
+                (* retry *)
+                msg # private_api # set_auth_state `None;
+                [] in
 	let pah =
 	  match !proxy_auth_state with
 	    | `None -> []
-	    | `In_advance session 
-	    | `In_reply session ->
-		session # authenticate msg in
+	    | `In_advance session ->
+		( match session # authenticate msg true with
+                    | `Continue headers -> headers
+                    | `OK -> []
+                    | `Auth_error -> []    (* Cannot deal with it here *)
+                )
+	    | `In_reply(_,headers) ->
+                headers
+            | `OK ->
+                []
+            | `Auth_error ->
+                (* retry *)
+                msg # private_api # set_auth_state `None;
+                [] in
 	let rh = msg # request_header `Effective in
 	List.iter
 	  (fun (n,v) ->
@@ -3645,12 +3745,16 @@ let proxy_connect_e esys fd fd_open host port options proxy_auth_handler_opt
     ( match !cur_proxy_session with   (* authentication *)
 	| None -> ()
 	| Some sess ->
-	    let pah = sess # authenticate msg in
-	    List.iter
-	      (fun (n,v) ->
-		 hdr # update_field n v
-	      )
-	      pah
+	    ( match sess # authenticate msg false with
+                | `Continue pah ->
+	            List.iter
+	              (fun (n,v) ->
+		       hdr # update_field n v
+	              )
+	              pah
+                | _ ->
+                    ()
+            )
     );
     io#add (Send_header(0, msg#request_method, msg#effective_request_uri, 
 			( hdr :> Netmime.mime_header_ro )
@@ -4869,87 +4973,116 @@ let fragile_pipeline
       let code = msg # private_api # response_code in
       let _req_hdr = msg # request_header `Effective in
       let _resp_hdr = msg # private_api # response_header in
-      match code with
-	| 407 when peer_is_proxy ->
-	    (* --------- Proxy authorization required: ---------- *)
-	    let try_again =
-	      match !proxy_auth_state with
-		| `None
-		| `In_advance _ -> 
-		    true
-		| `In_reply sess ->
-		    (* A previous attempt failed. *)
-		    let continue = sess # invalidate msg in
-		    if not continue then proxy_auth_state := `None;
-		    continue
-	    in
-	    if try_again then (
-	      match proxy_auth_handler_opt with
-		| None ->
-		    default_action_e()
-		| Some ah ->
-		    (match ah # create_proxy_session msg options with
-		       | None ->
-			   (* Authentication failed immediately *)
-			   proxy_auth_state := `None;
-			   default_action_e()
-		       | Some sess ->
-			   (* Remember the new session: *)
-			   proxy_auth_state := `In_reply sess;
-			   (* Force that even a new connection will be
-			      established independently of reconnect_mode:
-			    *)
-			   msg # private_api # set_retry_anyway true;
-			   ignore (self # add true trans#message trans#f_done);
-			   eps_e (`Done()) esys
-		    )
-    	    )
-	    else
-	      default_action_e()
-	| 401 ->
-	    (* -------- Content server authorization required: ---------- *)
-	    (* Unless a previous authentication attempt failed, just create
-             * a new session, and repeat the request.
-             *)
-	    let try_again =
-	      match msg # private_api # auth_state with
-		| `None
-		| `In_advance _ -> 
-		    true
-		| `In_reply sess ->
-		    (* A previous attempt failed. *)
-		    let continue = sess # invalidate msg in
-		    if not continue then auth_cache # mark_failed_session sess;
-		    continue
-	    in
-	    if try_again then (
-	      match auth_cache # auth_response msg options with
-		| None ->
-		    (* Authentication failed immediately *)
-		    default_action_e()
-		| Some sess ->
-		    (* Remember the new session: *)
-		    msg # private_api # set_auth_state (`In_reply sess);
-		    (* Force that even a new connection will be
-		       established independently of reconnect_mode:
-		     *)
-		    msg # private_api # set_retry_anyway true;
-		    ignore (self # add true trans#message trans#f_done);
-		    eps_e (`Done()) esys
-    	    )
-	    else
-	      default_action_e()
-	| n when n >= 200 && n < 400 ->
-	    (* Check whether authentication was successful *)
-	    ( match msg # private_api # auth_state with
-		| `None -> ()
-		| `In_advance _ -> ()
-		| `In_reply session ->
-		    auth_cache # mark_successful_session session
-	    );
-	    default_action_e()
-	| _ ->
-	    default_action_e()
+
+      (* We are checking the authentication state no matter what the
+         response code is. If we get a 401 or 407, though, special
+         actions need to be taken.
+       *)
+      let proxy_response1 =
+        match !proxy_auth_state with
+          | `In_advance sess
+          | `In_reply (sess,_) ->
+              (* Continue an already started auth protocol: *)
+              sess # authenticate msg false
+                (* CHECK: we proxy-authenticate messages even if the code is
+                   not 407, and we cannot be sure whether the msg is about
+                   proxy authentication.
+                 *)
+          | `Auth_error -> `Auth_error
+          | `None | `OK ->
+              (* Check whether the server needs authentication: *)
+              if code = 407 && peer_is_proxy then (
+                match proxy_auth_handler_opt with
+                  | None -> `Auth_error
+                  | Some ah ->
+                      ( match ah # create_proxy_session msg options with
+		           | None -> `Auth_error
+                           | Some sess -> 
+                               proxy_auth_state := `In_reply(sess,[]);
+                               sess # authenticate msg false
+                      )
+              ) else
+                `OK in
+      let is_about_proxy =
+        (code=407 && peer_is_proxy) ||
+          ( match proxy_response1 with `Continue _ -> true | _ -> false) in
+      let content_response1 =
+        if is_about_proxy then
+          None  (* this msg was not about content server auth *)
+        else
+          match msg # private_api # auth_state with
+            | `In_advance sess
+            | `In_reply (sess,_) ->
+                (* Continue an already started auth protocol: *)
+                Some (sess # authenticate msg false)
+            | `Auth_error -> Some `Auth_error
+            | `None | `OK ->
+                (* Check whether the server needs authentication: *)
+                if code = 401 then (
+                  match auth_cache # auth_response msg options with
+                    | None -> Some `Auth_error
+                    | Some sess ->
+                        msg # private_api # set_auth_state (`In_reply(sess,[]));
+                        Some(sess # authenticate msg false)
+                ) else
+                  Some `OK in
+      (* If we get a 401/407 but still think we are ok, change to error: *)
+      let proxy_response2 =
+        if proxy_response1 = `OK && code=407 && peer_is_proxy then
+          `Auth_error
+        else
+          proxy_response1 in
+      let content_response2 =
+        if content_response1 = Some `OK && code=401 then
+          Some `Auth_error
+        else
+          content_response1 in
+      (* If we can continue an auth session, remember the headers: *)
+      ( match !proxy_auth_state, proxy_response2 with
+          | (`In_reply(sess,_) | `In_advance sess), `Continue next_headers ->
+              proxy_auth_state := `In_reply(sess, next_headers)
+          | (`In_reply(sess,_) | `In_advance sess), `Auth_error ->
+              sess # invalidate msg;
+              proxy_auth_state := `Auth_error
+          | _, `OK ->
+              proxy_auth_state := `OK
+          | _, `Auth_error ->
+              proxy_auth_state := `Auth_error
+          | _, `Continue _ ->
+              assert false
+      );
+      ( match msg # private_api # auth_state, content_response2 with
+          | (`In_reply(sess,_) | `In_advance sess), Some(`Continue headers) ->
+              msg # private_api # set_auth_state (`In_reply(sess, headers))
+          | (`In_reply(sess,_) | `In_advance sess), Some `Auth_error ->
+              sess # invalidate msg;
+              msg # private_api # set_auth_state  `Auth_error;
+              auth_cache # mark_failed_session sess;
+          | (`In_reply(sess,_) | `In_advance sess), Some `OK ->
+              msg # private_api # set_auth_state `OK;
+              auth_cache # mark_successful_session sess
+          | _, Some `OK ->
+              msg # private_api # set_auth_state `OK
+          | _, Some `Auth_error ->
+              msg # private_api # set_auth_state `Auth_error
+          | _, Some `Continue _ ->
+              assert false
+          | _, None ->
+              ()
+      );
+      (* Decide what to do next: *)
+      let continue =
+        ( match !proxy_auth_state with `In_reply _ -> true | _ -> false ) ||
+          ( match msg # private_api # auth_state with
+                `In_reply _ -> true | _ -> false ) in
+      if continue then (
+        msg # private_api # set_retry_anyway true;
+        ignore (self # add true trans#message trans#f_done);
+        eps_e (`Done()) esys
+      )
+      else
+        default_action_e()
+
 
     (**********************************************************************)
     (***    POSTPROCESS = INVOKE USER CALLBACK FUNCTION                 ***)

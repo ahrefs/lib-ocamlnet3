@@ -965,6 +965,12 @@ object
 end
 
 
+type 'a auth_status =
+    [ `Continue of 'a
+    | `OK
+    | `Auth_error
+    ]
+
 
 (** An [auth_session] represents an authenticated session *)
 class type auth_session =
@@ -983,7 +989,7 @@ object
     (** The realm *)
   method auth_user : string
     (** The user identifier *)
-  method authenticate : http_call -> (string * string) list
+  method authenticate : http_call -> bool -> (string * string) list auth_status
     (** Returns a list of additional headers that will authenticate 
       * the passed call for this session. (This is usually only one
       * header, [authorization].)
@@ -992,6 +998,8 @@ object
       * any authentication information. If the call is authenticated
       * in reaction to a 401 status, the response header contains 
       * the [www-authenticate] field(s).
+      *
+      * The bool says whether this is the re-authentication path.
      *)
   method auth_session_id : string option
      (** An optional ID which is only needed for multi-step authentication
@@ -1000,15 +1008,10 @@ object
          retrieved after a successful [authenticate]. After a re-authentication
          the ID may change.
       *)
-  method invalidate : http_call -> bool
+  method invalidate : http_call -> unit
     (** The session is notified that authentication failed. (This
       * method is not called for failed re-authentications, but only
       * if an authentication attempt after a 401 status failed.)
-      * The method can return [true] if another authentication should
-      * be started immediately.
-      *
-      * Note: By returning [true] the session can indicate a "stale"
-      * condition in the sense of RFC 2617.
      *)
 end
 
