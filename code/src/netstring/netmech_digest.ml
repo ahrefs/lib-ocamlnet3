@@ -22,13 +22,15 @@ type profile =
 type response_params =
     { r_ptype : ptype;
       r_hash : Netsys_digests.iana_hash_fn;
-      r_no_sess : bool;          (* simple scheme a la RFC 2069. Only HTTP *)
+      r_no_sess : bool;          (* simple scheme w/o -sess. Only HTTP *)
+      r_rfc2069 : bool;
       r_user : string;           (* UTF-8 or ISO-8859-1 *)
       r_authz : string option;
       r_realm : string;          (* UTF-8 or ISO-8859-1 *)
       r_nonce : string;
       r_cnonce : string;
       r_nc : int;
+      r_method : string;
       r_digest_uri : string;
       r_utf8 : bool;              (* for HTTP: always false *)
       r_opaque : string option;   (* only HTTP *)
@@ -88,21 +90,24 @@ eprintf "compute_response user=%s authz=%s realm=%s password=%s nonce=%s cnonce=
      DIGEST-MD5 as SASL is incompatible with Digest Authentication for HTTP.
    *)
   let h = hash p.r_hash in
-  let a1_a =
-    h (p.r_user ^ ":" ^ p.r_realm ^ ":" ^ password) in
-  let a1_a =
-    match p.r_ptype with
-      | `HTTP -> hex a1_a   (* see comment above *)
-      | `SASL -> a1_a in
-  let a1_b =
-    a1_a ^ ":" ^ p.r_nonce ^ ":" ^ p.r_cnonce in
   let a1 =
-    match p.r_authz with
-      | None -> a1_b
-      | Some authz -> a1_b ^ ":" ^ authz in
+    if p.r_no_sess then
+      p.r_user ^ ":" ^ p.r_realm ^ ":" ^ password
+    else
+      let a1_a =
+        h (p.r_user ^ ":" ^ p.r_realm ^ ":" ^ password) in
+      let a1_a =
+        match p.r_ptype with
+          | `HTTP -> hex a1_a   (* see comment above *)
+          | `SASL -> a1_a in
+      let a1_b =
+        a1_a ^ ":" ^ p.r_nonce ^ ":" ^ p.r_cnonce in
+      match p.r_authz with
+        | None -> a1_b
+        | Some authz -> a1_b ^ ":" ^ authz in
   let a2 = a2_prefix ^ p.r_digest_uri in
   let auth_body =
-    if p.r_no_sess then  (* RFC 2069 mode *)
+    if p.r_rfc2069 then  (* RFC 2069 mode *)
       [ hex (h a1); p.r_nonce; hex (h a2) ]
     else
       [ hex (h a1); p.r_nonce; nc; p.r_cnonce; "auth"; hex (h a2) ] in
@@ -199,7 +204,7 @@ let iana_sess_alist =
     (fun (name,code) -> (name ^ "-sess", code))
     Netsys_digests.iana_alist
 
-let decode_response ptype msg_params =
+let decode_response ptype msg_params method_name =
   let m = to_strmap msg_params in
   let user = StrMap.find "username" m in
   let realm = try StrMap.find "realm" m with Not_found -> "" in
@@ -207,7 +212,8 @@ let decode_response ptype msg_params =
   let cnonce = StrMap.find "cnonce" m in
   let nc_str = StrMap.find "nc" m in
   let nc = get_nc nc_str in
-  let qop = try StrMap.find "qop" m with Not_found -> "auth" in
+  let qop, rfc2069 = 
+    try (StrMap.find "qop" m, false) with Not_found -> ("auth", true) in
   if qop <> "auth" then raise Not_found;
   let digest_uri_name =
     match ptype with
@@ -249,15 +255,16 @@ let decode_response ptype msg_params =
       r_nonce = nonce;
       r_cnonce = cnonce;
       r_nc = nc;
+      r_method = method_name;
       r_digest_uri = digest_uri;
       r_utf8 = utf8;
+      r_rfc2069 = ptype=`HTTP && rfc2069;
       r_opaque = opaque;
     } in
   (r, response)
 
 
-let validate_response ss r response method_name =
-  (* SASL: method_name = "AUTHENTICATE" *)
+let validate_response ss r response =
   let realm_utf8 = to_utf8 r.r_utf8 r.r_realm in
   ( match ss.srealm with
       | None -> ()
@@ -278,7 +285,7 @@ let validate_response ss r response method_name =
       | Some creds ->
            Netsys_sasl_util.extract_password creds in
   let password = to_client r.r_utf8 password_utf8 in
-  let expected_response = compute_response r password (method_name ^ ":") in
+  let expected_response = compute_response r password (r.r_method ^ ":") in
   if response <> expected_response then raise Not_found;
   password
 
@@ -286,10 +293,11 @@ exception Restart of string
 
 let server_process_response_kv ss msg_params method_name =
   try
-    let (r, response) = decode_response ss.sprofile.ptype msg_params in
+    let (r, response) =
+      decode_response ss.sprofile.ptype msg_params method_name in
     if r.r_nc > 1 then raise(Restart r.r_nonce);
     if ss.sstate <> `Wait then raise Not_found;
-    let password = validate_response ss r response method_name in
+    let password = validate_response ss r response in
     (* success: *)
     let srv_response = compute_response r password ":" in
     ss.snextnc <- r.r_nc + 1;
@@ -309,7 +317,7 @@ let server_process_response_restart_kv ss msg_params set_stale method_name =
         | None -> assert false
         | Some (r, _, _) -> r in
     let (new_r, response) =
-      decode_response ss.sprofile.ptype msg_params in
+      decode_response ss.sprofile.ptype msg_params method_name in
     if old_r.r_hash <> new_r.r_hash
        || old_r.r_no_sess <> new_r.r_no_sess
        || old_r.r_user <> new_r.r_user
@@ -318,9 +326,9 @@ let server_process_response_restart_kv ss msg_params set_stale method_name =
        || old_r.r_nonce <> new_r.r_nonce
        || old_r.r_cnonce <> new_r.r_cnonce
        || old_r.r_nc + 1 <> new_r.r_nc
-       || old_r.r_digest_uri <> new_r.r_digest_uri
+       (* || old_r.r_digest_uri <> new_r.r_digest_uri *) (* CHECK *)
        || old_r.r_utf8 <> new_r.r_utf8 then raise Not_found;
-    let password = validate_response ss new_r response method_name in
+    let password = validate_response ss new_r response in
     (* success *)
     if set_stale then (
       ss.sstale <- true;
@@ -392,8 +400,9 @@ let server_prop_i ss key =
 type client_session =
     { mutable cstate : Netsys_sasl_types.client_state;
       mutable cresp : response_params option;
-      cprofile : profile;
       cdigest_uri : string;
+      cmethod : string;
+      cprofile : profile;
       crealm : string option;
       cuser : string;
       cauthz : string;
@@ -439,7 +448,8 @@ let client_process_initial_challenge_kv cs msg_params =
           | Some r -> r
           | None -> "" in
     let nonce = StrMap.find "nonce" m in
-    let qop = try StrMap.find "qop" m with Not_found -> "auth" in
+    let qop, rfc2069 = 
+      try (StrMap.find "qop" m, false) with Not_found -> ("auth", true) in
     let stale = 
       try StrMap.find "stale" m = "true" with Not_found -> false in
     if stale && cs.cresp = None then raise Not_found;
@@ -472,8 +482,10 @@ let client_process_initial_challenge_kv cs msg_params =
         r_nonce = nonce;
         r_cnonce = cnonce;
         r_nc = 1;
+        r_method = cs.cmethod;
         r_digest_uri = cs.cdigest_uri;
         r_utf8 = utf8;
+        r_rfc2069 = cs.cprofile.ptype=`HTTP && rfc2069;
         r_opaque = opaque;
       } in
     cs.cresp <- Some rp;
@@ -481,14 +493,14 @@ let client_process_initial_challenge_kv cs msg_params =
   with Not_found ->
        cs.cstate <- `Auth_error
 
-let client_emit_response_kv ?(quote=false) cs method_name =
+let client_emit_response_kv ?(quote=false) cs =
   (* SASL: method_name="AUTHENTICATE" *)
   let q s = if quote then qstring s else s in
   match cs.cresp with
     | None ->
         assert false
     | Some rp ->
-        let resp = compute_response rp cs.cpasswd (method_name ^ ":") in
+        let resp = compute_response rp cs.cpasswd (rp.r_method ^ ":") in
         let digest_uri_name =
           match cs.cprofile.ptype with
             | `SASL -> "digest-uri"
@@ -523,7 +535,7 @@ let client_emit_response_kv ?(quote=false) cs method_name =
                         if rp.r_no_sess then "" else "-sess" in
                       [ "algorithm", alg ^ suffix ]
                   ) in
-        cs.cstate <- `Wait;
+        cs.cstate <- (if cs.cprofile.mutual then `Wait else `OK);
         l
 
 let client_stash_session_i cs =

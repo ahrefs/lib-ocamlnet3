@@ -745,8 +745,9 @@ module Header = struct
   open Netmime
   open Mimestring
 
-  type auth_challenge = string * (string * string) list
-  type auth_credentials = string * (string * string) list
+  type param_value = [ `V of string | `Q of string ]
+  type auth_challenge = string * (string * param_value) list
+  type auth_credentials = string * (string * param_value) list
 
   (* As scanner we use the scanner for mail header fields from Mimestring. It
    * is very configurable.
@@ -1719,7 +1720,12 @@ module Header = struct
             None
     in
     parse_comma_separated_field mh fn_name parse_challenge fieldname
-      
+
+  let encode_param p_val =
+    match p_val with
+      | `Q s -> s
+      | `V s -> string_of_value s 
+                                
   let mk_challenges fields =
     String.concat "," 
       (List.map
@@ -1728,19 +1734,29 @@ module Header = struct
 	      (String.concat ","
 		 (List.map
 		    (fun (p_name, p_val) ->
-		       p_name ^ "=" ^ string_of_value p_val)
+		       p_name ^ "=" ^ encode_param p_val)
 		    auth_params))
 	 )
 	 fields)
 
+  let mark_decoded (n,v) = (n, `V v)
+
+  let mark_params_decoded (mech,params) =
+    (mech, List.map mark_decoded params)
+
+  let mark_many_decoded l =
+    List.map mark_params_decoded l
+
   let get_www_authenticate mh =
-    parse_challenges mh "Nethttp.get_www_authenticate" "WWW-Authenticate"
+    mark_many_decoded
+      (parse_challenges mh "Nethttp.get_www_authenticate" "WWW-Authenticate")
 
   let set_www_authenticate mh fields =
     mh # update_field "WWW-Authenticate" (mk_challenges fields)
 
   let get_proxy_authenticate mh =
-    parse_challenges mh "Nethttp.get_proxy_authenticate" "Proxy-Authenticate"
+    mark_many_decoded
+     (parse_challenges mh "Nethttp.get_proxy_authenticate" "Proxy-Authenticate")
 
   let set_proxy_authenticate mh fields =
     mh # update_field "Proxy-Authenticate" (mk_challenges fields)
@@ -1795,24 +1811,27 @@ module Header = struct
 	try List.assoc "credentials" auth_params 
 	with Not_found -> 
 	  failwith "Nethttp.mk_credentials: basic credentials not found" in
-      "Basic " ^ creds
+      "Basic " ^ encode_param creds
     )
     else
       auth_name ^ " " ^ 
 	(String.concat ","
 	   (List.map
 	      (fun (p_name, p_val) ->
-		 p_name ^ "=" ^ string_of_value p_val)
+		 p_name ^ "=" ^ encode_param p_val)
 	      auth_params))
 
   let get_authorization mh =
-    parse_credentials mh "Nethttp.get_authorization" "authorization"
+    mark_params_decoded
+      (parse_credentials mh "Nethttp.get_authorization" "authorization")
 
   let set_authorization mh v =
     mh # update_field "Authorization" (mk_credentials v)
 
   let get_proxy_authorization mh = 
-    parse_credentials mh "Nethttp.get_proxy_authorization" "proxy-authorization"
+    mark_params_decoded
+      (parse_credentials
+         mh "Nethttp.get_proxy_authorization" "proxy-authorization")
 
   let set_proxy_authorization mh v = 
     mh # update_field "Proxy-Authorization" (mk_credentials v)
@@ -2003,9 +2022,11 @@ module type HTTP_MECHANISM =
                                            Netsys_sasl_types.cb -> unit
     val client_restart : client_session -> unit
     val client_process_challenge :
-          client_session -> #http_header_ro -> Header.auth_challenge -> unit
+          client_session -> string -> string -> #http_header_ro -> 
+          Header.auth_challenge -> unit
     val client_emit_response :
-          client_session -> Header.auth_credentials * (string * string) list
+          client_session -> string -> string -> #http_header_ro ->
+          Header.auth_credentials * (string * string) list
     val client_channel_binding : client_session -> Netsys_sasl_types.cb
     val client_user_name : client_session -> string
     val client_stash_session :
@@ -2014,7 +2035,7 @@ module type HTTP_MECHANISM =
           string -> 
              client_session
     val client_session_id : client_session -> string option
-    val client_domain_uri : client_session -> string list
+    val client_domain : client_session -> string list
     val client_prop : client_session -> string -> string
   end
 

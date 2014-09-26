@@ -12,7 +12,15 @@ let parse_message s =
   let mh = new Netmime.basic_mime_header ["WWW-Authenticate", u ] in
   match Nethttp.Header.get_www_authenticate mh with
     | [] -> []
-    | [_, params] -> params
+    | [_, params] ->
+        ( List.map
+            (fun (n,v) ->
+               match v with
+                 | `Q _ -> assert false
+                 | `V s -> (n,s)
+            )
+            params
+        )
     | _ -> assert false 
 
 module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
@@ -142,6 +150,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     { cstate = `Wait;
       cresp = None;
       cprofile = profile;
+      cmethod = "AUTHENTICATE";
       cdigest_uri = (try List.assoc "digest-uri" params
                      with Not_found -> "generic/generic");
       crealm = (try Some(List.assoc "realm" params)
@@ -186,7 +195,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_emit_response cs =
     if cs.cstate <> `Emit && cs.cstate <> `Stale then
       failwith "Netmech_digestmd5_sasl.client_emit_response: bad state";
-    let l = client_emit_response_kv ~quote:true cs "AUTHENTICATE" in
+    let l = client_emit_response_kv ~quote:true cs in
     format_kv l
 
   let client_stash_session cs =

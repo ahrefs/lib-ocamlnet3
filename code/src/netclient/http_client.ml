@@ -1657,6 +1657,12 @@ let with_port options url =
         Neturl.default_url ~port:99999 url
     
 
+let decode_param  =
+  function
+  | (n, `Q _) -> assert false
+  | (n, `V v) -> (n,v)
+
+
 let get_all_challenges call is_proxy =
   (* Returns all challenges in the www-authenticate or proxy-authenticate
      header(s). The mechanism names are converted to lowercase as well as
@@ -1692,13 +1698,23 @@ let get_challenges mech_name call is_proxy =
   mech_challenges
 
 
+let decode_challenges l =
+  List.map
+    (fun (name, params) ->
+       (name, List.map decode_param params)
+    )
+    l
+
+
 let get_realms mech_name call is_proxy =
   let mech_challenges = get_challenges mech_name call is_proxy in
+  let mech_challenges = decode_challenges mech_challenges in
   let mech_params =
     List.map snd mech_challenges in
   List.map
     (fun params ->
-       (List.assoc "realm" params, params)
+       let realm = List.assoc "realm" params in
+       (realm, params)
     )
     mech_params
 
@@ -1759,7 +1775,7 @@ let core_basic_auth_session
             let basic_cookie = 
               Netencoding.Base64.encode 
 	        (key#user ^ ":" ^ key#password) in
-            let creds = ("Basic", [ "credentials", basic_cookie]) in
+            let creds = ("Basic", [ "credentials", `Q basic_cookie]) in
             `Continue (format_credentials is_proxy creds)
           )
           else `Auth_error
@@ -2126,7 +2142,7 @@ let generic_auth_session_for_challenge
     M.init_credentials key#credentials in
   let session =
     M.create_client_session
-      ~user:key#user ~creds ~params:[] () in
+      ~user:key#user ~creds ~params:[ "realm", realm, true ] () in
   let first = ref true in
   let cur_auth_domain = ref [] in
   ( object
@@ -2156,17 +2172,26 @@ let generic_auth_session_for_challenge
                 )
                 challenges
             with Not_found ->
-              failwith "generic_auth_session: session does not match"
+              (* Assume that this is a final server message that does not
+                 set www-authenticate, but puts something into the other
+                 headers. Hence the challenge is empty.
+               *)
+              (fst initial_challenge, [])
           ) in
         first := false;
         ( match M.client_state session with
             | `OK ->
                 (* re-authentication *)
-                cur_auth_domain := [];
-                M.client_restart session
+                if reauth_flag then (
+                  cur_auth_domain := [];
+                  M.client_restart session
+                )
             | `Wait ->
+                let meth = auth_call # request_method in
+                let uri = auth_call # effective_request_uri in
+                let hdr = auth_call # response_header in
                 M.client_process_challenge
-                  session auth_call#response_header challenge
+                  session meth uri hdr challenge
             | `Emit | `Stale ->
                 ()   (* strange, but just let's skip the challenge *)
             | `Auth_error ->
@@ -2175,7 +2200,7 @@ let generic_auth_session_for_challenge
         match M.client_state session with
           | `OK ->
               (* Save the protection space: *)
-              let auth_domain_s = M.client_domain_uri session in
+              let auth_domain_s = M.client_domain session in
               let auth_domain =
                 try
                   List.map
@@ -2185,7 +2210,11 @@ let generic_auth_session_for_challenge
               cur_auth_domain := auth_domain;
               `OK
           | `Emit | `Stale ->
-              let (creds, new_headers) = M.client_emit_response session in
+              let meth = auth_call # request_method in
+              let uri = auth_call # effective_request_uri in
+              let hdr = auth_call # response_header in
+              let (creds, new_headers) = 
+                M.client_emit_response session meth uri hdr in
               `Continue (format_credentials is_proxy creds @ new_headers)
           | `Wait ->
               assert false
@@ -2484,7 +2513,15 @@ let h = new unified_auth_handler ring;;
 p # add_auth_handler h;;
 let c = new get "https://gps.dynxs.de/private/";;
 p # add c;;
-p # run()
+p # run();;
+
+let gh = new generic_auth_handler ring [ (module Netmech_digest_http.Digest) ];;
+p # add_auth_handler gh;;
+p # add c;;
+p # run();;
+
+FIXME: c#auth_status=`Continue
+
 
  *)
 

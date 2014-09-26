@@ -453,7 +453,12 @@ module Header : sig
     * exceptions is the function name.
     *)
 
-  type auth_challenge = string * (string * string) list
+  type param_value =
+      [ `V of string | `Q of string ]
+    (** Parameters may occur quoted ([`Q]) or as already decoded values ([`V])
+     *)
+
+  type auth_challenge = string * (string * param_value) list
     (** The type of a single challenge, used during authentication.
         It is interpreted as [(mechanism_name, params)]. The headers
         [www-authenticate] and [proxy-authenticate] use this.
@@ -461,7 +466,7 @@ module Header : sig
         See RFC 7235 for general information.
      *)
 
-  type auth_credentials = string * (string * string) list
+  type auth_credentials = string * (string * param_value) list
     (** The type of a single credentials response, used during
         authentication. It is interpreted as [(mechanism_name, params)].
         The headers [authorize] and [proxy-authorize] use this.
@@ -599,6 +604,8 @@ module Header : sig
       * The "Basic" authentication scheme is represented specially as
       * [("basic", [ "credentials", creds ])] where [creds] are the
       * Base64-encoded credentials.
+      *
+      * At present, parameters are always decoded ([`V]).
       *)
 
   val set_authorization : #http_header -> auth_credentials -> unit
@@ -828,6 +835,8 @@ module Header : sig
       *
       * All present [Proxy-authenticate] headers are merged.
       * @raise Not_found when there is no [Proxy-authenticate] header.
+      *
+      * At present, parameters are always decoded ([`V]).
      *)
 
   val set_proxy_authenticate : #http_header -> auth_challenge list -> unit
@@ -841,6 +850,8 @@ module Header : sig
       * The "Basic" authentication scheme is represented specially as
       * [("basic", [ "credentials", creds ])] where [creds] are the
       * Base64-encoded credentials.
+      *
+      * At present, parameters are always decoded ([`V]).
      *)
 
   val set_proxy_authorization : #http_header -> auth_credentials -> unit
@@ -996,6 +1007,8 @@ module Header : sig
       * [(auth_scheme,auth_params)].
       *
       * All present [WWW-Authenticate] headers are merged.
+      *
+      * At present, parameters are always decoded ([`V]).
       * @raise Not_found if the header is missing.
      *)
 
@@ -1125,6 +1138,11 @@ module type HTTP_MECHANISM =
           unknown critical parameters must be rejected by a [Failure]
           exception. Non-critical parameters are ignored if they are unknown
           to the mechanism.
+
+          Available parameters:
+           - "realm"
+
+
        *)
 
     val client_configure_channel_binding : client_session -> 
@@ -1138,15 +1156,23 @@ module type HTTP_MECHANISM =
        *)
 
     val client_process_challenge :
-          client_session -> #http_header_ro -> Header.auth_challenge -> unit
-      (** Process the challenge from the server. The state must be [`Wait].
+          client_session -> string -> string -> #http_header_ro ->
+          Header.auth_challenge -> unit
+      (** [client_process_challenge cs method uri header challenge]:
+
+          Process the challenge from the server. The state must be [`Wait].
           As an exception, this function can also be called for the initial
           challenge from the server, even if the state is [`Emit].
+
+          [method] is the request method. [uri] is the request URI
        *)
 
     val client_emit_response :
-          client_session -> Header.auth_credentials * (string * string) list
-      (** Emit a new response as a pair [(creds,new_headers)]. 
+          client_session -> string -> string -> #http_header_ro ->
+          Header.auth_credentials * (string * string) list
+      (** [let (creds,new_headers) = client_emit_response cs method uri header]:
+
+          Emit a new response as a pair [(creds,new_headers)]. 
           The state must be [`Emit]. The [creds] either go into
           the [authorization] or [proxy-authorization] header.
           The [new_headers] are additional headers to modify.
@@ -1172,7 +1198,7 @@ module type HTTP_MECHANISM =
           client session. Not all mechanisms support this.
        *)
 
-    val client_domain_uri : client_session -> string list
+    val client_domain : client_session -> string list
       (** After successful authentication, this function may return the
           URIs defining the authentication space.
        *)
