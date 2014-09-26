@@ -14,7 +14,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netgssapi_support.cmo \
 	   netmech_scram.cmo netmech_scram_gssapi.cmo netmech_scram_sasl.cmo \
 	   netmech_plain_sasl.cmo netmech_crammd5_sasl.cmo \
-	   netmech_digestmd5_sasl.cmo
+	   netmech_digest.cmo netmech_digestmd5_sasl.cmo
 
 PKGNAME  = netstring
 

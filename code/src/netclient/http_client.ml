@@ -417,12 +417,14 @@ type 'a auth_status =
     [ `Continue of 'a
     | `OK
     | `Auth_error
+    | `None
     ]
 
 class type http_call =
 object
   method is_served : bool
   method status : status
+  method auth_status : unit auth_status
   method tls_session_props : Nettls_support.tls_session_props option
   method request_method : string
   method request_uri : string
@@ -973,6 +975,13 @@ object(self)
 
   method is_served = finished
   method status = status
+
+  method auth_status =
+    match auth_state with
+      | `OK -> `OK
+      | `None -> `None
+      | `Auth_error -> `Auth_error
+      | _ -> `Continue ()
 
   method tls_session_props = tls_session_props
 
@@ -3299,7 +3308,7 @@ let transmitter
 		( match session # authenticate msg true with
                     | `Continue headers -> headers
                     | `OK -> []
-                    | `Auth_error -> []    (* Cannot deal with it here *)
+                    | `Auth_error | `None -> []  (* Cannot deal with it here *)
                 )
 	    | `In_reply(_,headers) ->
                 headers
@@ -3316,7 +3325,7 @@ let transmitter
 		( match session # authenticate msg true with
                     | `Continue headers -> headers
                     | `OK -> []
-                    | `Auth_error -> []    (* Cannot deal with it here *)
+                    | `Auth_error | `None -> [] (* Cannot deal with it here *)
                 )
 	    | `In_reply(_,headers) ->
                 headers
@@ -5048,7 +5057,7 @@ let fragile_pipeline
               proxy_auth_state := `Auth_error
           | _, `OK ->
               proxy_auth_state := `OK
-          | _, `Auth_error ->
+          | _, (`Auth_error | `None) ->
               proxy_auth_state := `Auth_error
           | _, `Continue _ ->
               assert false
@@ -5065,7 +5074,7 @@ let fragile_pipeline
               auth_cache # mark_successful_session sess
           | _, Some `OK ->
               msg # private_api # set_auth_state `OK
-          | _, Some `Auth_error ->
+          | _, Some (`Auth_error | `None) ->
               msg # private_api # set_auth_state `Auth_error
           | _, Some `Continue _ ->
               assert false
