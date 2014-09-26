@@ -135,6 +135,27 @@ type status =
     * - [`Server_error]: The call failed for any other reason.
    *)
 
+type 'a auth_status =
+    [ `Continue of 'a
+    | `OK
+    | `Auth_error
+    | `None
+    ]
+  (** Status of HTTP-level authentication:
+    * - [`None]: Authentication wasn't tried.
+    * - [`OK]: The authentication protocol finished. What this means exactly
+    *   depends on the protocol. For most protocols it just means that the
+    *   server authenticated the client. For some protocols it may also mean
+    *   that the client authenticated the server (mutual authentication).
+    * - [`Auth_error]: The authentication protocol did not succeed. Note that
+    *   this state can also be reached for an otherwise successful HTTP
+    *   response (i.e. code 200) when the client could not authenticate the
+    *   server and the protocol demands this.
+    * - [`Continue]: The authentication is still in progress. Normally the
+    *   user should not see this state as the engine automatically continues
+    *   the protocol. The argument of [`Continue] is private.
+    *)
+
 type 'message_class how_to_reconnect =
     Send_again         (** Send the request automatically again *)
   | Request_fails      (** Drop the request *)
@@ -384,6 +405,9 @@ object
 
   method status : status
     (** The condensed status *)
+
+  method auth_status : unit auth_status
+    (** Authenticaton status *)
 
   (** {2 TLS} *)
 
@@ -963,13 +987,6 @@ object
   method keys : key list
     (** List of all known keys *)
 end
-
-
-type 'a auth_status =
-    [ `Continue of 'a
-    | `OK
-    | `Auth_error
-    ]
 
 
 (** An [auth_session] represents an authenticated session *)

@@ -2462,12 +2462,14 @@ end
 
 
 (*
+let password = "XXX";;
+
 #use "topfind";;
 #require "netclient,nettls-gnutls";;
 open Http_client;;
 Debug.enable := true;;
 let ring = new key_ring();;
-ring # add_key (key ~user:"gerd" ~realm:"Private @ gps.dynxs.de" ~password:"XXX" ~domain:[]);;
+ring # add_key (key ~user:"gerd" ~realm:"Private @ gps.dynxs.de" ~password ~domain:[]);;
 let p = new pipeline;;
 let h = new unified_auth_handler ring;;
 p # add_auth_handler h;;
