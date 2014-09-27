@@ -789,6 +789,7 @@ object(self)
 	method prepare_transmission () =
 	  pself # release_resources();
 	  status <- `Unserved;
+          finished <- false;
           tls_session_props <- None;
 	  req_work_header <- new Netmime.basic_mime_header 
 	                             req_base_header#fields;
@@ -1853,13 +1854,8 @@ let normalize_domain options (call : http_call) s =
         raise Not_found
 
 
-(* TODO:
-    - if the HTTP code is not 401/407: auth is successful
-    - if we get a new challenge: continue, but with new cnonce. 
-      If the stale flag is NOT set we need to request the key again
- *)
-
-
+(*
+  (* old implementation. Now Netmech_digest_http *)
 let digest_auth_session_for_realm options
                                   (key_handler : #key_handler)
                                   (init_call : http_call) is_proxy
@@ -2100,34 +2096,24 @@ object(self)
   method skip_challenge = false
   method skip_challenge_session _ _ = assert false
 end
+ *)
+
+let dbg_kv f kv_l =
+  String.concat ","
+    (List.map (fun kv -> let (k,v) = f kv in sprintf "%s=%S" k v) kv_l)
+
+let dbg_l f l =
+  String.concat "," (List.map (fun v -> sprintf "%S" (f v)) l)
 
 
-class unified_auth_handler (key_handler : #key_handler) : auth_handler =
-object(self)
-  method create_session call options =
-    try Some(digest_auth_session options key_handler call false)
-    with Not_applicable ->
-      try Some(basic_auth_session false key_handler call false)
-      with Not_applicable ->
-	None
-  method create_proxy_session call options =
-    try Some(digest_auth_session options key_handler call true)
-    with Not_applicable ->
-      try Some(basic_auth_session false key_handler call true)
-      with Not_applicable ->
-	None
-  method identify_session _ _  = None
-  method identify_proxy_session _ _  = None
-  method skip_challenge = false
-  method skip_challenge_session _ _ = assert false
-end
-
+let identity x = x
 
 let generic_auth_session_for_challenge
       options
       (key_handler : #key_handler) mech call is_proxy initial_challenge
     : auth_session =
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let mname = M.mechanism_name in
   let realm, id_option =
     match M.client_match ~params:[] initial_challenge with
       | Some r -> r
@@ -2142,28 +2128,51 @@ let generic_auth_session_for_challenge
     M.init_credentials key#credentials in
   let session =
     M.create_client_session
-      ~user:key#user ~creds ~params:[ "realm", realm, true ] () in
+      ~user:key#user ~creds 
+      ~params:( [ "realm", realm, true ] @ 
+                  match id_option with
+                    | None -> []
+                    | Some id -> [ "id", id, true ]
+              )
+      () in
   let first = ref true in
   let cur_auth_domain = ref [] in
+  let dbg_state() =
+    Netsys_sasl_util.string_of_client_state (M.client_state session) in
   ( object
-      method auth_scheme = M.mechanism_name
-      method auth_domain = [] (* !cur_auth_domain *) (* FIXME: disable reauth *)
+      method auth_scheme = mname
+      method auth_domain = !cur_auth_domain
       method auth_realm = key#realm
       method auth_user = key#user
       method authenticate auth_call reauth_flag =
-        assert (not reauth_flag);   (* FIXME *)
+        dlogr
+          (fun () ->
+             sprintf "generic_auth(%s): authenticate method=%s uri=%s first=%B \
+                      reauth_flag=%B is_proxy=%B id=%S state=%s"
+                     mname auth_call#request_method
+                     auth_call#effective_request_uri !first reauth_flag is_proxy
+                     (match id_option with
+                        | None -> "n/a" | Some id -> id
+                     )
+                     (dbg_state())
+          );
         let challenge =
           if !first then (
             (* First authentication: just assume that the call is the same *)
+            assert (not reauth_flag);
             assert(call = auth_call);
             initial_challenge
           )
           else (
             (* Subsequent authentications: figure out the right challenge *)
             (* NB. We assume here that the session ID never changes. CHECK *)
-            let challenges =
-              get_challenges M.mechanism_name auth_call is_proxy in
             try
+              (* This code is for mechanisms needing several steps. Hence,
+                 an ID is required.
+               *)
+              if not auth_call#is_served then raise Not_found;
+              let challenges =
+                get_challenges M.mechanism_name auth_call is_proxy in
               List.find
                 (fun ch ->
                    match M.client_match ~params:[] ch with
@@ -2171,28 +2180,47 @@ let generic_auth_session_for_challenge
                      | _ -> false
                 )
                 challenges
-            with Not_found ->
-              (* Assume that this is a final server message that does not
-                 set www-authenticate, but puts something into the other
-                 headers. Hence the challenge is empty.
+            with Not_found | Not_applicable ->
+              (* Several options:
+                   - reauth
+                   - this is a final server message that does not
+                     set www-authenticate, but puts something into the other
+                     headers. Hence the challenge is empty.
                *)
+              dlogr (fun () -> sprintf "generic_auth(%s): no challenge" mname);
               (fst initial_challenge, [])
           ) in
+        dlogr
+          (fun () ->
+             sprintf "generic_auth(%s): challenge name=%s params: %s"
+               mname (fst challenge) (dbg_kv decode_param (snd challenge))
+          );
         first := false;
         ( match M.client_state session with
             | `OK ->
                 (* re-authentication *)
                 if reauth_flag then (
+                  dlogr (fun () -> sprintf "generic_auth(%s): restart" mname);
                   cur_auth_domain := [];
-                  M.client_restart session
+                  M.client_restart session;
+                  dlogr (fun () -> 
+                           sprintf "generic_auth(%s): state=%s" 
+                                   mname (dbg_state()));
                 )
             | `Wait ->
+                dlogr (fun () -> sprintf "generic_auth(%s): process" mname);
+                assert(not reauth_flag);
+                assert(auth_call#is_served);
                 let meth = auth_call # request_method in
                 let uri = auth_call # effective_request_uri in
                 let hdr = auth_call # response_header in
                 M.client_process_challenge
-                  session meth uri hdr challenge
+                  session meth uri hdr challenge;
+                dlogr (fun () -> 
+                         sprintf "generic_auth(%s): state=%s" 
+                                 mname (dbg_state()));
             | `Emit | `Stale ->
+                assert(not reauth_flag);
                 ()   (* strange, but just let's skip the challenge *)
             | `Auth_error ->
                 ()
@@ -2207,15 +2235,33 @@ let generic_auth_session_for_challenge
                     (normalize_domain options auth_call)
                     auth_domain_s
                 with Not_found -> [] in
+              dlogr
+                (fun () -> sprintf "generic_auth(%s): domains=%s"
+                             mname (dbg_l norm_neturl auth_domain)
+                );
               cur_auth_domain := auth_domain;
               `OK
           | `Emit | `Stale ->
+              dlogr (fun () -> sprintf "generic_auth(%s): emit" mname);
               let meth = auth_call # request_method in
               let uri = auth_call # effective_request_uri in
-              let hdr = auth_call # response_header in
+              let hdr = 
+                if reauth_flag then
+                  new Netmime.basic_mime_header []
+                else
+                  auth_call # response_header in
               let (creds, new_headers) = 
                 M.client_emit_response session meth uri hdr in
-              `Continue (format_credentials is_proxy creds @ new_headers)
+              dlogr (fun () -> 
+                       sprintf "generic_auth(%s): state=%s" 
+                               mname (dbg_state()));
+              let out = format_credentials is_proxy creds @ new_headers in
+              dlogr (fun () ->
+                       sprintf "generic_auth(%s): headers %s"
+                               mname (dbg_kv identity out)
+                    );
+
+              `Continue out
           | `Wait ->
               assert false
           | `Auth_error ->
@@ -2321,6 +2367,33 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
    end
   )
 
+
+class digest_auth_handler key_handler =
+  generic_auth_handler key_handler [(module Netmech_digest_http.Digest)]
+
+
+class unified_auth_handler (key_handler : #key_handler) : auth_handler =
+  let dg = new digest_auth_handler key_handler in
+object(self)
+  method create_session call options =
+    match dg # create_session call options with
+      | Some s -> Some s
+      | None ->
+          try Some(basic_auth_session false key_handler call false)
+          with Not_applicable ->
+	    None
+  method create_proxy_session call options =
+    match dg # create_proxy_session call options with
+      | Some s -> Some s
+      | None ->
+          try Some(basic_auth_session false key_handler call true)
+          with Not_applicable ->
+	    None
+  method identify_session _ _  = None
+  method identify_proxy_session _ _  = None
+  method skip_challenge = false
+  method skip_challenge_session _ _ = assert false
+end
 
 let cache_limit = 1000
   (* Currently, an arbitrary limit. FIXME *)
@@ -2508,21 +2581,20 @@ open Http_client;;
 Debug.enable := true;;
 let ring = new key_ring();;
 ring # add_key (key ~user:"gerd" ~realm:"Private @ gps.dynxs.de" ~password ~domain:[]);;
+let c = new get "https://gps.dynxs.de/private/";;
 let p = new pipeline;;
+
 let h = new unified_auth_handler ring;;
 p # add_auth_handler h;;
-let c = new get "https://gps.dynxs.de/private/";;
 p # add c;;
 p # run();;
 
 let gh = new generic_auth_handler ring [ (module Netmech_digest_http.Digest) ];;
+let gh = new generic_auth_handler ring [ (module Netmech_digest_http.Digest_mutual) ];;
+
 p # add_auth_handler gh;;
 p # add c;;
 p # run();;
-
-FIXME: c#auth_status=`Continue
-
-
  *)
 
 

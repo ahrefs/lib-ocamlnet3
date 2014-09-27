@@ -1751,6 +1751,25 @@ module Header = struct
     mark_many_decoded
       (parse_challenges mh "Nethttp.get_www_authenticate" "WWW-Authenticate")
 
+  let parse_quoted_parameters s =
+    let u = "dummy " ^ s in
+    let mh = new Netmime.basic_mime_header ["WWW-Authenticate", u ] in
+    try
+      match get_www_authenticate mh with
+        | [] -> []
+        | [_, params] ->
+            ( List.map
+                (fun (n,v) ->
+                   match v with
+                     | `Q _ -> assert false
+                     | `V s -> (n,s)
+                )
+                params
+            )
+        | _ -> assert false 
+    with
+      | Bad_header_field _ -> failwith "parse_quoted_parameters"
+
   let set_www_authenticate mh fields =
     mh # update_field "WWW-Authenticate" (mk_challenges fields)
 

@@ -14,7 +14,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netgssapi_support.cmo \
 	   netmech_scram.cmo netmech_scram_gssapi.cmo netmech_scram_sasl.cmo \
 	   netmech_plain_sasl.cmo netmech_crammd5_sasl.cmo \
-	   netmech_digest.cmo netmech_digestmd5_sasl.cmo \
+	   netmech_digest.cmo netmech_digest_sasl.cmo \
 	   netmech_digest_http.cmo
 
 PKGNAME  = netstring
@@ -69,7 +69,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netmech_scram.mli netmech_scram_gssapi.mli netmech_scram_sasl.mli \
 	netgssapi_support.mli netchannels_crypto.mli \
 	netmech_plain_sasl.mli netmech_crammd5_sasl.mli \
-	netmech_digestmd5_sasl.mli \
+	netmech_digest_sasl.mli netmech_digest_http.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 

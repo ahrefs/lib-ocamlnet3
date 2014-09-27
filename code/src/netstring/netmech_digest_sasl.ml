@@ -7,21 +7,9 @@ open Printf
    function for the www-authenticate HTTP header.
  *)
 
-let parse_message s =
-  let u = "dummy " ^ s in
-  let mh = new Netmime.basic_mime_header ["WWW-Authenticate", u ] in
-  match Nethttp.Header.get_www_authenticate mh with
-    | [] -> []
-    | [_, params] ->
-        ( List.map
-            (fun (n,v) ->
-               match v with
-                 | `Q _ -> assert false
-                 | `V s -> (n,s)
-            )
-            params
-        )
-    | _ -> assert false 
+let parse_message =
+  Nethttp.Header.parse_quoted_parameters
+
 
 module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let mechanism_name = "DIGEST-MD5"
@@ -91,7 +79,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       let msg_params = parse_message msg in
       server_process_response_kv ss msg_params "AUTHENTICATE"
     with
-      | Nethttp.Bad_header_field _ ->  (* from parse_message *)
+      | Failure _ ->  (* from parse_message *)
            ss.sstate <- `Auth_error
 
   let server_process_response_restart ss msg set_stale =
@@ -102,7 +90,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       let msg_params = parse_message msg in
       server_process_response_restart_kv ss msg_params set_stale "AUTHENTICATE"
     with
-      | Nethttp.Bad_header_field _  -> (* from parse_message *)
+      | Failure _  -> (* from parse_message *)
            ss.sstate <- `Auth_error;
            raise Not_found
 
@@ -188,7 +176,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       else
         client_process_initial_challenge_kv cs msg_params
     with
-      | Nethttp.Bad_header_field _ ->  (* from parse_message *)
+      | Failure _ ->  (* from parse_message *)
           cs.cstate <- `Auth_error
 
 

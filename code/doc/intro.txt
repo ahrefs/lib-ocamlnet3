@@ -188,7 +188,12 @@ for other libraries.
    Netasn1
    Netgssapi_support
    Netmech_scram
+   Netmech_scram_sasl
    Netmech_scram_gssapi
+   Netmech_digest_sasl
+   Netmech_digest_http
+   Netmech_crammd5_sasl
+   Netmech_plain_sasl
    Rtypes
    Xdr
    Xdr_mstring

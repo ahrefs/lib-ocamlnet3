@@ -84,7 +84,7 @@ object
         Example:
    {[
 client # auth
-  (module Netmech_digestmd5_sasl.DIGEST_MD5)
+  (module Netmech_digest_sasl.DIGEST_MD5)
   "user"
   ""
   [ "password", "sEcReT", [] ]
@@ -219,7 +219,7 @@ let tls_config =
 {[
 Netpop.authenticate
   ~sasl_mechs:[ (module Netmech_scram_sasl.SCRAM_SHA1);
-                (module Netmech_digestmd5_sasl.DIGEST_MD5);
+                (module Netmech_digest_sasl.DIGEST_MD5);
               ]
   ~user:"tom"
   ~creds:[ "password", "sEcReT", [] ]

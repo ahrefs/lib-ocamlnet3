@@ -407,7 +407,18 @@ object
     (** The condensed status *)
 
   method auth_status : unit auth_status
-    (** Authenticaton status *)
+    (** Authenticaton status. {b This status code is important for mutual
+        authentication (i.e. when the client also authenticates the server),
+        which can be enabled for some generic authentication handlers.
+        In this case [status] and all the other methods just report about the
+        last message from the server. They will not indicate whether the
+        authentication
+        failed on the side of the client (in particular, no exception is
+        thrown). It is required to check that [auth_status=`OK].}
+
+        An example of a mechanism with mutual authentication is
+        {!Netmech_digest_http.Digest_mutual}.
+     *)
 
   (** {2 TLS} *)
 
@@ -1100,6 +1111,8 @@ class digest_auth_handler :
     *   mode "auth-int" has been omitted.
     * - The information of the [Authentication-Info] header is completely
     *   ignored
+    *
+    * This handler is implemented on top of {!Netmech_digest_http.Digest}.
    *)
 
 class unified_auth_handler : #key_handler -> auth_handler

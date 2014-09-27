@@ -34,6 +34,7 @@ type response_params =
       r_digest_uri : string;
       r_utf8 : bool;              (* for HTTP: always false *)
       r_opaque : string option;   (* only HTTP *)
+      r_domain : string list;     (* only HTTP *)
     }
 
 type credentials =
@@ -159,6 +160,11 @@ let to_strmap l =
        l
     )
 
+let space_re = Netstring_str.regexp "[ \t]+"
+
+let space_split = Netstring_str.split space_re
+
+
 let nc_re =
   let hex = "[0-9a-f]" in
   Netstring_str.regexp (hex ^ hex ^ hex ^ hex ^ hex ^ hex ^ hex ^ hex ^ "$")
@@ -260,6 +266,7 @@ let decode_response ptype msg_params method_name =
       r_utf8 = utf8;
       r_rfc2069 = ptype=`HTTP && rfc2069;
       r_opaque = opaque;
+      r_domain = [];   (* not repeated in response *)
     } in
   (r, response)
 
@@ -458,6 +465,8 @@ let client_process_initial_challenge_kv cs msg_params =
     if cs.cprofile.ptype = `SASL && not utf8 then raise Not_found;
     let opaque =
       try Some(StrMap.find "opaque" m) with Not_found -> None in
+    let domain =
+      try space_split (StrMap.find "domain" m) with Not_found -> [] in
     let alg_lc = String.lowercase(StrMap.find "algorithm" m) in
     let hash, no_sess =
       try (List.assoc alg_lc Netsys_digests.iana_alist, true)
@@ -487,6 +496,7 @@ let client_process_initial_challenge_kv cs msg_params =
         r_utf8 = utf8;
         r_rfc2069 = cs.cprofile.ptype=`HTTP && rfc2069;
         r_opaque = opaque;
+        r_domain = domain;
       } in
     cs.cresp <- Some rp;
     cs.cstate <- if stale then `Stale else `Emit;

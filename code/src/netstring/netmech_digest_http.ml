@@ -80,24 +80,35 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
 
                      
   let client_process_challenge cs method_name uri hdr challenge =
-    (* TODO: if mutual also check for the final challenge: msg_params=[],
-       hdr contains "Authorization-Info".
-
-       If not mutual, accept anything and immediatley go to `OK.
-     *)
-    let (_, msg_params) = challenge in
-    let msg_params = decode_params msg_params in
-    client_process_initial_challenge_kv cs msg_params;
-    ( match cs.cresp with
-        | None -> ()
-        | Some rp ->
-            let rp' = 
-              { rp with
-                r_digest_uri = uri;
-                r_method = method_name
-              } in
-            cs.cresp <- Some rp'
-    )
+    match cs.cresp with
+      | None ->
+          let (_, msg_params) = challenge in
+          let msg_params = decode_params msg_params in
+          client_process_initial_challenge_kv cs msg_params;
+          ( match cs.cresp with
+              | None -> ()
+              | Some rp ->
+                  let rp' = 
+                    { rp with
+                      r_digest_uri = uri;
+                      r_method = method_name
+                    } in
+                  cs.cresp <- Some rp'
+          )
+      | Some rp ->
+          (* There muse be an Authorization-Info header *)
+          ( try
+              let info = hdr # field "authentication-info" in
+              let info_params = Nethttp.Header.parse_quoted_parameters info in
+              client_process_final_challenge_kv cs info_params
+                (* NB. This function ignores cnonce and nc. They are actually
+                   not needed for verification.
+                 *)
+            with
+              | Not_found
+              | Failure _ ->
+                  cs.cstate <- `Auth_error
+          )
 
 
   let client_emit_response cs method_name uri hdr =
@@ -128,8 +139,18 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
   let client_channel_binding cs = `None
       
   let client_domain cs =
-    (* FIXME *)
-    []
+    match cs.cresp with
+      | None -> []
+      | Some r ->
+          let d = r.r_domain in
+          if d <> [] then
+            d
+          else
+            [ "/" ]  (* whole server *)
+       (* NB. the uri's are passed through Http_client.normalize_domain,
+          so server-relative paths can be interpreted
+        *)
+
 
   let client_match ~params (ch_name, ch_params) =
     try
@@ -137,7 +158,8 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
       let cs = 
         create_client_session
           ~user:"user" ~creds:["password","",[]] ~params () in
-      client_process_challenge cs "DUMMY" "dummy" [] (ch_name, ch_params);
+      let hdr = new Netmime.basic_mime_header [] in
+      client_process_challenge cs "DUMMY" "dummy" hdr (ch_name, ch_params);
       if cs.cstate = `Emit then
         match cs.cresp with
           | Some rp ->

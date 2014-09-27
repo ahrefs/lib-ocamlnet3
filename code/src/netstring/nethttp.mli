@@ -474,6 +474,11 @@ module Header : sig
         See RFC 7235 for general information.
      *)
 
+  val parse_quoted_parameters : string -> (string * string) list
+     (** A generic parser for comma-separated parameters in the form
+         key=value or key="value". Fails if the string cannot be parsed.
+      *)
+
   val get_accept : #http_header_ro -> (string *
 		                 (string * string) list *
 			        (string * string) list) list
@@ -1112,7 +1117,8 @@ module type HTTP_MECHANISM =
           If the mechanism does not support the notion of realms, a
           dummy realm should be returned.
 
-          The [id_opt] is the session ID (if supported).
+          The [id_opt] is the session ID (if supported). Session IDs can be
+          used to bind reauthentications to the original session.
 
           The challenge is from a [www-authenticate] or a 
           [proxy-authenticate] header.
@@ -1141,7 +1147,7 @@ module type HTTP_MECHANISM =
 
           Available parameters:
            - "realm"
-
+           - "id" (if [client_match] returns a session ID)
 
        *)
 

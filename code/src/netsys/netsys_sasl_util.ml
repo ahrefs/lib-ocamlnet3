@@ -31,20 +31,20 @@ let preprocess_params err_prefix known_params params =
 
 let string_of_server_state =
   function
-  | `None -> "n"
+  | `OK -> "*"
   | `Wait -> "w"
   | `Emit -> "e"
-  | `Auth_error -> "f"
+  | `Auth_error -> "F"
   | `Restart s -> "r" ^ s
 
 let server_state_of_string s =
   try
     if String.length s < 1 then raise Not_found;
     match s.[0] with
-      | 'n' -> `None
+      | '*' -> `OK
       | 'w' -> `Wait
       | 'e' -> `Emit
-      | 'f' -> `Auth_error
+      | 'F' -> `Auth_error
       | 'r' -> `Restart (String.sub s 1 (String.length s - 1))
       | _ -> raise Not_found
   with
@@ -53,20 +53,20 @@ let server_state_of_string s =
 
 let string_of_client_state =
   function
-  | `None -> "n"
+  | `OK -> "*"
   | `Wait -> "w"
   | `Emit -> "e"
-  | `Auth_error -> "f"
+  | `Auth_error -> "F"
   | `Stale -> "s"
 
 let client_state_of_string s =
   try
     if String.length s <> 1 then raise Not_found;
     match s.[0] with
-      | 'n' -> `None
+      | '*' -> `OK
       | 'w' -> `Wait
       | 'e' -> `Emit
-      | 'f' -> `Auth_error
+      | 'F' -> `Auth_error
       | 's' -> `Stale
       | _ -> raise Not_found
   with
