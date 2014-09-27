@@ -1,3 +1,6 @@
+Consistent prefixes:
+ - e.g. Http_client -> Nethttp_client
+
 Netmulticore2: see list of ideas on trac
 
 Nethm on MacOS: do not use record locking on shared memory fd.
@@ -33,12 +36,12 @@ HTTP:
    (httpauth-scram-auth. Very interesting:
     http://www.ietf.org/mail-archive/web/http-auth/current/msg01769.html)
  - Server-side authentication?
- - Auth framework? RFC 7235
+ - Auth framework? RFC 7235 - DONE
  - cookie jar for Http_client
 
 TLS:
  - how to get unique identifiers for tls-unique channel binding?
-   (RFC 5929)
+   (RFC 5929) - WONT (found some discussion that tls-unique is broken)
 
  - check that downcasts are also possible for endpoints
  - Netsys_tls.recv: check performance
@@ -257,12 +260,12 @@ Major future directions:
 - Security
   * Access GnuTLS crypto routines via Cryptokit-like API
   * GSS-API wrapper on C level (Kerberos support)
-  * GSS-API and HTTP
-  * GSS-API and FTP
+  * GSS-API and HTTP - "Negotiate"
+  * GSS-API and FTP - DOES NOT EXIST
   * SASL
-  * SASL and POP
-  * SASL and SMTP
-  * Containers for credentials
+  * SASL and POP - DONE
+  * SASL and SMTP - DONE
+  * Containers for credentials - DONE
   * Password hashing suite
   * Protect RPC better against DoS attacks
   * Netcgi2/Nethttpd w/ authentication
@@ -283,8 +286,12 @@ Major future directions:
   * smoothen Netplex APIs
   * more delegation classes
   * Nethttpd: include more real web server features
+     - authentication
+     - relaying
   * Netcgi + Netplex: allow same config style as Nethttpd
   * ASN.1 string functions
+     - decode - DONE
+     - encode
 
 - More async
   * Nethttpd services

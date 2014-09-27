@@ -1,3 +1,17 @@
+2014-09-28  Gerd Stolpmann  <gerd@zotac>
+
+	* Http_client: the authentication mechanisms are now encapsulated
+	  in a first-class module HTTP_MECHANISM. So far, there is Digest
+	  authentication in this form. The signature of HTTP_MECHANISM
+	  is similar to SASL_MECHANISM.
+
+	  Another visible change is that the insecure Basic authentication
+	  is no longer enabled for non-TLS-secured connections. This can be
+	  changed back by setting flags, though.
+
+	  Some fixes in the design improve Digest authentication for proxy
+	  connections.
+
 2014-09-19  Gerd Stolpmann  <gerd@zotac>
 
 	* Netpop: implementating SASL authentication for POP3. Moved Netpop
