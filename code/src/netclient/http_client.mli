@@ -838,6 +838,7 @@ object
 
   method default_port : int option
   (** If set, the [Host] header omits this port number *)
+
 end
 
 
@@ -973,8 +974,8 @@ object
       * The [realm] parameter is the realm identifier.
       * In [auth] the name of the authentication 
       * method is passed (lowercase characters). The method must
-      * search (or query for) a key, and return it. The key must refer to
-      * one of the passed realms. 
+      * search (or interactively ask for) a key, and return it. 
+      * The key must refer to one of the passed realms. 
       * If the method raises [Not_found],
       * authentication will fail.
      *)
@@ -1009,9 +1010,6 @@ object
     (** The list of domain URIs defines the protection space. For requests
         of the same protection space the mechanism may perform 
         re-authentication. Setting this to [] disables re-authentication.
-
-	{b Change:} Since Ocamlnet-3.3, this is a list of {!Neturl.url},
-	and no longer a list of strings.
      *)
   method auth_realm : string
     (** The realm *)
@@ -1049,19 +1047,21 @@ end
  *)
 class type auth_handler =
 object
-  method create_session : http_call -> http_options ref -> auth_session option
+  method create_session : secure:bool -> http_call -> http_options ref -> auth_session option
     (** Create a new authentication session. The passed call has status 401.
+        The [secure] flag is set when the connection is secured by TLS.
      *)
   method create_proxy_session : http_call -> http_options ref -> auth_session option
-    (** Same for proxy authentication *)
+    (** Same for proxy authentication (status 407) *)
   method identify_session : http_call -> http_options ref -> 
                             (string * string * string) option
     (** Extracts (mech_name,realm,sess_id) if possible. Only needed for
-        multi-step challenge/response authentication.
+        multi-step challenge/response authentication. THIS IS STILL
+        EXPERIMENTAL.
      *)
   method identify_proxy_session : http_call -> http_options ref -> 
                                   (string * string * string) option
-    (** Same for proxies *)
+    (** Same for proxies. THIS IS STILL EXPERIMENTAL *)
   method skip_challenge : bool
     (** If true, this method allows to skip the challenge entirely
         for authentication. This means that the credentials are added to
@@ -1079,7 +1079,9 @@ class basic_auth_handler :
         ?enable_reauth:bool -> ?skip_challenge:bool ->
         #key_handler -> auth_handler
   (** Basic authentication. Authentication information is obtained by
-    * the passed key_handler.
+    * the passed key_handler. {b Note that basic authentication is insecure
+    * and should only be run over TLS. But even then, the server obtains
+    * the password in clear. Use other methods if possible.}
     *
     * [enable_reauth]: If set to [true], a quicker authentication
     * mode is enabled: when a request is sent out, it is checked whether
@@ -1115,9 +1117,15 @@ class digest_auth_handler :
     * This handler is implemented on top of {!Netmech_digest_http.Digest}.
    *)
 
-class unified_auth_handler : #key_handler -> auth_handler
+class unified_auth_handler : ?insecure:bool -> #key_handler -> auth_handler
   (** Support both digest and basic authentication, with preference to
-      digest.
+      digest. By default, basic authentication is only enabled over
+      TLS connections. You can enable basic authentication for normal
+      connections with the [insecure] option.
+
+      In the future this class will also enable other secure authentication
+      methods such as SCRAM or Digest with more secure hash functions.
+      (The RFCs for these methods are not yet published.)
 
       Note that there is no way of enabling the [skip_challenge] mode,
       as it is not known in advance which mechanism will be used.
@@ -1275,9 +1283,10 @@ class pipeline :
 	 * sets that an HTTP proxy [name] listening on [port] is to be used
 	 *)
 
-    method set_proxy_auth : string -> string -> unit
+    method set_proxy_auth : insecure:bool -> string -> string -> unit
 	(** sets user and password for the proxy. Works for both "digest"
-	    and "basic" mechanisms. Any realm is acceptable.
+	    and "basic" mechanisms (the latter only if the [insecure]
+            flag is set). Any realm is acceptable.
 	 *)
 
     method avoid_proxy_for : string list -> unit
@@ -1286,9 +1295,11 @@ class pipeline :
 	 * e.g. [ "localhost"; ".our.net" ]
 	 *)
 
-    method set_proxy_from_environment : unit -> unit
+    method set_proxy_from_environment : insecure:bool -> unit -> unit
 	(** Inspect the environment variables [http_proxy] and [no_proxy]
-	 * and set the proxy options from them.
+	 * and set the proxy options from them. If [insecure] is set,
+           basic authentication is enabled (otherwise only secure auth
+           methods like Digest).
 	 *)
 
     method set_socks5_proxy : string -> int -> unit
@@ -1312,15 +1323,18 @@ class pipeline :
     method set_transport_proxy : channel_binding_id ->
                                  string ->
                                  int ->
-                                 (string * string) option ->
+                                 (string * string * bool) option ->
                                  proxy_type -> unit
       (** [set_transport_proxy id host port auth ptype]: Sets a special
 	  proxy for the transport identified by [id]. This overrides
 	  [set_proxy], [set_proxy_auth], and [set_socks5_proxy] for the
 	  given transport.
+
+          The [auth] triple contains [(user,password,insecure)].
        *)
 
     method set_transport_proxy_from_environment : 
+             insecure:bool ->
              (string * channel_binding_id) list -> unit
       (** Like [set_proxy_from_environment], this method inspects environment
 	  variables and configures the proxy settings. This function, however,
@@ -1335,6 +1349,8 @@ class pipeline :
 	  transports.
 
 	  The variable ["no_proxy"] is interpreted anyway.
+
+          [insecure]: whether basic authentication is enabled.
        *)
 
     method reset : unit -> unit
@@ -1494,11 +1510,13 @@ class pipeline :
 
 (** {2 Auxiliary pipeline functions} *)
 
-val parse_proxy_setting : string -> (string * int * (string * string) option)
+val parse_proxy_setting : insecure:bool -> 
+                          string -> 
+                          (string * int * (string * string * bool) option)
   (** Parses the value of an environment variable like [http_proxy],
       i.e. an HTTP URL. The argument is the URL.
-      Returns [(host,port,auth)] where [auth] may include user name and
-      password.
+      Returns [(host,port,auth)] where [auth] may include user name,
+      password, and the [insecure] flag.
    *)
 
 val parse_no_proxy : string -> string list
@@ -1534,7 +1552,9 @@ sig
     * [http_password] set the user and password if the URL does not specify
     * them. In the case that user and password are included in the URL,
     * these values are always
-    * used.
+    * used. {b Note that basic authentication is by default only enabled over
+    * connections that are secured via TLS! You can change that with the
+    * function [configure], see below.}
     *
     * There is a default error behaviour. If a request fails, it is
     * automatically repeated. The variable [http_trials] specifies the number
@@ -1566,6 +1586,14 @@ sig
 
   val http_password : string ref
     (** The default password if authentication is required *)
+
+  val configure : ?insecure:bool -> unit -> unit
+    (** Configurations:
+         - [insecure]: whether basic authentication over non-TLS connections
+           is enabled
+
+        You can only configure before the first user.
+     *)
 
   val configure_pipeline : (pipeline -> unit) -> unit
     (** This function will be called before the pipeline is used. This

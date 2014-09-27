@@ -467,7 +467,9 @@ let client_process_initial_challenge_kv cs msg_params =
       try Some(StrMap.find "opaque" m) with Not_found -> None in
     let domain =
       try space_split (StrMap.find "domain" m) with Not_found -> [] in
-    let alg_lc = String.lowercase(StrMap.find "algorithm" m) in
+    let alg_lc = 
+      try String.lowercase(StrMap.find "algorithm" m) 
+      with Not_found when cs.cprofile.ptype = `HTTP -> "md5" in
     let hash, no_sess =
       try (List.assoc alg_lc Netsys_digests.iana_alist, true)
       with Not_found ->

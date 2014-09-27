@@ -1624,7 +1624,7 @@ end
 
 class type auth_handler =
 object
-  method create_session : http_call -> http_options ref -> auth_session option
+  method create_session : secure:bool -> http_call -> http_options ref -> auth_session option
   method create_proxy_session : http_call -> http_options ref -> auth_session option
   method identify_session : http_call -> http_options ref -> 
                             (string * string * string) option
@@ -1808,7 +1808,7 @@ class basic_auth_handler ?(enable_reauth=false)
                          (key_handler : #key_handler)
                          : auth_handler =
 object(self)
-  method create_session call options =
+  method create_session ~secure call options =
     try
       Some(basic_auth_session enable_reauth key_handler call false)
     with
@@ -2079,7 +2079,7 @@ let digest_auth_session options
 class digest_auth_handler (key_handler : #key_handler)
       : auth_handler =
 object(self)
-  method create_session call options =
+  method create_session ~secure call options =
     try
       Some(digest_auth_session options key_handler call false)
     with
@@ -2114,16 +2114,21 @@ let generic_auth_session_for_challenge
     : auth_session =
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
   let mname = M.mechanism_name in
+  dlogr (fun () -> sprintf "generic_auth(%s): create" mname);
   let realm, id_option =
     match M.client_match ~params:[] initial_challenge with
       | Some r -> r
-      | None -> raise Not_applicable in
+      | None -> 
+          dlogr (fun () -> sprintf "generic_auth(%s): no match " mname);
+          raise Not_applicable in
   let request_domain =
     if is_proxy then None else Some(get_uri_with_path call) in
   let key =
     try key_handler # inquire_key ~domain:request_domain ~realm
                                   ~auth:M.mechanism_name
-    with Not_found -> raise Not_applicable in
+    with Not_found ->
+      dlogr (fun () -> sprintf "generic_auth(%s): no key " mname);
+      raise Not_applicable in
   let creds =
     M.init_credentials key#credentials in
   let session =
@@ -2228,18 +2233,20 @@ let generic_auth_session_for_challenge
         match M.client_state session with
           | `OK ->
               (* Save the protection space: *)
-              let auth_domain_s = M.client_domain session in
-              let auth_domain =
-                try
-                  List.map
-                    (normalize_domain options auth_call)
-                    auth_domain_s
-                with Not_found -> [] in
-              dlogr
-                (fun () -> sprintf "generic_auth(%s): domains=%s"
-                             mname (dbg_l norm_neturl auth_domain)
-                );
-              cur_auth_domain := auth_domain;
+              if not is_proxy then (
+                let auth_domain_s = M.client_domain session in
+                let auth_domain =
+                  try
+                    List.map
+                      (normalize_domain options auth_call)
+                      auth_domain_s
+                  with Not_found -> [] in
+                dlogr
+                  (fun () -> sprintf "generic_auth(%s): domains=%s"
+                                     mname (dbg_l norm_neturl auth_domain)
+                  );
+                cur_auth_domain := auth_domain;
+              );
               `OK
           | `Emit | `Stale ->
               dlogr (fun () -> sprintf "generic_auth(%s): emit" mname);
@@ -2281,14 +2288,23 @@ let generic_auth_session options
                          (key_handler : #key_handler) mech call is_proxy 
     : auth_session =
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  dlogr (fun () -> 
+           sprintf "generic_auth(%s): searching challenge" M.mechanism_name);
   let mech_challenges =
-    get_challenges M.mechanism_name call is_proxy in
+    try 
+      get_challenges M.mechanism_name call is_proxy
+    with Not_found | Not_applicable -> [] in
   let matching_challenges =
     List.filter
       (fun challenge ->
          M.client_match ~params:[] challenge <> None
       )
       mech_challenges in
+  dlogr (fun () -> 
+           sprintf "generic_auth(%s): challenges mech=%d match=%d" 
+                   M.mechanism_name (List.length mech_challenges)
+                   (List.length matching_challenges)
+        );
   iterate
     (generic_auth_session_for_challenge
        options key_handler mech call is_proxy
@@ -2318,13 +2334,28 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
         mechs in
     mech in
 
-  let create_session is_proxy call options =
+  let create_session ~secure is_proxy call options =
     try
+      dlogr
+        (fun () -> sprintf "generic_auth: create_session is_proxy=%B" is_proxy);
       let all_challenges = get_all_challenges call is_proxy in
+      List.iter
+        (fun (ch_name, ch_params) ->
+           dlogr
+             (fun () -> sprintf "generic_auth: challenge %s params: %s"
+                           ch_name (dbg_kv decode_param ch_params))
+        )
+        all_challenges;
       let mech = find_mech all_challenges is_proxy call in
+      dlogr
+        (fun () -> 
+           let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+           sprintf "generic_auth(%s): selected this mechanism" M.mechanism_name
+        );
       Some (generic_auth_session options key_handler mech call is_proxy)
     with
-      | Not_found -> None in
+      | Not_found
+      | Not_applicable -> None in
 
   let identify_session is_proxy (call : http_call) options =
     try
@@ -2352,12 +2383,13 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
           | _ -> raise Not_found in
       Some(M.mechanism_name, realm, session_id)
     with
-      | Not_found -> None in
+      | Not_found
+      | Not_applicable -> None in
   (object(self)
-     method create_session =
-       create_session false
+     method create_session ~secure =
+       create_session ~secure false
      method create_proxy_session =
-       create_session true
+       create_session ~secure:false true
      method identify_session =
        identify_session false
      method identify_proxy_session =
@@ -2372,16 +2404,20 @@ class digest_auth_handler key_handler =
   generic_auth_handler key_handler [(module Netmech_digest_http.Digest)]
 
 
-class unified_auth_handler (key_handler : #key_handler) : auth_handler =
+class unified_auth_handler ?(insecure=false)
+                           (key_handler : #key_handler) : auth_handler =
   let dg = new digest_auth_handler key_handler in
 object(self)
-  method create_session call options =
-    match dg # create_session call options with
+  method create_session ~secure call options =
+    match dg # create_session ~secure call options with
       | Some s -> Some s
       | None ->
-          try Some(basic_auth_session false key_handler call false)
-          with Not_applicable ->
-	    None
+          if secure || insecure then
+            try Some(basic_auth_session false key_handler call false)
+            with Not_applicable ->
+	      None
+          else
+            None
   method create_proxy_session call options =
     match dg # create_proxy_session call options with
       | Some s -> Some s
@@ -2397,6 +2433,11 @@ end
 
 let cache_limit = 1000
   (* Currently, an arbitrary limit. FIXME *)
+
+
+(* TODO: once we support channel bindings better, it is probably a good
+   idea to bind auth sessions to channels.
+ *)
 
 
 class auth_cache =
@@ -2429,14 +2470,14 @@ object(self)
           Hashtbl.find sessions_by_id2 triple
 
 
-  method auth_response (call : http_call) options =
+  method auth_response ~secure (call : http_call) options =
     (* Resume an existing session or create a new session, after a 401 *)
     let create() =
       List.fold_left
         (fun acc_opt handler ->
            match acc_opt with
              | None ->
-                 ( match handler # create_session call options with
+                 ( match handler # create_session ~secure call options with
                      | Some sess ->
                          self # add_session_by_id sess;
                          Some sess
@@ -2574,6 +2615,7 @@ end
 
 (*
 let password = "XXX";;
+let proxy_password = "XXX";;
 
 #use "topfind";;
 #require "netclient,nettls-gnutls";;
@@ -2581,8 +2623,12 @@ open Http_client;;
 Debug.enable := true;;
 let ring = new key_ring();;
 ring # add_key (key ~user:"gerd" ~realm:"Private @ gps.dynxs.de" ~password ~domain:[]);;
-let c = new get "https://gps.dynxs.de/private/";;
 let p = new pipeline;;
+
+p # set_proxy "voip.camlcity.org" 3128;;
+p # set_proxy_auth "gerd" proxy_password;;
+
+let c = new get "https://gps.dynxs.de/private/";;
 
 let h = new unified_auth_handler ring;;
 p # add_auth_handler h;;
@@ -3442,7 +3488,7 @@ let transmitter
                 []
             | `Auth_error ->
                 (* retry *)
-                msg # private_api # set_auth_state `None;
+                proxy_auth_state := `None;
                 [] in
 	let rh = msg # request_header `Effective in
 	List.iter
@@ -4280,6 +4326,10 @@ let fragile_pipeline
       val mutable read_queue = Q.create()
 	(* Invariant: write_queue is a suffix of read_queue *)
 
+      val mutable unserved_queue = Q.create()
+        (* whatever counts as unserved (for getting picked up by
+           robust_pipeline) *)
+
       (* The following two variables control whether pipelining is enabled or
        * not. The problem is that it is unclear how old servers react if we
        * send to them several requests at once. The solution is that the first
@@ -4322,6 +4372,9 @@ let fragile_pipeline
       (* Whether this connection never proves to exchange a message: *)
       val mutable total_failure = false
 
+      (* any kind of socket error, unclean shutdown etc *)
+      val mutable problem = false
+
       (* 'close_connection' indicates that a HTTP/1.0 response was received or 
        * that a response contained a 'connection: close' header.
        *)
@@ -4340,16 +4393,20 @@ let fragile_pipeline
       method length =
 	(* Returns the number of open requests (requests without response) *)
 	Q.length read_queue
-
+        + Q.length unserved_queue
 
       method active =
 	(* Whether something is to be done *)
-	self # length > 0
+	Q.length read_queue > 0
+
+
+      method problem = problem
 
 
       method iter_unserved_messages f =
 	(* Call f with all unserved messages *)
-	Queue.iter (fun trans -> f trans) read_queue
+	Queue.iter (fun trans -> f trans) unserved_queue;
+	Queue.iter (fun trans -> f trans) read_queue;
 
 
       method is_total_failure = total_failure
@@ -4370,7 +4427,7 @@ let fragile_pipeline
 	 *)
 
 
-      method add urgent m f_done =
+      method add urgent trans =
 	(* add: adds to the read_queue/write_queue. This must be possible
 	   at any time - even after shutting down the socket and stopping
 	   any event processing.
@@ -4382,42 +4439,26 @@ let fragile_pipeline
 	if !options.verbose_connection then
 	  dlogr (fun () -> 
 		   sprintf "HTTP Connection: adding call %d"
-		     (Oo.id m));
+		     (Oo.id trans#message));
 	
-	(* Create the transport container for the message and add it to the
-	 * queues:
-	 *)
-	let trans = 
-	  transmitter peer_is_proxy proxy_auth_state default_port
-                      m f_done options in
-	
-(* (* would not work, so leave disabled *)
-	if !proxy_auth_state = `None then (
-	  match proxy_auth_handler_opt with
-	    | None -> ()
-	    | Some ah ->
-		(* enable in-advance authentication *)
-		( match ah # create_proxy_session m with
-		    | None -> ()
-		    | Some sess ->
-			proxy_auth_state := `In_advance sess
-		)
-	);
- *)
+        (* If close_connection, the connection will be closed asap. *)
+        if close_connection then
+          Q.add trans unserved_queue
+        else (
+	  (* Initialize [trans] for transmission: *)
+	  trans # init();
 
-	(* Initialize [trans] for transmission: *)
-	trans # init();
-	
-	let n = Queue.length write_queue in
-	if urgent && n > 0 then (
-	  (* Insert [trans] at the ealierst possible place *)
-	  Q.add_at (n-1) trans write_queue;
-	  Q.add_at (n-1) trans read_queue;
-	)
-	else (
-	  Q.add trans write_queue;
-	  Q.add trans read_queue;
-	)
+	  let n = Queue.length write_queue in
+	  if urgent && n > 0 then (
+	    (* Insert [trans] at the ealierst possible place *)
+	    Q.add_at (n-1) trans write_queue;
+	    Q.add_at (n-1) trans read_queue;
+	  )
+	  else (
+	    Q.add trans write_queue;
+	    Q.add trans read_queue;
+	  )
+        )
 
       method attach() =
 	(* Enables event processing. To be called after [add] *)
@@ -5005,6 +5046,7 @@ let fragile_pipeline
 	 *)
 	
 	total_failure <- not io#status_seen;
+        problem <- err_opt <> None || total_failure;
 
 	(* Assertions about queues: write queue is a suffix of read queue *)
 	
@@ -5085,10 +5127,12 @@ let fragile_pipeline
 	drive_postprocessing_e esys options trans#message trans#f_done in
 
       let msg = trans # message in
-      ( match mplex # tls_session_props with
-          | None -> ()
-          | Some props -> msg # private_api # set_tls_session_props props
-      );
+      let secure =
+        match mplex # tls_session_props with
+          | None -> false
+          | Some props ->
+              msg # private_api # set_tls_session_props props;
+              true in
 
       let code = msg # private_api # response_code in
       let _req_hdr = msg # request_header `Effective in
@@ -5139,7 +5183,7 @@ let fragile_pipeline
             | `None | `OK ->
                 (* Check whether the server needs authentication: *)
                 if code = 401 then (
-                  match auth_cache # auth_response msg options with
+                  match auth_cache # auth_response ~secure msg options with
                     | None -> Some `Auth_error
                     | Some sess ->
                         msg # private_api # set_auth_state (`In_reply(sess,[]));
@@ -5164,6 +5208,9 @@ let fragile_pipeline
           | (`In_reply(sess,_) | `In_advance sess), `Auth_error ->
               sess # invalidate msg;
               proxy_auth_state := `Auth_error
+          | (`In_reply(sess,_) | `In_advance sess), `OK ->
+              (* remember the session for later reauthentication: *)
+              proxy_auth_state := `In_advance sess
           | _, `OK ->
               proxy_auth_state := `OK
           | _, (`Auth_error | `None) ->
@@ -5197,7 +5244,18 @@ let fragile_pipeline
                 `In_reply _ -> true | _ -> false ) in
       if continue then (
         msg # private_api # set_retry_anyway true;
-        ignore (self # add true trans#message trans#f_done);
+        if close_connection then (
+          (* this won't picked up by this connection. The robust_pipeline with
+             find it and re-add it. The point is here that we don't reinit
+             trans now, because this is later done anyway. Good for reauth
+             (e.g. we don't skip an nc with digest auth)
+           *)
+          trans # cleanup();
+          Q.add trans unserved_queue
+        )
+        else
+          (* do an urgent add on this connection: *)
+          ignore (self # add true trans);
         eps_e (`Done()) esys
       )
       else
@@ -5232,6 +5290,11 @@ let robust_pipeline
    *)
 
   let proxy_auth_state =  ref `None in
+  let peer_is_proxy =  (* whether we have a normal HTTP proxy *)
+    match peer with
+      | `Http_proxy _ -> true
+      | _ -> false in
+
 
   ( object(self)
       val mutable fp_opt = None
@@ -5291,9 +5354,12 @@ let robust_pipeline
 	with
 	    Not_found -> ()
       );
+      let trans = 
+	transmitter peer_is_proxy proxy_auth_state default_port
+                    m f_done options in
       match fp_opt with
 	| None ->
-	    Q.add (urgent,m,f_done) queue;
+	    Q.add (urgent,trans) queue;
 	    if connecting = None then
 	      self # reconnect()
 
@@ -5303,7 +5369,7 @@ let robust_pipeline
 	       happen soon, though, and the added message will be picked up
 	       then
 	     *)
-	    fp # add urgent m f_done
+	    fp # add urgent trans
 
 
     method reset () =
@@ -5330,10 +5396,10 @@ let robust_pipeline
       );
 
       Q.iter
-	(fun (_,m,f_done) ->
-	   m # private_api # error_if_unserved 
+	(fun (_,trans) ->
+	   trans# message # private_api # error_if_unserved 
 	     !options.verbose_connection No_reply;
-	   self # drive_postprocessing_msg m f_done
+	   self # drive_postprocessing trans
 	)
 	queue;
       Q.clear queue;
@@ -5374,8 +5440,8 @@ let robust_pipeline
 			counters options in
 		    fp_opt <- Some fp;
 		    Q.iter
-		      (fun (urgent,m,f_done) -> 
-			 fp # add urgent m f_done
+		      (fun (urgent,trans) -> 
+			 fp # add urgent trans
 		      )
 		      queue;
 		    Q.clear queue;
@@ -5395,7 +5461,7 @@ let robust_pipeline
       let q = Q.create() in
       Q.transfer queue q;
 
-      self # conn_retry true error q;
+      self # conn_retry true true error q;
 
     method private conn_is_done fp () =
       (* Check the result of fp, and move the requests back to [queue] that
@@ -5408,13 +5474,13 @@ let robust_pipeline
       fp # iter_unserved_messages
 	(fun trans ->
 	   trans # cleanup();
-	   Q.add (false, trans#message, trans#f_done) q
+	   Q.add (false, trans) q
 	);
 
-      self # conn_retry fp#is_total_failure No_reply q
+      self # conn_retry fp#is_total_failure fp#problem No_reply q
 
 
-    method private conn_retry is_total_failure subst_error q =
+    method private conn_retry is_total_failure problem subst_error q =
       (* Maybe we have a "total failure" - got no response from server *)
       let too_many_total_failures =
 	if is_total_failure then (
@@ -5438,7 +5504,8 @@ let robust_pipeline
 
       (* Check all requests individually *)
       Q.iter
-	(fun (urgent,m,f_done) ->
+	(fun (urgent,trans) ->
+           let m = trans#message in
 	   let e = m # private_api # get_error_counter in
 (*dlog (sprintf "e=%d idem=%B" e m#is_idempotent);*)
 	   let try_again =
@@ -5470,12 +5537,12 @@ let robust_pipeline
 	     if !options.verbose_status then
 	       dlogr (fun () -> 
 			sprintf "Call %d - rescheduling" (Oo.id m));
-	     Q.add (urgent,m,f_done) queue;
+	     Q.add (urgent,trans) queue;
 	   )
 	   else (
 	     m # private_api # error_if_unserved
 	       !options.verbose_connection subst_error;
-	     self # drive_postprocessing_msg m f_done
+	     self # drive_postprocessing trans
 	   )
 	)
 	q;
@@ -5484,9 +5551,9 @@ let robust_pipeline
       if Q.length queue > 0 then (
 
 	if !options.verbose_connection then
-	  dlog "HTTP connection: retrying after failure";
+	  dlog "HTTP connection: retrying";
 	
-	connect_pause <- 1.0;
+	connect_pause <- (if problem then 2.0 else 0.1) *. connect_time;
 	self#reconnect()      
       )
 
@@ -5497,8 +5564,8 @@ let robust_pipeline
 
     (* Same as for fragile_pipeline *)
 	
-    method private drive_postprocessing_msg m f_done =
-      drive_postprocessing_msg esys options m f_done
+    method private drive_postprocessing trans =
+      drive_postprocessing_msg esys options trans#message trans#f_done
 
     end
   )
@@ -5523,7 +5590,7 @@ let robust_pipeline
 
 type proxy_type = [`Http_proxy | `Socks5 ] 
 
-let parse_proxy_setting url =
+let parse_proxy_setting ~insecure url =
   let syn = Neturl.ip_url_syntax in
   let (nu,cb) = 
     try parse_url_0 [ "http", syn, Some 80, http_cb_id ] url
@@ -5532,7 +5599,7 @@ let parse_proxy_setting url =
     try
       let u = Neturl.url_user nu in       (* may raise Not_found *)
       let p = Neturl.url_password nu in   (* may raise Not_found *)
-      Some(u,p)
+      Some(u,p,insecure)
     with Not_found -> None in
   (Neturl.url_host nu, Neturl.url_port nu, auth)
 
@@ -5549,6 +5616,7 @@ class pipeline =
     val mutable proxy_auth = false
     val mutable proxy_user = ""
     val mutable proxy_password = ""
+    val mutable proxy_insecure = false
     val mutable proxy_type = `Http_proxy
     val tproxy = Hashtbl.create 5  (* transport-specific proxy *)
 
@@ -5646,11 +5714,12 @@ class pipeline =
       proxy_type  <- `Http_proxy;
       ()
 
-    method set_proxy_auth user passwd =
+    method set_proxy_auth ~insecure user passwd =
       (* sets 'user' and 'password' if demanded by a proxy *)
       proxy_auth     <- user <> "";
       proxy_user     <- user;
-      proxy_password <- passwd
+      proxy_password <- passwd;
+      proxy_insecure <- insecure
 
 
     method avoid_proxy_for l =
@@ -5658,17 +5727,17 @@ class pipeline =
       no_proxy_for <- l
 
 
-    method set_proxy_from_environment() =
+    method set_proxy_from_environment ~insecure () =
       (* Is the environment variable "http_proxy" set? *)
       let http_proxy =
 	try Sys.getenv "http_proxy" with Not_found -> "" in
       if http_proxy <> "" then (
-	let (host,port,auth) = parse_proxy_setting http_proxy in
+	let (host,port,auth) = parse_proxy_setting ~insecure http_proxy in
 	self # set_proxy host port;
 	match auth with
 	  | None -> ()
-	  | Some(u,p) ->
-	      self # set_proxy_auth u p
+	  | Some(u,p,iflag) ->
+	      self # set_proxy_auth ~insecure:iflag u p
       );
 
       (* Is the environment variable "no_proxy" set? *)
@@ -5679,13 +5748,13 @@ class pipeline =
       self # avoid_proxy_for no_proxy_list;
 
 
-    method set_transport_proxy_from_environment l =
+    method set_transport_proxy_from_environment ~insecure l =
       List.iter
 	(fun (var_name, cb_id) ->
 	   let var =
 	     try Sys.getenv var_name with Not_found -> "" in
 	   if var <> "" then (
-	     let (host,port,auth) = parse_proxy_setting var in
+	     let (host,port,auth) = parse_proxy_setting ~insecure var in
 	     self # set_transport_proxy cb_id host port auth `Http_proxy
 	   );
 	)
@@ -5787,7 +5856,7 @@ class pipeline =
 		if proxy = "" then raise Not_found;
 		(peer_of_proxy proxy proxy_port proxy_type, 
 		 if proxy_auth then
-		   Some(proxy_user, proxy_password)
+		   Some(proxy_user, proxy_password, proxy_insecure)
 		 else
 		   None
 		)
@@ -5845,8 +5914,10 @@ class pipeline =
 		  connections (peer, cb) new_connlist;
 		new_connlist
 	in
-	if List.length !connlist < !options.number_of_parallel_connections 
-	  then begin
+        let empty_conns = List.exists (fun c -> c#length = 0) !connlist in
+	if not empty_conns &&
+             List.length !connlist < !options.number_of_parallel_connections 
+	then begin
 	    let tp =
 	      try 
 		if cb = proxy_only_cb_id && not use_proxy then raise Not_found;
@@ -5855,9 +5926,9 @@ class pipeline =
 		failwith "Http_client: No transport for this channel binding" in
 	    let proxy_auth_handler_opt =
 	      match auth with
-		| Some(u,p) ->
+		| Some(u,p,insecure) ->
 		    let kh = new proxy_key_handler u p in
-		    Some(new unified_auth_handler kh)
+		    Some(new unified_auth_handler ~insecure kh)
 		| None -> 
 		    None in
 	    let new_conn = robust_pipeline
@@ -5894,9 +5965,13 @@ class pipeline =
       conn # add false request 
 	(fun m ->
 	   (* Update 'open_connections', 'connections', and 'open_messages' *)
-	   if not conn#active then begin
+           (* We don't delete proxy connections, because there is no risk
+              that this overflows. Keeping the connections is advantageous
+              because we also keep the auth session information that way
+            *)
+	   if not conn#active && not use_proxy then begin
 	     (* Check whether the connection is still in the [connections]
-              * hash. It is possible that it is already deleted here.
+              * hash. It is possible that it is already deleted there.
               *)
 
 	     let connlist =
@@ -5906,7 +5981,6 @@ class pipeline =
 		   Not_found -> ref []
 	     in
 	     if List.exists (fun c -> c == conn) !connlist then (
-	       open_connections <- open_connections - 1;
 	       connlist := List.filter (fun c -> c != conn) !connlist;
 	       if !connlist = [] then
 		 Hashtbl.remove connections (peer, cb);
@@ -5921,12 +5995,16 @@ class pipeline =
 
     method private update_open_messages =
       open_messages <- 0;
+      open_connections <- 0;
       Hashtbl.iter
 	(fun _ cl ->
 	   List.iter
 	     (fun c ->
-		if c # active then 
-		  open_messages <- open_messages + (c # length))
+		if c # active then (
+                  open_connections <- open_connections + 1;
+		  open_messages <- open_messages + (c # length)
+                )
+             )
 	     !cl)
 	connections;
 
@@ -6129,6 +6207,8 @@ module Convenience =
     let this_user = ref ""
     let this_password = ref ""
 
+    let http_insecure = ref false
+
     let conv_verbose = ref false
 
     class simple_key_handler : key_handler =
@@ -6145,23 +6225,17 @@ module Convenience =
     end
 
 
-    let auth_basic =
-      new basic_auth_handler 
-	~enable_reauth:true (new simple_key_handler)
-
-    let auth_digest =
-      new digest_auth_handler 
-	(new simple_key_handler)
+    let key_handler = new simple_key_handler
 
     let get_default_pipe() =
 
       let p = new pipeline in
 
-      p # set_proxy_from_environment();
+      p # set_proxy_from_environment ~insecure:!http_insecure ();
 
       (* Add authentication methods: *)
-      p # add_auth_handler auth_basic;
-      p # add_auth_handler auth_digest;
+      let h = new unified_auth_handler ~insecure:!http_insecure key_handler in
+      p # add_auth_handler h;
 
       (* That's it: *)
       p
@@ -6169,6 +6243,13 @@ module Convenience =
 
     let pipe = lazy (get_default_pipe())
     let pipe_empty = ref true
+
+
+    let configure ?insecure () =
+      ( match insecure with
+          | None -> ()
+          | Some flag -> http_insecure := flag
+      )
 
 
     let configure_pipeline f =
