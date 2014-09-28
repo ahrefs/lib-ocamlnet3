@@ -82,6 +82,22 @@ module type SASL_MECHANISM =
           {[
             [ "password", "ThE sEcReT", [] ]
           ]}
+
+          Another common type is derived from the LDAP authPassword
+          scheme (RFC 3112):
+
+          {[
+             [ "authPassword-" ^ scheme, authValue, [ "info", authInfo ] ]
+          ]}
+
+          The "info" attribute is optional. For instance, if you want to
+          provide MD5-hashed passwords:
+
+          {[
+             [ "authPassword-MD5", hashed_password, [ "info", salt ] ]
+
+          ]}
+
        *)
 
     type server_session
