@@ -1,3 +1,22 @@
+Http_client and SPNEGO (RFC 4559, 4178)
+ - add to channel_binding_id:
+     method enable_spnego : bool
+        --> the call may be redirected to a seperate connection which
+            uses SPNEGO
+     method enforce_spnego : bool
+        --> the call must be redirected
+     method only_CONNECT : bool
+        --> when sent to a web proxy, always use CONNECT
+ - for every connection there may be a separate SPNEGO-enabled connection
+   proxies: always CONNECT
+ - class spnego_auth_handler : ... -> auth_handler
+   if the only enabled mech is SPNEGO itself, assume stacking, and don't
+   add an SPNEGO layer
+ - there are two auth_handlers:
+   * a fake one that only redirects to SPNEGO
+     (special spnego flag in the auth_session)
+   * the real one is only active on the special SPNEGO connection
+
 Consistent prefixes:
  - e.g. Http_client -> Nethttp_client
 
