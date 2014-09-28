@@ -46,9 +46,8 @@ SASL:
  - Complete SCRAM:
     * session ID
     * props
-    * better prefix for export
-    * "SCRAM-SHA-1-salted-password" (CHECK: LDAP profile)
-      authPassword: authPassword-SCRAM-SHA-1
+    * better prefix for export - DONE
+    * authPassword: authPassword-SCRAM-SHA-1 - DONE
  - support module Netsys_sasl - DONE
  - implement for POP - DONE
  - implement for SMTP  - DONE

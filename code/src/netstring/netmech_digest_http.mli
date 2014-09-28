@@ -21,6 +21,8 @@ module Digest :  Nethttp.HTTP_MECHANISM
 
       Get [key_ring] by instantiating {!Http_client.key_ring}.
 
+      Note that the key ring must use UTF-8 encoding (although the
+      Digest protocol might need to recode to ISO-8859-1).
    *)
 
 module Digest_mutual :  Nethttp.HTTP_MECHANISM

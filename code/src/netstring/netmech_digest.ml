@@ -6,8 +6,9 @@
 
    - HTTP: RFC-2069 mode
    - HTTP: RFC-2617 mode: qop="auth", both H and H-sess
+   - HTTP: charset is iso-8859-1
    - HTTP: user name hashing
-   - SASL mode: qop="auth", H-sess
+   - SASL mode: qop="auth", H-sess, charset=utf-8
 
    What is implemented in the server:
 
@@ -15,7 +16,8 @@
    - HTTP: RFC-2617 mode: qop="auth", both H and H-sess
      (selected by ss.snosess)
    - HTTP: NO user name hashing
-   - SASL mode: qop="auth", H-sess
+   - HTTP: charset can be iso-8859-1 or utf-8
+   - SASL mode: qop="auth", H-sess, charset=utf-8
 
    So far: H=MD5. We are prepared for other hash functions, though.
  *)

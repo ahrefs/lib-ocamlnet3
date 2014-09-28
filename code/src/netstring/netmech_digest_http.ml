@@ -45,16 +45,21 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
       with Not_found ->
         failwith "Netmech_digest_http.create_client_session: no password \
                   found in credentials" in
+    let recode s = 
+      try to_client false s
+      with Not_found ->
+        failwith "Netmech_digest_http.create_client_session: cannot convert \
+                  string from UTF-8 to ISO-8859-1" in
     { cstate = `Wait;
       cresp = None;
       cprofile = profile;
       cdigest_uri = "";
       cmethod = "";
-      crealm = (try Some(List.assoc "realm" params)
+      crealm = (try Some(recode(List.assoc "realm" params))
                 with Not_found -> None);
-      cuser = user;
+      cuser = recode user;
       cauthz = "";
-      cpasswd = pw;
+      cpasswd = recode pw;
       cnonce = (try List.assoc "cnonce" params
                 with Not_found -> create_nonce());
     }
