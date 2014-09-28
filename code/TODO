@@ -43,6 +43,7 @@ SASL:
  - CRAM-MD5 - DONE
     * TODO: saslprep if available
  - DIGEST-MD5 - DONE
+    * Fix: also support charset=utf-8 in HTTP clients
  - Complete SCRAM:
     * session ID
     * props
