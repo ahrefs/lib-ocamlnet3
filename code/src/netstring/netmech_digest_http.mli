@@ -30,6 +30,13 @@ module Digest_mutual :  Nethttp.HTTP_MECHANISM
       correct [rspauth] parameter. This parameter proves that the server
       actually knew the password.
 
+      Note that mutual authentication does generally not prevent that
+      request data is sent to the server before the authentication
+      succeeds. This includes the header and
+      also the request body (for POST and PUT methods). Because of this
+      it is recommended to ensure that requests not carrying any sensitive
+      data precede those requests that need protection.
+
       See {!Netmech_digest_http.Digest} for tips how to use this mechanism.
    *)
 
