@@ -34,19 +34,22 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let default_iteration_count = 4096
 
+  let basic_mname =
+    Netmech_scram.mechanism_name profile
+
   let mechanism_name =
-    let n = Netmech_scram.mechanism_name profile in
     if P.announce_channel_binding then
-      n ^ "-PLUS"
+      basic_mname ^ "-PLUS"
     else
-      n
+      basic_mname
 
   let client_first = `Required
   let server_sends_final_data = true
   let supports_authz = true
 
   let available() =
-    try ignore(Netsys_digests.iana_find profile.hash_function); true
+    try ignore(Netsys_digests.iana_find P.hash_function);
+        true
     with Not_found -> false
 
 
@@ -59,28 +62,47 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let extract_password = Netsys_sasl_util.extract_password
 
-  let extract_salted_password ~fallback_i (c:credentials) =
+  let colon_re = Netstring_str.regexp ":"
+
+  let colon_split = Netstring_str.split colon_re
+
+  let extract_credentials ~fallback_i (c:credentials) =
     try
       let (_, value, params) =
         List.find
           (function
-            | ("SCRAM-salted-password", _, _) -> true
+            | (n, _, _) -> n = "authPassword-SCRAM-" ^ basic_mname
             | _ -> false
           )
           c in
-      let salt = List.assoc "salt" params in
-      let i = 
-        try int_of_string (List.assoc "i" params)
-        with _ -> raise Not_found in
-      (value, salt, i)
+      let info = List.assoc "info" params in
+      let (st_key, srv_key) =
+        match colon_split value with
+          | [ st_key; srv_key ] ->
+               ( try
+                   Netencoding.Base64.decode st_key,
+                   Netencoding.Base64.decode srv_key
+                 with Invalid_argument _ -> raise Not_found
+               )
+          | _ -> raise Not_found in
+      let (i, salt) =
+        match colon_split info with
+          | [ istr; salt ] ->
+               ( try
+                   int_of_string istr,
+                   Netencoding.Base64.decode salt
+                 with Invalid_argument _ | Failure _ -> raise Not_found
+               )
+          | _ -> raise Not_found in
+      `Stored_creds(st_key,srv_key,salt,i)
     with
       | Not_found ->
            let pw = extract_password c in
            let salt = Netmech_scram.create_salt() in
            let i = fallback_i in
            let h = profile.Netmech_scram.hash_function in
-           let value = Netmech_scram.salt_password h pw salt i in
-           (value, salt, i)
+           let (st_key, srv_key) = Netmech_scram.stored_key h pw salt i in
+           `Stored_creds(st_key,srv_key,salt,i)
 
   type server_session =
       { ss : Netmech_scram.server_session;
@@ -105,7 +127,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
          | None ->
               raise Not_found
          | Some creds ->
-              extract_salted_password ~fallback_i creds  (* or Not_found *)
+              extract_credentials ~fallback_i creds  (* or Not_found *)
     )
 
   let server_known_params = [ "i" ]

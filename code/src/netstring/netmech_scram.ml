@@ -22,6 +22,11 @@ type profile =
       iteration_count_limit : int;
     }
 
+type credentials =
+  [ `Salted_password of string * string * int
+  | `Stored_creds of string * string * string * int
+  ]
+
 type cb = Netsys_sasl_types.cb
 
 type gs2_header =
@@ -111,10 +116,10 @@ type server_session =
       mutable ss_cf : client_final option;
       mutable ss_cf_raw : string;
       mutable ss_sf : server_final option;
-      mutable ss_spw: string option;
+      mutable ss_creds: (string * string) option;
       mutable ss_err : server_error option;
       mutable ss_proto_key : string option;
-      ss_authenticate_opt : (string -> string -> (string * string * int)) option
+      ss_authenticate_opt : (string -> string -> credentials) option
     }
 
 (* Exported: *)
@@ -790,6 +795,14 @@ let salt_password h password salt iteration_count =
   sp
 
 
+let stored_key h password salt iteration_count =
+  let salted_pw = salt_password h password salt iteration_count in
+  let client_key = hmac_string h salted_pw "Client Key" in
+  let stored_key = hash_string h client_key in
+  let server_key = hmac_string h salted_pw "Server Key" in
+  (stored_key, server_key)
+
+
 let client_emit_message_kv cs =
   let p = cs.cs_profile in
   let h = p.hash_function in
@@ -943,7 +956,7 @@ let create_server_session2 profile auth =
     ss_cf_raw = "";
     ss_sf = None;
     ss_authenticate_opt = Some auth;
-    ss_spw = None;
+    ss_creds = None;
     ss_err = None;
     ss_proto_key = None;
   }
@@ -1032,7 +1045,7 @@ let server_emit_message_kv ss =
 	    let c1 = 
 	      match ss.ss_c1 with
 		| None -> raise Skip_proto | Some c1 -> c1 in
-	    let (spw, salt, i) = 
+	    let creds =
 	      match ss.ss_authenticate_opt with
 		| Some auth ->
                      let authzname =
@@ -1041,6 +1054,18 @@ let server_emit_message_kv ss =
                          | Some n -> n in
                      auth c1.c1_username authzname
 		| None -> assert false in
+            let (stkey,srvkey,salt, i) =
+              match creds with
+                | `Salted_password(spw,salt,i) -> 
+		     let srvkey =
+		       hmac_string h spw "Server Key" in
+	             let client_key = 
+                       hmac_string h spw "Client Key" in
+	             let stored_key =
+                       hash_string h client_key in
+                     (stored_key,srvkey,salt,i)
+                | `Stored_creds(stkey,srvkey,salt,i) -> 
+                     (stkey,srvkey,salt,i) in
 	    let s1 =
 	      { s1_nonce = c1.c1_nonce ^ create_nonce();
 		s1_salt = salt;
@@ -1049,7 +1074,7 @@ let server_emit_message_kv ss =
 	      } in
 	    ss.ss_state <- `S1;
 	    ss.ss_s1 <- Some s1;
-	    ss.ss_spw <- Some spw;
+	    ss.ss_creds <- Some(stkey,srvkey);
 	    let s1 = encode_s1_message s1 in
 	    ss.ss_s1_raw <- format_msg s1;
 	    s1
@@ -1101,17 +1126,15 @@ let server_emit_message_kv ss =
 		m
 		  
 	    | None ->
-		let spw =
-		  match ss.ss_spw with
-		    | None -> assert false | Some spw -> spw in
+		let server_key =
+		  match ss.ss_creds with
+		    | None -> assert false | Some(_,srvkey) -> srvkey in
 		let cf_no_proof = strip_cf_proof ss.ss_cf_raw in
                 let c1_bare = remove_gs2 p.ptype ss.ss_c1_raw in
 		let auth_message =
 		  c1_bare ^ "," ^ 
 		    ss.ss_s1_raw ^ "," ^ 
 		    cf_no_proof in
-		let server_key =
-		  hmac_string h spw "Server Key" in
 		let server_signature =
 		  hmac_string h server_key auth_message in
 		let sf =
@@ -1176,14 +1199,12 @@ let server_recv_message ss message =
 	       let s1 =
 		 match ss.ss_s1 with
 		   | None -> raise Skip_proto | Some s1 -> s1 in
-	       let salted_pw =
-		 match ss.ss_spw with
-		   | None -> raise Skip_proto | Some spw -> spw in
+	       let stored_key =
+		 match ss.ss_creds with
+		   | None -> raise Skip_proto | Some(stkey,_) -> stkey in
 	       let cf = decode_cf_message p.ptype true message in
 	       if s1.s1_nonce <> cf.cf_nonce then
 		 raise (Invalid_proof "nonce mismatch");
-	       let client_key = hmac_string h salted_pw "Client Key" in
-	       let stored_key = hash_string h client_key in
 	       let cf_no_proof = strip_cf_proof message in
                let c1_bare = remove_gs2 p.ptype ss.ss_c1_raw in
 	       let auth_message =
@@ -1193,8 +1214,13 @@ let server_recv_message ss message =
                dlogr (fun () -> "Server auth_message: " ^ auth_message);
 	       let client_signature =
                  hmac_string h stored_key auth_message in
-	       let proof = Netauth.xor_s client_key client_signature in
-	       if Some proof <> cf.cf_proof then
+	       let decoded_client_key = 
+                 match cf.cf_proof with
+                   | None -> assert false
+                   | Some cf_proof -> 
+                        Netauth.xor_s cf_proof client_signature in
+	       let decoded_stored_key = hash_string h decoded_client_key in
+	       if decoded_stored_key <> stored_key then
 		 raise (Invalid_proof "bad client signature");
                if not(gs2_compatibility c1.c1_gs2 cf.cf_gs2) then
                  raise (Invalid_proof "invalid gs2 header");
@@ -1204,7 +1230,8 @@ let server_recv_message ss message =
                                               h
 					      stored_key
 					      ("GSS-API session key" ^ 
-						 client_key ^ auth_message)));
+						 decoded_client_key ^ 
+                                                   auth_message)));
 	     with
 	       | Skip_proto -> ()
 	  ) ();

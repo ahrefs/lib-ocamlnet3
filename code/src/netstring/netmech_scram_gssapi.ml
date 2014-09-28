@@ -195,7 +195,7 @@ end
 
 class type server_key_verifier =
 object
-  method scram_credentials : string -> string * string * int
+  method scram_credentials : string -> Netmech_scram.credentials
 end
 
 

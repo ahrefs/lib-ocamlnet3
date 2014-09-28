@@ -32,10 +32,8 @@ end
  *)
 class type server_key_verifier =
 object
-  method scram_credentials : string -> string * string * int
-    (** Returns the triple
-	{[ (salted_password, salt, iteration_count) ]}
-	for a user, or raises [Not_found]. See
+  method scram_credentials : string -> Netmech_scram.credentials
+    (** Returns the credentials for a user, or raises [Not_found]. See
 	{!Netmech_scram.create_server_session} for the meaning of this
 	triple.
      *)

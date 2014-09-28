@@ -46,26 +46,28 @@ module SCRAM (P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM
       {b Notes about [init_credentials]:}
 
       When used in servers, the credentials can be specified in the special
-      "SCRAM-salted-password" format, e.g.
+      "authPassword-SCRAM-SHA-1" format, e.g.
 
       {[
       let h = PROFILE.hash_function
       let salt = Netmech_scram.create_salt()
       let i = 4096
-      let salted_pw = Netmech_scram.salt_password h password salt i
+      let (st_key,srv_key) = Netmech_scram.stored_key h password salt i
+      let value =
+        Netencoding.Base64.encode st_key ^ ":" ^ 
+          Netencoding.Base64.encode srv_key in
       let creds_l =
-        [ "SCRAM-salted-password", salted_pw,
-           [ "i", string_of_int i;
-             "salt", salt;
-           ]
+        [ "authpassword-SCRAM-SHA-1", value,
+           [ "info", sprintf "%d:%s" i (Netencoding.Base64.encode salt) ]
         ]
       let creds = SCRAM.init_credentials creds_l
       ]}
 
-      If existing, the "salted-password" entry takes precedence over a
-      normal "password" entry. The parameters "i" and "salt" are needed.
+      If existing, the "authPassword-*" entry takes precedence over a
+      normal "password" entry. The parameter "info" is needed.
       This format is intended to be stored in authentication databases
-      instead of the cleartext password.
+      instead of the cleartext password (compare with RFC-5803; this is
+      intentionally derived from the usual LDAP format for SCRAM credentials).
 
       {b Notes about [create_server_session]:}
 

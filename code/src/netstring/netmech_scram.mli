@@ -195,9 +195,21 @@ val client_import : string -> client_session
     to the client. After this, [server_error_flag] returns true.
  *)
 
+type credentials =
+  [ `Salted_password of string * string * int
+  | `Stored_creds of string * string * string * int
+  ]
+  (** Two forms of providing credentials:
+       - [`Salted_password(spw,salt,iteration_count)]: get the
+         salted password with
+         [spw = salt_password h password salt iteration_count]
+       - [`Stored(stkey, srvkey, salt, iteration_count)]: get the
+         pair (stkey, srvkey) with
+         [stored_key h password salt iteration_count]
+   *)
 
 val create_server_session : 
-      profile -> (string -> string * string * int) -> server_session
+      profile -> (string -> credentials) -> server_session
   (** [create_server_session p auth]: Creates a new server session with
       profile [p] and authenticator function [auth].
 
@@ -206,13 +218,14 @@ val create_server_session :
       authenticated. It is called as
 
       {[
-      let (salted_password, salt, iteration_count) = auth username
+      let credentials = auth username
       ]}
 
       where [username] is the user name. The function can now raise
       [Not_found] if the user is unknown, or it can return the
-      shown triple. Note that the cleartext password needs not to
-      be known. [salt] is a random string, and [iteration_count] a
+      credentials. Note that the cleartext password needs not to
+      be known. The credentials contain a salt and an iteration count:
+      [salt] is a random string, and [iteration_count] a
       security parameter that should be at least 4096. Whereas [salt]
       should be different for each user, the [iteration_count] can be
       chosen as a constant (e.g. 4096). Now [salted_password] can be
@@ -221,12 +234,12 @@ val create_server_session :
    *)
 
 val create_server_session2 : 
-      profile -> (string -> string -> string * string * int) -> server_session
+      profile -> (string -> string -> credentials) -> server_session
   (** Same as [create_server_session], but the authentication callback
       gets two arguments:
 
       {[
-      let (salted_password, salt, iteration_count) = auth username authzname
+      let credentials = auth username authzname
       ]}
 
       where [authzname] is the passed authorization name (or "" if na).
@@ -239,8 +252,20 @@ val salt_password :  Netsys_digests.iana_hash_fn ->
                      string -> string -> int -> string
   (** [let salted_password = salt_password h password salt iteration_count]
 
+      Use this now as credentials
+      [`Salted_password(salted_password,salt,iteration_count).
+
       As we do not implement [SASLprep] only passwords consisting of
       US-ASCII characters are accepted ([Invalid_encoding] otherwise).
+   *)
+
+val stored_key : Netsys_digests.iana_hash_fn -> 
+                     string -> string -> int -> string * string
+
+  (** [let stkey,srvkey = stored_key h password salt iteration_count]
+
+      Use this now as credentials
+      [`Stored_creds(stkey,srvkey,salt,iteration_count).
    *)
 
 val server_emit_flag : server_session -> bool
@@ -290,9 +315,9 @@ val server_authz_name : server_session -> string option
 
 val server_export : server_session -> string
 val server_import : string -> server_session
-val server_import_any : string -> (string -> string * string * int) ->
+val server_import_any : string -> (string -> credentials) ->
                         server_session
-val server_import_any2 : string -> (string -> string -> string * string * int) ->
+val server_import_any2 : string -> (string -> string -> credentials) ->
                          server_session
   (** Exports a server session as string, and imports the string again.
       [server_import] can only import established sessions.
