@@ -55,6 +55,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       sstale = false;
       sprofile = profile;
       sutf8 = true;
+      snosess = false;
       lookup
     }
 

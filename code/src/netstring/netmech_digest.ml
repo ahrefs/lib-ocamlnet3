@@ -2,6 +2,24 @@
 
 (* The core of digest authentication *)
 
+(* What is implemented in the client (when H is the name of the hash function):
+
+   - HTTP: RFC-2069 mode
+   - HTTP: RFC-2617 mode: qop="auth", both H and H-sess
+   - HTTP: user name hashing
+   - SASL mode: qop="auth", H-sess
+
+   What is implemented in the server:
+
+   - HTTP: NO RFC-2069 mode
+   - HTTP: RFC-2617 mode: qop="auth", both H and H-sess
+     (selected by ss.snosess)
+   - HTTP: NO user name hashing
+   - SASL mode: qop="auth", H-sess
+
+   So far: H=MD5. We are prepared for other hash functions, though.
+ *)
+
 open Printf
 
 module StrMap = Map.Make(String)
@@ -35,6 +53,7 @@ type response_params =
       r_utf8 : bool;              (* for HTTP: always false *)
       r_opaque : string option;   (* only HTTP *)
       r_domain : string list;     (* only HTTP *)
+      r_userhash : bool;          (* only HTTP *)
     }
 
 type credentials =
@@ -49,6 +68,7 @@ type server_session =
       srealm : string option;
       sprofile : profile;
       sutf8 : bool;
+      snosess : bool;
       lookup : string -> string -> credentials option;
     }
 
@@ -193,17 +213,28 @@ let server_emit_initial_challenge_kv ?(quote=false) ss =
       ] @
         ( if ss.sstale then [ "stale", "true" ] else [] ) @
         ( if ss.sutf8 then [ "charset", "utf-8" ] else [] ) @
-          [ "algorithm", String.uppercase h_name ^ "-sess" ] in
+          [ "algorithm", String.uppercase h_name ^ 
+                           (if ss.snosess then "" else "-sess") ] in
   ss.sstate <- `Wait;
   ss.sstale <- false;
   l
 
-let server_emit_final_challenge_kv ss =
+let server_emit_final_challenge_kv ?(quote=false) ss =
+  let q s = if quote then qstring s else s in
   match ss.sresponse with
     | None -> assert false
-    | Some(_,_,srv_resp) ->
+    | Some(rp,_,srv_resp) ->
         ss.sstate <- `OK;
-        [ "rspauth", srv_resp ]
+        [ "rspauth", srv_resp ] @
+          ( match ss.sprofile.ptype with
+              | `SASL -> []
+              | `HTTP ->
+                   [ "qop", "auth";
+                     "cnonce", q rp.r_cnonce;
+                     "nc", sprintf "%08x" rp.r_nc
+                   ]
+          )
+
 
 let iana_sess_alist =
   List.map
@@ -215,12 +246,14 @@ let decode_response ptype msg_params method_name =
   let user = StrMap.find "username" m in
   let realm = try StrMap.find "realm" m with Not_found -> "" in
   let nonce = StrMap.find "nonce" m in
+  (* We only support qop="auth" in server mode, so there is always
+     a cnonce and nc.
+   *)
+  let qop = StrMap.find "qop" m in
+  if qop <>"auth" then raise Not_found;
   let cnonce = StrMap.find "cnonce" m in
   let nc_str = StrMap.find "nc" m in
   let nc = get_nc nc_str in
-  let qop, rfc2069 = 
-    try (StrMap.find "qop" m, false) with Not_found -> ("auth", true) in
-  if qop <> "auth" then raise Not_found;
   let digest_uri_name =
     match ptype with
       | `HTTP -> "uri"
@@ -241,6 +274,8 @@ let decode_response ptype msg_params method_name =
     try Some(StrMap.find "authzid" m) with Not_found -> None in
   let authz =
     if authz0 = Some "" then None else authz0 in
+  let userhash =
+    try StrMap.find "userhash" m = "true" with Not_found -> false in
   let alg_lc =
     try StrMap.find "algorithm" m with Not_found -> "" in
   let hash, no_sess =
@@ -264,9 +299,10 @@ let decode_response ptype msg_params method_name =
       r_method = method_name;
       r_digest_uri = digest_uri;
       r_utf8 = utf8;
-      r_rfc2069 = ptype=`HTTP && rfc2069;
+      r_rfc2069 = false;   (* not in the server *)
       r_opaque = opaque;
       r_domain = [];   (* not repeated in response *)
+      r_userhash = userhash;
     } in
   (r, response)
 
@@ -279,7 +315,8 @@ let validate_response ss r response =
           if expected_realm <> realm_utf8 then raise Not_found
   );
   if r.r_hash <> List.hd ss.sprofile.hash_functions then raise Not_found;
-  if r.r_no_sess then raise Not_found;  (* not supported *)
+  if r.r_no_sess <> ss.snosess then raise Not_found;
+  if r.r_userhash then raise Not_found; (* not supported on server side *)
   let user_utf8 = to_utf8 r.r_utf8 r.r_user in
   let authz =
     match r.r_authz with
@@ -359,7 +396,7 @@ let server_process_response_restart_kv ss msg_params set_stale method_name =
 let server_stash_session_i ss =
   let tuple =
     (ss.sprofile, ss.sstate, ss.sresponse, ss.snextnc, ss.sstale, ss.srealm,
-     ss.snonce, ss.sutf8) in
+     ss.snonce, ss.sutf8, ss.snosess) in
   "server,t=DIGEST;" ^ 
     Marshal.to_string tuple []
 
@@ -374,7 +411,7 @@ let server_resume_session_i ~lookup s =
          let p = Netstring_str.match_end m in
          let data = String.sub s p (String.length s - p) in
          let (sprofile,sstate, sresponse, snextnc, sstale, srealm, snonce,
-              sutf8) =
+              sutf8, snosess) =
            Marshal.from_string data 0 in
          { sprofile;
            sstate;
@@ -384,6 +421,7 @@ let server_resume_session_i ~lookup s =
            srealm;
            snonce;
            sutf8;
+           snosess;
            lookup
          }
 
@@ -455,8 +493,10 @@ let client_process_initial_challenge_kv cs msg_params =
           | Some r -> r
           | None -> "" in
     let nonce = StrMap.find "nonce" m in
-    let qop, rfc2069 = 
+    let qop_s, rfc2069 = 
       try (StrMap.find "qop" m, false) with Not_found -> ("auth", true) in
+    let qop_l = space_split qop_s in
+    if not (List.mem "auth" qop_l) then raise Not_found;
     let stale = 
       try StrMap.find "stale" m = "true" with Not_found -> false in
     if stale && cs.cresp = None then raise Not_found;
@@ -474,6 +514,8 @@ let client_process_initial_challenge_kv cs msg_params =
       try (List.assoc alg_lc Netsys_digests.iana_alist, true)
       with Not_found ->
         (List.assoc alg_lc iana_sess_alist, false) in
+    let userhash =
+      try StrMap.find "userhash" m = "true" with Not_found -> false in
     if cs.cprofile.ptype = `SASL && no_sess then raise Not_found;
     if not (List.mem hash cs.cprofile.hash_functions) then raise Not_found;
     (* If this is an initial challenge after we tried to resume the
@@ -499,6 +541,7 @@ let client_process_initial_challenge_kv cs msg_params =
         r_rfc2069 = cs.cprofile.ptype=`HTTP && rfc2069;
         r_opaque = opaque;
         r_domain = domain;
+        r_userhash = userhash;
       } in
     cs.cresp <- Some rp;
     cs.cstate <- if stale then `Stale else `Emit;
@@ -517,36 +560,47 @@ let client_emit_response_kv ?(quote=false) cs =
           match cs.cprofile.ptype with
             | `SASL -> "digest-uri"
             | `HTTP -> "uri" in
+        let username =
+          if rp.r_userhash then
+            let h = hash rp.r_hash in
+            h (rp.r_user ^ ":" ^ rp.r_realm)
+          else
+            rp.r_user in
         let l =
-          [ "username", q rp.r_user;
+          [ "username", q username;
             "realm", q rp.r_realm;
             "nonce", q rp.r_nonce;
-            "cnonce", q rp.r_cnonce;
-            "nc", sprintf "%08x" rp.r_nc;
-            "qop", "auth";
             digest_uri_name, q rp.r_digest_uri;
             "response", resp;
           ] @
-            ( if rp.r_utf8 then [ "charset", "utf-8" ] else [] ) @
-              ( match rp.r_authz with
-                  | None -> []
-                  | Some authz -> [ "authzid", q authz ] 
-              ) @
-                ( match rp.r_opaque with
+            ( if rp.r_rfc2069 then
+                []
+              else
+                [ "cnonce", q rp.r_cnonce;
+                  "nc", sprintf "%08x" rp.r_nc;
+                  "qop", "auth";
+                ]
+            ) @
+              ( if rp.r_utf8 then [ "charset", "utf-8" ] else [] ) @
+                ( match rp.r_authz with
                     | None -> []
-                    | Some s -> [ "opaque", q s ]
+                    | Some authz -> [ "authzid", q authz ] 
                 ) @
-                  ( if rp.r_ptype = `SASL && rp.r_hash = `MD5 then
-                      []
-                    else
-                      let alg = 
-                        String.uppercase
-                          (List.assoc 
-                             rp.r_hash Netsys_digests.iana_rev_alist) in
-                      let suffix =
-                        if rp.r_no_sess then "" else "-sess" in
-                      [ "algorithm", alg ^ suffix ]
-                  ) in
+                  ( match rp.r_opaque with
+                      | None -> []
+                      | Some s -> [ "opaque", q s ]
+                  ) @
+                    ( if rp.r_ptype = `SASL && rp.r_hash = `MD5 then
+                        []
+                      else
+                        let alg = 
+                          String.uppercase
+                            (List.assoc 
+                               rp.r_hash Netsys_digests.iana_rev_alist) in
+                        let suffix =
+                          if rp.r_no_sess then "" else "-sess" in
+                        [ "algorithm", alg ^ suffix ]
+                    ) in
         cs.cstate <- (if cs.cprofile.mutual then `Wait else `OK);
         l
 

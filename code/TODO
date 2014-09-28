@@ -1,3 +1,8 @@
+Nethttpd + auth:
+ - implement the core of it rather low-level (Nethttpd_kernel)
+   only HTTP_MECHANISM; no basic auth
+ - service abstraction: parse config file; push authentication
+
 Http_client and SPNEGO (RFC 4559, 4178)
  - add to channel_binding_id:
      method enable_spnego : bool
