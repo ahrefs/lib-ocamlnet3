@@ -12,6 +12,7 @@ test:
 	ocaml test_neturl.ml
 	ocaml test_netdate.ml
 	ocaml test_netasn1.ml
+	ocaml test_netmech.ml
 	./test_recode
 
 test_recode: test_recode.ml
