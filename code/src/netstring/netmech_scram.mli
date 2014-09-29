@@ -112,14 +112,17 @@ val mechanism_name : profile -> string
     [true].
  *)
 
-val create_client_session : profile -> string -> string -> client_session
+val create_client_session :
+      ?nonce: string ->
+      profile -> string -> string -> client_session
   (** [create_client_session p username password]: Creates a new client
       session for profile [p] so that the client authenticates as user
       [username], and proves its identity with the given [password].
    *)
 
-val create_client_session2 : profile -> string -> string -> string -> 
-                             client_session
+val create_client_session2 :
+    ?nonce:string -> 
+    profile -> string -> string -> string -> client_session
   (** [create_client_session p username authzname password]: Like
       [create_client_session], but also sets the authorization name
       (only processed for the SASL profile).
@@ -179,6 +182,17 @@ val client_import : string -> client_session
       The export format is just a marshalled Ocaml value.
    *)
 
+val client_prop : client_session -> string -> string
+  (** Returns a property of the client (or Not_found):
+       - "snonce"
+       - "cnonce"
+       - "salt"
+       - "i" (iteration_count)
+       - "protocol_key"
+   *)
+
+
+
 
 (** {2 Servers} *)
 
@@ -209,6 +223,7 @@ type credentials =
    *)
 
 val create_server_session : 
+      ?nonce:string ->
       profile -> (string -> credentials) -> server_session
   (** [create_server_session p auth]: Creates a new server session with
       profile [p] and authenticator function [auth].
@@ -234,6 +249,7 @@ val create_server_session :
    *)
 
 val create_server_session2 : 
+      ?nonce:string ->
       profile -> (string -> string -> credentials) -> server_session
   (** Same as [create_server_session], but the authentication callback
       gets two arguments:
@@ -328,6 +344,16 @@ val server_import_any2 : string -> (string -> string -> credentials) ->
    *)
 
 
+val server_prop : server_session -> string -> string
+  (** Returns a property of the client (or Not_found):
+       - "snonce"
+       - "cnonce"
+       - "salt"
+       - "i" (iteration_count)
+       - "protocol_key"
+   *)
+
+
 (** {2 Confidentiality} *)
 
 type specific_keys =
@@ -418,9 +444,3 @@ module Debug : sig
   val enable : bool ref
     (** Enable debugging of this module *)
 end
-
-
-(**/**)
-
-val test_nonce : string option ref
-val test_salt : string option ref

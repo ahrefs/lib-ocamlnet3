@@ -1,5 +1,8 @@
 (* $Id$ *)
 
+(* Unit tests: tests/netstring/bench/test_netmech.ml (SASL only) *)
+
+
 (* The core of digest authentication *)
 
 (* What is implemented in the client (when H is the name of the hash function):
@@ -52,7 +55,7 @@ type response_params =
       r_nc : int;
       r_method : string;
       r_digest_uri : string;
-      r_utf8 : bool;              (* for HTTP: always false *)
+      r_utf8 : bool;
       r_opaque : string option;   (* only HTTP *)
       r_domain : string list;     (* only HTTP *)
       r_userhash : bool;          (* only HTTP *)
@@ -67,9 +70,9 @@ type server_session =
       mutable snextnc : int;
       mutable sstale : bool;
       mutable snonce : string;
-      srealm : string option;
+      srealm : string option;   (* always UTF-8 *)
       sprofile : profile;
-      sutf8 : bool;
+      sutf8 : bool;             (* whether to use UTF-8 on the wire *)
       snosess : bool;
       lookup : string -> string -> credentials option;
     }
@@ -208,7 +211,7 @@ let server_emit_initial_challenge_kv ?(quote=false) ss =
   let l =
     ( match ss.srealm with
         | None -> []
-        | Some realm -> [ "realm", q realm ]
+        | Some realm -> [ "realm", q (to_utf8 ss.sutf8 realm) ]
     ) @
       [ "nonce", q ss.snonce;
         "qpop", "auth"
@@ -450,10 +453,10 @@ type client_session =
       cdigest_uri : string;
       cmethod : string;
       cprofile : profile;
-      crealm : string option;
-      cuser : string;
-      cauthz : string;
-      cpasswd : string;
+      crealm : string option;   (* always UTF-8 *)
+      cuser : string;           (* always UTF-8 *)
+      cauthz : string;          (* always UTF-8 *)
+      cpasswd : string;         (* always UTF-8 *)
       mutable cnonce : string;
     }
 
@@ -475,7 +478,8 @@ let client_process_final_challenge_kv cs msg_params =
       match cs.cresp with
         | None -> raise Not_found
         | Some rp ->
-            let resp = compute_response rp cs.cpasswd ":" in
+            let pw = to_client rp.r_utf8 cs.cpasswd in
+            let resp = compute_response rp pw ":" in
             if resp <> rspauth then raise Not_found;
             cs.cstate <- `OK;
     ) else
@@ -488,11 +492,16 @@ let client_process_initial_challenge_kv cs msg_params =
   try
     if cs.cstate <> `Wait then raise Not_found;
     let m = to_strmap msg_params in
+    let utf8 =
+      try StrMap.find "charset" m = "utf-8" with Not_found -> false in
+    (* UTF-8: we encode our message in UTF-8 when the server sets the utf-8
+       attribute
+     *)
     let realm =
       try StrMap.find "realm" m
       with Not_found ->
         match cs.crealm with
-          | Some r -> r
+          | Some r -> to_client utf8 r
           | None -> "" in
     let nonce = StrMap.find "nonce" m in
     let qop_s, rfc2069 = 
@@ -502,8 +511,6 @@ let client_process_initial_challenge_kv cs msg_params =
     let stale = 
       try StrMap.find "stale" m = "true" with Not_found -> false in
     if stale && cs.cresp = None then raise Not_found;
-    let utf8 =
-      try StrMap.find "charset" m = "utf-8" with Not_found -> false in
     if cs.cprofile.ptype = `SASL && not utf8 then raise Not_found;
     let opaque =
       try Some(StrMap.find "opaque" m) with Not_found -> None in
@@ -531,8 +538,8 @@ let client_process_initial_challenge_kv cs msg_params =
       { r_ptype = cs.cprofile.ptype;
         r_hash = hash;
         r_no_sess = no_sess;
-        r_user = cs.cuser;
-        r_authz = if cs.cauthz="" then None else Some cs.cauthz;
+        r_user = to_client utf8 cs.cuser;
+        r_authz = if cs.cauthz="" then None else Some(to_client utf8 cs.cauthz);
         r_realm = realm;
         r_nonce = nonce;
         r_cnonce = cnonce;
@@ -557,7 +564,8 @@ let client_emit_response_kv ?(quote=false) cs =
     | None ->
         assert false
     | Some rp ->
-        let resp = compute_response rp cs.cpasswd (rp.r_method ^ ":") in
+        let pw = to_client rp.r_utf8 cs.cpasswd in
+        let resp = compute_response rp pw (rp.r_method ^ ":") in
         let digest_uri_name =
           match cs.cprofile.ptype with
             | `SASL -> "digest-uri"

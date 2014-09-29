@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+(* Unit tests: tests/netstring/bench/test_netmech.ml *)
+
 open Netmech_digest
 open Printf
 

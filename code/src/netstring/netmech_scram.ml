@@ -101,6 +101,7 @@ type client_session =
       cs_username : string;
       cs_authzname : string;
       cs_password : string;
+      cs_nonce : string option;
       mutable cs_cb : cb;
     }
 
@@ -119,6 +120,7 @@ type server_session =
       mutable ss_creds: (string * string) option;
       mutable ss_err : server_error option;
       mutable ss_proto_key : string option;
+      ss_nonce : string option;
       ss_authenticate_opt : (string -> string -> credentials) option
     }
 
@@ -683,22 +685,14 @@ let create_random() =
   Digest.to_hex s
 
 
-let test_nonce = ref None
-
 let create_nonce() =
-  match !test_nonce with
-    | None -> create_random()
-    | Some s -> s
-
-let test_salt = ref None
+  create_random()
 
 let create_salt() =
-  match !test_salt with
-    | None -> create_random()
-    | Some s -> s
+  create_random()
 
 
-let create_client_session2 profile username authzname password =
+let create_client_session2 ?nonce profile username authzname password =
   ignore(saslprep username);
   ignore(saslprep authzname);
   ignore(saslprep password);  (* Check for errors *)
@@ -715,11 +709,12 @@ let create_client_session2 profile username authzname password =
     cs_authzname = authzname;
     cs_password = password;
     cs_proto_key = None;
-    cs_cb = `None
+    cs_cb = `None;
+    cs_nonce = nonce;
   }
 
-let create_client_session profile username password =
-  create_client_session2 profile username "" password
+let create_client_session ?nonce profile username password =
+  create_client_session2 ?nonce profile username "" password
 
  
 
@@ -788,6 +783,35 @@ let client_export cs =
 let client_import s =
   ( Marshal.from_string s 0 : client_session)
 
+let client_prop cs key =
+  match key with
+    | "snonce" ->
+        ( match cs.cs_s1 with
+            | None -> raise Not_found
+            | Some s1 -> s1.s1_nonce
+        )
+    | "cnonce" ->
+        ( match cs.cs_c1 with
+            | None -> raise Not_found
+            | Some c1 -> c1.c1_nonce
+        )
+    | "salt" ->
+        ( match cs.cs_s1 with
+            | None -> raise Not_found
+            | Some s1 -> s1.s1_salt
+        )
+    | "i" ->
+        ( match cs.cs_s1 with
+            | None -> raise Not_found
+            | Some s1 -> string_of_int s1.s1_iteration_count
+        )
+    | "protocol_key" ->
+        ( match client_protocol_key cs with
+            | None -> raise Not_found
+            | Some key -> key
+        )
+    | _ -> raise Not_found
+
 
 let salt_password h password salt iteration_count =
   let sp = hi h (saslprep password) salt iteration_count in
@@ -817,7 +841,11 @@ let client_emit_message_kv cs =
 	     let c1 =
 	       { c1_username = cs.cs_username;
                  c1_gs2 = gs2;
-		 c1_nonce = create_nonce();
+		 c1_nonce = 
+                   ( match cs.cs_nonce with
+                       | Some n -> n
+                       | None -> create_nonce()
+                   );
 		 c1_extensions = []
 	       } in
 	     cs.cs_c1 <- Some c1;
@@ -944,7 +972,7 @@ let client_recv_message cs message =
     ()
 
 
-let create_server_session2 profile auth =
+let create_server_session2 ?nonce profile auth =
   (* auth: called as: let (salted_pw, salt, i) = auth username *)
   { ss_profile = profile;
     ss_state = `Start;
@@ -958,12 +986,13 @@ let create_server_session2 profile auth =
     ss_authenticate_opt = Some auth;
     ss_creds = None;
     ss_err = None;
+    ss_nonce = nonce;
     ss_proto_key = None;
   }
 
 
-let create_server_session profile auth =
-  create_server_session2 profile (fun username _ -> auth username)
+let create_server_session ?nonce profile auth =
+  create_server_session2 ?nonce profile (fun username _ -> auth username)
 
 
 let server_emit_flag ss =
@@ -1066,8 +1095,12 @@ let server_emit_message_kv ss =
                      (stored_key,srvkey,salt,i)
                 | `Stored_creds(stkey,srvkey,salt,i) -> 
                      (stkey,srvkey,salt,i) in
+            let nonce =
+              match ss.ss_nonce with
+                | None -> create_nonce()
+                | Some n -> n in
 	    let s1 =
-	      { s1_nonce = c1.c1_nonce ^ create_nonce();
+	      { s1_nonce = c1.c1_nonce ^ nonce;
 		s1_salt = salt;
 		s1_iteration_count = i;
 		s1_extensions = []
@@ -1258,6 +1291,35 @@ let server_authz_name ss =
     | None -> None
     | Some c1 -> c1.c1_gs2.gs2_authzname
 
+
+let server_prop ss key =
+  match key with
+    | "snonce" ->
+        ( match ss.ss_s1 with
+            | None -> raise Not_found
+            | Some s1 -> s1.s1_nonce
+        )
+    | "cnonce" ->
+        ( match ss.ss_c1 with
+            | None -> raise Not_found
+            | Some c1 -> c1.c1_nonce
+        )
+    | "salt" ->
+        ( match ss.ss_s1 with
+            | None -> raise Not_found
+            | Some s1 -> s1.s1_salt
+        )
+    | "i" ->
+        ( match ss.ss_s1 with
+            | None -> raise Not_found
+            | Some s1 -> string_of_int s1.s1_iteration_count
+        )
+    | "protocol_key" ->
+        ( match server_protocol_key ss with
+            | None -> raise Not_found
+            | Some key -> key
+        )
+    | _ -> raise Not_found
 
 (* Encryption for GSS-API *)
 

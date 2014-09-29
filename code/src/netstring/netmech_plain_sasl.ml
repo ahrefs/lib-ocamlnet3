@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+(* Unit tests: tests/netstring/bench/test_netmech.ml *)
+
 module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
   let mechanism_name = "PLAIN"
   let client_first = `Required

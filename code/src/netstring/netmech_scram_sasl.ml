@@ -71,7 +71,8 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       let (_, value, params) =
         List.find
           (function
-            | (n, _, _) -> n = "authPassword-SCRAM-" ^ basic_mname
+            | (n, _, _) -> 
+                n = "authPassword-" ^ basic_mname
             | _ -> false
           )
           c in
@@ -130,7 +131,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
               extract_credentials ~fallback_i creds  (* or Not_found *)
     )
 
-  let server_known_params = [ "i" ]
+  let server_known_params = [ "i"; "nonce" ]
 
   let create_server_session ~lookup ~params () =
     let params = 
@@ -143,6 +144,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       with Not_found -> default_iteration_count in
     let ss =
       Netmech_scram.create_server_session2
+        ?nonce:(try Some(List.assoc "nonce" params) with Not_found -> None)
         profile
         (scram_auth fallback_i lookup) in
     { ss;
@@ -187,12 +189,10 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
            }
 
   let server_session_id ss =
-    (* FIXME: nonce could be used *)
     None
       
   let server_prop ss key =
-    (* FIXME: export parameters *)
-    raise Not_found
+    Netmech_scram.server_prop ss.ss key
 
   let server_user_name ss =
     match Netmech_scram.server_user_name ss.ss with
@@ -220,10 +220,10 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     else
       assert false
       
-  let client_known_params = []
+  let client_known_params = [ "nonce" ]
 
   let create_client_session ~user ~authz ~creds ~params () =
-    let _params = 
+    let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_scram_sasl.create_client_session:"
         client_known_params
@@ -235,6 +235,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
                   found in credentials" in
     let cs =
       Netmech_scram.create_client_session2
+        ?nonce:(try Some(List.assoc "nonce" params) with Not_found -> None)
         profile
         user
         authz
@@ -262,7 +263,17 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     cs.cs <- new_cs
       
   let client_process_challenge cs msg =
-    Netmech_scram.client_recv_message cs.cs msg
+    try
+      Netmech_scram.client_recv_message cs.cs msg
+    with
+      | Netmech_scram.Invalid_encoding _
+      | Netmech_scram.Invalid_username_encoding _
+      | Netmech_scram.Extensions_not_supported _
+      | Netmech_scram.Protocol_error _
+      | Netmech_scram.Invalid_server_signature
+      | Netmech_scram.Server_error _ ->
+          assert(Netmech_scram.client_error_flag cs.cs);
+          ()
                                       
   let client_emit_response cs =
     Netmech_scram.client_emit_message cs.cs
@@ -283,12 +294,10 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
            { cs = Netmech_scram.client_import data }
       
   let client_session_id cs =
-    (* FIXME: use nonce *)
     None
       
   let client_prop cs key =
-    (* FIXME *)
-    raise Not_found
+    Netmech_scram.client_prop cs.cs key
 
   let client_user_name cs =
     Netmech_scram.client_user_name cs.cs

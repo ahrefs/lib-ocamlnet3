@@ -2,6 +2,8 @@
 
 (* TODO: add saslprep to at least the server, so far we have it *)
 
+(* Unit tests: tests/netstring/bench/test_netmech.ml *)
+
 let next_challenge = ref None  (* testing *)
 
 let override_challenge s =
@@ -33,7 +35,7 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     let _params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_crammd5_sasl.create_server_session:"
-        []
+        [ ]
         params in
     let r = String.create 16 in
     Netsys_rng.fill_random r;

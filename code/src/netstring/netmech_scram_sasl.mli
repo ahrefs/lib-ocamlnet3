@@ -49,7 +49,7 @@ module SCRAM (P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM
       "authPassword-SCRAM-SHA-1" format, e.g.
 
       {[
-      let h = PROFILE.hash_function
+      let h = SHA1.hash_function
       let salt = Netmech_scram.create_salt()
       let i = 4096
       let (st_key,srv_key) = Netmech_scram.stored_key h password salt i

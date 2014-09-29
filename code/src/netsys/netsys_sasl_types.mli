@@ -98,6 +98,14 @@ module type SASL_MECHANISM =
 
           ]}
 
+
+          Another common type is derived from the (older) LDAP userPassword
+          scheme (RFC 2307):
+
+         {[
+            [ "userPassword-" ^ scheme, value, [] ]
+         ]}
+
        *)
 
     type server_session

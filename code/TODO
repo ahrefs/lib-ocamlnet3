@@ -43,12 +43,25 @@ SASL:
  - CRAM-MD5 - DONE
     * TODO: saslprep if available
  - DIGEST-MD5 - DONE
-    * Fix: also support charset=utf-8 in HTTP clients
+    * Fix: also support charset=utf-8 in HTTP clients - DONE
  - Complete SCRAM:
-    * session ID
-    * props
+    * session ID - WONT
+    * props - DONE
     * better prefix for export - DONE
     * authPassword: authPassword-SCRAM-SHA-1 - DONE
+ - more authPassword:
+    * authPassword-MD5 and authPassword-SHA1 for PLAIN (RFC 3112)
+    * userPassword: see RFC 2307
+      http://www.openldap.org/faq/data/cache/347.html for ssha
+    * overview: http://wiki2.dovecot.org/Authentication/PasswordSchemes
+    * TASK: check_password function implementing many of these schemes
+      (useful for PLAIN)
+    * TASK: update_password function that computes many of these schemes
+    * TASK: implement digest-md5 scheme
+    * TASK: read and write credentials, support many formats like
+      /etc/passwd, htpasswd, htdigest, maybe even ldif
+    * TASK: custom format. just convert (username*credentials) to/from yojson.
+    * TASK: document all that!
  - support module Netsys_sasl - DONE
  - implement for POP - DONE
  - implement for SMTP  - DONE
