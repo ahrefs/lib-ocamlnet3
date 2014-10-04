@@ -8,7 +8,7 @@
 
     The module also defines an empty handler for [Sys.sigpipe], so this
     signal is ignored by the program (and you get a
-    [Unix.Unix_error(EPIPE,_,_)} exception instead). 
+    [Unix.Unix_error(EPIPE,_,_)] exception instead). 
 
     {b If you don't like that Netsys sets the Sigpipe handler, you can undo
     this:}

@@ -56,6 +56,8 @@ A number of ideas and concepts are used throughout the libraries:
 - {!Ipv6}: The state of IPv6 support
 - {!Tls}: TLS support
 - {!Crypto}: Cryptography
+- {!Authentication}: Authentication frameworks
+- {!Credentials}: How to express and store credentials
 - {!Regexp}: Regular expression backends
 
 {divend guide}

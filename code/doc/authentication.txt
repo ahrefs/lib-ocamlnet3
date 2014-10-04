@@ -1,0 +1,219 @@
+{1 Authentication}
+
+One of the bigger changes of Ocamlnet-4 is the focus on security
+topics, which also includes authentication. There are now four modular
+authentication frameworks:
+
+ - SASL (Simple Authentication and Security Layer). SASL focuses on
+   challenge/response password-checking. The IETF extended
+   many network protocols in order to support SASL. Among these protocols
+   there are SMTP, POP, IMAP, and LDAP.
+ - HTTP Authentication. Traditionally there were only two authentication
+   methods for HTTP ("basic" and "digest"), but recently the IETF paced
+   forward and defined not only principles for any HTTP method, but also
+   ported a number of SASL methods (SCRAM, updated DIGEST).
+ - GSS-API (General Security Services API). This is a stricter approach
+   for an authentication and security framework than SASL. It is not
+   directly defined as a protocol, but as an API, which improves the
+   precision and extends the functionality. In particular, GSS-API also
+   includes integrity and privacy protection of the application messages
+   as option. It is up to the application protocol how to adopt the API.
+   GSS-API is often used for system authentication (e.g. by wrapping
+   the Kerberos suite), but not limited to that. Many SASL mechanisms
+   are also available as GSS-API mechanisms. Note that there is some
+   confusion about the relationship between GSS-API and Kerberos, and
+   sometimes GSS-API is used as synonym for Kerberos. In reality, however,
+   GSS-API means the API (and framework) that is used as primary API
+   for Kerberos. It is just not limited to it. GSS-API is widely deployed
+   (e.g. MIT Kerberos for Linux/BSD/Unix, Active Directory for Windows).
+   Especially system-oriented protocols support the GSS-API, e.g. SSH,
+   FTP, and ONC-RPC. There is also a somewhat questionable way of
+   using GSS-API together with HTTP ("negotiate" method).
+ - TLS (Transport Level Security). TLS is often misunderstood as a way
+   to encrypt TCP connections. However, this is just a consequence of
+   its primary purpose, namely authenticating the endpoints. Normally,
+   only the server is authenticated in the sense that an agency (the
+   trust center) approved the credentials (then called "certificate").
+   TLS includes options to strengthen this quite weak authentication:
+   Clients may only accept certain server certificates (e.g. those
+   with extended validation attributes, or from a certain trust center,
+   or with some other specific attributes). Also, it is possible that servers
+   authenticate clients, also using certificates.
+
+
+
+{2 Modularity}
+
+For all these frameworks, Ocamlnet defines mechanism types in a
+modular way. There is a provider of the mechanism and a user (i.e. a
+protocol interpreter). The user code can be written so it can generically
+work with any mechanism of the expected type.
+
+Technically, the mechanism type is usually an OCaml {b module type}, and
+the mechanism is an OCaml {b module}. As OCaml supports first-class modules,
+the mechanisms can be passed as normal function arguments to the user
+code. Let us demonstrate this for the SASL mechanism SCRAM:
+
+ - SASL mechanisms are defined as this module type:
+   {!Netsys_sasl_types.SASL_MECHANISM}
+ - The SCRAM mechanism is available for several frameworks. For SASL,
+   there is the module {!Netmech_scram_sasl.SCRAM_SHA1} (more precisely,
+   this is SCRAM with SHA1 as hash function).
+ - In this example, let us use the POP network protocol. We can use
+   the POP protocol interpreter together with SCRAM as follows:
+   {[
+let user = ... in     (* see below *)
+let creds = ... in    (* see below *)
+let client = new Netpop.connect ... in
+Netpop.authenticate
+  ~sasl_mechs:[ (module Netmech_scram_sasl.SCRAM_SHA1 ) ]
+  ~user
+  ~creds
+  client in
+(* now the user is logged in and access POP objects, e.g. *)
+let channel = client#retr ~msgno:0 in
+...
+   ]}
+
+Of course, you can also use any other SASL method together with POP.
+Note however, that POP servers usually do not implement all SASL
+methods, but just a subset. Because of that it is good practice to
+specify several methods in the [sasl_mechs] argument. The POP client
+will use the first mechanism of this list that is also supported by
+the server. This is called mechanism negotiation. More about that
+later.
+
+Module types:
+
+ - SASL: {!Netsys_sasl_types.SASL_MECHANISM}
+ - HTTP: {!Nethttp.HTTP_MECHANISM}
+ - GSS-API: TBD
+ - TLS: {!Netsys_crypto_types.TLS_PROVIDER}
+
+Mechanisms:
+
+ - PLAIN: {!Netmech_plain_sasl}
+ - CRAM-MD5: {!Netmech_crammd5_sasl}
+ - DIGEST: {!Netmech_digest_sasl}, {!Netmech_digest_http}
+ - SCRAM: {!Netmech_scram_sasl}, {!Netmech_scram_gssapi}, HTTP: TBD
+ - GSS-API system authentication: TBD
+ - TLS: TLS mechanisms are defined by the provider of TLS. At present,
+   there is {!Nettls_gnutls} covering all TLS 1.2 mechanisms.
+
+
+{2 Credentials}
+
+We've left out what to pass as [user] and as [creds] in this example.
+It depends on the framework how user names and how credentials can be
+expressed:
+
+ - For SASL, user names are simply UTF-8 encoded strings. Credentials
+   can be specified in many forms (see the separate page about
+   {!Credentials}. For Ocamlnet, SASL credentials are expressed
+   as list of credential elements, and every element includes a type,
+   a value, and optional parameters:
+   {[
+type credentials =
+  (string * string * (string * string) list) list
+   ]}
+   For clients, passwords are normally given in the cleartext form:
+   {[
+("password", password, [])
+   ]}
+   Note that the string "password" is the element type, and must always
+   be literally "password", and should not be confused with the actual
+   password which is the second value. For servers, passwords may be
+   given in different forms (i.e. after applying a key derivation function),
+   which saves computation time.
+ - HTTP Authentication expresses user names and credentials in the same
+   way as SASL.
+ - GSS-API can use several schemes for identifying users. Credentials are
+   opaque in the API. It is not specified how credentials look like, and
+   there are private mechanism-specific functions covering how to submit
+   and how to check credentials. This is usually no problem for system
+   authentication where the credentials are implicitly known (e.g. as
+   Kerberos tickets), but it is impractical for application-level identity
+   checking. In Ocamlnet GSS-API mechanisms can be either written in OCaml,
+   or the system libraries can be used. In the former case, the credentials
+   are usually specified when the GSS-API object is instantiated (in a
+   mechanism-specific way). In the latter case, there is no way to specify
+   credentials from OCaml code.
+ - TLS uses certificates as (extended) user names, and credentials are
+   public/private key pairs. The public key is embedded in the certificate.
+   Normally certificates and private keys are stored in specially encoded
+   files.
+
+
+{2 Cleartext passwords}
+
+Some warnings about using "mechanisms" that only transmit a cleartext
+password, including
+
+ - the HTTP "basic" authentication (or even form-based password submission)
+ - the PLAIN SASL mechanism
+ - protocol-specific login methods (e.g. for POP or FTP)
+
+Even if TLS is enabled for the underlying transport channel, it is a very
+bad idea to use such methods, simply because the server will get the
+password in the clear. This allows a number of attack vectors that are
+very dangerous:
+
+ - Phishing: the client is tricked into connecting to the wrong server.
+   This server may even have a valid TLS certificate from a trust center
+   (criminals are not systematically excluded here). You can only be safe
+   if you also deploy a strong check on the server certificate.
+ - The server may be compromised so that the passwords are intercepted
+   directly after they were sent by the client.
+ - As good key derivation functions are computationally expensive, password
+   databases cannot be protected well (it would consume too much CPU).
+
+Cleartext passwords are like an invitation to hackers: {b Don't use them
+at all.}
+
+
+{2 Password checking with challenge/response mechanisms}
+
+The other password-based mechanisms are much better:
+
+ - SCRAM (best and newest)
+ - DIGEST (widely available)
+ - CRAM (try to avoid)
+
+If the client connects to the wrong server this server will not get
+the password directly. The client only proves that it knows the
+password without transmitting it. DIGEST and SCRAM add even more
+protection:
+
+ - Both "salt" the challenges. This makes it more difficult to crack
+   the password if an attacker can spoof the authentication exchange.
+ - Both authenticate the server, i.e. the client can check whether the
+   server has access to the legitimate password database.
+ - SCRAM even implements a fairly expensive key derivation function.
+   The interesting point is that only the client needs to actually
+   run this function. The server can simply store the derived key
+   in the password database. If an attacker gets access to this database,
+   it is very hard to crack the passwords, because the attacker can
+   only try out passwords at a low rate.
+
+Note that SASL does not protect the TCP connection. It is advisable to
+run SASL over TLS, because:
+
+ - this encrypts the connection
+ - this prevents man-in-the-middle attacks (if basic server authentication
+   is enabled for TLS)
+ - this prevents subtle downgrade attacks, e.g. a man-in-the-middle
+   could otherwise modify the protocol stream so that a weaker authentication
+   scheme is used than possible
+
+
+{2 Public key mechanisms}
+
+At the moment, these mechanisms are only indirectly available via:
+
+ - TLS, or
+ - GSS-API system authentication
+
+
+{2 Mechanism negotiation}
+
+XXX

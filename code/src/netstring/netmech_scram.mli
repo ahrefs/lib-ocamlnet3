@@ -269,7 +269,7 @@ val salt_password :  Netsys_digests.iana_hash_fn ->
   (** [let salted_password = salt_password h password salt iteration_count]
 
       Use this now as credentials
-      [`Salted_password(salted_password,salt,iteration_count).
+      [`Salted_password(salted_password,salt,iteration_count)].
 
       As we do not implement [SASLprep] only passwords consisting of
       US-ASCII characters are accepted ([Invalid_encoding] otherwise).
@@ -281,7 +281,7 @@ val stored_key : Netsys_digests.iana_hash_fn ->
   (** [let stkey,srvkey = stored_key h password salt iteration_count]
 
       Use this now as credentials
-      [`Stored_creds(stkey,srvkey,salt,iteration_count).
+      [`Stored_creds(stkey,srvkey,salt,iteration_count)].
    *)
 
 val server_emit_flag : server_session -> bool
