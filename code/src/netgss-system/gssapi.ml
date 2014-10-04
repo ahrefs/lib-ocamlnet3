@@ -28,3 +28,8 @@ external oid_set_of_array : gss_OID array -> gss_OID_set
 
 external no_channel_bindings : unit -> gss_channel_bindings_t
   = "netgss_no_cb"
+
+let () =
+  Callback.register_exception
+    "Netgss_bindings.Null_pointer"
+    Null_pointer

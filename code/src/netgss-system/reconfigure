@@ -51,10 +51,6 @@ EOF
     call_ocamlc -c test.c
 }
 
-init_checks() {
-}
-
-
 check_enum () {
     macro="$1"
     enum="$2"
@@ -139,7 +135,6 @@ rm -f config_checks.sh
 echo "$ ocaml -I ../../tools gssapi.descr" >>$log
 ocaml -I ../../tools gssapi.descr || exit 1
 
-init_checks
 . ./config_checks.sh
 
 touch done_reconfigure

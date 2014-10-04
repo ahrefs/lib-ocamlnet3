@@ -9,7 +9,7 @@ let types =
     "gss_cred_id_t",   tagged_abstract_ptr "netgss_free_cred_id";
     "gss_ctx_id_t",    tagged_abstract_ptr "netgss_free_ctx_id";
     "gss_name_t",      tagged_abstract_ptr "netgss_free_name";
-    "gss_channel_bindings_t"  abstract_ptr "netgss_free_cb";
+    "gss_channel_bindings_t", abstract_ptr "netgss_free_cb";
 
     "gss_cred_usage_t", `Enum [ "GSS_C_|BOTH";
                                 "GSS_C_|INITIATE";
@@ -26,7 +26,7 @@ let types =
                                  "GSS_C_|TRANS_FLAG";
                                ];
     "gss_qop_t",        `Enum [ "GSS_C_|QOP_DEFAULT" ];
-    "status_type",      `Enum [ "GSS_C_|GSS_CODE";
+    "status_type_t",    `Enum [ "GSS_C_|GSS_CODE";
                                 "GSS_C_|MECH_CODE";
                               ];
 
@@ -49,50 +49,50 @@ let functions =
   [ standard
       "OM_uint32/int32 \
            gss_acquire_cred( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           desired_name, \
                OM_uint32/int32      time_req, \
                gss_OID_set          desired_machs, \
                gss_cred_usage_t     cred_usage, \
-               OUT gss_cred_id_t   *output_cred_handle, \
-               OUT gss_OID_set     *actual_mechs, \
-               OUT OM_uint32/int32 *time_rec)";
+               OUT gss_cred_id_t    output_cred_handle, \
+               OUT gss_OID_set      actual_mechs, \
+               OUT OM_uint32/int32  time_rec)";
 
     standard
       "OM_uint32/int32 \
            gss_init_sec_context( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_cred_id_t        claimant_cred_handle, \
-               OUT gss_ctx_id_t    *context_handle, \
+               OUT gss_ctx_id_t     context_handle, \
                gss_name_t           target_name, \
                gss_OID              mech_type, \
                flags                req_flags, \
                OM_uint32/int32      time_req, \
                gss_channel_bindings_t input_chan_bindings, \
                gss_buffer_t         input_token, \
-               OUT gss_OID         *actual_mech_type, \
-               OUT gss_buffer_t    *output_token, \
-               OUT flags           *ret_flags, \
-               OUT OM_uint32/int32 *time_rec)";
+               OUT gss_OID          actual_mech_type, \
+               OUT gss_buffer_t     output_token, \
+               OUT flags            ret_flags, \
+               OUT OM_uint32/int32  time_rec)";
 
     standard
       "OM_uint32/int32 \
            gss_process_context_token( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                gss_buffer_t         token_buffer)";
 
     standard
       "OM_uint32/int32 \
            gss_context_time( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
-               OUT OM_uint32/int32 *time_rec)";
+               OUT OM_uint32/int32  time_rec)";
 
     standard
       "OM_uint32/int32 \
            gss_get_mic( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                gss_qop_t            qop_req, \
                gss_buffer_t         message_buffer, \
@@ -101,41 +101,41 @@ let functions =
     standard
       "OM_uint32/int32 \
            gss_verify_mic( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                gss_buffer_t         message_buffer, \
                gss_buffer_t         token_buffer, \
-               OUT gss_qop_t       *qop_state)";
+               OUT gss_qop_t        qop_state)";
 
     standard
       "OM_uint32/int32 \
            gss_wrap( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                bool                 conf_req_flag, \
                gss_qop_t            qop_req, \
                gss_buffer_t         input_message_buffer, \
-               OUT bool            *conf_state, \
+               OUT bool             conf_state, \
                OUT gss_buffer_t     output_message_buffer)";
     (* FIXME: output_message_buffer needs to be initialized! *)
 
     standard
       "OM_uint32/int32 \
            gss_unwrap( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                gss_buffer_t         input_message_buffer, \
                OUT gss_buffer_t     output_message_buffer, \
-               OUT bool            *conf_state, \
-               OUT gss_qop_t       *qop_state)";
+               OUT bool             conf_state, \
+               OUT gss_qop_t        qop_state)";
     (* FIXME: output_message_buffer needs to be initialized! *)
 
     standard
       "OM_uint32/int32 \
            gss_display_status( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                OM_uint32/int32      status_value, \
-               status_type          status_type, \
+               status_type_t        status_type, \
                gss_OID              mech_type, \
                OUT OM_uint32/int32  message_context, \
                OUT gss_buffer_t     status_string)";
@@ -144,98 +144,98 @@ let functions =
     standard
       "OM_uint32/int32 \
            gss_indicate_mechs( \
-               OUT OM_uint32/int32 *minor_status, \
-               OUT gss_OID_set     *mech_set)";
+               OUT OM_uint32/int32  minor_status, \
+               OUT gss_OID_set      mech_set)";
 
     standard
       "OM_uint32/int32 \
            gss_compare_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           name1, \
                gss_name_t           name2, \
-               OUT bool            *name_equal)";
+               OUT bool             name_equal)";
 
     standard
       "OM_uint32/int32 \
            gss_display_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
                OUT gss_buffer_t     output_name_buffer, \
-               OUT gss_OID         *output_name_type)";
+               OUT gss_OID          output_name_type)";
     (* FIXME: output_name_buffer needs to be initialized! *)
 
     standard
       "OM_uint32/int32 \
            gss_import_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_buffer_t         input_name_buffer, \
                gss_OID              input_name_type, \
-               OUT gss_name_t      *output_name)";
+               OUT gss_name_t       output_name)";
 
     standard
       "OM_uint32/int32 \
            gss_inquire_cred( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_cred_id_t        cred_handle, \
-               OUT gss_name_t      *name, \
-               OUT OM_int32/int32  *lifetime, \
-               OUT gss_cred_usage_t *cred_usage, \
-               OUT gss_OID_set      *mechanisms)";
+               OUT gss_name_t       name, \
+               OUT OM_uint32/int32  lifetime, \
+               OUT gss_cred_usage_t cred_usage, \
+               OUT gss_OID_set      mechanisms)";
 
     standard
       "OM_uint32/int32 \
            gss_inquire_context( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
-               OUT gss_name_t      *src_name, \
-               OUT gss_name_t      *targ_name, \
-               OUT OM_int32/int32  *lifetime_rec, \
-               OUT gss_OID         *mech_type, \
-               OUT flags           *ctx_flags, \
-               OUT bool            *locally_initiated, \
-               OUT bool            *open)";
+               OUT gss_name_t       src_name, \
+               OUT gss_name_t       targ_name, \
+               OUT OM_uint32/int32  lifetime_rec, \
+               OUT gss_OID          mech_type, \
+               OUT flags            ctx_flags, \
+               OUT bool             locally_initiated, \
+               OUT bool             open_flag)";
 
     standard
       "OM_uint32/int32 \
            gss_wrap_size_limit( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                bool                 conf_req_flag, \
                gss_qop_t            qop_req, \
                OM_uint32/int32      req_output_size, \
-               OUT OM_uint32/int32 *max_output_size)";
+               OUT OM_uint32/int32  max_output_size)";
 
     standard
       "OM_uint32/int32 \
            gss_add_cred( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_cred_id_t        input_cred_handle, \
                gss_name_t           desired_name, \
                gss_OID              desired_mech, \
                gss_cred_usage_t     cred_usage, \
                OM_uint32/int32      initiator_time_req, \
                OM_uint32/int32      acceptor_time_req, \
-               OUT gss_cred_id_t   *output_cred_handle, \
-               OUT gss_OID_set     *actual_mechs, \
-               OUT OM_uint32/int32 *initiator_time_rec, \
-               OUT OM_uint32/int32 *acceptor_time_rec)";
+               OUT gss_cred_id_t    output_cred_handle, \
+               OUT gss_OID_set      actual_mechs, \
+               OUT OM_uint32/int32  initiator_time_rec, \
+               OUT OM_uint32/int32  acceptor_time_rec)";
 
     standard
       "OM_uint32/int32 \
            gss_inquire_cred_by_mech( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_cred_id_t        input_cred_handle, \
                gss_OID              mech_type, \
-               OUT gss_name_t      *name, \
-               OUT OM_uint32/int32 *initiator_lifetime, \
-               OUT OM_uint32/int32 *acceptor_lifetime, \
-               OUT gss_cred_usage_t *cred_usage)";
+               OUT gss_name_t       name, \
+               OUT OM_uint32/int32  initiator_lifetime, \
+               OUT OM_uint32/int32  acceptor_lifetime, \
+               OUT gss_cred_usage_t cred_usage)";
 
     standard
       "OM_uint32/int32 \
            gss_export_sec_context( \
-               OUT OM_uint32/int32 *minor_status, \
-               OUT gss_ctx_id_t    *context_handle, \
+               OUT OM_uint32/int32  minor_status, \
+               OUT gss_ctx_id_t     context_handle, \
                OUT gss_buffer_t     interprocess_token)";
     (* FIXME: interprocess_token needs to be initialized! *)
     (* FIXME: context_handle is actually IN/OUT *)
@@ -243,28 +243,28 @@ let functions =
     standard
       "OM_uint32/int32 \
            gss_import_sec_context( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_buffer_t         interprocess_token, \
-               OUT gss_ctx_id_t    *context_handle)";
+               OUT gss_ctx_id_t     context_handle)";
 
     standard
       "OM_uint32/int32 \
            gss_inquire_names_for_mech( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_OID              mechanism, \
-               gss_OID_set         *name_types)";
+               gss_OID_set          name_types)";
 
     standard
       "OM_uint32/int32 \
            gss_inquire_mechs_for_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
-               OUT gss_OID_set     *mech_type)";
+               OUT gss_OID_set      mech_type)";
 
     standard
       "OM_uint32/int32 \
            gss_export_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
                OUT gss_buffer_t     exported_name)";
     (* FIXME: exported_name needs to be initialized! *)
@@ -272,17 +272,17 @@ let functions =
     standard
       "OM_uint32/int32 \
            gss_duplicate_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
-               OUT gss_name_t       *dest_name)";
+               OUT gss_name_t       dest_name)";
     
     standard
       "OM_uint32/int32 \
            gss_canonicalize_name( \
-               OUT OM_uint32/int32 *minor_status, \
+               OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
                gss_OID              mech_type, \
-               OUT gss_name_t      *output_name)";
+               OUT gss_name_t       output_name)";
   ]
 
 
