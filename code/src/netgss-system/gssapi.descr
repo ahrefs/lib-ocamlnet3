@@ -71,7 +71,7 @@ let functions =
                gss_channel_bindings_t input_chan_bindings, \
                gss_buffer_t         input_token, \
                OUT gss_OID          actual_mech_type, \
-               OUT gss_buffer_t     output_token, \
+               OUT_NOPTR gss_buffer_t output_token, \
                OUT flags            ret_flags, \
                OUT OM_uint32/int32  time_rec)";
 
@@ -116,8 +116,7 @@ let functions =
                gss_qop_t            qop_req, \
                gss_buffer_t         input_message_buffer, \
                OUT bool             conf_state, \
-               OUT gss_buffer_t     output_message_buffer)";
-    (* FIXME: output_message_buffer needs to be initialized! *)
+               OUT_NOPTR gss_buffer_t output_message_buffer)";
 
     standard
       "OM_uint32/int32 \
@@ -125,10 +124,9 @@ let functions =
                OUT OM_uint32/int32  minor_status, \
                gss_ctx_id_t         context_handle, \
                gss_buffer_t         input_message_buffer, \
-               OUT gss_buffer_t     output_message_buffer, \
+               OUT_NOPTR gss_buffer_t output_message_buffer, \
                OUT bool             conf_state, \
                OUT gss_qop_t        qop_state)";
-    (* FIXME: output_message_buffer needs to be initialized! *)
 
     standard
       "OM_uint32/int32 \
@@ -138,8 +136,7 @@ let functions =
                status_type_t        status_type, \
                gss_OID              mech_type, \
                OUT OM_uint32/int32  message_context, \
-               OUT gss_buffer_t     status_string)";
-    (* FIXME: status_string needs to be initialized! *)
+               OUT_NOPTR gss_buffer_t status_string)";
 
     standard
       "OM_uint32/int32 \
@@ -160,9 +157,8 @@ let functions =
            gss_display_name( \
                OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
-               OUT gss_buffer_t     output_name_buffer, \
+               OUT_NOPTR gss_buffer_t output_name_buffer, \
                OUT gss_OID          output_name_type)";
-    (* FIXME: output_name_buffer needs to be initialized! *)
 
     standard
       "OM_uint32/int32 \
@@ -235,10 +231,8 @@ let functions =
       "OM_uint32/int32 \
            gss_export_sec_context( \
                OUT OM_uint32/int32  minor_status, \
-               OUT gss_ctx_id_t     context_handle, \
-               OUT gss_buffer_t     interprocess_token)";
-    (* FIXME: interprocess_token needs to be initialized! *)
-    (* FIXME: context_handle is actually IN/OUT *)
+               IN_OUT gss_ctx_id_t  context_handle, \
+               OUT_NOPTR gss_buffer_t interprocess_token)";
 
     standard
       "OM_uint32/int32 \
@@ -252,7 +246,7 @@ let functions =
            gss_inquire_names_for_mech( \
                OUT OM_uint32/int32  minor_status, \
                gss_OID              mechanism, \
-               gss_OID_set          name_types)";
+               OUT gss_OID_set      name_types)";
 
     standard
       "OM_uint32/int32 \
@@ -266,8 +260,7 @@ let functions =
            gss_export_name( \
                OUT OM_uint32/int32  minor_status, \
                gss_name_t           input_name, \
-               OUT gss_buffer_t     exported_name)";
-    (* FIXME: exported_name needs to be initialized! *)
+               OUT_NOPTR gss_buffer_t  exported_name)";
 
     standard
       "OM_uint32/int32 \
@@ -300,6 +293,7 @@ let () =
     ~optional_functions
     ~optional_types
     ~free: []
+    ~init: [ "gss_buffer_t" ]
     ~hashes:[]
     ~enum_of_string:[]
     ()

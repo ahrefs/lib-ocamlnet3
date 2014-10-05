@@ -14,6 +14,22 @@ external buffer_of_memory : memory -> gss_buffer_t
 external string_of_buffer : gss_buffer_t -> string
   = "netgss_string_of_buffer"
 
+external netgss_memory_of_buffer : gss_buffer_t -> memory
+  = "netgss_memory_of_buffer"
+
+let hide_reference x _ =
+  x := None
+
+let memory_of_buffer buf =
+  let buf_opt = ref (Some buf) in
+  let finalizer = hide_reference buf_opt in
+  let m = netgss_memory_of_buffer buf in
+  Gc.finalise finalizer m;
+  m
+
+external release_buffer : gss_buffer_t -> unit
+  = "netgss_release_buffer"
+
 external oid_of_der : string -> gss_OID
   = "netgss_oid_of_string"
 

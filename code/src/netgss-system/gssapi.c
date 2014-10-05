@@ -17,6 +17,8 @@ static gss_buffer_t unwrap_gss_buffer_t(value);
 static gss_OID      unwrap_gss_OID(value);
 static gss_OID_set  unwrap_gss_OID_set(value);
 
+static long         tag_gss_buffer_t(value);
+
 static void attach_gss_buffer_t(value, value);
 
 
@@ -24,25 +26,60 @@ typedef OM_uint32 flags;
 typedef int status_type_t;
 
 
-static void netgss_free_buffer(long tag, gss_buffer_t buf) {
-    if (tag == 0) {
-        OM_uint32 major, minor;
-        major = gss_release_buffer(&minor, buf);
-        buf->value = NULL;
-        /* The descriptor is always allocated by us: */
-        stat_free(buf);
-    } else {
-        if (tag == 1) {
-            stat_free(buf->value);
-            buf->value = NULL;
-            stat_free(buf);
+#define raise_null_pointer netgss_null_pointer
+
+static void netgss_null_pointer(void) {
+    caml_raise_constant(*caml_named_value
+                          ("Netgss_bindings.Null_pointer"));
+}
+
+
+static void netgss_free_buffer_contents(long tag, gss_buffer_t buf) {
+    if (buf->value != NULL) {
+        if (tag == 0) {
+            OM_uint32 major, minor;
+            major = gss_release_buffer(&minor, buf);
+        } else {
+            if (tag == 1) {
+                stat_free(buf->value);
+            }
         }
     }
+    buf->value = NULL;
+    buf->length = 0;
+}
+
+
+static void netgss_free_buffer(long tag, gss_buffer_t buf) {
+    netgss_free_buffer_contents(tag, buf);
+    /* The descriptor is always allocated by us: */
+    stat_free(buf);
 }
 
 
 static gss_buffer_t netgss_alloc_buffer(void) {
-    return (gss_buffer_t) stat_alloc(sizeof(gss_buffer_desc));
+    gss_buffer_t buf;
+    buf = (gss_buffer_t) stat_alloc(sizeof(gss_buffer_desc));
+    buf->value = NULL;
+    buf->length = 0;
+    return buf;
+}
+
+
+static void init_gss_buffer_t(gss_buffer_t *p) {
+    gss_buffer_t buf;
+    buf = netgss_alloc_buffer();
+    buf->length = 0;
+    buf->value = NULL;
+    *p = buf;
+}
+
+
+CAMLprim value netgss_release_buffer(value b) {
+    gss_buffer_t buf;
+    buf = unwrap_gss_buffer_t(b);
+    netgss_free_buffer_contents(tag_gss_buffer_t(b), buf);
+    return Val_unit;
 }
 
 
@@ -72,9 +109,21 @@ CAMLprim value netgss_string_of_buffer(value b) {
     gss_buffer_t buf;
     value s;
     buf = unwrap_gss_buffer_t(b);
+    if (buf->value == NULL) netgss_null_pointer();
     s = caml_alloc_string(buf->length);
     memcpy(String_val(s), buf->value, buf->length);
     return s;
+}
+
+
+CAMLprim value netgss_memory_of_buffer(value b) {
+    gss_buffer_t buf;
+    value m;
+    buf = unwrap_gss_buffer_t(b);
+    if (buf->value == NULL) netgss_null_pointer();
+    m = caml_ba_alloc_dims(CAML_BA_UINT8 | CAML_BA_C_LAYOUT, 1,
+                           buf->value, buf->length);
+    return m;
 }
 
 
@@ -202,11 +251,4 @@ CAMLprim value netgss_no_cb(value dummy) {
 
 
 static void netgss_free_cb(gss_channel_bindings_t x) {
-}
-
-#define raise_null_pointer netgss_null_pointer
-
-static void netgss_null_pointer(void) {
-    caml_raise_constant(*caml_named_value
-                          ("Netgss_bindings.Null_pointer"));
 }

@@ -8,6 +8,8 @@ type memory =
 val buffer_of_string : string -> gss_buffer_t
 val buffer_of_memory : memory -> gss_buffer_t
 val string_of_buffer : gss_buffer_t -> string
+val memory_of_buffer : gss_buffer_t -> memory
+val release_buffer : gss_buffer_t -> unit
 val oid_of_der : string -> gss_OID
 val der_of_oid : gss_OID -> string
 val array_of_oid_set : gss_OID_set -> gss_OID array
