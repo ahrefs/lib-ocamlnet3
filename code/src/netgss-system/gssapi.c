@@ -12,6 +12,8 @@ static value twrap_gss_buffer_t(long tag, gss_buffer_t buf);
 static value twrap_gss_OID(long tag, gss_OID oid);
 static value twrap_gss_OID_set(long tag, gss_OID_set set);
 static value  wrap_gss_channel_bindings_t(gss_channel_bindings_t cb);
+static value  wrap_gss_ctx_id_t(gss_ctx_id_t ctx);
+static value  wrap_gss_cred_id_t(gss_cred_id_t cred);
 
 static gss_buffer_t unwrap_gss_buffer_t(value);
 static gss_OID      unwrap_gss_OID(value);
@@ -247,6 +249,16 @@ static void netgss_free_name(long tag, gss_name_t x) {
 
 CAMLprim value netgss_no_cb(value dummy) {
     return wrap_gss_channel_bindings_t(GSS_C_NO_CHANNEL_BINDINGS);
+}
+
+
+CAMLprim value netgss_no_ctx(value dummy) {
+    return wrap_gss_ctx_id_t(GSS_C_NO_CONTEXT);
+}
+
+
+CAMLprim value netgss_no_cred(value dummy) {
+    return wrap_gss_cred_id_t(GSS_C_NO_CREDENTIAL);
 }
 
 

@@ -117,68 +117,6 @@ end
 
 
 
-module type BACK_COERCE_OBJECT = sig
-  type t
-  val hide : t -> < >
-  val exhibit : < > -> t
-end
-
-
-module Back_coerce_table(T:BACK_COERCE_OBJECT) : sig 
-  type table
-  val create : unit -> table
-  val store : table -> T.t -> unit
-  val retrieve : table -> < > -> T.t
-end = struct
-  module E = struct
-    type t = < >
-    let equal x y = x = y
-    let hash x = Hashtbl.hash x
-  end
-
-  module W = Weak.Make(E)
-
-  type table = W.t
-
-  let create() =
-    W.create 10
-
-  let store table (x : T.t) =
-    ignore(W.merge table (T.hide x))
-
-  let retrieve table (x : < >) : T.t =
-    if W.mem table x then
-      T.exhibit x
-    else
-      invalid_arg "Netmech_scram_gssapi: Unknown opaque object"
-end
-
-module Credential = struct
-  type t = scram_cred
-  let hide x = (x :> < >)
-  let exhibit x = (Obj.magic x : t)
-end
-
-module CredentialBCT = Back_coerce_table(Credential)
-
-module Name = struct
-  type t = scram_name
-  let hide x = (x :> < >)
-  let exhibit x = (Obj.magic x : t)
-end
-
-module NameBCT = Back_coerce_table(Name)
-
-module Context = struct
-  type t = scram_context
-  let hide x = (x :> < > )
-  let exhibit x = (Obj.magic x : t)
-end
-
-
-module ContextBCT = Back_coerce_table(Context)
-
-
 class type client_key_ring =
 object
   method password_of_user_name : string -> string
@@ -227,6 +165,16 @@ let empty_msg = (`String "",0,0)
 
 exception Calling_error of calling_error
 exception Routine_error of routine_error
+
+module type PROFILE =
+  sig
+    val client_key_ring : client_key_ring
+    val server_key_verifier : server_key_verifier
+    val scram_profile : Netmech_scram.profile
+  end
+
+module Make(P:PROFILE) = struct
+
 
 
 class scram_gss_api ?(client_key_ring = empty_client_key_ring)

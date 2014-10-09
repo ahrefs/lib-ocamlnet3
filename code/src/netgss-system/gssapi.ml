@@ -45,6 +45,12 @@ external oid_set_of_array : gss_OID array -> gss_OID_set
 external no_channel_bindings : unit -> gss_channel_bindings_t
   = "netgss_no_cb"
 
+external no_context : unit -> gss_ctx_id_t
+  = "netgss_no_ctx"
+
+external no_credential : unit -> gss_cred_id_t
+  = "netgss_no_cred"
+
 let () =
   Callback.register_exception
     "Netgss_bindings.Null_pointer"

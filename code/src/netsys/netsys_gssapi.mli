@@ -4,7 +4,7 @@
 
 (* TODO:
    - OID/SASL name translation from RFC-5801
-   - flag the disallows GS2 for this mechanism
+   - flag that disallows GS2 for this mechanism
  *)
 
 (** This is mainly a translation of RFC 2743/2744 to Ocaml. *)
@@ -19,23 +19,6 @@ type oid = int array
 type oid_set = oid list
     (** A set of OID's. These lists should not contain OID's twice.
 	The empty list means [GSS_C_NO_OID_SET].
-     *)
-
-type credential = < otype : [ `Credential ] >
-    (** A credential is opaque for the caller of the GSS-API.
-	The provider of the GSS-API can emit new credential objects,
-	and hand them out to the caller. When the caller passes 
-	credentials back to the provider, the provider must check
-	whether the object is known, and reject any fake objects
-	created by the caller by raising [Invalid_argument].
-     *)
-
-type context = < otype : [ `Context ]; valid : bool >
-    (** A context is also opaque, and the same rules apply as for
-	[credential].
-
-	The method [valid] is true as long as the context is not
-	deleted.
      *)
 
 type token = string
@@ -100,11 +83,6 @@ type minor_status = int32
 	it as {b unsigned} 32-bit integer whereas [int32] is signed.
      *)
 
-type name = < otype : [ `Name ] >
-    (** A name is also opaque, and the same rules apply as for
-	[credential].
-     *)
-
 type address =
     [ `Unspecified of string
     | `Local of string
@@ -121,8 +99,10 @@ type channel_bindings = address * address * string
 
 type cred_usage = [ `Initiate |`Accept | `Both ]
 
-type qop = < otype : [ `QOP ] >
-    (** Quality-of-proctection parameters are mechanism-specific *)
+type qop = int32
+    (** Quality-of-proctection parameters are mechanism-specific.
+        The value 0 can always be used for a default protection level.
+     *)
 
 type message =
     Netsys_types.mstring list
@@ -141,10 +121,379 @@ type req_flag =
     ]
     (** Flags for the [init_sec_context] method *)
 
+type time_req = 
+  [ `None | `Indefinite | `This of float]
 
-(** {2 Exceptions} *)
+type time_ret =
+  [ `Indefinite | `This of float]
 
-(** There are no defined exceptions.
+
+
+class type ['credential, 'name, 'context] poly_gss_api =
+  object
+    method provider : string
+        (** A string name identifying the provider *)
+
+    method no_credential : 'credential
+        (** A substitute credential for [GSS_C_NO_CREDENTIAL] *)
+
+    method no_name : 'name
+        (** A substitute name for [GSS_C_NO_NAME] *)
+
+    method accept_sec_context :
+          't . context:'context option ->
+               acceptor_cred:'credential -> 
+               input_token:token ->
+               chan_bindings:channel_bindings option ->
+               out:( src_name:'name ->
+		     mech_type:oid ->
+		     output_context:'context option ->
+		     output_token:token ->
+		     ret_flags:ret_flag list ->
+		     time_rec:time_ret ->
+		     delegated_cred:'credential ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't 
+		   ) -> unit -> 't
+        (** On the first call, pass [~context:None]. If successful, the
+	function outputs a non-None [~output_context] which should be
+	passed as new [~context] in follow-up calls.
+
+	If the [output_token] is non-empty, it must be transmitted to
+	the peer - independent of the [major_status].
+         *)
+
+
+    method acquire_cred :
+          't . desired_name:'name ->
+               time_rec:time_req ->
+               desired_mechs:oid_set ->
+               cred_usage:cred_usage  ->
+               out:( cred:'credential ->
+		     actual_mechs:oid_set ->
+		     time_ret:time_ret ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method add_cred :
+          't . input_cred:'credential ->
+               desired_name:'name ->
+               desired_mech:oid ->
+               cred_usage:cred_usage ->
+               initiator_time_req:time_req ->
+               acceptor_time_req:time_req ->
+               out:( output_cred:'credential ->
+		     actual_mechs:oid_set ->
+		     initiator_time_rec:time_ret ->
+		     acceptor_time_rec:time_ret ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method canonicalize_name :
+          't . input_name:'name ->
+               mech_type:oid ->
+               out:( output_name:'name ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method compare_name :
+          't . name1:'name ->
+               name2:'name ->
+               out:( name_equal:bool ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method context_time :
+          't . context:'context ->
+               out:( time_rec:time_ret ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method delete_sec_context :
+          't . context:'context ->
+               out:( minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+        (** Output tokens are not supported (this is a deprecated feature of
+	    GSSAPI)
+         *)
+
+    method display_name :
+          't . input_name:'name ->
+               out:( output_name:string ->
+		     output_name_type:oid ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method display_minor_status :
+          't . minor_status:minor_status ->
+               mech_type: oid ->
+               out:( status_strings: string list ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+        (** Note that [display_minor_status] decodes all status value parts in
+	one step and returns the result as [string list]. Also, this
+	method is restricted to decoding minor statuses
+         *)
+
+    method export_name : 
+          't . name:'name ->
+               out:( exported_name:string ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method export_sec_context :
+          't . context:'context ->
+               out:( interprocess_token:interprocess_token ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method get_mic : 
+           't . context:'context ->
+               qop_req:qop ->
+               message:message ->
+               out:( msg_token:token ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method import_name :
+          't . input_name:string ->
+               input_name_type:oid ->
+               out:( output_name:'name ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method import_sec_context :
+          't . interprocess_token:interprocess_token ->
+               out:( context:'context option ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method indicate_mechs :
+          't . out:( mech_set:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method init_sec_context :
+           't . initiator_cred:'credential ->
+               context:'context option ->
+               target_name:'name ->
+               mech_type:oid -> 
+               req_flags:req_flag list ->
+               time_rec:float option ->
+               chan_bindings:channel_bindings option ->
+               input_token:token option ->
+               out:( actual_mech_type:oid ->
+		     output_context:'context option ->
+		     output_token:token ->
+		     ret_flags:ret_flag list ->
+		     time_ret:time_ret ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+        (** On the first call, pass [~context:None]. If successful, the
+	function outputs a non-None [~output_context] which should be
+	passed as new [~context] in follow-up calls.
+
+	If the [output_token] is non-empty, it must be transmitted to
+	the peer - independent of the [major_status].
+         *)
+
+    method inquire_context :
+          't . context:'context ->
+               out:( src_name:'name ->
+                     targ_name:'name ->
+		     lifetime_rec : time_ret ->
+		     mech_type:oid ->
+		     ctx_flags:ret_flag list ->
+		     locally_initiated:bool ->
+		     is_open:bool ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method inquire_cred :
+          't . cred:'credential ->
+               out:( name:'name ->
+		     lifetime: time_ret ->
+		     cred_usage:cred_usage ->
+		     mechanisms:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method inquire_cred_by_mech :
+          't . cred:'credential ->
+               mech_type:oid -> 
+               out:( name:'name ->
+		     initiator_lifetime: time_ret ->
+		     acceptor_lifetime: time_ret ->
+		     cred_usage:cred_usage ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method inquire_mechs_for_name :
+          't . name:'name ->
+               out:( mech_types:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method inquire_names_for_mech :
+          't . mechanism:oid ->
+               out:( name_types:oid_set ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+
+    method process_context_token :
+          't . context:'context ->
+               token:token ->
+               out:( minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method unwrap :
+          't . context:'context ->
+               input_message:message ->
+               output_message_preferred_type:[ `String | `Memory ] ->
+               out:( output_message:message ->
+		     conf_state:bool ->
+		     qop_state:qop ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+        (** Note that the [output_message] can be a buffer of different type
+	(string vs. bigarray) than [input_message]. In 
+	[output_message_preferred_type] the called may wish a certain
+	representation. It is, however, not ensured that the wish is
+	granted.
+         *)
+
+    method verify_mic :
+          't . context:'context ->
+               message:message ->
+               token:token ->
+               out:( qop_state:qop ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method wrap :
+          't . context:'context ->
+               conf_req:bool ->
+               qop_req:qop ->
+               input_message:message ->
+               output_message_preferred_type:[ `String | `Memory ] ->
+               out:( conf_state:bool ->
+		     output_message:message ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+        (** [output_message_preferred_type]: see [unwrap] *)
+
+    method wrap_size_limit :
+          't . context:'context ->
+               conf_req:bool ->
+               qop_req:qop ->
+               req_output_size:int ->
+               out:( max_input_size:int ->
+                     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+  end
+
+
+module type GSSAPI = 
+  sig
+    (** The General Security Services API *)
+
+    (** See also {!Netsys_gssapi} for additional type definitions *)
+
+    type credential
+    (** A credential is opaque for the caller of the GSS-API.
+	The provider of the GSS-API can emit new credential objects,
+	and hand them out to the caller.
+     *)
+
+    type context
+    (** A context is also opaque. *)
+
+
+    type name
+    (** A name is also opaque *)
+
+
+    (** {2 Exceptions} *)
+           
+    (** There are no defined exceptions.
 
     Errors should be reported using the [major_status] and [minor_status]
     codes as much as possible.
@@ -152,11 +501,11 @@ type req_flag =
     [Invalid_argument] may be raised for clear violations of calling
     requirements, e.g. when an opaque object is passed to this interface
     that was not returned by it before.
- *)
+     *)
 
-(** {2 The API} *)
+    (** {2 The API} *)
 
-(** The methods have generally a type of the form
+    (** The methods have generally a type of the form
 
     {[ 
        m : 't . arg1 -> ... -> argN -> out:( ret1 -> ... -> retM -> 't ) -> 't 
@@ -190,347 +539,12 @@ type req_flag =
     suffixes like [_handle] have been removed. When the prefixes
     [input_] and [output_] are meaningless, they are also removed.
     All prefixes like "GSS" are removed anyway.
- *)
-
-class type gss_api =
-object
-  method provider : string
-    (** A string name identifying the provider *)
-
-  method no_credential : credential
-    (** A substitute credential for [GSS_C_NO_CREDENTIAL] *)
-
-  method no_name : name
-    (** A substitute name for [GSS_C_NO_NAME] *)
-
-  method accept_sec_context :
-          't . context:context option ->
-               acceptor_cred:credential -> 
-               input_token:token ->
-               chan_bindings:channel_bindings option ->
-               out:( src_name:name ->
-		     mech_type:oid ->
-		     output_context:context option ->
-		     output_token:token ->
-		     ret_flags:ret_flag list ->
-		     time_rec:[ `Indefinite | `This of float] ->
-		     delegated_cred:credential ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't 
-		   ) -> unit -> 't
-    (** On the first call, pass [~context:None]. If successful, the
-	function outputs a non-None [~output_context] which should be
-	passed as new [~context] in follow-up calls.
-
-	If the [output_token] is non-empty, it must be transmitted to
-	the peer - independent of the [major_status].
      *)
+    class type gss_api = [credential, name, context] poly_gss_api
 
 
-  method acquire_cred :
-          't . desired_name:name ->
-               time_req:[`None | `Indefinite | `This of float] ->
-               desired_mechs:oid_set ->
-               cred_usage:cred_usage  ->
-               out:( cred:credential ->
-		     actual_mechs:oid_set ->
-		     time_rec:[ `Indefinite | `This of float] ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
+    val create : unit -> gss_api
 
-  method add_cred :
-          't . input_cred:credential ->
-               desired_name:name ->
-               desired_mech:oid ->
-               cred_usage:cred_usage ->
-               initiator_time_req:[`None | `Indefinite | `This of float] ->
-               acceptor_time_req:[`None | `Indefinite | `This of float] ->
-               out:( output_cred:credential ->
-		     actual_mechs:oid_set ->
-		     initiator_time_rec:[ `Indefinite | `This of float] ->
-		     acceptor_time_rec:[ `Indefinite | `This of float] ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method canonicalize_name :
-          't . input_name:name ->
-               mech_type:oid ->
-               out:( output_name:name ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method compare_name :
-          't . name1:name ->
-               name2:name ->
-               out:( name_equal:bool ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method context_time :
-          't . context:context ->
-               out:( time_rec:[ `Indefinite | `This of float] ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method delete_sec_context :
-          't . context:context ->
-               out:( minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-     (** Output tokens are not supported (this is a deprecated feature of
-	 GSSAPI)
-      *)
-
-  method display_name :
-          't . input_name:name ->
-               out:( output_name:string ->
-		     output_name_type:oid ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method display_minor_status :
-          't . minor_status:minor_status ->
-               mech_type: oid ->
-               out:( status_strings: string list ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-    (** Note that [display_minor_status] decodes all status value parts in
-	one step and returns the result as [string list]. Also, this
-	method is restricted to decoding minor statuses
-     *)
-
-  method export_name : 
-          't . name:name ->
-               out:( exported_name:string ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method export_sec_context :
-          't . context:context ->
-               out:( interprocess_token:interprocess_token ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method get_mic : 
-          't . context:context ->
-               qop_req:qop option ->
-               message:message ->
-               out:( msg_token:token ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method import_name :
-          't . input_name:string ->
-               input_name_type:oid ->
-               out:( output_name:name ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method import_sec_context :
-          't . interprocess_token:interprocess_token ->
-               out:( context:context option ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method indicate_mechs :
-          't . out:( mech_set:oid_set ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method init_sec_context :
-          't . initiator_cred:credential ->
-               context:context option ->
-               target_name:name ->
-               mech_type:oid -> 
-               req_flags:req_flag list ->
-               time_rec:float option ->
-               chan_bindings:channel_bindings option ->
-               input_token:token option ->
-               out:( actual_mech_type:oid ->
-		     output_context:context option ->
-		     output_token:token ->
-		     ret_flags:ret_flag list ->
-		     time_rec:[ `Indefinite | `This of float ] ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-    (** On the first call, pass [~context:None]. If successful, the
-	function outputs a non-None [~output_context] which should be
-	passed as new [~context] in follow-up calls.
-
-	If the [output_token] is non-empty, it must be transmitted to
-	the peer - independent of the [major_status].
-     *)
-
-  method inquire_context :
-          't . context:context ->
-               out:( src_name:name ->
-                     targ_name:name ->
-		     lifetime_req : [ `Indefinite | `This of float ] ->
-		     mech_type:oid ->
-		     ctx_flags:ret_flag list ->
-		     locally_initiated:bool ->
-		     is_open:bool ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method inquire_cred :
-          't . cred:credential ->
-               out:( name:name ->
-		     lifetime: [ `Indefinite | `This of float ] ->
-		     cred_usage:cred_usage ->
-		     mechanisms:oid_set ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method inquire_cred_by_mech :
-          't . cred:credential ->
-               mech_type:oid -> 
-               out:( name:name ->
-		     initiator_lifetime: [ `Indefinite | `This of float ] ->
-		     acceptor_lifetime: [ `Indefinite | `This of float ] ->
-		     cred_usage:cred_usage ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method inquire_mechs_for_name :
-          't . name:name ->
-               out:( mech_types:oid_set ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method inquire_names_for_mech :
-          't . mechanism:oid ->
-               out:( name_types:oid_set ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-
-  method process_context_token :
-          't . context:context ->
-               token:token ->
-               out:( minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method unwrap :
-          't . context:context ->
-               input_message:message ->
-               output_message_preferred_type:[ `String | `Memory ] ->
-               out:( output_message:message ->
-		     conf_state:bool ->
-		     qop_state:qop ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-    (** Note that the [output_message] can be a buffer of different type
-	(string vs. bigarray) than [input_message]. In 
-	[output_message_preferred_type] the called may wish a certain
-	representation. It is, however, not ensured that the wish is
-	granted.
-     *)
-
-  method verify_mic :
-          't . context:context ->
-               message:message ->
-               token:token ->
-               out:( qop_state:qop ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-
-  method wrap :
-          't . context:context ->
-               conf_req:bool ->
-               qop_req:qop option ->
-               input_message:message ->
-               output_message_preferred_type:[ `String | `Memory ] ->
-               out:( conf_state:bool ->
-		     output_message:message ->
-		     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
-    (** [output_message_preferred_type]: see [unwrap] *)
-
-  method wrap_size_limit :
-          't . context:context ->
-               conf_req:bool ->
-               qop_req:qop option ->
-               req_output_size:int ->
-               out:( max_input_size:int ->
-                     minor_status:minor_status ->
-		     major_status:major_status ->
-		     unit ->
-		     't
-		   ) -> unit -> 't
 end
 
 (** {2 Utility functions} *)

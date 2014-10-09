@@ -40,11 +40,11 @@ object
 end
 
 
-class scram_gss_api : 
+val scram_gss_api : 
         ?client_key_ring:client_key_ring ->
         ?server_key_verifier:server_key_verifier ->
         Netmech_scram.profile ->
-          Netsys_gssapi.gss_api
+          (module Netsys_gssapi.GSSAPI)
   (** Returns a standard-compliant GSS-API object for the passed SCRAM
       profile. The object can be used on the client side for all
       users whose passwords are available via [client_key_ring].

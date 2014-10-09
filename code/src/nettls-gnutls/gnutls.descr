@@ -1616,6 +1616,7 @@ let () =
     ~optional_functions
     ~optional_types
     ~free: [ "str_datum"; "str_datum_p" ]
+    ~init: []
     ~hashes:[ "Certificate";
               "Srp_client";
               "Srp_server";

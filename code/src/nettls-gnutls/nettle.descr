@@ -157,6 +157,7 @@ let () =
     ~optional_functions
     ~optional_types
     ~free:[]
+    ~init:[]
     ~hashes:[]
     ~enum_of_string:[]
     ()
