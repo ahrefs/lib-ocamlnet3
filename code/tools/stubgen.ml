@@ -1,3 +1,245 @@
+(* Generator for library stubs
+
+   For examples, see nettls-gnutls and netgss-system.
+
+   ----------------------------------------------------------------------
+   Declaration of functions:
+   ----------------------------------------------------------------------
+
+   let functions = [ decl1; decl2; ... ]
+
+   Every declaration is a triple (name, parameters, directives).
+   Parameters: a list of triples (name, kind, type).
+
+   Parameter kinds: Input parameters appear in the argument list of the
+   OCaml binding. Output parameter appear in the result tuple.
+
+    - `In: the parameter is an input
+    - `In_ignore: the parameter is an input. The OCaml interface omits it.
+    - `Out: the parameter is an output. The C function gets only a pointer
+       to a value of [type], and needs to initialize it.
+    - `Out_ignore: the parameter is an output, but is omitted in the OCaml
+       interface.
+    - `Out_noptr: the parameter is an output. In this variant, the C function
+       gets the value of [type] directly (no pointer), and modifies its
+       contents.
+    - `In_out: the parameter is an input and an output. The C function gets
+       a pointer to a value of [type]
+    - `In_out_noptr: the parameter is an input and an output. No pointer
+       here.
+    - `Return: the return value of the C function. Appears in the result
+       tuple of the OCaml binding.
+    - `Return_ignore: the return value of the C function, omitted in the
+       OCaml binding.
+
+  The type may be one of the following:
+
+   type                   C mapping           OCaml mapping
+   ------------------------------------------------------------
+   void                   void                unit
+   int                    int                 int
+   uint                   unsigned int        int
+   int32                  int32_t             int32
+   uint32                 int32_t             int32
+   bool                   int                 bool
+   ubool                  unsigned int        bool
+   double                 double              float
+   file_descr             int                 Unix.file_descr
+
+   ztstr                  char *              string
+     (zero-terminated string)
+
+   t ztlist               map(t) *            map(t) list
+     (zero-terminated list of pointers; t may be any type)
+
+   t array                map(t) *            map(t) array
+     (array of pointers; t may be any type)
+
+   pname array_size       size_t              int
+     (must be used in conjuction with a "t array" parameter, and the name
+      of this other parameter must be specified as pname)
+
+   pname array_size_uint  unsigned int        int
+     (must be used in conjuction with a "t array" parameter, and the name
+      of this other parameter must be specified as paramname)
+
+   id bigarray            void *              Netsys_mem.memory   
+     (the id is an arbitrary identifier)
+
+   id bigarray_size       size_t              int
+     (must be used in conjunction with "bigarray", same id)
+
+   id stringbuf           void *              string
+     (the id is an arbitrary identifier)
+
+   id stringbuf_size      size_t              int
+     (must be used in conjunction with "stringbuf", same id)
+
+   id ztstringbuf         void *              string
+     (zero-terminated; the id is an arbitrary identifier)
+
+   id ztstringbuf_size    size_t              int
+     (must be used in conjunction with "stringbuf", same id)
+
+
+   Also, you can use the special notation
+
+     t1/t2
+
+   meaning that t1 is used on the C side, but it has the same properties
+   as t2, and t2 is also used for the OCaml mapping.
+
+   All other type names: It is expected that a type wrapper is defined
+   for the type. See next section.
+
+
+   DIRECTIVES:
+
+   - `Optional: the function is only optionally available. A macro
+     HAVE_FUN_<name> is tested.
+
+   - `Declare "decl": This C declaration is added to the declarations
+     in the generated stub function.
+
+   - `Pre "stm": This C statement is emitted just before the wrapped
+     function is called.
+
+   - `Post "stm": This C statement is emitted after the wrapped
+     function is called.
+
+   - `GNUTLS_ask_for_size: special feature for GNUTLS
+
+
+
+   ----------------------------------------------------------------------
+   Declaration of type wrappers:
+   ----------------------------------------------------------------------
+
+   let types = [ (name1, decl1); (name2, decl2); ... ]
+
+   Possible declarations:
+
+   - `Manual "type name = something"
+
+     just add the type definition to the ml code. Do nothing on the C side.
+     The user has to manually write the wrapper helpers (when t is the type
+     name):
+
+     static t     unwrap_t(value);
+     static value wrap_t(t);
+
+   - abstract_ptr "free_function"
+
+     Generates wrapper helpers for a pointer-like type. The user must write
+     a C function that releases memory:
+
+     static void free_function(t);
+
+   - tagged_abstract_ptr "free_function2"
+
+     Generates wrapper helpers for a pointer-like type. The user must write
+     a C function that releases memory:
+
+     static void free_function2(long,t);
+
+     In this variant, the free function gets a long as first argument, the
+     tag. The tag will be 0 for all values that are wrapped by wrap_t, i.e.
+     for all wrapped values returned by C code. Other tag values can be
+     defined by the user. The generator also emits code for
+
+     static value twrap_t(long,t);
+
+     which sets the tag to the passed long. The idea is to memoize in the tag
+     how the value was once allocated, and use the right method for
+     deallocation.
+
+   - `Abstract_enum
+
+     XXX
+
+   - `Enum cases
+
+     This is for an enumerator type (either an "enum", or a simulated enum
+     declared as integer where the cases are available as macros). The
+     cases are given as a list [ "value1"; "value2"; ... ].
+
+     A few special notations are understood:
+
+     VERTICAL BAR:  "PREFIX|SUFFIX". In C the value is known as "PREFIXSUFFIX".
+                    The OCaml version uses only "SUFFIX".
+
+     QUESTION MARK: "?VALUE". The value is only optionally available.
+                    (Dependent on a macro HAVE_ENUM_ plus the value name)
+
+   - `Flags flags
+
+     Flags that are bitwise OR-ed. The flags are given as list
+     [ "value1"; "value2"; ... ].
+
+     Works very much like `Enum.
+
+   - `Same_as "other_type"
+
+     Treat this type as an alias for another type.
+
+
+   ----------------------------------------------------------------------
+   Generating
+   ----------------------------------------------------------------------
+
+   Call the generator as
+
+   generate
+     ~c_file:"helpers.c"
+     ~ml_file:"helpers.ml"
+     ~mli_file:"helpers.mli"
+     ~optional_functions: [ "fun1"; "fun2"; ... ]
+     ~optional_types: [ "t1"; "t2"; ... ]
+     ~enum_of_string: [ "t1"; "t2"; ... ]
+     ~modname:"modulename"
+     ~types       (* type wrappers, see above *)
+     ~functions   (* functions, see above *)
+     ~free: [ "t1"; "t2"; ... ]
+     ~init: [ "t1"; "t2"; ... ]
+     ~hashes: [ "h1"; "h2"; ... ]
+     ()
+
+  The generated code will go into:
+
+    - modulename.ml
+    - modulename.mli
+    - modulename_stubs.c
+
+  Also, a shell script config_checks.sh is generated: For every optional
+  function, optional type, or optional value a shell function is called.
+  The user is expected to define this shell function.
+
+  optional_functions: Additional functions to check for.
+
+  optional_types: additional types to check for.
+
+  enum_of_string: For `Enum types, additional functions are generated
+  that map the enum values to and from strings.
+
+
+  free: If a type is listed here, and there is an input or in/out parameter
+  of this type, the generator will emit the code
+
+  free_<t>(value)
+
+  after calling the wrapped function.
+
+
+  init: If a type is listed here, and there is an output-only parameter of this
+  type (i.e. not in/out), the generator will emit the code
+
+  init_<t>(&variable)
+
+  before calling the wrapped function.
+
+ *)
+
+
 #directory "+compiler-libs"
 (* only for Btype.hash_variant *)
 
@@ -11,6 +253,7 @@ let p2_re = Str.regexp "[ \t]*,[ \t]*"
 let p3_re = Str.regexp "[ \t]+"
 
 let parse decl =
+  (* Parsing helper, optional *)
   try
     if Str.string_match p1_re decl 0 then (
       let part1 = Str.matched_group 1 decl in
@@ -22,8 +265,12 @@ let parse decl =
              let l = Str.split p3_re param_s in
              let tag, l1 =
                match l with
+                 | "IN" :: l1 -> (`In, l1)
+                 | "IN_IGNORE" :: l1 -> (`In_ignore, l1)
+                 | "IN_OUT" :: l1 -> (`In_out, l1)
                  | "OUT" :: l1 -> (`Out, l1)
                  | "OUT_IGNORE" :: l1 -> (`Out_ignore, l1)
+                 | "OUT_NOPTR" :: l1 -> (`Out_noptr, l1)
                  | _ -> (`In, l) in
              let n = List.hd (List.rev l1) in
              let ty = List.rev (List.tl (List.rev l1)) in
@@ -47,10 +294,14 @@ let has_prefix ~prefix s =
 
 
 type abs_ptr =
-    { abs_free_fn : string }
+    { abs_free_fn : [`Untagged of string | `Tagged of string ] }
 
 let abstract_ptr abs_free_fn =
-  `Abstract_ptr { abs_free_fn }
+  `Abstract_ptr { abs_free_fn = `Untagged abs_free_fn }
+
+let tagged_abstract_ptr abs_free_fn =
+  `Abstract_ptr { abs_free_fn = `Tagged abs_free_fn }
+
 
 (**********************************************************************)
 (* Abstract_enum                                                      *)
@@ -115,10 +366,14 @@ let gen_abstract_enum c mli ml tyname ~optional =
 
 (* Here we allocate a pair
 
-   (custom, list)
+   (tag, custom, list)
 
    where custom is the custom block, and list is a list of
-   auxiliary values whose lifetime must exceed the custom block
+   auxiliary values whose lifetime must exceed the custom block.
+
+   tag is an optional integer, usually 0. Especially, this allow to
+   deallocate the custom in different ways.
+
  *)
 
 let gen_abstract_ptr c mli ml tyname abs ~optional =
@@ -128,11 +383,14 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "/************** %s *************/\n\n" tyname;
   if optional then
     fprintf c "#ifdef HAVE_TY_%s\n" tyname;
-  fprintf c "struct absstruct_%s { %s value; long oid; };\n\n" tyname tyname;
+  fprintf c "struct absstruct_%s { %s value; long tag; long oid; };\n\n"
+             tyname tyname;
   fprintf c "#define absstructptr_%s_val(v) \
              ((struct absstruct_%s *) (Data_custom_val(v)))\n" tyname tyname;
   fprintf c "#define abs_%s_unwrap(v) \
              (absstructptr_%s_val(v)->value)\n" tyname tyname;
+  fprintf c "#define abs_%s_tag(v) \
+             (absstructptr_%s_val(v)->tag)\n" tyname tyname;
   fprintf c "long abs_%s_oid = 0;\n" tyname;
 
   fprintf c "\n";
@@ -147,7 +405,12 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "static void abs_%s_finalize(value v1) {\n" tyname;
   fprintf c "  struct absstruct_%s *p1;\n" tyname;
   fprintf c "  p1 = absstructptr_%s_val(v1);\n" tyname;
-  fprintf c "  %s(p1->value);\n" abs.abs_free_fn;
+  ( match abs.abs_free_fn with
+      | `Untagged free -> 
+          fprintf c "  %s(p1->value);\n" free
+      | `Tagged free ->
+          fprintf c "  %s(p1->tag, p1->value);\n" free
+  );
   fprintf c "}\n\n";
 
   fprintf c "static struct custom_operations abs_%s_ops = {\n" tyname;
@@ -163,19 +426,28 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "  return abs_%s_unwrap(Field(v,0));\n" tyname;
   fprintf c "}\n\n";
 
-  fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
+  fprintf c "static long tag_%s(value v) {\n" tyname;
+  fprintf c "  return abs_%s_tag(Field(v,0));\n" tyname;
+  fprintf c "}\n\n";
+
+  fprintf c "static value twrap_%s(long tag, %s x) {\n" tyname tyname;
   fprintf c "  CAMLparam0();\n";
   fprintf c "  CAMLlocal2(v,r);\n";
   fprintf c "  if (x == NULL) failwith(\"wrap_%s: NULL pointer\");\n" tyname;
   fprintf c "  v = caml_alloc_custom(&abs_%s_ops, \
                                      sizeof(struct absstruct_%s), 0, 1);\n"
          tyname tyname;
+  fprintf c "  absstructptr_%s_val(v)->tag = tag;\n" tyname;
   fprintf c "  absstructptr_%s_val(v)->value = x;\n" tyname;
   fprintf c "  absstructptr_%s_val(v)->oid = abs_%s_oid++;\n" tyname tyname;
   fprintf c "  r = caml_alloc(2,0);\n";
   fprintf c "  Field(r,0) = v;\n";
   fprintf c "  Field(r,1) = Val_int(0);\n";
   fprintf c "  CAMLreturn(r);\n";
+  fprintf c "}\n\n";
+
+  fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
+  fprintf c "  return twrap_%s(0, x);\n" tyname;
   fprintf c "}\n\n";
 
   fprintf c "static void attach_%s(value v, value aux) {\n" tyname;
@@ -413,6 +685,8 @@ let rec translate_type_to_ml name ty =
     | [ "void" ] -> "unit"
     | [ "int" ] -> "int"
     | [ "uint" ] -> "int"
+    | [ "int32" ] -> "int32"
+    | [ "uint32" ] -> "int32"
     | [ "bool" ] -> "bool"
     | [ "ubool" ] -> "bool"
     | [ "double" ] -> "float"
@@ -451,6 +725,10 @@ let rec translate_type_to_c name ty =
            "int", `Plain("Int_val", "Val_int")
       | [ "uint" ] -> 
            "unsigned int", `Plain("uint_val", "Val_int")
+      | [ "int32" ] -> 
+           "int32_t", `Plain("Int32_val", "caml_copy_int32")
+      | [ "uint32" ] -> 
+           "uint32_t", `Plain("Int32_val", "caml_copy_int32")
       | [ "bool" ] -> 
            "int", `Plain("Bool_val", "Val_bool")
       | [ "ubool" ] -> 
@@ -541,27 +819,34 @@ let rec after_first n l =
 
 let result_re = Str.regexp "RESULT"
 
-let gen_fun c mli ml name args directives free =
+
+let input_kinds = [ `In; `In_ignore; `In_out; `In_out_noptr ]
+let outonly_kinds = [ `Out; `Out_ignore; `Out_noptr ]
+let inout_kinds = [ `In_out; `In_out_noptr ]
+let output_kinds = outonly_kinds @ inout_kinds
+
+let gen_fun c mli ml name args directives free init =
   let optional = List.mem `Optional directives in
   let input_args =
     List.filter
-      (fun (n,kind,ty) -> kind = `In || kind = `In_ignore || kind = `In_out)
+      (fun (n,kind,ty) -> List.mem kind input_kinds)
       args in
   let input_ml_args0 =
     List.filter
       (fun (n,kind,ty) ->
-         kind = `In_out || (kind = `In && not(is_size ty))
+         List.mem kind inout_kinds || (kind = `In && not(is_size ty))
       )
       input_args in
   let input_ml_args =
     if input_ml_args0 = [] then [ "dummy", `In, "void" ] else input_ml_args0 in
   let output_args =
     List.filter
-      (fun (n,kind,ty) -> kind = `Out || kind = `Out_ignore || kind = `In_out)
+      (fun (n,kind,ty) -> List.mem kind output_kinds)
       args in
   let output_ml_args0 =
     List.filter
-      (fun (n,kind,ty) -> kind = `Out || kind = `In_out)
+      (fun (n,kind,ty) -> kind = `Out || kind = `Out_noptr || 
+                            List.mem kind inout_kinds)
       output_args in
   let return_args =
     List.filter
@@ -643,7 +928,11 @@ let gen_fun c mli ml name args directives free =
          let n1 = sprintf "%s__c" n in
          c_decls := sprintf "%s %s;" c_ty n1 :: !c_decls;
          
-         if kind = `In || kind = `In_out then (
+         if List.mem kind output_kinds && List.mem c_ty init then (
+           c_code_pre := sprintf "init_%s(&%s);" c_ty n1 :: !c_code_pre
+         );
+
+         if kind <> `In_ignore && List.mem kind input_kinds then (
            match tag with
              | `Plain(to_c,to_ml) ->
                   let need_free = List.mem c_ty free in
@@ -753,11 +1042,15 @@ let gen_fun c mli ml name args directives free =
                   failwith ("Unsupported arg: " ^ n ^ ", fn " ^ name)
          );
 
-         if kind = `Out || kind = `Return then (
+         if (kind <> `Out_ignore && List.mem kind outonly_kinds)
+            || kind = `Return
+         then (
            ml_locals := n :: !ml_locals;
          );
 
-         if kind = `Out || kind = `In_out || kind = `Return then (
+         if (kind <> `Out_ignore && List.mem kind output_kinds)
+            || kind = `Return
+         then (
            incr n_return;
            return_names := n :: !return_names;
            match tag with
@@ -875,6 +1168,8 @@ let gen_fun c mli ml name args directives free =
                     c_act_args := n1 :: !c_act_args
                   else
                     c_act_args := ("&" ^ n1) :: !c_act_args
+             | `Out_noptr | `In_out_noptr ->
+                  c_act_args := n1 :: !c_act_args
              | `Return | `Return_ignore ->
                   c_act_ret := Some n1
          )
@@ -1159,7 +1454,7 @@ let generate ?c_file ?ml_file ?mli_file
              ?(optional_functions = [])
              ?(optional_types = [])
              ?(enum_of_string = [])
-             ~modname ~types ~functions ~free
+             ~modname ~types ~functions ~free ~init
              ~hashes
              () =
   let c_name = modname ^ "_stubs.c" in
@@ -1234,7 +1529,7 @@ let generate ?c_file ?ml_file ?mli_file
       (fun (name,args,directives) ->
          if List.mem `Optional directives then
            cfg_fun cfg name;
-         gen_fun c mli ml name args directives free
+         gen_fun c mli ml name args directives free init
       )
       functions;
 
