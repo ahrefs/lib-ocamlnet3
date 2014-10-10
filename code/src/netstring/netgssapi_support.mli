@@ -10,6 +10,13 @@ val der_to_oid : string -> int ref -> oid
   (** Convert OID's to/from DER. [der_to_oid] takes a cursor as second arg.
    *)
 
+val oid_to_der_value : oid -> string
+val der_value_to_oid : string -> int ref -> int -> oid
+  (** Convert OID's to/from DER. This variant does not include the header
+      (hex 06 plus length). [der_value_to_oid] takes a cursor and the length
+      in bytes.
+   *)
+
 
 val wire_encode_token : oid -> token -> string
 val wire_decode_token : string -> int ref -> oid * token

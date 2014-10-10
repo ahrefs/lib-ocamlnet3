@@ -140,13 +140,13 @@ let _gss_channel_bindings_t_of_cb_option _ =
 let _oid_of_gss_OID gss_oid =
   let der = der_of_oid gss_oid in
   let p = ref 0 in
-  Netgssapi_support.der_to_oid der p
+  Netgssapi_support.der_value_to_oid der p (String.length der)
 
 let _gss_OID_of_oid oid =
   if oid = [| |] then
     no_oid()
   else
-    let der = Netgssapi_support.oid_to_der oid in
+    let der = Netgssapi_support.oid_to_der_value oid in
     oid_of_der der
 
 let _oid_set_of_gss_OID_set gss_set =

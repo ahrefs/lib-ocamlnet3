@@ -1216,12 +1216,14 @@ let gen_fun c mli ml name args directives free init =
         sprintf "%s = caml_alloc(%d,0);" n1 !n_return :: !c_code_post;
       let k = ref 0 in
       List.iter
-        (fun n ->
+        (fun (n,_,_) ->
+           if not (List.mem n !return_names) then
+             failwith ("Output name not found: " ^ n);
            c_code_post :=
              sprintf "Field(%s, %d) = %s;" n1 !k n :: !c_code_post;
            incr k
         )
-        (List.rev !return_names);
+        output_ml_args;
       caml_return := Some n1
     );
 

@@ -8,10 +8,10 @@ OBJECTS  = netgss_bindings.cmo netgss_util.cmo netgss.cmo
 COBJECTS = netgss_bindings_stubs.o
 DOBJECTS = netgss_bindings.mli
 
-#LINK_OPTIONS = $(NETTLS_GNUTLS_LINK_OPTIONS)
-#LINK_OPTIONS = -lgnutls
+LINK_OPTIONS = $(NETGSS_LINK_OPTIONS)
+#LINK_OPTIONS = -lkrb5
 
-#CC_OPTIONS = $(NETTLS_GNUTLS_CFLAGS)
+CC_OPTIONS = $(NETGSS_CFLAGS)
 CC_OPTIONS_FOR_netgss_bindings_stubs.c = -ccopt -Wno-unused-function
 
 INCLUDES = $(INC_NETSYS) $(INC_NETSTRING)

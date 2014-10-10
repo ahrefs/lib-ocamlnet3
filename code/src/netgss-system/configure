@@ -6,11 +6,6 @@
 
 have_gssapi=0
 
-if [ -z "$GSSAPI_LIBS" ]; then
-    GSSAPI_LIBS="-lkrb5"
-fi
-
-
 stdlib=`ocamlc -where`
 
 rm -f config.h config.sh config.mk
@@ -52,15 +47,15 @@ check_fun() {
 ######################################################################
 
 
-printf "Checking for GSSAPI/Kerberos... "
-fun=gss_init_sec_context
-echo "# FUN $fun" >> $log
+check_gssapi() {
+    fun=gss_init_sec_context
+    echo "# FUN $fun" >> $log
 
-cat <<EOF >testdir/main.ml
+    cat <<EOF >testdir/main.ml
 let () = ()
 EOF
 
-cat <<EOF >testdir/test.c
+    cat <<EOF >testdir/test.c
 #include <gssapi.h>
 int main (int argc, char *argv[], char *envp[]) {
   (void) & $fun;
@@ -68,20 +63,42 @@ int main (int argc, char *argv[], char *envp[]) {
 }
 EOF
 
-if call_ocamlc -o test test.c main.ml; then
-    echo "found"
-    have_gssapi=1    
+    if call_ocamlc -o test test.c main.ml; then
+        have_gssapi=1    
+    else
+        have_gssapi=0
+    fi
+}
+
+
+printf "Checking for GSSAPI/Kerberos... "
+
+if [ -n "$GSSAPI_LIBS" ]; then
+    check_gssapi
 else
-    echo "not found"
-    have_gssapi=0
+    for lib in -lgssglue -lgssapi_krb5 -lgssapi; do
+        GSSAPI_LIBS="$lib"
+        check_gssapi
+        if [ $have_gssapi -gt 0 ]; then break; fi
+    done
 fi
 
 
 if [ $have_gssapi -gt 0 ]; then
+    echo "found ($GSSAPI_LIBS)"
+else
+    echo "not found"
+fi
+
+if [ $have_gssapi -gt 0 ]; then
     # The vars in config.sh are picked up by reconfigure
-    echo "PKG_CONFIG='$PKG_CONFIG'" >>config.sh
     echo "GSSAPI_CFLAGS='$GSSAPI_CFLAGS'" >>config.sh
     echo "GSSAPI_LIBS='$GSSAPI_LIBS'" >>config.sh
+
+    # The vars in config.mk are appended to Makefile.conf
+    echo "# GSSAPI" >> config.mk
+    echo "NETGSS_CFLAGS = $GSSAPI_CFLAGS" >>config.mk
+    echo "NETGSS_LINK_OPTIONS = $GSSAPI_LIBS" >> config.mk
 
     ./reconfigure
 fi

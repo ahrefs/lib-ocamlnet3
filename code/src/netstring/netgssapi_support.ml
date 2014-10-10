@@ -70,7 +70,7 @@ let decode_definite_length s cursor =
   )
   else failwith "Netgssapi_support.decode_definite_length"
 
-let oid_to_der oid =
+let oid_to_der_value oid =
   match Array.to_list oid with
     | [] ->
 	failwith "Netgssapi_support.oid_to_der: empty OID"
@@ -84,11 +84,36 @@ let oid_to_der oid =
 	let subids_buf = Buffer.create 50 in
 	List.iter (encode_subidentifier subids_buf) subids;
 	let buf = Buffer.create 50 in
-	Buffer.add_char buf '\x06';
-	encode_definite_length buf (Buffer.length subids_buf + 1);
 	Buffer.add_char buf (Char.chr (top * 40 + second));
 	Buffer.add_buffer buf subids_buf;
 	Buffer.contents buf
+
+
+let oid_to_der oid =
+  let buf = Buffer.create 50 in
+  let s = oid_to_der_value oid in
+  Buffer.add_char buf '\x06';
+  encode_definite_length buf (String.length s);
+  Buffer.contents buf
+
+
+let der_value_to_oid der cursor oid_len =
+  try
+    let lim = !cursor + oid_len in
+    let c = Char.code der.[ !cursor ] in
+    incr cursor;
+    let top = c / 40 in
+    let second = c mod 40 in
+    let oid = ref [ second; top ] in
+    while !cursor < lim do
+      let subid = decode_subidentifier der cursor in
+      oid := subid :: !oid;
+    done;
+    if !cursor <> lim then raise Not_found;
+    Array.of_list (List.rev !oid)
+  with
+    | _ -> failwith "Netgssapi_support.der_value_to_oid"
+
 
 let der_to_oid der cursor =
   try
@@ -101,17 +126,7 @@ let der_to_oid der cursor =
     let lim = !cursor + oid_len in
     if lim > der_len then raise Not_found;
     if oid_len = 0 then raise Not_found;
-    let c = Char.code der.[ !cursor ] in
-    incr cursor;
-    let top = c / 40 in
-    let second = c mod 40 in
-    let oid = ref [ second; top ] in
-    while !cursor < lim do
-      let subid = decode_subidentifier der cursor in
-      oid := subid :: !oid;
-    done;
-    if !cursor <> lim then raise Not_found;
-    Array.of_list (List.rev !oid)
+    der_value_to_oid der cursor oid_len
   with
     | _ -> failwith "Netgssapi_support.der_to_oid"
 
