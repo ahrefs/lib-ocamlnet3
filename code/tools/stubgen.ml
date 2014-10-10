@@ -15,6 +15,7 @@
    OCaml binding. Output parameter appear in the result tuple.
 
     - `In: the parameter is an input
+    - `In_ptr: same, but passed as pointer
     - `In_ignore: the parameter is an input. The OCaml interface omits it.
     - `Out: the parameter is an output. The C function gets only a pointer
        to a value of [type], and needs to initialize it.
@@ -266,6 +267,7 @@ let parse decl =
              let tag, l1 =
                match l with
                  | "IN" :: l1 -> (`In, l1)
+                 | "IN_PTR" :: l1 -> (`In_ptr, l1)
                  | "IN_IGNORE" :: l1 -> (`In_ignore, l1)
                  | "IN_OUT" :: l1 -> (`In_out, l1)
                  | "OUT" :: l1 -> (`Out, l1)
@@ -294,13 +296,17 @@ let has_prefix ~prefix s =
 
 
 type abs_ptr =
-    { abs_free_fn : [`Untagged of string | `Tagged of string ] }
+    { abs_free_fn : [`Untagged of string | `Tagged of string ];
+      abs_invalidate : bool;
+    }
 
-let abstract_ptr abs_free_fn =
-  `Abstract_ptr { abs_free_fn = `Untagged abs_free_fn }
+let abstract_ptr ?(invalidate=false) abs_free_fn =
+  `Abstract_ptr { abs_free_fn = `Untagged abs_free_fn; 
+                  abs_invalidate = invalidate }
 
-let tagged_abstract_ptr abs_free_fn =
-  `Abstract_ptr { abs_free_fn = `Tagged abs_free_fn }
+let tagged_abstract_ptr ?(invalidate=false) abs_free_fn =
+  `Abstract_ptr { abs_free_fn = `Tagged abs_free_fn; 
+                  abs_invalidate = invalidate }
 
 
 (**********************************************************************)
@@ -423,7 +429,12 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "};\n\n";
 
   fprintf c "static %s unwrap_%s(value v) {\n" tyname tyname;
-  fprintf c "  return abs_%s_unwrap(Field(v,0));\n" tyname;
+  fprintf c "  %s r;\n" tyname;
+  fprintf c "  r = abs_%s_unwrap(Field(v,0));\n" tyname;
+  if abs.abs_invalidate then (
+    fprintf c "  if (r == NULL) raise_null_pointer();"
+  );
+  fprintf c "  return r;\n";
   fprintf c "}\n\n";
 
   fprintf c "static long tag_%s(value v) {\n" tyname;
@@ -449,6 +460,12 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
   fprintf c "  return twrap_%s(0, x);\n" tyname;
   fprintf c "}\n\n";
+
+  if abs.abs_invalidate then (
+    fprintf c "static void invalidate_%s(value v) {\n" tyname;
+    fprintf c "  absstructptr_%s_val(v)->value = NULL;\n" tyname;
+    fprintf c "}\n\n";
+  );
 
   fprintf c "static void attach_%s(value v, value aux) {\n" tyname;
   fprintf c "  CAMLparam2(v,aux);\n";
@@ -820,7 +837,7 @@ let rec after_first n l =
 let result_re = Str.regexp "RESULT"
 
 
-let input_kinds = [ `In; `In_ignore; `In_out; `In_out_noptr ]
+let input_kinds = [ `In; `In_ptr; `In_ignore; `In_out; `In_out_noptr ]
 let outonly_kinds = [ `Out; `Out_ignore; `Out_noptr ]
 let inout_kinds = [ `In_out; `In_out_noptr ]
 let output_kinds = outonly_kinds @ inout_kinds
@@ -834,7 +851,8 @@ let gen_fun c mli ml name args directives free init =
   let input_ml_args0 =
     List.filter
       (fun (n,kind,ty) ->
-         List.mem kind inout_kinds || (kind = `In && not(is_size ty))
+         List.mem kind inout_kinds ||
+           ((kind = `In || kind = `In_ptr) && not(is_size ty))
       )
       input_args in
   let input_ml_args =
@@ -1163,6 +1181,8 @@ let gen_fun c mli ml name args directives free init =
          ( match kind with
              | `In | `In_ignore ->
                   c_act_args := n1 :: !c_act_args
+             | `In_ptr ->
+                  c_act_args := ("&" ^ n1) :: !c_act_args
              | `In_out | `Out | `Out_ignore ->
                   if noref then
                     c_act_args := n1 :: !c_act_args

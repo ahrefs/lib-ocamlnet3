@@ -5,7 +5,7 @@ exception Null_pointer
 type memory = 
     (char,Bigarray.int8_unsigned_elt,Bigarray.c_layout) Bigarray.Array1.t
 
-external buffer_of_string : string -> gss_buffer_t
+external buffer_of_string : string -> int -> int -> gss_buffer_t
   = "netgss_buffer_of_string"
 
 external buffer_of_memory : memory -> gss_buffer_t
@@ -50,6 +50,18 @@ external no_context : unit -> gss_ctx_id_t
 
 external no_credential : unit -> gss_cred_id_t
   = "netgss_no_cred"
+
+external no_name : unit -> gss_name_t
+  = "netgss_no_name"
+
+external gss_indefinite : unit -> int32
+  = "netgss_indefinite"
+
+external no_oid : unit -> gss_OID
+  = "netgss_no_oid"
+
+external no_oid_set : unit -> gss_OID_set
+  = "netgss_no_oid_set"
 
 let () =
   Callback.register_exception

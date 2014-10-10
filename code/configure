@@ -49,6 +49,7 @@ set_defaults () {
     enable_zip=0
     enable_apache=0
     enable_gnutls=0
+    enable_gssapi=0
     enable_pcre=0
     enable_full_pcre=0
     compat_pcre=0
@@ -66,6 +67,8 @@ set_defaults () {
     gnutls_cflags=""
     gnutls_libs=""
     gnutls_system_trust_file=""
+    gssapi_cflags=""
+    gssapi_libs=""
 }
 
 ocamlc=`get_path ocamlc`
@@ -82,6 +85,7 @@ ehelp_gtk="Enable/disable parts that depend on lablgtk"
 ehelp_gtk2="Enable/disable parts that depend on lablgtk2"
 ehelp_tcl="Enable/disable parts that depend on tcl/tk"
 ehelp_gnutls="Enable/disable parts that depend on GnuTLS"
+ehelp_gssapi="Enable/disable parts that depend on GSSAPI/Kerberos"
 ehelp_zip="Enable/disable parts that depend on camlzip"
 ehelp_apache="Enable/disable Apache mod connector (EXPERIMENTAL)"
 ehelp_pcre="Enable/disable the build against pcre-ocaml"
@@ -90,7 +94,7 @@ whelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 whelp_rpc_auth_dh="Enable/disable support for SecureRPC (Diffie-Hellman auth)"
 
 # Which options exist? eoptions for enable/disable, woptions for with/without:
-eoptions="pcre full_pcre gtk gtk2 tcl gnutls zip apache"
+eoptions="pcre full_pcre gtk gtk2 tcl gnutls gssapi zip apache"
 woptions="nethttpd rpc_auth_dh"
 
 # Packages to include anyway:
@@ -169,6 +173,12 @@ print_options () {
         if [ -n "$gnutls_system_trust_file" ]; then
             echo "    -gnutls-system-trust-file $gnutls_system_trust_file"
         fi
+        if [ -n "$gssapi_cflags" ]; then
+            echo "    -gssapi-cflags $gssapi_cflags"
+        fi
+        if [ -n "$gssapi_libs" ]; then
+            echo "    -gssapi-libs $gssapi_libs"
+        fi
         echo "    -cpp $cpp"
 }
 
@@ -225,6 +235,12 @@ _EOF_
 
 -gnutls-system-trust-file /path/to/certificates.crt
         File with the certificates that are trusted by default
+
+-gssapi-cflags <opts>
+        Flags for the C compiler for GSSAPI
+
+-gssapi-libs <opts>
+        Libraries for GSSAPI
 
 -prefer-netcgi2
         This option is ignored for compatibility with older versions
@@ -347,6 +363,16 @@ while [ "$#" -gt 0 ]; do
                 -gnutls-system-trust-file)
                         gnutls_system_trust_file="$2"
                         shift 2
+                        ;;
+                -gssapi-cflags)
+                        gssapi_cflags="$2"
+                        shift
+                        shift
+                        ;;
+                -gssapi-libs)
+                        gssapi_libs="$2"
+                        shift
+                        shift
                         ;;
 	        -prefer-netcgi2)
 		        # ignore!
@@ -798,6 +824,25 @@ if [ $enable_gnutls -gt 0 ]; then
 fi
 
 ######################################################################
+# GSSAPI
+
+with_gssapi=0
+
+if [ $enable_gssapi -gt 0 ]; then
+    ( cd src/netgss-system
+      GSSAPI_CFLAGS="$gssapi_cflags" GSSAPI_LIBS="$gssapi_libs" ./configure
+    )
+    if [ $? -eq 0 ]; then
+        with_gssapi=1
+        # There is now also src/netgss-system/config.mk, which needs to be
+        # appended to Makefile.conf
+    else
+        echo "Required library for GSSAPI (probably -lkrb5) not found!"
+        exit 1
+    fi
+fi
+
+######################################################################
 # Check camlzip
 
 with_netzip=0
@@ -929,7 +974,7 @@ echo
 
 pkglist="netsys netshm netstring equeue shell rpc-generator rpc rpc-auth-local netclient netcgi2 netplex netcgi2-plex"
 
-full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache nettls-gnutls"
+full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 rpc-auth-dh nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache nettls-gnutls netgss-system"
 
 if [ $enable_camlbox -gt 0 ]; then
     pkglist="$pkglist netcamlbox"
@@ -964,6 +1009,10 @@ fi
 
 if [ $enable_gnutls -gt 0 ]; then
     pkglist="$pkglist nettls-gnutls"
+fi
+
+if [ $enable_gssapi -gt 0 ]; then
+    pkglist="$pkglist netgss-system"
 fi
 
 if [ $with_nethttpd -gt 0 ]; then
@@ -1087,6 +1136,10 @@ _EOF_
 
 if [ $with_gnutls -gt 0 ]; then
     cat src/nettls-gnutls/config.mk >>Makefile.conf
+fi
+
+if [ $with_gssapi -gt 0 ]; then
+    cat src/netgss-system/config.mk >>Makefile.conf
 fi
 
 ######################################################################

@@ -9,7 +9,7 @@ let types =
     "gss_OID",         tagged_abstract_ptr "netgss_free_oid";
     "gss_OID_set",     tagged_abstract_ptr "netgss_free_oid_set";
     "gss_cred_id_t",   tagged_abstract_ptr "netgss_free_cred_id";
-    "gss_ctx_id_t",    tagged_abstract_ptr "netgss_free_ctx_id";
+    "gss_ctx_id_t",    tagged_abstract_ptr ~invalidate:true "netgss_free_ctx_id";
     "gss_name_t",      tagged_abstract_ptr "netgss_free_name";
     "gss_channel_bindings_t", abstract_ptr "netgss_free_cb";
 
@@ -31,7 +31,6 @@ let types =
     "status_type_t",    `Enum [ "GSS_C_|GSS_CODE";
                                 "GSS_C_|MECH_CODE";
                               ];
-
   ]
 
 (* OM_uint32: refer to this as "OM_uint32/int32" *)
@@ -46,10 +45,6 @@ let standard ?(optional=false) ?(options=[]) decl =
    (if optional then [ `Optional ] else []) @
      options
   )
-
-(* TODO:
-   - delete_sec_context
- *)
 
 let functions =
   [ standard
@@ -117,7 +112,7 @@ let functions =
                gss_ctx_id_t         context, \
                OM_uint32/int32      qop_req, \
                gss_buffer_t         message, \
-               gss_buffer_t         msg_token)";
+               OUT_NOPTR gss_buffer_t msg_token)";
 
     standard
       "OM_uint32/int32 \
@@ -156,7 +151,7 @@ let functions =
                OM_uint32/int32      status_value, \
                status_type_t        status_type, \
                gss_OID              mech_type, \
-               OUT OM_uint32/int32  message_context, \
+               IN_OUT OM_uint32/int32 message_context, \
                OUT_NOPTR gss_buffer_t status_string)";
 
     standard
@@ -249,10 +244,11 @@ let functions =
                OUT gss_cred_usage_t cred_usage)";
 
     standard
+      ~options: [ `Post "if (context__c == GSS_C_NO_CONTEXT) invalidate_gss_ctx_id_t(context);"; ]
       "OM_uint32/int32 \
            gss_export_sec_context( \
                OUT OM_uint32/int32  minor_status, \
-               IN_OUT gss_ctx_id_t  context, \
+               IN_PTR gss_ctx_id_t  context, \
                OUT_NOPTR gss_buffer_t interprocess_token)";
 
     standard
@@ -287,7 +283,7 @@ let functions =
       "OM_uint32/int32 \
            gss_duplicate_name( \
                OUT OM_uint32/int32  minor_status, \
-               gss_name_t           input_name, \
+               gss_name_t           name, \
                OUT gss_name_t       dest_name)";
     
     standard
@@ -297,6 +293,17 @@ let functions =
                gss_name_t           input_name, \
                gss_OID              mech_type, \
                OUT gss_name_t       output_name)";
+
+    standard
+      ~options:[ `Pre "output_token__c = GSS_C_NO_BUFFER;";
+                 `Post "if (context__c == GSS_C_NO_CONTEXT) invalidate_gss_ctx_id_t(context);";
+               ]
+      "OM_uint32/int32 \
+           gss_delete_sec_context( \
+               OUT OM_uint32/int32  minor_status, \
+               IN_PTR gss_ctx_id_t  context, \
+               IN_IGNORE gss_buffer_t output_token)";
+
   ]
 
 
@@ -329,25 +336,33 @@ let mapping =
   [ "gss_buffer_t",     "*", "message",            "message";
     "gss_buffer_t",     "*", "input_message",      "message";
     "gss_buffer_t",     "*", "output_message",     "message";
+    "gss_buffer_t",     "gss_init_sec_context", "input_token", "token_option";
     "gss_buffer_t",     "*", "*",                  "token";
 
     "gss_ctx_id_t",     "gss_accept_sec_context", "*", "context_option";
+    "gss_ctx_id_t",     "gss_import_sec_context", "*", "context_option";
+    "gss_ctx_id_t",     "gss_init_sec_context",  "*", "context_option";
+
+    "flags",            "gss_init_sec_context",  "req_flags", "req_flags";
 
     "gss_channel_bindings_t","*",  "*",            "cb_option";
     "gss_OID",          "*", "*",                  "oid";
     "gss_OID_set",      "*", "*",                  "oid_set";
-    
-    "OM_uint32/int32",  "*", "time_req",            "time_req";
-    "OM_uint32/int32",  "*", "initiator_time_req",  "time_req";
-    "OM_uint32/int32",  "*", "acceptor_time_req",   "time_req";
 
-    "OM_uint32/int32",  "*", "time_rec",            "time_ret";
-    "OM_uint32/int32",  "*", "initiator_time_rec",  "time_ret";
-    "OM_uint32/int32",  "*", "acceptor_time_rec",   "time_ret";
-    "OM_uint32/int32",  "*", "lifetime",            "time_ret";
-    "OM_uint32/int32",  "*", "lifetime_rec",        "time_ret";
-    "OM_uint32/int32",  "*", "initiator_lifetime",  "time_ret";
-    "OM_uint32/int32",  "*", "acceptor_lifetime",   "time_ret";
+    "OM_uint32/int32",  "gss_wrap_size_limit", "req_output_size", "wrap_size";
+    "OM_uint32/int32",  "gss_wrap_size_limit", "max_input_size", "wrap_size";
+    "OM_uint32/int32",  "gss_init_sec_context", "time_req", "time_opt";
+    
+    "OM_uint32/int32",  "*", "time_req",            "time";
+    "OM_uint32/int32",  "*", "initiator_time_req",  "time";
+    "OM_uint32/int32",  "*", "acceptor_time_req",   "time";
+    "OM_uint32/int32",  "*", "time_rec",            "time";
+    "OM_uint32/int32",  "*", "initiator_time_rec",  "time";
+    "OM_uint32/int32",  "*", "acceptor_time_rec",   "time";
+    "OM_uint32/int32",  "*", "lifetime",            "time";
+    "OM_uint32/int32",  "*", "lifetime_req",        "time";
+    "OM_uint32/int32",  "*", "initiator_lifetime",  "time";
+    "OM_uint32/int32",  "*", "acceptor_lifetime",   "time";
 
     "OM_uint32/int32",  "*", "*",                   "int32";
   ]
@@ -375,6 +390,79 @@ let prep_ty_name ty_name =
     ty_name
 
 
+let strip_gss name =
+  if String.length name >= 4 && String.sub name 0 4 = "gss_" then
+    String.sub name 4 (String.length name - 4)
+  else
+    name
+
+(*
+delete_sec_context:
+ - missing
+
+ *)
+
+let fixup_accept_sec_context =
+  (* the output args for the method: pairs (new_name, old_name) *)
+  [ "src_name",         "src_name";
+    "mech_type",        "mech_type";
+    "output_context",   "context";      (* ! *)
+    "output_token",     "output_token";
+    "ret_flags",        "ret_flags";
+    "time_rec",         "time_rec";
+    "delegated_cred",   "delegated_cred";
+  ]
+
+let fixup_export_sec_context =
+  (* delete the output context *)
+  [ "interprocess_token",  "interprocess_token"; 
+  ]
+
+let fixup_init_sec_context =
+  [ "actual_mech_type",   "actual_mech_type";
+    "output_context",     "context";    (* ! *)
+    "output_token",       "output_token";
+    "ret_flags",          "ret_flags";
+    "time_rec",           "time_rec";
+  ]
+
+let fixups = 
+  [ "gss_accept_sec_context", fixup_accept_sec_context;
+    "gss_export_sec_context", fixup_export_sec_context;
+    "gss_init_sec_context",   fixup_init_sec_context
+  ]
+
+let fixup fn_name out_params =
+  try
+    let fixup_list = List.assoc fn_name fixups in
+    List.map
+      (fun (ocaml_name, c_name) ->
+         let (_, p_kind, p_type) =
+           try
+             List.find (fun (n,_,_) -> n = c_name) out_params
+           with Not_found ->
+             failwith (sprintf "Not found: fn=%s c_name=%s" fn_name c_name) in
+         (ocaml_name, c_name, p_kind, p_type)
+      )
+      fixup_list
+  with
+    | Not_found -> 
+         List.map
+           (fun (n, p_kind, p_type) -> (n,n,p_kind,p_type))
+           out_params
+
+
+let functions =
+  List.filter (fun (n, _, _) -> n <> "gss_display_status") functions
+  @ [ "gss_display_minor_status",
+      [ "status_value", `In, "int32";
+        "mech_type", `In, "gss_OID";
+        "status_strings", `Out, "string list";
+      ],
+      []
+    ]
+
+
 let () =
   let f = open_out "netgss.ml" in
   fprintf f "(* generated file, do not edit *)\n";
@@ -387,14 +475,18 @@ let () =
   fprintf f "  type context = gss_ctx_id_t\n";
   fprintf f "  type name = gss_name_t\n";
   fprintf f "  type context_option = context option\n";
-  fprintf f "  type cb_option = channel_bdingins option\n";
+  fprintf f "  type cb_option = channel_bindings option\n";
   fprintf f "  type ret_flags = ret_flag list\n";
+  fprintf f "  type time_opt = float option\n";
+  fprintf f "  type wrap_size = int\n";
+  fprintf f "  type req_flags = req_flag list\n";
+  fprintf f "  type token_option = token option\n";
   fprintf f "\n";
   fprintf f "  class type gss_api = \
                  [ credential, name, context ] Netsys_gssapi.poly_gss_api\n";
   fprintf f "\n";
 
-  fprintf f "  let create() =\n";
+  fprintf f "  let interface : gss_api =\n";
   fprintf f "    ( object\n";
 
   fprintf f "        method provider = \"Netsys_gssapi.System\"\n";
@@ -405,7 +497,7 @@ let () =
 
   List.iter
     (fun (fn_name, params, _) ->
-       fprintf f "%smethod %s :\n" indent fn_name;
+       fprintf f "%smethod %s :\n" indent (strip_gss fn_name);
 
        (* First generate the (polymorphic) method type: *)
 
@@ -414,7 +506,7 @@ let () =
        let input_params =
          List.filter
            (fun (p_name, p_kind, _) ->
-              (p_kind = `In || p_kind = `In_out) &&
+              (p_kind = `In || p_kind = `In_out || p_kind = `In_ptr) &&
                 p_name <> "minor_status"
            )
            params in
@@ -427,6 +519,8 @@ let () =
            )
            params in
 
+       let output_params_fixed = fixup fn_name output_params in
+
        List.iter
          (fun (p_name, p_kind, p_type) ->
             let ocaml_type = map_name fn_name p_name p_type in
@@ -434,14 +528,20 @@ let () =
          )
          input_params;
 
+       (* HACK for wrap/unwrap: *)
+       if fn_name = "gss_unwrap" || fn_name = "gss_wrap" then (
+         fprintf f "%s    output_message_preferred_type:[`String|`Memory] ->\n"
+                 indent
+       );
+
        fprintf f "%s    out:(\n" indent;
 
        List.iter
-         (fun (p_name, p_kind, p_type) ->
+         (fun (p_name_ocaml, p_name, p_kind, p_type) ->
             let ocaml_type = map_name fn_name p_name p_type in
-            fprintf f "%s      %s:%s ->\n" indent p_name ocaml_type;
+            fprintf f "%s      %s:%s ->\n" indent p_name_ocaml ocaml_type;
          )
-         output_params;
+         output_params_fixed;
 
        fprintf f "%s      minor_status:minor_status ->\n" indent;
        fprintf f "%s      major_status:major_status ->\n" indent;
@@ -457,6 +557,11 @@ let () =
             fprintf f " ~%s" p_name
          )
          input_params;
+
+       (* HACK for wrap/unwrap: *)
+       if fn_name = "gss_unwrap" || fn_name = "gss_wrap" then (
+         fprintf f " ~output_message_preferred_type"
+       );
 
        fprintf f " ~out () ->\n";
        
@@ -484,6 +589,8 @@ let () =
             fprintf f "\n%s        (%s %s)" indent in_convert p_name
          )
          input_params;
+       if input_params = [] then
+         fprintf f "\n%s        ()" indent;
 
        fprintf f " in\n";
 
@@ -492,20 +599,24 @@ let () =
 
        (* Out arguments: *)
        List.iter
-         (fun (p_name, p_kind, p_type) ->
+         (fun (p_name_ocaml, p_name, p_kind, p_type) ->
             let ocaml_type = map_name fn_name p_name p_type in
             let out_convert =
               if p_type = ocaml_type then
                 "identity"
               else
-                sprintf "_%s_of_%s" ocaml_type (prep_ty_name p_type) in
-            fprintf f "\n%s      (%s %s)" indent out_convert p_name
+                if ocaml_type = "message" then
+                  "(_message_of_gss_buffer_t output_message_preferred_type)"
+                else
+                  sprintf "_%s_of_%s" ocaml_type (prep_ty_name p_type) in
+            fprintf f "\n%s      ~%s:(%s %s)" 
+                    indent p_name_ocaml out_convert p_name
          )
-         output_params;
+         output_params_fixed;
 
        (* Standard out arguments: *)
-       fprintf f "\n%s      minor_status" indent;
-       fprintf f "\n%s      (decode_status major_status)" indent;
+       fprintf f "\n%s      ~minor_status" indent;
+       fprintf f "\n%s      ~major_status:(decode_status major_status)" indent;
        fprintf f "\n%s      ()\n" indent;
     )
     functions;

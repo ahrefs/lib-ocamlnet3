@@ -354,6 +354,20 @@ f src/nettls-gnutls/nettle.mli
 f src/nettls-gnutls/nettls_gnutls.ml
 f src/nettls-gnutls/nettls_gnutls.mli
 
+d src/netgss-system
+f src/netgss-system/configure
+f src/netgss-system/META.in
+f src/netgss-system/Makefile
+f src/netgss-system/Makefile.pre
+f src/netgss-system/reconfigure
+f src/netgss-system/gssapi.c
+f src/netgss-system/gssapi.ml
+f src/netgss-system/gssapi.mli
+f src/netgss-system/gssapi.descr
+f src/netgss-system/netgss.mli
+f src/netgss-system/netgss_util.ml
+
+
 d examples
 
 d examples/camlbox

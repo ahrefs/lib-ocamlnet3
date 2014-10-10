@@ -4,7 +4,7 @@ include $(TOP_DIR)/Makefile.conf
 # include Makefile.conf
 
 PKGNAME  = netgss-system
-OBJECTS  = netgss_bindings.cmo
+OBJECTS  = netgss_bindings.cmo netgss_util.cmo netgss.cmo
 COBJECTS = netgss_bindings_stubs.o
 DOBJECTS = netgss_bindings.mli
 

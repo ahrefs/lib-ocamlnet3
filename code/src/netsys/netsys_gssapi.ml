@@ -63,6 +63,9 @@ type req_flag =
     | `Conf_flag | `Integ_flag | `Anon_flag
     ]
 
+type time =
+  [ `Indefinite | `This of float]
+
 class type ['credential, 'name, 'context] poly_gss_api =
   object
     method provider : string
@@ -78,7 +81,7 @@ class type ['credential, 'name, 'context] poly_gss_api =
 		     output_context:'context option ->
 		     output_token:token ->
 		     ret_flags:ret_flag list ->
-		     time_rec:[ `Indefinite | `This of float] ->
+		     time_rec:time ->
 		     delegated_cred:'credential ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
@@ -88,12 +91,12 @@ class type ['credential, 'name, 'context] poly_gss_api =
 
     method acquire_cred :
           't . desired_name:'name ->
-               time_req:[`None | `Indefinite | `This of float] ->
+               time_req:time ->
                desired_mechs:oid_set ->
                cred_usage:cred_usage  ->
                out:( cred:'credential ->
 		     actual_mechs:oid_set ->
-		     time_rec:[ `Indefinite | `This of float] ->
+		     time_rec:time ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
 		     unit ->
@@ -105,12 +108,12 @@ class type ['credential, 'name, 'context] poly_gss_api =
                desired_name:'name ->
                desired_mech:oid ->
                cred_usage:cred_usage ->
-               initiator_time_req:[`None | `Indefinite | `This of float] ->
-               acceptor_time_req:[`None | `Indefinite | `This of float] ->
+               initiator_time_req:time ->
+               acceptor_time_req:time ->
                out:( output_cred:'credential ->
 		     actual_mechs:oid_set ->
-		     initiator_time_rec:[ `Indefinite | `This of float] ->
-		     acceptor_time_rec:[ `Indefinite | `This of float] ->
+		     initiator_time_rec:time ->
+		     acceptor_time_rec:time ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
 		     unit ->
@@ -139,7 +142,7 @@ class type ['credential, 'name, 'context] poly_gss_api =
 
     method context_time :
           't . context:'context ->
-               out:( time_rec:[ `Indefinite | `This of float] ->
+               out:( time_rec:time ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
 		     unit ->
@@ -165,9 +168,18 @@ class type ['credential, 'name, 'context] poly_gss_api =
 		   ) -> unit -> 't
 
     method display_minor_status :
-          't . minor_status:minor_status ->
+          't . status_value:minor_status ->
                mech_type: oid ->
                out:( status_strings: string list ->
+		     minor_status:minor_status ->
+		     major_status:major_status ->
+		     unit ->
+		     't
+		   ) -> unit -> 't
+
+    method duplicate_name :
+           't . name:'name ->
+               out:( dest_name:'name ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
 		     unit ->
@@ -236,14 +248,14 @@ class type ['credential, 'name, 'context] poly_gss_api =
                target_name:'name ->
                mech_type:oid -> 
                req_flags:req_flag list ->
-               time_rec:float option ->
+               time_req:float option ->
                chan_bindings:channel_bindings option ->
                input_token:token option ->
                out:( actual_mech_type:oid ->
 		     output_context:'context option ->
 		     output_token:token ->
 		     ret_flags:ret_flag list ->
-		     time_rec:[ `Indefinite | `This of float ] ->
+		     time_rec:time ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
 		     unit ->
@@ -254,7 +266,7 @@ class type ['credential, 'name, 'context] poly_gss_api =
           't . context:'context ->
                out:( src_name:'name ->
                      targ_name:'name ->
-		     lifetime_req : [ `Indefinite | `This of float ] ->
+		     lifetime_req : time ->
 		     mech_type:oid ->
 		     ctx_flags:ret_flag list ->
 		     locally_initiated:bool ->
@@ -268,7 +280,7 @@ class type ['credential, 'name, 'context] poly_gss_api =
     method inquire_cred :
           't . cred:'credential ->
                out:( name:'name ->
-		     lifetime: [ `Indefinite | `This of float ] ->
+		     lifetime: time ->
 		     cred_usage:cred_usage ->
 		     mechanisms:oid_set ->
 		     minor_status:minor_status ->
@@ -281,8 +293,8 @@ class type ['credential, 'name, 'context] poly_gss_api =
           't . cred:'credential ->
                mech_type:oid -> 
                out:( name:'name ->
-		     initiator_lifetime: [ `Indefinite | `This of float ] ->
-		     acceptor_lifetime: [ `Indefinite | `This of float ] ->
+		     initiator_lifetime: time ->
+		     acceptor_lifetime: time ->
 		     cred_usage:cred_usage ->
 		     minor_status:minor_status ->
 		     major_status:major_status ->
@@ -378,7 +390,7 @@ module type GSSAPI =
 
     class type gss_api = [credential, name, context] poly_gss_api
 
-    val create : unit -> gss_api
+    val interface : gss_api
 
 end
 

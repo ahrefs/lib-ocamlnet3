@@ -22,10 +22,10 @@ val server_auth_method :
       ?require_privacy:bool ->
       ?require_integrity:bool ->
       ?shared_context:bool ->
-      ?acceptor_cred:credential ->
+      (* ?acceptor_cred:credential -> *)   (* TODO *)
       ?user_name_format:user_name_format ->
       ?seq_number_window:int ->
-      gss_api -> oid -> Rpc_server.auth_method
+      (module Netsys_gssapi.GSSAPI) -> oid -> Rpc_server.auth_method
   (** Creates an authentication method from a GSS-API interface.
       The OID selects the desired authentication method.
 
@@ -64,7 +64,7 @@ val client_auth_method :
       ?privacy:support_level ->
       ?integrity:support_level ->
       ?user_name_interpretation:user_name_interpretation ->
-      gss_api -> oid -> Rpc_client.auth_method
+      (module Netsys_gssapi.GSSAPI) -> oid -> Rpc_client.auth_method
   (** Creates an authentication method from a GSS-API interface.
       The OID selects the desired authentication method.
 

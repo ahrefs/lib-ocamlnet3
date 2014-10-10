@@ -14,6 +14,9 @@ static value twrap_gss_OID_set(long tag, gss_OID_set set);
 static value  wrap_gss_channel_bindings_t(gss_channel_bindings_t cb);
 static value  wrap_gss_ctx_id_t(gss_ctx_id_t ctx);
 static value  wrap_gss_cred_id_t(gss_cred_id_t cred);
+static value  wrap_gss_name_t(gss_name_t name);
+static value  wrap_gss_OID(gss_OID oid);
+static value  wrap_gss_OID_set(gss_OID_set set);
 
 static gss_buffer_t unwrap_gss_buffer_t(value);
 static gss_OID      unwrap_gss_OID(value);
@@ -41,6 +44,8 @@ static void netgss_free_buffer_contents(long tag, gss_buffer_t buf) {
         if (tag == 0) {
             OM_uint32 major, minor;
             major = gss_release_buffer(&minor, buf);
+            if (major && 0xffff0000 != 0)
+                fprintf(stderr, "Netgss: error from gss_release_buffer\n");
         } else {
             if (tag == 1) {
                 stat_free(buf->value);
@@ -85,12 +90,15 @@ CAMLprim value netgss_release_buffer(value b) {
 }
 
 
-CAMLprim value netgss_buffer_of_string(value s) {
+CAMLprim value netgss_buffer_of_string(value s, value pos, value len) {
     gss_buffer_t buf;
+    if (Long_val(len) < 0 || Long_val(pos) < 0 ||
+        Long_val(pos) > caml_string_length(s) - Long_val(len))
+        invalid_argument("buffer_of_string");
     buf = netgss_alloc_buffer();
-    buf->length = caml_string_length(s);
+    buf->length = Long_val(len);
     buf->value = stat_alloc(buf->length);
-    memcpy(buf->value, String_val(s), buf->length);
+    memcpy(buf->value, String_val(s) + Long_val(pos), buf->length);
     return twrap_gss_buffer_t(1, buf);
 }
 
@@ -178,6 +186,8 @@ static void netgss_free_oid_set(long tag, gss_OID_set set) {
     if (tag == 0) {
         OM_uint32 major, minor;
         major = gss_release_oid_set(&minor, &set);
+        if (major && 0xffff0000 != 0)
+            fprintf(stderr, "Netgss: error from gss_release_oid_set\n");
     } else {
         size_t k;
         for (k=0; k < set->count; k++) {
@@ -232,18 +242,24 @@ CAMLprim value netgss_oid_set_of_array(value varg) {
 static void netgss_free_cred_id(long tag, gss_cred_id_t x) {
     OM_uint32 major, minor;
     major = gss_release_cred(&minor, &x);
+    if (major && 0xffff0000 != 0)
+        fprintf(stderr, "Netgss: error from gss_release_cred\n");
 }
 
 
 static void netgss_free_ctx_id(long tag, gss_ctx_id_t x) {
     OM_uint32 major, minor;
     major = gss_delete_sec_context(&minor, &x, GSS_C_NO_BUFFER);
+    if (major && 0xffff0000 != 0)
+        fprintf(stderr, "Netgss: error from gss_delete_sec_context\n");
 }
 
 
 static void netgss_free_name(long tag, gss_name_t x) {
     OM_uint32 major, minor;
     major = gss_release_name(&minor, &x);
+    if (major && 0xffff0000 != 0)
+        fprintf(stderr, "Netgss: error from gss_release_name\n");
 }
 
 
@@ -261,6 +277,21 @@ CAMLprim value netgss_no_cred(value dummy) {
     return wrap_gss_cred_id_t(GSS_C_NO_CREDENTIAL);
 }
 
+CAMLprim value netgss_no_name(value dummy) {
+    return wrap_gss_name_t(GSS_C_NO_NAME);
+}
+
+CAMLprim value netgss_indefinite(value dummy) {
+    return caml_copy_int32(GSS_C_INDEFINITE);
+}
+
+CAMLprim value netgss_no_oid(value dummy) {
+    return wrap_gss_OID(GSS_C_NO_OID);
+}
+
+CAMLprim value netgss_no_oid_set(value dummy) {
+    return wrap_gss_OID_set(GSS_C_NO_OID_SET);
+}
 
 static void netgss_free_cb(gss_channel_bindings_t x) {
 }
