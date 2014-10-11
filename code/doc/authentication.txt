@@ -25,7 +25,9 @@ authentication frameworks:
    sometimes GSS-API is used as synonym for Kerberos. In reality, however,
    GSS-API means the API (and framework) that is used as primary API
    for Kerberos. It is just not limited to it. GSS-API is widely deployed
-   (e.g. MIT Kerberos for Linux/BSD/Unix, Active Directory for Windows).
+   (e.g. MIT Kerberos and Heimdal for Linux/BSD/Unix/Windows, 
+   and Windows integrates a version of GSS-API with a proprietary interface
+   called SSPI).
    Especially system-oriented protocols support the GSS-API, e.g. SSH,
    FTP, and ONC-RPC. There is also a somewhat questionable way of
    using GSS-API together with HTTP ("negotiate" method).
