@@ -21,6 +21,7 @@ static value  wrap_gss_OID_set(gss_OID_set set);
 static gss_buffer_t unwrap_gss_buffer_t(value);
 static gss_OID      unwrap_gss_OID(value);
 static gss_OID_set  unwrap_gss_OID_set(value);
+static gss_ctx_id_t unwrap_gss_ctx_id_t(value);
 
 static long         tag_gss_buffer_t(value);
 
@@ -119,9 +120,12 @@ CAMLprim value netgss_string_of_buffer(value b) {
     gss_buffer_t buf;
     value s;
     buf = unwrap_gss_buffer_t(b);
-    if (buf->value == NULL) netgss_null_pointer();
-    s = caml_alloc_string(buf->length);
-    memcpy(String_val(s), buf->value, buf->length);
+    if (buf->value == NULL) {
+        s = caml_alloc_string(0);
+    } else {
+        s = caml_alloc_string(buf->length);
+        memcpy(String_val(s), buf->value, buf->length);
+    }
     return s;
 }
 
@@ -138,7 +142,7 @@ CAMLprim value netgss_memory_of_buffer(value b) {
 
 
 static void netgss_free_oid(long tag, gss_OID buf) {
-    if (tag == 0) {
+    if (tag == 0 || buf == GSS_C_NO_OID) {
         /* OIDs from the provider are to be considered as read-only */
     } else {
         stat_free(buf->elements);
@@ -154,10 +158,14 @@ static gss_OID netgss_alloc_oid(void) {
 
 static gss_OID netgss_copy_oid(gss_OID buf) {
     gss_OID out;
-    out = netgss_alloc_oid();
-    out->length = buf->length;
-    out->elements = stat_alloc(buf->length);
-    memcpy(out->elements, buf->elements, buf->length);
+    if (buf == GSS_C_NO_OID) {
+        out = GSS_C_NO_OID;
+    } else {
+        out = netgss_alloc_oid();
+        out->length = buf->length;
+        out->elements = stat_alloc(buf->length);
+        memcpy(out->elements, buf->elements, buf->length);
+    }
     return out;
 }
 
@@ -176,6 +184,8 @@ CAMLprim value netgss_string_of_oid(value b) {
     gss_OID buf;
     value s;
     buf = unwrap_gss_OID(b);
+    if (buf == GSS_C_NO_OID) 
+        caml_raise_not_found();
     s = caml_alloc_string(buf->length);
     memcpy(String_val(s), buf->elements, buf->length);
     return s;
@@ -183,7 +193,7 @@ CAMLprim value netgss_string_of_oid(value b) {
 
 
 static void netgss_free_oid_set(long tag, gss_OID_set set) {
-    if (tag == 0) {
+    if (tag == 0 || set == GSS_C_NO_OID_SET) {
         OM_uint32 major, minor;
         major = gss_release_oid_set(&minor, &set);
         if (major && 0xffff0000 != 0)
@@ -208,11 +218,15 @@ CAMLprim value netgss_array_of_oid_set(value varg) {
     CAMLparam1(varg);
     CAMLlocal2(v1, v2);
     gss_OID_set set;
-    size_t k;
+    size_t k, count;
     set = unwrap_gss_OID_set(varg);
+    if (set == GSS_C_NO_OID_SET)
+        count = 0;
+    else
+        count = set->count;
     /* no other way than to always copy the members */
-    v1 = caml_alloc(set->count, 0);
-    for (k=0; k<set->count; k++) {
+    v1 = caml_alloc(count, 0);
+    for (k=0; k<count; k++) {
         v2 = twrap_gss_OID(1, netgss_copy_oid(set->elements+k));
         Store_field(v1, k, v2);
     }
@@ -241,25 +255,31 @@ CAMLprim value netgss_oid_set_of_array(value varg) {
 
 static void netgss_free_cred_id(long tag, gss_cred_id_t x) {
     OM_uint32 major, minor;
-    major = gss_release_cred(&minor, &x);
-    if (major && 0xffff0000 != 0)
-        fprintf(stderr, "Netgss: error from gss_release_cred\n");
+    if (x != GSS_C_NO_CREDENTIAL) {
+        major = gss_release_cred(&minor, &x);
+        if (major && 0xffff0000 != 0)
+            fprintf(stderr, "Netgss: error from gss_release_cred\n");
+    }
 }
 
 
 static void netgss_free_ctx_id(long tag, gss_ctx_id_t x) {
     OM_uint32 major, minor;
-    major = gss_delete_sec_context(&minor, &x, GSS_C_NO_BUFFER);
-    if (major && 0xffff0000 != 0)
-        fprintf(stderr, "Netgss: error from gss_delete_sec_context\n");
+    if (x != GSS_C_NO_CONTEXT) {
+        major = gss_delete_sec_context(&minor, &x, GSS_C_NO_BUFFER);
+        if (major && 0xffff0000 != 0)
+            fprintf(stderr, "Netgss: error from gss_delete_sec_context\n");
+    }
 }
 
 
 static void netgss_free_name(long tag, gss_name_t x) {
     OM_uint32 major, minor;
-    major = gss_release_name(&minor, &x);
-    if (major && 0xffff0000 != 0)
-        fprintf(stderr, "Netgss: error from gss_release_name\n");
+    if (x != GSS_C_NO_NAME) {
+        major = gss_release_name(&minor, &x);
+        if (major && 0xffff0000 != 0)
+            fprintf(stderr, "Netgss: error from gss_release_name\n");
+    }
 }
 
 
@@ -272,6 +292,11 @@ CAMLprim value netgss_no_ctx(value dummy) {
     return wrap_gss_ctx_id_t(GSS_C_NO_CONTEXT);
 }
 
+CAMLprim value netgss_is_no_ctx(value context) {
+    gss_ctx_id_t ctx;
+    ctx = unwrap_gss_ctx_id_t(context);
+    return Val_bool(ctx == GSS_C_NO_CONTEXT);
+}
 
 CAMLprim value netgss_no_cred(value dummy) {
     return wrap_gss_cred_id_t(GSS_C_NO_CREDENTIAL);

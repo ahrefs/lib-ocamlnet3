@@ -297,16 +297,19 @@ let has_prefix ~prefix s =
 
 type abs_ptr =
     { abs_free_fn : [`Untagged of string | `Tagged of string ];
-      abs_invalidate : bool;
+      abs_nullok : bool;
+      abs_gen_set : bool;
     }
 
-let abstract_ptr ?(invalidate=false) abs_free_fn =
+let abstract_ptr ?(nullok=false) ?(gen_set=false) abs_free_fn =
   `Abstract_ptr { abs_free_fn = `Untagged abs_free_fn; 
-                  abs_invalidate = invalidate }
+                  abs_nullok = nullok;
+                  abs_gen_set = gen_set }
 
-let tagged_abstract_ptr ?(invalidate=false) abs_free_fn =
+let tagged_abstract_ptr ?(nullok=false) ?(gen_set=false) abs_free_fn =
   `Abstract_ptr { abs_free_fn = `Tagged abs_free_fn; 
-                  abs_invalidate = invalidate }
+                  abs_nullok = nullok;
+                  abs_gen_set = gen_set }
 
 
 (**********************************************************************)
@@ -431,9 +434,8 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "static %s unwrap_%s(value v) {\n" tyname tyname;
   fprintf c "  %s r;\n" tyname;
   fprintf c "  r = abs_%s_unwrap(Field(v,0));\n" tyname;
-  if abs.abs_invalidate then (
-    fprintf c "  if (r == NULL) raise_null_pointer();"
-  );
+  if not abs.abs_nullok then
+    fprintf c "  if (r == NULL) raise_null_pointer();\n";
   fprintf c "  return r;\n";
   fprintf c "}\n\n";
 
@@ -444,7 +446,8 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "static value twrap_%s(long tag, %s x) {\n" tyname tyname;
   fprintf c "  CAMLparam0();\n";
   fprintf c "  CAMLlocal2(v,r);\n";
-  fprintf c "  if (x == NULL) failwith(\"wrap_%s: NULL pointer\");\n" tyname;
+  if not abs.abs_nullok then
+    fprintf c "  if (x == NULL) failwith(\"wrap_%s: NULL pointer\");\n" tyname;
   fprintf c "  v = caml_alloc_custom(&abs_%s_ops, \
                                      sizeof(struct absstruct_%s), 0, 1);\n"
          tyname tyname;
@@ -461,9 +464,9 @@ let gen_abstract_ptr c mli ml tyname abs ~optional =
   fprintf c "  return twrap_%s(0, x);\n" tyname;
   fprintf c "}\n\n";
 
-  if abs.abs_invalidate then (
-    fprintf c "static void invalidate_%s(value v) {\n" tyname;
-    fprintf c "  absstructptr_%s_val(v)->value = NULL;\n" tyname;
+  if abs.abs_gen_set then (
+    fprintf c "static void set_%s(value v, %s x) {\n" tyname tyname;
+    fprintf c "  absstructptr_%s_val(v)->value = x;\n" tyname;
     fprintf c "}\n\n";
   );
 

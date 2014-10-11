@@ -48,6 +48,9 @@ external no_channel_bindings : unit -> gss_channel_bindings_t
 external no_context : unit -> gss_ctx_id_t
   = "netgss_no_ctx"
 
+external is_no_context : gss_ctx_id_t -> bool
+  = "netgss_is_no_ctx"
+
 external no_credential : unit -> gss_cred_id_t
   = "netgss_no_cred"
 

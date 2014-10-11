@@ -83,9 +83,10 @@ let _gss_ctx_id_t_of_context_option =
   | Some ctx -> ctx
 
 let _context_option_of_gss_ctx_id_t ctx =
-  (* FIXME *)
-  (* hmmm, how to check for no_context? *)
-  Some ctx
+  if is_no_context ctx then
+    None
+  else
+    Some ctx
 
 let _gss_buffer_t_of_token s =
   buffer_of_string s 0 (String.length s)
@@ -138,9 +139,11 @@ let _gss_channel_bindings_t_of_cb_option _ =
   no_channel_bindings()
 
 let _oid_of_gss_OID gss_oid =
-  let der = der_of_oid gss_oid in
-  let p = ref 0 in
-  Netgssapi_support.der_value_to_oid der p (String.length der)
+  try
+    let der = der_of_oid gss_oid in
+    let p = ref 0 in
+    Netgssapi_support.der_value_to_oid der p (String.length der)
+  with Not_found -> [| |]
 
 let _gss_OID_of_oid oid =
   if oid = [| |] then
@@ -150,9 +153,11 @@ let _gss_OID_of_oid oid =
     oid_of_der der
 
 let _oid_set_of_gss_OID_set gss_set =
-  let gss_oid_a = array_of_oid_set gss_set in
-  let oid_a = Array.map _oid_of_gss_OID gss_oid_a in
-  Array.to_list oid_a
+  try
+    let gss_oid_a = array_of_oid_set gss_set in
+    let oid_a = Array.map _oid_of_gss_OID gss_oid_a in
+    Array.to_list oid_a
+  with Not_found -> []
 
 let _gss_OID_set_of_oid_set set =
   let set_a = Array.of_list set in

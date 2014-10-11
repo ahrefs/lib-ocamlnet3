@@ -16,6 +16,7 @@ val array_of_oid_set : gss_OID_set -> gss_OID array
 val oid_set_of_array : gss_OID array -> gss_OID_set
 val no_channel_bindings : unit -> gss_channel_bindings_t
 val no_context : unit -> gss_ctx_id_t
+val is_no_context : gss_ctx_id_t -> bool
 val no_credential : unit -> gss_cred_id_t
 val no_name : unit -> gss_name_t
 val no_oid : unit -> gss_OID

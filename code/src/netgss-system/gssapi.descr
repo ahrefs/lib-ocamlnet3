@@ -6,12 +6,12 @@ open Printf
 
 let types =
   [ "gss_buffer_t",    tagged_abstract_ptr "netgss_free_buffer";
-    "gss_OID",         tagged_abstract_ptr "netgss_free_oid";
-    "gss_OID_set",     tagged_abstract_ptr "netgss_free_oid_set";
-    "gss_cred_id_t",   tagged_abstract_ptr "netgss_free_cred_id";
-    "gss_ctx_id_t",    tagged_abstract_ptr ~invalidate:true "netgss_free_ctx_id";
-    "gss_name_t",      tagged_abstract_ptr "netgss_free_name";
-    "gss_channel_bindings_t", abstract_ptr "netgss_free_cb";
+    "gss_OID",         tagged_abstract_ptr ~nullok:true "netgss_free_oid";
+    "gss_OID_set",     tagged_abstract_ptr ~nullok:true "netgss_free_oid_set";
+    "gss_cred_id_t",   tagged_abstract_ptr ~nullok:true "netgss_free_cred_id";
+    "gss_ctx_id_t",    tagged_abstract_ptr ~nullok:true ~gen_set:true "netgss_free_ctx_id";
+    "gss_name_t",      tagged_abstract_ptr ~nullok:true "netgss_free_name";
+    "gss_channel_bindings_t", abstract_ptr ~nullok:true "netgss_free_cb";
 
     "gss_cred_usage_t", `Enum [ "GSS_C_|BOTH";
                                 "GSS_C_|INITIATE";
@@ -244,7 +244,7 @@ let functions =
                OUT gss_cred_usage_t cred_usage)";
 
     standard
-      ~options: [ `Post "if (context__c == GSS_C_NO_CONTEXT) invalidate_gss_ctx_id_t(context);"; ]
+      ~options: [ `Post "if (context__c == GSS_C_NO_CONTEXT) set_gss_ctx_id_t(context, GSS_C_NO_CONTEXT);"; ]
       "OM_uint32/int32 \
            gss_export_sec_context( \
                OUT OM_uint32/int32  minor_status, \
@@ -296,7 +296,7 @@ let functions =
 
     standard
       ~options:[ `Pre "output_token__c = GSS_C_NO_BUFFER;";
-                 `Post "if (context__c == GSS_C_NO_CONTEXT) invalidate_gss_ctx_id_t(context);";
+                 `Post "if (context__c == GSS_C_NO_CONTEXT) set_gss_ctx_id_t(context, GSS_C_NO_CONTEXT);";
                ]
       "OM_uint32/int32 \
            gss_delete_sec_context( \
