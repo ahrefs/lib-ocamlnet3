@@ -1,6 +1,10 @@
 /* This file is included into netgss_bindings_stubs.c */
 
+#ifdef NETGSS_VARIANT_INCLUDE_GSS
+#include <gss.h>
+#else
 #include <gssapi.h>
+#endif
 
 /* In the following tag=0 means that the value was allocated by the GSSAPI
    provider, and needs to be deallocated by the special GSSAPI function for
@@ -240,6 +244,8 @@ CAMLprim value netgss_oid_set_of_array(value varg) {
     gss_OID *p;
     size_t k;
     value v1;
+    if (Wosize_val(varg) == 0)
+        return twrap_gss_OID_set(1, GSS_C_NO_OID_SET);
     set = netgss_alloc_oid_set();
     set->count = Wosize_val(varg);
     set->elements = stat_alloc(sizeof(gss_OID) * set->count);

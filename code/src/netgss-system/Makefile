@@ -12,7 +12,8 @@ LINK_OPTIONS = $(NETGSS_LINK_OPTIONS)
 #LINK_OPTIONS = -lkrb5
 
 CC_OPTIONS = $(NETGSS_CFLAGS)
-CC_OPTIONS_FOR_netgss_bindings_stubs.c = -ccopt -Wno-unused-function
+CC_OPTIONS_FOR_netgss_bindings_stubs.c = -ccopt -Wno-unused-function \
+    -ccopt -DNETGSS_VARIANT_"$(NETGSS_VARIANT)"
 
 INCLUDES = $(INC_NETSYS) $(INC_NETSTRING)
 
