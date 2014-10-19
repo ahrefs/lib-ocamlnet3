@@ -1,4 +1,11 @@
+2014-10-19  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netsys_posix.mli.mkfifoat: this function is not supported on
+	  OS X 10.10, and this is now detected at config time.
+
 2014-09-16  Gerd Stolpmann  <gerd@e130>
+
+	* Release ocamlnet-3.7.6
 
 	* netstring-pcre: removing dependency on camlp4 (an oversight).
 

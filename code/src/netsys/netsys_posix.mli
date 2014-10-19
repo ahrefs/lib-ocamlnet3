@@ -235,7 +235,11 @@ val symlinkat : string -> Unix.file_descr -> string -> unit
   (** [symlinkat oldpath newdirfd newpath flags] *)
 
 val mkfifoat : Unix.file_descr -> string -> int -> unit
-  (** [mkfifoat dirfd path mode] *)
+  (** [mkfifoat dirfd path mode]
+
+      NB. MacOS 10.10 doesn't support mkfifoat although the other "at" functions
+      are implemented. Be prepared to get [Invalid_argument].
+   *)
 
 val readlinkat : Unix.file_descr -> string -> string
   (** [readlinkat dirfd path] *)

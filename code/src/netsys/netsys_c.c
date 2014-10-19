@@ -590,7 +590,7 @@ CAMLprim value netsys_symlinkat(value oldpath,
 
 CAMLprim value netsys_mkfifoat(value dirfd, value path, value mode)
 {
-#ifdef HAVE_AT
+#ifdef HAVE_MKFIFOAT
     if (mkfifoat(Int_val(dirfd), String_val(path), Int_val(mode)) == -1)
 	uerror("mkfifoat", path);
     return Val_unit;
