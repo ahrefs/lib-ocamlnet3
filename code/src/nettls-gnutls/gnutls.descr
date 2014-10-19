@@ -194,7 +194,7 @@ let types =
     "gnutls_privkey_type_t",   `Enum [ "GNUTLS_PRIVKEY_|X509";
                                        "GNUTLS_PRIVKEY_|OPENPGP";
                                        "GNUTLS_PRIVKEY_|PKCS11";
-                                       "GNUTLS_PRIVKEY_|EXT"
+                                       "?GNUTLS_PRIVKEY_|EXT"
                                      ];
 
     "key_usage", `Flags [ "GNUTLS_KEY_|DIGITAL_SIGNATURE";
