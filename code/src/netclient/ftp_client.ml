@@ -90,16 +90,6 @@ type ftp_auth =
 type ftp_data_prot =
   [ `C | `S | `E | `P ]
 
-
-type ftp_protector =
-    { ftp_wrap_limit : unit -> int;
-      ftp_wrap_s : string -> string;
-      ftp_wrap_m : memory -> memory -> int;
-      ftp_unwrap_s : string -> string;
-      ftp_unwrap_m : memory -> memory -> int;
-      ftp_prot_level : ftp_data_prot;
-    }
-
 type ftp_state =
     { cmd_state : cmd_state;
       ftp_connected : bool;
@@ -513,10 +503,10 @@ let extract_adat s =
          )
 
 let pbsz_re =
-  Netstring_str.regexp ".*PBSZ=\\([0-9]+\\)"
+  Netstring_str.regexp ".*PBSZ=\\([0-9]*\\)"
 
 let extract_pbsz s =
-  match Netstring_str.string_match adat_re s 0 with
+  match Netstring_str.string_match pbsz_re s 0 with
     | None ->
          raise Not_found
     | Some m ->
@@ -1745,6 +1735,7 @@ object(self)
     let e = 
       new ftp_data_receiver
         ?tls
+        ?protector:ftp_state.ftp_prot
 	~esys:event_system
 	~mode:ftp_state.ftp_trans
 	~local_receiver:local
@@ -1776,6 +1767,7 @@ object(self)
     let e = 
       new ftp_data_sender
         ?tls
+        ?protector:ftp_state.ftp_prot
 	~esys:event_system
 	~mode:ftp_state.ftp_trans
 	~local_sender:local
@@ -2077,7 +2069,7 @@ let gssapi_method ?(mech_type = [| |])
       let input_message = [ Xdr_mstring.memory_to_mstring msg ] in
       G.interface # unwrap
         ~context ~input_message
-        ~output_message_preferred_type:`String
+        ~output_message_preferred_type:`Memory
         ~out:(fun ~output_message ~conf_state ~qop_state
                   ~minor_status ~major_status () ->
                 check_gssapi_status "unwrap" major_status;
@@ -2208,6 +2200,12 @@ let client = new ftp_client();;
 client # exec (connect_method ~host:"office1.lan.sumadev.de" ());;    
 client # exec (gssapi_method ~required:true (module Netgss.System : Netsys_gssapi.GSSAPI));;
 client # exec (login_method ~user:"gerd" ~get_password:(fun _ -> failwith "password") ~get_account:(fun _ -> failwith "account") ());;
+let buffer = Buffer.create 1000;;
+let ch = new Netchannels.output_buffer buffer;;
+client # exec (list_method ~dir:(`NVFS "/") ~representation:(`ASCII None) ~store:(fun _ -> `File_structure ch) ());;
+let data = Buffer.contents buffer;;
+let ch_in = new Netchannels.input_string data;;
+client # exec (put_method ~meth:`STOR ~file:(`NVFS "newfile") ~representation:`Image ~store:(fun _ -> `File_structure ch_in) ());;
  *)
 
 let login_method ~user ~get_password ~get_account () (pi:ftp_client_pi) =

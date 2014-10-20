@@ -192,18 +192,6 @@ type ftp_data_prot =
 type support_level =
     [ `Required | `If_possible | `None ]
 
-type ftp_protector =
-    { ftp_wrap_limit : unit -> int;
-      ftp_wrap_s : string -> string;
-      ftp_wrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
-      ftp_unwrap_s : string -> string;
-      ftp_unwrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
-      ftp_prot_level : ftp_data_prot;
-    }
-  (** The functions for encrypting (wrapping) and decrypting (unwrapping)
-      messages when an RFC 2228 security layer is active.
-   *)
-
 type ftp_state =
     { cmd_state : cmd_state;        (** the command state *)
       ftp_connected : bool;         (** whether connected with the server *)
@@ -247,7 +235,7 @@ type ftp_state =
          (** Security protocol for data connections (PROT command) *)
       ftp_data_pbsz : int;
          (** protection buffer size (PBSZ command) *)
-      ftp_prot : ftp_protector option;
+      ftp_prot : Ftp_data_endpoint.ftp_protector option;
          (** a security layer (RFC 2228) *)
     }
   (** The ftp_state reflects the knowledge of the client about what has been
@@ -314,7 +302,7 @@ type cmd =
     (* RFC 4217 *)
     | `Start_TLS of (module Netsys_crypto_types.TLS_CONFIG)
     (* A pseudo command enabling a security layer for RFC 2228 *)
-    | `Start_protection of ftp_protector
+    | `Start_protection of Ftp_data_endpoint.ftp_protector
     ]
   (** An FTP command. Not all commands are implemented by all servers. 
 

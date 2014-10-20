@@ -4,6 +4,7 @@ open Netchannels
 open Netconversion
 open Uq_engines
 open Uq_engines.Operators   (* ++, >>, eps_e *)
+open Printf
 
 exception Ftp_data_protocol_error
 
@@ -45,6 +46,19 @@ type text_data_repr =
     | `ASCII_unix of Netconversion.encoding
     | `EBCDIC     of Netconversion.encoding
     ]
+
+type ftp_data_prot =
+  [ `C | `S | `E | `P ]
+
+
+type ftp_protector =
+    { ftp_wrap_limit : unit -> int;
+      ftp_wrap_s : string -> string;
+      ftp_wrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
+      ftp_unwrap_s : string -> string;
+      ftp_unwrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
+      ftp_prot_level : ftp_data_prot;
+    }
 
 class write_out_record_channel 
         ~(repr : text_data_repr) (out : out_obj_channel) =
@@ -908,10 +922,8 @@ object(self)
 end ;;
 
 
-let copy_e ~src ~dst ~write_eof_dst ~close_src ~close_dst esys =
-  let e =
-    Uq_io.copy_e
-      src dst
+let transact_e ~src ~dst ~write_eof_dst ~close_src ~close_dst proc_e esys =
+  let e = proc_e src dst
     ++ (fun _ ->
           ( if write_eof_dst then
               Uq_io.write_eof_e dst
@@ -945,10 +957,105 @@ let copy_e ~src ~dst ~write_eof_dst ~close_src ~close_dst esys =
 ;;
 
 
-let receive_e ~src ~dst ~close_dst esys =
+let copy_e src dst =
+  Uq_io.copy_e src dst
+  >> (function
+       | `Done _ -> `Done ()
+       | `Error e -> `Error e
+       | `Aborted -> `Aborted
+     )
+
+
+let rec unwrap_input_loop_e strbuf buf1 buf2 p esys src dst =
+  let s = String.make 4 '\000' in
+  Uq_io.really_input_e src (`String s) 0 4
+  ++ (fun () ->
+        if s.[0] <> '\000' then
+          raise Ftp_data_protocol_error;
+        let n =
+          (Char.code s.[1] lsl 16) lor 
+            (Char.code s.[2] lsl 8) lor Char.code s.[3] in
+        if n > Bigarray.Array1.dim buf1 then
+          raise Ftp_data_protocol_error;
+        Uq_io.really_input_e src (`Memory buf1) 0 n
+        ++ 
+          (fun () ->
+             let buf1_sub = Bigarray.Array1.sub buf1 0 n in
+             let n_out = p.ftp_unwrap_m buf1_sub buf2 in
+             if n_out=0 then
+               eps_e (`Done ()) esys
+             else
+               let buf2_sub = Bigarray.Array1.sub buf2 0 n_out in
+               (* NB. async channels do not support `Memory, so we do this
+                  superflous copy here
+                *)
+               Netsys_mem.blit_memory_to_string buf2_sub 0 strbuf 0 n_out;
+               Uq_io.really_output_e dst (`String strbuf) 0 n_out
+               ++ (fun () ->
+                     unwrap_input_loop_e strbuf buf1 buf2 p esys src dst
+                  )
+            )
+     )
+
+
+let unwrap_input_e p esys src dst =
+  let buf1 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
+  let buf2 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
+  let strbuf = String.create Netsys_mem.default_block_size in
+  unwrap_input_loop_e strbuf buf1 buf2 p esys src dst
+
+
+let rec wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst =
+  ( Uq_io.input_e src (`String strbuf) 0 limit
+    >> Uq_io.eof_as_none
+  )
+  ++ (fun n_opt ->
+        let n =
+          match n_opt with
+            | Some n -> n
+            | None -> 0 in
+        (* NB. async channels do not support `Memory, so we do this
+           superflous copy here
+         *)
+        Netsys_mem.blit_string_to_memory strbuf 0 buf1 0 n;
+        let buf1_sub = Bigarray.Array1.sub buf1 0 n in
+        let n_out = p.ftp_wrap_m buf1_sub buf2 in
+        let buf2_sub = Bigarray.Array1.sub buf2 0 n_out in
+        let s = String.make 4 '\000' in
+        s.[1] <- Char.chr ((n_out lsr 16) land 0xff);
+        s.[2] <- Char.chr ((n_out lsr 8) land 0xff);
+        s.[3] <- Char.chr (n_out land 0xff);
+        Uq_io.really_output_e dst (`String s) 0 4
+        ++ (fun () ->
+              Uq_io.really_output_e dst (`Memory buf2_sub) 0 n_out
+              ++ (fun () ->
+                  if n_opt = None then
+                    eps_e (`Done ()) esys
+                  else
+                    wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst
+                 )
+           )
+     )
+
+let wrap_output_e p esys src dst =
+  let buf1 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
+  let buf2 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
+  let strbuf = String.create Netsys_mem.default_block_size in
+  let limit = p.ftp_wrap_limit() in
+  wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst
+
+
+let receive_e ~src ~dst ~close_dst esys protector_opt =
   let src = `Multiplex src in
   let dst = `Async_out(dst,esys) in
-  copy_e ~src ~dst ~write_eof_dst:false ~close_src:false ~close_dst esys
+  let proc_e =
+    match protector_opt with
+      | None ->
+          copy_e
+      | Some p ->
+          unwrap_input_e p esys in
+  transact_e
+    ~src ~dst ~write_eof_dst:false ~close_src:false ~close_dst proc_e esys
 ;;
 
 
@@ -957,7 +1064,7 @@ let tls_receive_e ?resume ~tls_config ~peer_name
   let src1 =
     Uq_multiplex.tls_multiplex_controller
       ?resume ~role:`Client ~peer_name tls_config src in
-  receive_e ~src:src1 ~dst ~close_dst:false esys
+  receive_e ~src:src1 ~dst ~close_dst:false esys None
   ++
     (fun () ->
        (* Shut down the src completely *)
@@ -971,22 +1078,28 @@ let tls_receive_e ?resume ~tls_config ~peer_name
 ;;
 
 
-let opt_tls_receive_e ?tls ~src ~dst ~close_dst esys =
+let opt_tls_receive_e ?tls ?protector ~src ~dst ~close_dst esys =
   match tls with
     | None ->
          receive_e
-           ~src ~dst ~close_dst esys
+           ~src ~dst ~close_dst esys protector
     | Some(tls_config, peer_name, resume) ->
          tls_receive_e 
            ~tls_config 
            ~peer_name ?resume ~src ~dst ~close_dst esys
 ;;
-	
 
-let send_e ~src ~dst ~write_eof_dst ~close_src esys =
+
+let send_e ~src ~dst ~write_eof_dst ~close_src esys protector_opt =
   let src = `Async_in(src,esys) in
   let dst = `Multiplex dst in
-  copy_e ~src ~dst ~write_eof_dst ~close_src ~close_dst:false esys
+  let proc_e =
+    match protector_opt with
+      | None ->
+          copy_e
+      | Some p ->
+          wrap_output_e p esys in
+  transact_e ~src ~dst ~write_eof_dst ~close_src ~close_dst:false proc_e esys
 ;;
 
 
@@ -995,15 +1108,15 @@ let tls_send_e ?resume ~tls_config ~peer_name
   let dst =
     Uq_multiplex.tls_multiplex_controller
       ?resume ~role:`Client ~peer_name tls_config dst in
-  send_e ~src ~dst ~write_eof_dst ~close_src esys
+  send_e ~src ~dst ~write_eof_dst ~close_src esys None
 ;;
 
 
-let opt_tls_send_e ?tls ~src ~dst ~write_eof_dst ~close_src esys =
+let opt_tls_send_e ?tls ?protector ~src ~dst ~write_eof_dst ~close_src esys =
   match tls with
     | None ->
          send_e
-           ~src ~dst ~write_eof_dst ~close_src esys
+           ~src ~dst ~write_eof_dst ~close_src esys protector
     | Some(tls_config, peer_name, resume) ->
          tls_send_e 
            ~tls_config
@@ -1012,7 +1125,7 @@ let opt_tls_send_e ?tls ~src ~dst ~write_eof_dst ~close_src esys =
 	
 
 class ftp_data_receiver_impl 
-        ?tls
+        ?tls ?protector
         ~esys 
 	~(mode : transmission_mode)
 	~(local_receiver : local_receiver)
@@ -1067,7 +1180,7 @@ object (self)
  *)
   inherit [unit] Uq_engines.delegate_engine
             (opt_tls_receive_e
-               ?tls ~src ~dst ~close_dst:true esys)
+               ?tls ?protector ~src ~dst ~close_dst:true esys)
 
   val mutable descr_state = (`Transfer_in_progress : descr_state)
 
@@ -1096,16 +1209,21 @@ object (self)
 end ;;
 
 
-class ftp_data_receiver ?tls ~esys ~mode ~local_receiver ~descr
+class ftp_data_receiver ?tls ?protector ~esys ~mode ~local_receiver ~descr
                         ~timeout ~timeout_exn () =
   (* The engine [e] may go into the state [`Aborted] when it finishes
    * normally. This is wrong; the engine should go to [`Done ()] instead,
    * and [`Aborted] is reserved for the case when the user of the class
    * calls [abort]. We correct this here by mapping the state.
    *)
+  let () =
+    if tls <> None && protector <> None then
+      failwith "Ftp_data_endpoint.ftp_data_receiver: Only one security layer \
+                can be enabled" in
   let e = 
     new ftp_data_receiver_impl
-          ?tls ~esys ~mode ~local_receiver ~descr ~timeout ~timeout_exn () in
+          ?tls ?protector ~esys ~mode ~local_receiver ~descr ~timeout
+          ~timeout_exn () in
   let commit() =
     try e#commit(); `Done()
     with
@@ -1137,7 +1255,7 @@ end ;;
 
 
 class ftp_data_sender
-        ?tls
+        ?tls ?protector
         ~esys 
 	~(mode : transmission_mode)
 	~(local_sender : local_sender)
@@ -1145,6 +1263,10 @@ class ftp_data_sender
         ~timeout
         ~timeout_exn
         () =
+  let () =
+    if tls <> None && protector <> None then
+      failwith "Ftp_data_endpoint.ftp_data_sender: Only one security layer \
+                can be enabled" in
   let descr_state = ref (`Transfer_in_progress : descr_state) in
   let src =
     match mode with
@@ -1170,7 +1292,9 @@ class ftp_data_sender
       ~timeout:(timeout,timeout_exn)
       descr esys in
   let e1 = 
-    opt_tls_send_e ?tls ~src ~dst ~write_eof_dst:true ~close_src:true esys in
+    opt_tls_send_e
+      ?tls ?protector ~src ~dst
+      ~write_eof_dst:true ~close_src:true esys in
   let e2 =
     e1 ++
       (fun () ->

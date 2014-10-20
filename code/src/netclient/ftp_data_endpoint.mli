@@ -7,6 +7,23 @@
 (** {1 Types and Exceptions} *)
 
 
+type ftp_data_prot =
+  [ `C | `S | `E | `P ]
+  (** See {!Ftp_client.ftp_data_prot} *)
+
+type ftp_protector =
+    { ftp_wrap_limit : unit -> int;
+      ftp_wrap_s : string -> string;
+      ftp_wrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
+      ftp_unwrap_s : string -> string;
+      ftp_unwrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
+      ftp_prot_level : ftp_data_prot;
+    }
+  (** The functions for encrypting (wrapping) and decrypting (unwrapping)
+      messages when an RFC 2228 security layer is active.
+   *)
+
+
 (** An [out_record_channel] can be used to output files with record
  * structure. This is purely abstract, as Unix does not support such
  * files natively, so this kind of channel is usually mapped to a flat
@@ -202,6 +219,7 @@ class ftp_data_receiver :
         ?tls:((module Netsys_crypto_types.TLS_CONFIG) *
               string option *
               string option) ->
+        ?protector:ftp_protector ->
         esys:Unixqueue.event_system ->
 	mode:transmission_mode ->
 	local_receiver:local_receiver ->
@@ -232,6 +250,7 @@ class ftp_data_sender :
         ?tls:((module Netsys_crypto_types.TLS_CONFIG) *
               string option *
               string option) ->
+        ?protector:ftp_protector ->
         esys:Unixqueue.event_system ->
 	mode:transmission_mode ->
 	local_sender:local_sender ->
