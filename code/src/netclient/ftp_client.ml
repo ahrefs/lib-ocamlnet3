@@ -4,6 +4,7 @@ open Telnet_client
 open Ftp_data_endpoint
 open Printf
 open Uq_engines.Operators   (* ++, >>, eps_e *)
+open Netsys_types
 
 module Debug = struct
   let enable = ref false
@@ -19,6 +20,7 @@ let () =
 exception FTP_error of exn
 exception FTP_protocol_violation of string
 exception FTP_timeout of string
+exception GSSAPI_error of string
 
 let proto_viol s =
   raise(FTP_protocol_violation s)
@@ -34,6 +36,10 @@ let () =
     )
 
 
+type support_level =
+    [ `Required | `If_possible | `None ]
+
+
 type cmd_state =
     [ `Not_connected
     | `Init
@@ -47,6 +53,7 @@ type cmd_state =
     | `User_acct_seq
     | `Pass_acct_seq
     | `Preliminary
+    | `Auth_data
     ]
 
 type port =
@@ -77,11 +84,21 @@ type transmission_mode =
 type ftp_auth =
   [ `None
   | `TLS
+  | `GSSAPI
   ]
 
 type ftp_data_prot =
   [ `C | `S | `E | `P ]
 
+
+type ftp_protector =
+    { ftp_wrap_limit : unit -> int;
+      ftp_wrap_s : string -> string;
+      ftp_wrap_m : memory -> memory -> int;
+      ftp_unwrap_s : string -> string;
+      ftp_unwrap_m : memory -> memory -> int;
+      ftp_prot_level : ftp_data_prot;
+    }
 
 type ftp_state =
     { cmd_state : cmd_state;
@@ -100,8 +117,10 @@ type ftp_state =
       ftp_features : (string * string option) list option;
       ftp_options : (string * string option) list;
       ftp_auth : ftp_auth;
+      ftp_auth_data : string option;  (* from last ADAT *)
       ftp_data_prot : ftp_data_prot;
       ftp_data_pbsz : int;
+      ftp_prot : ftp_protector option;
     }
 
 
@@ -153,7 +172,9 @@ type cmd =
     | `AUTH of string
     | `PBSZ of int
     | `PROT of ftp_data_prot
+    | `ADAT of string
     | `Start_TLS of (module Netsys_crypto_types.TLS_CONFIG)
+    | `Start_protection of ftp_protector
     ]
 
 let string_of_cmd_nolf =
@@ -162,6 +183,7 @@ let string_of_cmd_nolf =
     | `Disconnect -> ""
     | `Dummy -> ""
     | `Start_TLS _ -> ""
+    | `Start_protection _ -> ""
     | `USER s -> "USER " ^ s
     | `PASS s -> "PASS " ^ s
     | `ACCT s -> "ACCT " ^ s
@@ -243,6 +265,7 @@ let string_of_cmd_nolf =
                               | `E -> "E"
                               | `P -> "P"
                            )
+    | `ADAT s -> "ADAT " ^ (Netencoding.Base64.encode s)
 
 
 let string_of_cmd =
@@ -251,6 +274,7 @@ let string_of_cmd =
     | `Disconnect -> ""
     | `Dummy -> ""
     | `Start_TLS _ -> ""
+    | `Start_protection _ -> ""
     | cmd -> string_of_cmd_nolf cmd ^ "\r\n"
 
 let pasv_re = 
@@ -397,6 +421,7 @@ let string_of_state =
     | `User_acct_seq -> "User_acct_seq"
     | `Pass_acct_seq -> "Pass_acct_seq"
     | `Preliminary -> "Preliminary"
+    | `Auth_data -> "Auth_data"
 
 
 let nc_state () =
@@ -416,8 +441,10 @@ let nc_state () =
     ftp_features = None;
     ftp_options = [];
     ftp_auth = `None;
+    ftp_auth_data = None;
     ftp_data_prot = `C;
     ftp_data_pbsz = (-1);
+    ftp_prot = None;
   }
 
 let init_state s ftp_host =
@@ -444,8 +471,10 @@ let init_state s ftp_host =
     ftp_features = None;
     ftp_options = [];
     ftp_auth = `None;
+    ftp_auth_data = None;
     ftp_data_prot = `C;
     ftp_data_pbsz = (-1);
+    ftp_prot = None;
   }
 
 
@@ -464,6 +493,41 @@ let is_passive state =
     | `Passive _ -> true
     | `Ext_passive _ -> true
     | _ -> false
+
+
+let adat_re =
+  Netstring_str.regexp ".*ADAT=\\([a-zA-Z0-9+/=]*\\)"
+
+let extract_adat s =
+  match Netstring_str.string_match adat_re s 0 with
+    | None ->
+         raise Not_found
+    | Some m ->
+         let d = Netstring_str.matched_group m 1 s in
+         ( try
+             Netencoding.Base64.decode d
+           with
+             | Invalid_argument _
+             | Failure _ ->
+                  raise Not_found
+         )
+
+let pbsz_re =
+  Netstring_str.regexp ".*PBSZ=\\([0-9]+\\)"
+
+let extract_pbsz s =
+  match Netstring_str.string_match adat_re s 0 with
+    | None ->
+         raise Not_found
+    | Some m ->
+         let d = Netstring_str.matched_group m 1 s in
+         ( try
+             int_of_string d
+           with
+             | Invalid_argument _
+             | Failure _ ->
+                  raise Not_found
+         )
 
 
 class work_engine e =
@@ -673,34 +737,7 @@ object(self)
     try
       while true do
 	let line = ctrl_input # input_line() in  (* or exception! *)
-	dlogr (fun () ->
-		 sprintf "ctrl received: %s" line);
-	if Netstring_str.string_match start_reply_re line 0 <> None then (
-	  let code = int_of_string (String.sub line 0 3) in
-	  if reply_code <> (-1) && reply_code <> code then 
-	    proto_viol "Parse error of control message";
-	  reply_code <- code;
-	  Buffer.add_string reply_text line;
-	  Buffer.add_string reply_text "\n";
-	)
-	else
-	  if Netstring_str.string_match end_reply_re line 0 <> None then (
-	    let code = int_of_string (String.sub line 0 3) in
-	    if reply_code <> (-1) && reply_code <> code then
-	      proto_viol "Parse error of control message";
-	    Buffer.add_string reply_text line;
-	    Buffer.add_string reply_text "\n";
-	    let text = Buffer.contents reply_text in
-	    reply_code <- (-1);
-	    Buffer.clear reply_text;
-	    self # interpret_ctrl_reply code text;
-	  )
-	  else (
-	    if reply_code = (-1) then
-	      proto_viol "Parse error of control message";
-	    Buffer.add_string reply_text line;
-	    Buffer.add_string reply_text "\n";
-	  )
+        self # parse_ctrl_reply_line ~force_cleartext:false line
       done
     with
       | Netchannels.Buffer_underrun ->
@@ -709,6 +746,74 @@ object(self)
       | End_of_file ->
 	  ftp_state <- nc_state();
 	  self # set_state (`Done ())
+
+  method private parse_ctrl_reply_line ~force_cleartext line =
+    dlogr (fun () ->
+	   sprintf "ctrl received: %s" line);
+    if Netstring_str.string_match start_reply_re line 0 <> None then (
+      let code = int_of_string (String.sub line 0 3) in
+      if reply_code <> (-1) && reply_code <> code then 
+	proto_viol "Parse error of control message";
+      reply_code <- code;
+      Buffer.add_string reply_text line;
+      Buffer.add_string reply_text "\n";
+    )
+    else
+      if Netstring_str.string_match end_reply_re line 0 <> None then (
+	let code = int_of_string (String.sub line 0 3) in
+	if reply_code <> (-1) && reply_code <> code then
+	  proto_viol "Parse error of control message";
+	Buffer.add_string reply_text line;
+	Buffer.add_string reply_text "\n";
+	let text = Buffer.contents reply_text in
+	reply_code <- (-1);
+	Buffer.clear reply_text;
+        if force_cleartext then
+	  self # interpret_ctrl_reply code text
+        else
+	  self # interpret_protected_ctrl_reply code text;
+      )
+      else (
+	if reply_code = (-1) then
+	  proto_viol "Parse error of control message";
+	Buffer.add_string reply_text line;
+	Buffer.add_string reply_text "\n";
+      )
+
+
+  method private interpret_protected_ctrl_reply code text =
+    match ftp_state.ftp_prot with
+      | None ->
+           self # interpret_ctrl_reply code text
+      | Some p ->
+           let ok =
+             match code with
+               | 631 -> p.ftp_prot_level = `S
+               | 632 -> p.ftp_prot_level = `P
+               | 633 -> p.ftp_prot_level = `C
+               | _ -> false in
+           if not ok then
+             proto_viol "Protected command response expected but not found";
+           let prot_lines1 = Netstring_str.split line_re text in
+           let prot_lines2 =
+             List.map
+               (fun s -> String.sub s 4 (String.length s - 4)) 
+               prot_lines1 in
+           let prot_fragments =
+             try
+               List.map Netencoding.Base64.decode prot_lines2
+             with
+               | Invalid_argument _
+               | Failure _ ->
+                    proto_viol "Cannot decode protected command response" in
+           let prot_unwrapped =
+             List.map p.ftp_unwrap_s prot_fragments in
+           let text' =
+             String.concat "" prot_unwrapped in
+           let lines =
+             Netstring_str.split line_re text' in
+           List.iter (self#parse_ctrl_reply_line ~force_cleartext:true) lines
+               
 
   method private interpret_ctrl_reply code text =
     (* This method is called whenever a reply has been completely received.
@@ -748,6 +853,9 @@ object(self)
 		   ready(); reply ftp_state `Perm_failure
 	       | _   -> proto_viol "Unexpected control message"
 	    )
+        | `Waiting (`Start_protection p) ->
+             ready();
+             reply { ftp_state with ftp_prot = Some p } `Success
 	| `Waiting `Dummy ->
 	    ready(); reply ftp_state `Success
         | `Waiting (`AUTH "TLS") ->
@@ -764,12 +872,29 @@ object(self)
 		     ready(); reply ftp_state `Perm_failure
 	        | _   -> proto_viol "Unexpected control message"
             )
+        | `Waiting (`AUTH "GSSAPI") ->
+             ( match code with
+                 | 334 ->
+                     ready(); 
+                     reply { ftp_state with 
+                               ftp_auth = `GSSAPI
+                           }
+                           `Success
+	        | n when n >= 400 && n <= 499 ->
+		     ready(); reply ftp_state `Temp_failure
+	        | n when n >= 500 && n <= 599 ->
+		     ready(); reply ftp_state `Perm_failure
+	        | _   -> proto_viol "Unexpected control message"
+             )                      
         | `Waiting (`PBSZ n) ->
             ( match code with
                 | 200 ->
                      ready();
+                     let size =
+                       try extract_pbsz text
+                       with Not_found -> ftp_state.ftp_data_pbsz in
                      reply { ftp_state with
-                               ftp_data_pbsz = n } `Success
+                               ftp_data_pbsz = size } `Success
 	        | n when n >= 400 && n <= 499 ->
 		     ready(); reply ftp_state `Temp_failure
 	        | n when n >= 500 && n <= 599 ->
@@ -788,9 +913,33 @@ object(self)
 		     ready(); reply ftp_state `Perm_failure
 	        | _   -> proto_viol "Unexpected control message"
             )
+        | `Waiting (`ADAT _) ->
+             ( match code with
+                 | 235 | 335 ->
+                     ready();
+                     let data = 
+                       try Some(extract_adat text) with Not_found -> None in
+                     reply { ftp_state with
+                               ftp_auth_data = data
+                           }
+                           (if code=235 then `Success else `Auth_data)
+	         | n when n >= 400 && n <= 499 ->
+		     ready(); reply ftp_state `Temp_failure
+	         | n when n >= 500 && n <= 599 ->
+		     ready(); reply ftp_state `Perm_failure
+	         | _   -> proto_viol "Unexpected control message"
+                     
+             )
 	| `Waiting (`USER s) ->
 	    ( match code with
 		| 230 -> 
+		    ready(); 
+                    reply { ftp_state with 
+			      ftp_user = Some s;
+			      ftp_password = None;
+			      ftp_account = None;
+			      ftp_logged_in = true } `Success
+                | 232 when ftp_state.ftp_auth = `GSSAPI ->
 		    ready(); 
                     reply { ftp_state with 
 			      ftp_user = Some s;
@@ -1178,6 +1327,8 @@ object(self)
                 ctrl # start_tls config (Some ftp_state.ftp_host);
                 interaction_state <- `Waiting `Dummy;
                 tls_config <- Some config;
+            | `Start_protection p ->
+                interaction_state <- `Waiting cmd
 	    | `RETR(_,f)
 	    | `LIST(_,f)
 	    | `NLST(_,f)
@@ -1261,9 +1412,24 @@ object(self)
 	)
 	else (
 	  if line <> "" then (
+            let line' =
+              match ftp_state.ftp_prot with
+                | None -> line
+                | Some p ->
+                     let enc_line = p.ftp_wrap_s line in
+                     let enc_b64 = Netencoding.Base64.encode enc_line in
+                     let prefix =
+                       match p.ftp_prot_level with
+                         | `S -> "MIC"
+                         | `E -> "CONF"
+                         | `P -> "ENC"
+                         | `C -> assert false in
+                     prefix ^ " " ^ enc_b64 ^ "\r\n" in
 	    dlogr (fun () ->
-		     sprintf "ctrl sent: %s" line);
-	    Queue.push (Telnet_data line) ctrl#output_queue;
+		     sprintf "command (raw):  %s" line);
+	    dlogr (fun () ->
+		     sprintf "command (wire): %s" line');
+	    Queue.push (Telnet_data line') ctrl#output_queue;
 	    ctrl # expect_input true;
 	    ctrl # update();
 	  ) else (
@@ -1783,6 +1949,266 @@ let tls_method ~config ~required () (pi:ftp_client_pi) =
                  eps_e (`Done()) pi#event_system
      )
 
+
+let check_gssapi_status fn_name 
+                        ((calling_error,routine_error,_) as major_status) =
+  if calling_error <> `None || routine_error <> `None then (
+    let error = Netsys_gssapi.string_of_major_status major_status in
+    raise (GSSAPI_error ("Unexpected major status for " ^ fn_name ^ ": " ^ 
+                           error))
+  )
+
+
+let gssapi_method ?(mech_type = [| |])
+                  ?target_name
+                  ?credential
+                  ?(privacy = (`If_possible : support_level))
+                  ?(integrity = (`If_possible : support_level))
+                  ~required
+                  (gssapi : (module Netsys_gssapi.GSSAPI))
+                  (pi:ftp_client_pi) =
+  let module G = (val gssapi : Netsys_gssapi.GSSAPI) in
+
+  let initiator_cred =
+    match credential with
+      | None -> G.interface # no_credential  (* means: default credential *)
+      | Some(cred_string, cred_name_type) ->
+           let cred_name =
+             G.interface # import_name
+                ~input_name:cred_string
+                ~input_name_type:cred_name_type
+                ~out:(fun ~output_name ~minor_status ~major_status () ->
+                        check_gssapi_status "import_name" major_status;
+                        output_name
+                     )
+                () in
+           let cred =
+             G.interface # acquire_cred
+                ~desired_name:cred_name
+                ~time_req:`Indefinite
+                ~desired_mechs:(if mech_type = [| |] then [] else [mech_type])
+                ~cred_usage:`Initiate
+                ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status
+                          ~major_status () ->
+                        check_gssapi_status "acquire_cred" major_status;
+                        cred
+                     )
+                () in
+           cred in
+  let get_target_name () =
+    let (name_string, name_type) =
+      match target_name with
+        | Some(n,t) -> (n,t)
+        | None -> ("ftp@" ^ (pi#ftp_state).ftp_host,
+                   Netsys_gssapi.nt_hostbased_service) in
+    G.interface # import_name
+      ~input_name:name_string
+      ~input_name_type:name_type
+      ~out:(fun ~output_name ~minor_status ~major_status () ->
+              check_gssapi_status "import_name" major_status;
+              output_name
+           )
+      () in
+  let req_flags =
+    (* this is only a suggestion... *)
+    (if integrity <> `None || privacy <> `None then
+       [ `Integ_flag; `Mutual_flag ]
+         (* we also require mutual auth because integrity protection does
+            not make much sense without that
+          *)
+     else
+       []
+    ) @
+      (if privacy <> `None then
+         [ `Conf_flag ]
+       else
+         []
+      ) in
+
+  let setup_protector context prot =
+    let conf_req = (prot = `P) in
+    let cached_limit = ref None in
+    let get_limit() =
+      match !cached_limit with
+        | None ->
+             let size = (pi#ftp_state).ftp_data_pbsz in
+             G.interface # wrap_size_limit
+               ~context ~conf_req ~qop_req:0l ~req_output_size:size
+               ~out:(fun ~max_input_size ~minor_status ~major_status () ->
+                       check_gssapi_status "wrap_size_limit" major_status;
+                       cached_limit := Some max_input_size;
+                       max_input_size
+                    )
+               ()
+        | Some n -> n in
+    let wrap_s msg =
+      let input_message = [ Xdr_mstring.string_to_mstring msg ] in
+      G.interface # wrap
+        ~context ~conf_req ~qop_req:0l ~input_message
+        ~output_message_preferred_type:`String
+        ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
+                check_gssapi_status "wrap" major_status;
+                Xdr_mstring.concat_mstrings output_message
+             )
+        () in
+    let wrap_m msg buf =
+      let input_message = [ Xdr_mstring.memory_to_mstring msg ] in
+      G.interface # wrap
+        ~context ~conf_req ~qop_req:0l ~input_message
+        ~output_message_preferred_type:`Memory
+        ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
+                check_gssapi_status "wrap" major_status;
+                Xdr_mstring.blit_mstrings_to_memory output_message buf;
+                Xdr_mstring.length_mstrings output_message
+             )
+        () in
+    let unwrap_s msg =
+      let input_message = [ Xdr_mstring.string_to_mstring msg ] in
+      G.interface # unwrap
+        ~context ~input_message
+        ~output_message_preferred_type:`String
+        ~out:(fun ~output_message ~conf_state ~qop_state
+                  ~minor_status ~major_status () ->
+                check_gssapi_status "unwrap" major_status;
+                Xdr_mstring.concat_mstrings output_message
+             )
+        () in
+    let unwrap_m msg buf =
+      let input_message = [ Xdr_mstring.memory_to_mstring msg ] in
+      G.interface # unwrap
+        ~context ~input_message
+        ~output_message_preferred_type:`String
+        ~out:(fun ~output_message ~conf_state ~qop_state
+                  ~minor_status ~major_status () ->
+                check_gssapi_status "unwrap" major_status;
+                Xdr_mstring.blit_mstrings_to_memory output_message buf;
+                Xdr_mstring.length_mstrings output_message
+             )
+        () in
+    { ftp_wrap_limit = get_limit;
+      ftp_wrap_s = wrap_s;
+      ftp_wrap_m = wrap_m;
+      ftp_unwrap_s = unwrap_s;
+      ftp_unwrap_m = unwrap_m;
+      ftp_prot_level = prot;
+    } in
+
+  let auth_done_e context prot =
+    let prot_size = Netsys_mem.default_block_size in
+    if prot <> `C then (
+      let protector =
+        setup_protector
+          context prot in
+      pi # exec_e (`Start_protection protector)
+      ++ (fun _ ->
+            pi # exec_e (`PBSZ prot_size)
+            ++ (fun (st,r) ->
+                  match st.cmd_state with
+                    | `Success -> 
+                         pi # exec_e (`PROT prot)
+                         ++ (fun (st,r) ->
+                               match st.cmd_state with
+                                 | `Success -> 
+                                      eps_e (`Done()) pi#event_system
+                                 | _ ->
+                                      errorcheck_e pi (st,r)
+                            )
+                    | _ ->
+                         errorcheck_e pi (st,r)
+               )
+         )
+    )
+    else
+      eps_e (`Done()) pi#event_system in
+
+  let rec initiate_e context input_token prev_state =
+    let out_context, out_token, cont_flag, prot =
+      G.interface # init_sec_context
+         ~initiator_cred
+         ~context
+         ~target_name:(get_target_name())
+         ~mech_type
+         ~req_flags
+         ~time_req:None
+         ~chan_bindings:None  (* FIXME *)
+         ~input_token
+         ~out:(fun ~actual_mech_type ~output_context ~output_token 
+                   ~ret_flags ~time_rec ~minor_status ~major_status () -> 
+                 check_gssapi_status "init_sec_context" major_status;
+                 if integrity = `Required || privacy = `Required then (
+                   if not(List.mem `Integ_flag ret_flags) then
+                     raise(GSSAPI_error "Cannot ensure integrity protection");
+                   if not(List.mem `Mutual_flag ret_flags) then
+                     raise(GSSAPI_error "Cannot ensure mutual authentication");
+                 );
+                 if privacy = `Required then (
+                   if not(List.mem `Conf_flag ret_flags) then
+                     raise(GSSAPI_error "Cannot ensure privacy protection")
+                 );
+                 let prot =
+                   if List.mem `Integ_flag ret_flags then (
+                     if List.mem `Conf_flag ret_flags then
+                       `P
+                     else
+                       `S
+                   )
+                   else
+                     `C in
+                 let (_,_,suppl) = major_status in
+                 let cont_flag = List.mem `Continue_needed suppl in
+                 assert(output_context <> None);
+                 (output_context, output_token, cont_flag, prot)
+              )
+         () in
+    if out_token <> "" then (
+      if prev_state = `Success then
+        raise(GSSAPI_error "Auth protocol problem - server finishes protocol \
+                            prematurely");
+      pi # exec_e (`ADAT out_token)
+      ++ (fun (st,r) ->
+            match st.ftp_auth_data with
+              | None ->
+                   raise(GSSAPI_error "Auth protocol problem - missing \
+                                       server token")
+              | Some data ->
+                   initiate_e out_context (Some data) st.cmd_state
+         )
+    )
+    else (
+      if prev_state <> `Success then
+        raise(GSSAPI_error "Auth protocol problem - server unexpectedly \
+                            continues protocol");
+      let ctx =
+        match out_context with
+          | None -> assert false
+          | Some ctx -> ctx in
+      auth_done_e ctx prot
+    ) in
+
+  pi # exec_e (`AUTH "GSSAPI")
+  ++ (fun (st,r) ->
+	match st.cmd_state with
+	  | `Success -> 
+               initiate_e None None `Init
+          | _ ->
+               if required then
+                 errorcheck_e pi (st,r)
+               else
+                 eps_e (`Done()) pi#event_system
+     )
+;;
+
+
+(*
+#use "topfind";;
+#require "netclient,netgss-system";;
+open Ftp_client;;
+Debug.enable := true;;
+let client = new ftp_client();;
+client # exec (connect_method ~host:"office1.lan.sumadev.de" ());;    
+client # exec (gssapi_method ~required:true (module Netgss.System : Netsys_gssapi.GSSAPI));;
+client # exec (login_method ~user:"gerd" ~get_password:(fun _ -> failwith "password") ~get_account:(fun _ -> failwith "account") ());;
+ *)
 
 let login_method ~user ~get_password ~get_account () (pi:ftp_client_pi) =
   pi # exec_e (`USER user)

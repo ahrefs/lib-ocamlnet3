@@ -30,6 +30,8 @@ exception FTP_protocol_violation of string
 exception FTP_timeout of string
   (** A timeout on the control or data connection (this is a fatal error) *)
 
+exception GSSAPI_error of string
+  (** An error on GSSAPI level *)
 
 type cmd_state =
     [ `Not_connected
@@ -44,6 +46,7 @@ type cmd_state =
     | `User_acct_seq
     | `Pass_acct_seq
     | `Preliminary
+    | `Auth_data
     ]
   (** The command state:
     * - [`Not_connected]: Not connected.
@@ -64,6 +67,8 @@ type cmd_state =
     *   when an account iD must be typed in
     * - [`Preliminary]: a reply with code 100 to 199. There will be another
     *   final reply for the command
+    * - [`Auth_data]: an ADAT reply inidicating that another round of
+        authentication is necessary.
    *)
 
 type port =
@@ -171,11 +176,33 @@ type transmission_mode =
 type ftp_auth =
   [ `None
   | `TLS
+  | `GSSAPI
   ]
 
 type ftp_data_prot =
   [ `C | `S | `E | `P ]
+  (** Meaning:
+      - [`C]: no protection (clear)
+      - [`S]: integrity protection
+      - [`E]: encryption without integrity protection
+      - [`P]: integrity protection and encryption (= privacy)
+   *)
 
+
+type support_level =
+    [ `Required | `If_possible | `None ]
+
+type ftp_protector =
+    { ftp_wrap_limit : unit -> int;
+      ftp_wrap_s : string -> string;
+      ftp_wrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
+      ftp_unwrap_s : string -> string;
+      ftp_unwrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
+      ftp_prot_level : ftp_data_prot;
+    }
+  (** The functions for encrypting (wrapping) and decrypting (unwrapping)
+      messages when an RFC 2228 security layer is active.
+   *)
 
 type ftp_state =
     { cmd_state : cmd_state;        (** the command state *)
@@ -214,10 +241,14 @@ type ftp_state =
           *)
       ftp_auth : ftp_auth;
          (** Authentication/privacy mode (AUTH command) *)
+      ftp_auth_data : string option;
+         (** The data from the last ADAT reply, already base64-decoded *)
       ftp_data_prot : ftp_data_prot;
          (** Security protocol for data connections (PROT command) *)
       ftp_data_pbsz : int;
          (** protection buffer size (PBSZ command) *)
+      ftp_prot : ftp_protector option;
+         (** a security layer (RFC 2228) *)
     }
   (** The ftp_state reflects the knowledge of the client about what has been
     * agreed upon with the server.
@@ -275,12 +306,15 @@ type cmd =
     | `SIZE of string
     | `MLST of string option
     | `MLSD of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
-    (* RFC 2228, so far required by RFC 4217 *)
+    (* RFC 2228 *)
     | `AUTH of string
     | `PBSZ of int
     | `PROT of ftp_data_prot
+    | `ADAT of string
     (* RFC 4217 *)
     | `Start_TLS of (module Netsys_crypto_types.TLS_CONFIG)
+    (* A pseudo command enabling a security layer for RFC 2228 *)
+    | `Start_protection of ftp_protector
     ]
   (** An FTP command. Not all commands are implemented by all servers. 
 
@@ -439,6 +473,35 @@ val tls_method : config:(module Netsys_crypto_types.TLS_CONFIG) ->
     an error if TLS is not supported. Otherwise, it is ok to omit the TLS
     protection.
  *)
+
+val gssapi_method : ?mech_type:Netsys_gssapi.oid ->
+                    ?target_name:(string * Netsys_gssapi.oid) ->
+                    ?credential:(string * Netsys_gssapi.oid) ->
+                    ?privacy:support_level ->
+                    ?integrity:support_level ->
+                    required:bool ->
+                    (module Netsys_gssapi.GSSAPI) ->
+                    ftp_method
+(** This method negotiates the use of GSSAPI authentication and security.
+    You need to pass the GSSAPI provider.
+
+    If [required], it is an error if the server doesn't support GSSAPI
+    authentication. Otherwise, this method is a no-op in this case.
+
+    [mech_type] is the GSSAPI mechanism to use. If left unspecified,
+    a default is used. [target_name] is the name of the service to
+    connect to. [credential] identifies and authenticates the client.
+    Note that you normally can omit all of [mech_type], [target_name],
+    and [credential] as GSSAPI already substitutes reasonable defaults
+    (at least if Kerberos is available as mechanism).
+
+    [privacy] and [integrity] specify the desired level of protection.
+    By default, both integrity and privacy are enabled if available, but
+    it is no error if the mechanism doesn't support these features.
+
+    Note that you cannot combine [gssapi_method] with [tls_method].
+ *)
+
 
 val walk_method : [ `File of string | `Dir of string | `Stay ] ->
                   ftp_method
