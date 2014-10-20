@@ -1951,45 +1951,60 @@ let check_gssapi_status fn_name
   )
 
 
-let gssapi_method ?(mech_type = [| |])
-                  ?target_name
-                  ?credential
-                  ?(privacy = (`If_possible : support_level))
-                  ?(integrity = (`If_possible : support_level))
-                  ~required
+let gssapi_method ~config ~required
                   (gssapi : (module Netsys_gssapi.GSSAPI))
                   (pi:ftp_client_pi) =
   let module G = (val gssapi : Netsys_gssapi.GSSAPI) in
 
-  let initiator_cred =
-    match credential with
-      | None -> G.interface # no_credential  (* means: default credential *)
+  let mech_type = config#mech_type in
+  let initiator_name =
+    match config#credential with
+      | None -> G.interface # no_name  (* means: default credential *)
       | Some(cred_string, cred_name_type) ->
-           let cred_name =
-             G.interface # import_name
-                ~input_name:cred_string
-                ~input_name_type:cred_name_type
-                ~out:(fun ~output_name ~minor_status ~major_status () ->
-                        check_gssapi_status "import_name" major_status;
-                        output_name
-                     )
-                () in
-           let cred =
-             G.interface # acquire_cred
-                ~desired_name:cred_name
-                ~time_req:`Indefinite
-                ~desired_mechs:(if mech_type = [| |] then [] else [mech_type])
-                ~cred_usage:`Initiate
-                ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status
-                          ~major_status () ->
-                        check_gssapi_status "acquire_cred" major_status;
-                        cred
-                     )
-                () in
-           cred in
+          G.interface # import_name
+             ~input_name:cred_string
+             ~input_name_type:cred_name_type
+             ~out:(fun ~output_name ~minor_status ~major_status () ->
+                     check_gssapi_status "import_name" major_status;
+                     output_name
+                  )
+             () in
+  let initiator_cred =
+    G.interface # acquire_cred
+       ~desired_name:initiator_name
+       ~time_req:`Indefinite
+       ~desired_mechs:(if mech_type = [| |] then [] else [mech_type])
+       ~cred_usage:`Initiate
+       ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status
+                 ~major_status () ->
+               check_gssapi_status "acquire_cred" major_status;
+               cred
+            )
+       () in
+  let initiator_real_name =
+    G.interface # inquire_cred
+       ~cred:initiator_cred
+       ~out:(fun ~name ~lifetime ~cred_usage ~mechanisms ~minor_status
+                 ~major_status () ->
+               check_gssapi_status "inquire_cred" major_status;
+               name
+            )
+       () in
+  let initiator_real_name_string =
+    G.interface # display_name
+       ~input_name:initiator_real_name
+       ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status () ->
+               check_gssapi_status "export_name" major_status;
+               (* let's hope this is what we want... - the user name *)
+               (* eprintf "OID=%s\n" (Netoid.to_string output_name_type); *)
+               output_name
+            )
+       () in
+  dlogr (fun () -> sprintf "user identity: %S" initiator_real_name_string);
+
   let get_target_name () =
     let (name_string, name_type) =
-      match target_name with
+      match config#target_name with
         | Some(n,t) -> (n,t)
         | None -> ("ftp@" ^ (pi#ftp_state).ftp_host,
                    Netsys_gssapi.nt_hostbased_service) in
@@ -2003,7 +2018,7 @@ let gssapi_method ?(mech_type = [| |])
       () in
   let req_flags =
     (* this is only a suggestion... *)
-    (if integrity <> `None || privacy <> `None then
+    (if config#integrity <> `None || config#privacy <> `None then
        [ `Integ_flag; `Mutual_flag ]
          (* we also require mutual auth because integrity protection does
             not make much sense without that
@@ -2011,7 +2026,7 @@ let gssapi_method ?(mech_type = [| |])
      else
        []
     ) @
-      (if privacy <> `None then
+      (if config#privacy <> `None then
          [ `Conf_flag ]
        else
          []
@@ -2127,13 +2142,14 @@ let gssapi_method ?(mech_type = [| |])
          ~out:(fun ~actual_mech_type ~output_context ~output_token 
                    ~ret_flags ~time_rec ~minor_status ~major_status () -> 
                  check_gssapi_status "init_sec_context" major_status;
-                 if integrity = `Required || privacy = `Required then (
+                 if config#integrity = `Required || config#privacy = `Required
+                 then (
                    if not(List.mem `Integ_flag ret_flags) then
                      raise(GSSAPI_error "Cannot ensure integrity protection");
                    if not(List.mem `Mutual_flag ret_flags) then
                      raise(GSSAPI_error "Cannot ensure mutual authentication");
                  );
-                 if privacy = `Required then (
+                 if config#privacy = `Required then (
                    if not(List.mem `Conf_flag ret_flags) then
                      raise(GSSAPI_error "Cannot ensure privacy protection")
                  );

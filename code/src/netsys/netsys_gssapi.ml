@@ -464,3 +464,26 @@ let parse_hostbased_service s =
   with
     | Not_found ->
 	failwith "Netsys_gssapi.parse_hostbased_service"
+
+type support_level =
+    [ `Required | `If_possible | `None ]
+
+class type client_config =
+object
+  method mech_type : oid
+  method target_name : (string * oid) option
+  method credential : (string * oid) option
+  method privacy : support_level
+  method integrity : support_level
+end
+
+let create_client_config ?(mech_type = [| |]) ?target_name ?credential
+                         ?(privacy = `If_possible) ?(integrity = `If_possible)
+                         () =
+  object
+    method mech_type = mech_type
+    method target_name = target_name
+    method credential = credential
+    method privacy = privacy
+    method integrity = integrity
+  end

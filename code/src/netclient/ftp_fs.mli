@@ -32,6 +32,9 @@ class ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
                ?tls_config:(module Netsys_crypto_types.TLS_CONFIG) ->
                ?tls_enabled:bool ->
                ?tls_required:bool ->
+               ?gssapi_provider:(module Netsys_gssapi.GSSAPI) ->
+               ?gssapi_config:Netsys_gssapi.client_config ->
+               ?gssapi_required:bool ->
                string -> ftp_stream_fs
   (** [ftp_fs base_url]: Access the FTP file system rooted at [base_url].
 
@@ -93,6 +96,11 @@ class ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
         reasonable default is used.)
       - [tls_enabled]: whether TLS is enabled
       - [tls_required]: whether TLS is required
+      - [gssapi_provider]: The GSSAPI provider to use, e.g.
+        {!Netgss.System}. Note that there is no default, and GSSAPI remains
+        disabled if this option is not set.
+      - [gssapi_config]: the client configuration (with a reasonable default)
+      - [gssapi_required]: whether GSSAPI is required
 
    *)
 
@@ -106,5 +114,8 @@ val ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
              ?tls_config:(module Netsys_crypto_types.TLS_CONFIG) ->
              ?tls_enabled:bool ->
              ?tls_required:bool ->
+             ?gssapi_provider:(module Netsys_gssapi.GSSAPI) ->
+             ?gssapi_config:Netsys_gssapi.client_config ->
+             ?gssapi_required:bool ->
              string -> ftp_stream_fs
   (** Same as function *)

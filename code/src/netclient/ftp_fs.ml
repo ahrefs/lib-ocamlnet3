@@ -31,13 +31,21 @@ class ftp_fs ?(config_client = fun _ -> ())
              ?(get_password = fun _ -> "")
              ?(get_account = fun _ -> "")
 	     ?(keep_open = false)
-             ?(tls_config = Netsys_tls.create_x509_config
-                              ~system_trust:true
-                              ~peer_auth:`Required
-                              (Netsys_crypto.current_tls()))
+             ?tls_config
              ?(tls_enabled=false)
              ?(tls_required=false)
+             ?gssapi_provider
+             ?(gssapi_config = Netsys_gssapi.create_client_config())
+             ?(gssapi_required=false)
              base_url_s : ftp_stream_fs =
+  let get_tls_config() =
+    match tls_config with
+      | None ->
+          Netsys_tls.create_x509_config
+            ~system_trust:true
+            ~peer_auth:`Required
+            (Netsys_crypto.current_tls())
+      | Some c -> c in
   (* parse base_url: *)
   let base_url =
     Neturl.parse_url 
@@ -90,8 +98,16 @@ class ftp_fs ?(config_client = fun _ -> ())
 		      ()
 		   );
         if tls_enabled then (
+          let config = get_tls_config() in
           ftp # exec
-            (Ftp_client.tls_method ~config:tls_config ~required:tls_required ())
+            (Ftp_client.tls_method ~config ~required:tls_required ())
+        );
+        ( match gssapi_provider with
+            | None -> ()
+            | Some g ->
+                ftp # exec
+                  (Ftp_client.gssapi_method ~config:gssapi_config
+                                            ~required:gssapi_required g)
         );
 	let user = 
 	  try Neturl.url_user base_url

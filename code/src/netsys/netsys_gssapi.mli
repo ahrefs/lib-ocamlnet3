@@ -598,6 +598,41 @@ val parse_hostbased_service : string -> string * string
   (** Returns ([service,host]) for "service@host". Fails if not parseable *)
 
 
+(** {2 Configuring clients} *)
+
+type support_level =
+    [ `Required | `If_possible | `None ]
+
+(** See {!Netsys_gssapi.create_client_config} *)
+class type client_config =
+object
+  method mech_type : oid
+  method target_name : (string * oid) option
+  method credential : (string * oid) option
+  method privacy : support_level
+  method integrity : support_level
+end
+
+val create_client_config : 
+      ?mech_type:oid ->
+      ?target_name:(string * oid) ->
+      ?credential:(string * oid) ->
+      ?privacy:support_level ->
+      ?integrity:support_level ->
+      unit ->
+      client_config
+  (** [mech_type] is the GSSAPI mechanism to use. If left unspecified,
+    a default is used. [target_name] is the name of the service to
+    connect to. [credential] identifies and authenticates the client.
+    Note that you normally can omit all of [mech_type], [target_name],
+    and [credential] as GSSAPI already substitutes reasonable defaults
+    (at least if Kerberos is available as mechanism).
+
+    [privacy] and [integrity] specify the desired level of protection.
+    By default, both integrity and privacy are enabled if available, but
+    it is no error if the mechanism doesn't support these features.
+   *)
+
 (** {2 Encodings} *)
 
 (** Some conversions have been moved to {!Netoid}:

@@ -28,6 +28,14 @@ val encode_exported_name : oid -> string -> string
 val decode_exported_name : string -> int ref -> oid * string
   (** Encode names as described in section 3.2 of RFC 2078 *)
 
+val parse_kerberos_name : string -> string list * string option
+  (** [let (name_components, realm_opt) = parse_kerberos_name s]:
+      Returns the slash-separated name components as [name_components],
+      and the realm following "@" as [realm_opt].
+
+      Fails on parse error.
+   *)
+
 (** {2 Create tokens} *)
 
 (** Format of the tokens: see RFC 4121 *)

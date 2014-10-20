@@ -462,32 +462,26 @@ val tls_method : config:(module Netsys_crypto_types.TLS_CONFIG) ->
     protection.
  *)
 
-val gssapi_method : ?mech_type:Netsys_gssapi.oid ->
-                    ?target_name:(string * Netsys_gssapi.oid) ->
-                    ?credential:(string * Netsys_gssapi.oid) ->
-                    ?privacy:support_level ->
-                    ?integrity:support_level ->
+val gssapi_method : config:Netsys_gssapi.client_config ->
                     required:bool ->
                     (module Netsys_gssapi.GSSAPI) ->
                     ftp_method
 (** This method negotiates the use of GSSAPI authentication and security.
-    You need to pass the GSSAPI provider.
+    You need to pass the GSSAPI provider (e.g.  {!Netgss.System}).
+
+    The [config] can often simply be created with
+    [Netsys_gssapi.create_client_config()], as normally reasonably
+    defaults are assumed by the GSSAPI provider. See
+    {!Netsys_gssapi.create_client_config} for options.
 
     If [required], it is an error if the server doesn't support GSSAPI
     authentication. Otherwise, this method is a no-op in this case.
-
-    [mech_type] is the GSSAPI mechanism to use. If left unspecified,
-    a default is used. [target_name] is the name of the service to
-    connect to. [credential] identifies and authenticates the client.
-    Note that you normally can omit all of [mech_type], [target_name],
-    and [credential] as GSSAPI already substitutes reasonable defaults
-    (at least if Kerberos is available as mechanism).
-
-    [privacy] and [integrity] specify the desired level of protection.
-    By default, both integrity and privacy are enabled if available, but
-    it is no error if the mechanism doesn't support these features.
-
+    
     Note that you cannot combine [gssapi_method] with [tls_method].
+    Although the [gssapi_method] authenticates the user, you still need
+    to log in, although without password (basically, GSSAPI just gives
+    you permissions to be somebody, but you still need to select who you
+    want to be).
  *)
 
 

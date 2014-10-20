@@ -277,6 +277,37 @@ let decode_seq_nr s =
                       n0))))))
 
 
+let parse_kerberos_name s =
+  (* http://web.mit.edu/kerberos/krb5-latest/doc/appdev/refs/api/krb5_parse_name.html *)
+  let l = String.length s in
+  let rec parse_nc prev_nc buf k =
+    if k >= l then
+      (prev_nc @ [Buffer.contents buf], None)
+    else
+      match s.[k] with
+        | '/' ->
+            parse_nc (prev_nc @ [Buffer.contents buf]) (Buffer.create 20) (k+1)
+        | '@' ->
+            let realm = String.sub s (k+1) (l-k-1) in
+            (prev_nc @ [Buffer.contents buf], Some realm)
+        | '\\' ->
+            if k+1 >= l then failwith "parse_kerberos_name";
+            ( match s.[k+1] with
+                | '\\' -> Buffer.add_char buf '\\'
+                | '/' -> Buffer.add_char buf '/'
+                | '@' -> Buffer.add_char buf '@'
+                | 'n' -> Buffer.add_char buf '\n'
+                | 't' -> Buffer.add_char buf '\t'
+                | 'b' -> Buffer.add_char buf '\b'
+                | '0' -> Buffer.add_char buf '\000'
+                | _ ->  failwith "parse_kerberos_name"
+            );
+            parse_nc prev_nc buf (k+2)
+        | c ->
+            Buffer.add_char buf c;
+            parse_nc prev_nc buf (k+1) in
+  parse_nc [] (Buffer.create 20) 0
+
 
 let create_mic_token ~sent_by_acceptor ~acceptor_subkey ~sequence_number
                      ~get_mic ~message =
