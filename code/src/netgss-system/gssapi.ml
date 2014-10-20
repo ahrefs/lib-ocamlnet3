@@ -23,7 +23,10 @@ let hide_reference x _ =
 let memory_of_buffer buf =
   let buf_opt = ref (Some buf) in
   let finalizer = hide_reference buf_opt in
-  let m = netgss_memory_of_buffer buf in
+  let m = 
+    try netgss_memory_of_buffer buf
+    with Null_pointer ->
+      Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0 in
   Gc.finalise finalizer m;
   m
 
