@@ -8,11 +8,18 @@ let encode_subidentifier buf n =
   (* See 8.19 of ITU.T X.690 *)
   let rec encode n =
     if n < 128 then
-      [ Char.chr n ]
+      [ n ]
     else
-      (Char.chr ((n land 127) lor 128)) :: encode (n lsr 7) in
+      (n land 127) :: encode (n lsr 7) in
   if n < 0 then failwith "Netgssapi_support.encode_subidentifier";
-  let l = encode n in
+  let l = List.rev(encode n) in
+  let len = List.length l in
+  let l =
+    List.mapi
+      (fun i k ->
+         if i < len-1 then Char.chr(k lor 128) else Char.chr k
+      )
+      l in
   List.iter (Buffer.add_char buf) l
 
 let decode_subidentifier s cursor =
