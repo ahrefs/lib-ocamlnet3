@@ -442,6 +442,9 @@ let string_of_major_status (ce,re,sl) =
 let nt_hostbased_service =
   [| 1; 3; 6; 1; 5; 6; 2 |]
 
+let nt_hostbased_service_alt =
+  [| 1; 2; 840; 113554; 1; 2; 1; 4 |]
+
 let nt_user_name =
   [| 1; 2; 840; 113554; 1; 2; 1; 1 |]
 
@@ -456,6 +459,9 @@ let nt_anonymous =
 
 let nt_export_name =
   [| 1; 3; 6; 1; 5; 6; 4 |]
+
+let nt_krb5_principal_name =
+  [| 1; 2; 840; 113554; 1; 2; 2; 1 |]
 
 let parse_hostbased_service s =
   try

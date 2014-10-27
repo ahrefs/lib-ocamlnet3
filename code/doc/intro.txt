@@ -196,6 +196,7 @@ for other libraries.
    Netmech_digest_http
    Netmech_crammd5_sasl
    Netmech_plain_sasl
+   Netmech_krb5_sasl
    Rtypes
    Xdr
    Xdr_mstring

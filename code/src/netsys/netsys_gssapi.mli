@@ -579,6 +579,9 @@ val string_of_major_status : major_status -> string
 val nt_hostbased_service : oid
   (** names like "service@hostname" *)
 
+val nt_hostbased_service_alt : oid
+  (** another OID for the same (RFC 1964 mentions it) *)
+
 val nt_user_name : oid
   (** names like "username" *)
 
@@ -593,6 +596,9 @@ val nt_anonymous : oid
 
 val nt_export_name : oid
   (** an export name *)
+
+val nt_krb5_principal_name : oid
+  (** a Kerberos 5 principal name (see {!Netgssapi_support} for parsers *)
 
 val parse_hostbased_service : string -> string * string
   (** Returns ([service,host]) for "service@host". Fails if not parseable *)

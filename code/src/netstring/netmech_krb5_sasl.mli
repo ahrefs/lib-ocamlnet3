@@ -8,6 +8,11 @@ module KRB5(GSS:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM
       mechanisms are understood, the RFC requires that this protocol
       is only used for Kerberos 5.
 
+      Create the final module like
+      {[
+module K = Netmech_krb5_sasl.KRB5(Netgss.System)
+      ]}
+
       {b Remarks for clients:}
 
       This adapter doesn't need any credentials for [create_client_session].
@@ -32,9 +37,13 @@ let cs =
 
      {b Remarks for servers:}
 
-     The [lookup] callback is invoked with the user name where the realm
-     is stripped off (e.g. "tim@REALM.NET" is shortened to just "tim").
-     If the callback returns [Some c] for any [c] the user is accepted.
+     Usually the "realm" parameter is set to the name of the realm.
+     In this case the realm is stripped off the principal before the
+     [lookup] callback is invoked (e.g. "tim@REALM.NET" is shortened to just
+     "tim"). If the "realm" parameter is not set, the full principal
+     name is passed to [lookup].
+
+     If [lookup] returns [Some c] for any [c] the user is accepted.
      If it returns [None] the user is declined.
 
      The "gssapi-acceptor-service" parameter must be set to the name of the 
@@ -46,7 +55,9 @@ let ss =
     ~lookup:(fun user _ -> 
               if user_ok user then Some(S.init_credentials []) else None
             )
-    ~params:[ "gssapi-acceptor-service", "imap", false ]
+    ~params:[ "gssapi-acceptor-service", "imap", false;
+              "realm", "SAMPLE.NET", false;
+            ]
     ()
      ]}
 
