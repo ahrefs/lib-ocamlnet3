@@ -34,6 +34,7 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           mutable csubstate : sub_state;
           mutable ctoken : string;
           ctarget_name : G.name;
+          cmutual : bool;
         }
 
     let krb5_oid =
@@ -64,7 +65,7 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
          ~context:cs.ccontext
          ~target_name:cs.ctarget_name
          ~mech_type:krb5_oid
-         ~req_flags:[ `Integ_flag ]
+         ~req_flags:[ `Integ_flag; `Mutual_flag ]
          ~time_req:None
          ~chan_bindings:None
          ~input_token
@@ -74,6 +75,8 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                  check_gssapi_status
                    "init_sec_context" major_status minor_status;
                  assert(output_context <> None);
+                 if cs.cmutual && not(List.mem `Mutual_flag ret_flags) then
+                   failwith "mutual authentication requested but not available";
                  cs.ccontext <- output_context;
                  cs.ctoken <- output_token;
                  cs.cstate <- `Emit;
@@ -87,7 +90,7 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
       let params = 
         Netsys_sasl_util.preprocess_params
           "Netmech_krb5_sasl.create_client_session:"
-          [ "gssapi-acceptor" ]
+          [ "gssapi-acceptor"; "mutual"; "secure" ]
           params in
       let acceptor_name =
         try List.assoc "gssapi-acceptor" params
@@ -103,15 +106,22 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                   output_name
                )
           () in
+      let req_mutual =
+        try List.assoc "mutual" params = "true" with Not_found -> false in
       let cs =
         { cauthz = authz;
           ccontext = None;
           cstate = `Emit;
           csubstate = `Init_context;
           ctoken = "";
-          ctarget_name
+          ctarget_name;
+          cmutual = req_mutual
         } in
-      call_init_sec_context cs None;
+      ( try
+          call_init_sec_context cs None
+        with
+          | Failure _ -> cs.cstate <- `Auth_error
+      );
       cs
 
     let client_configure_channel_binding cs cb =

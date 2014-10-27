@@ -19,6 +19,13 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM
       and passwords in UTF-8 encoding. Note that the mechanism predates
       the widespread use of Unicode, so this may cause interoperability
       issues with old implementations.
+
+      Parameters:
+       - Both [create_client_session] and [create_server_session] accept
+         the boolean parameter "mutual". If true, however, authentication
+         fails immediately, as mutual authentication cannot be supported.
+       - The boolean parameter "secure" is ignored (i.e. we regard this
+         mechanism as secure)
    *)
 
 

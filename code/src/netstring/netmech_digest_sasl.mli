@@ -34,5 +34,8 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM
        - [client_prop] will return: "cnonce", "realm" (once known; this is
          always the server realm), "nonce" (once known), "nc" (after sending
          the response).
+       - The parameters [mutual] and [secure] are understood but ignored
+         (there is mutual authentication anyway, and DIGEST is considered as
+         secure method)
 
    *)

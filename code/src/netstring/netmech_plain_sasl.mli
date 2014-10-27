@@ -9,4 +9,12 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM
        - There is no support for channel binding within the mechanism.
        - It is insecure, and should only be used over channels that are
          otherwise secured.
+
+      Parameters:
+       - Both [create_client_session] and [create_server_session] accept
+         the boolean parameter "mutual". If true, however, authentication
+         fails immediately, as mutual authentication cannot be supported.
+       - The same is true for the boolean parameter "secure", because
+         PLAIN is insecure.
+
    *)

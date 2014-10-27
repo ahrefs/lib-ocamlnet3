@@ -50,4 +50,11 @@ let ss =
     ()
      ]}
 
+    {b Parameters:}
+
+       - The parameter [mutual] is forwarded to the GSSAPI. Authentication
+         fails if mutual authentication cannot be granted.
+       - The parameter [secure] is understood but ignored
+         (Kerberos is considered as secure method)
+
    *)

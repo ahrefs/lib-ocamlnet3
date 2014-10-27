@@ -25,12 +25,16 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_state ss = ss.sstate
 
   let create_server_session ~lookup ~params () =
-    let _params = 
+    let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_plain_sasl.create_server_session:"
-        []
+        [ "mutual"; "secure" ]
         params in
-    { sstate = `Wait;
+    let req_mutual =
+      try List.assoc "mutual" params = "true" with Not_found -> false in
+    let req_secure =
+      try List.assoc "secure" params = "true" with Not_found -> false in
+    { sstate = if req_mutual || req_secure then `Auth_error else `Wait;
       suser = None;
       sauthz = None;
       lookup
@@ -43,6 +47,7 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let server_process_response ss msg =
     try
+      if ss.sstate <> `Wait then raise Not_found;
       let n = String.length msg in
       let k1 = String.index_from msg 0 '\000' in
       if k1 = n-1 then raise Not_found;
@@ -121,17 +126,21 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
       }
 
   let create_client_session ~user ~authz ~creds ~params () =
-    let _params = 
+    let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_plain_sasl.create_client_session:"
-        []
+        [ "mutual"; "secure" ]
         params in
+    let req_mutual =
+      try List.assoc "mutual" params = "true" with Not_found -> false in
+    let req_secure =
+      try List.assoc "secure" params = "true" with Not_found -> false in
     let pw =
       try Netsys_sasl_util.extract_password creds
       with Not_found ->
         failwith "Netmech_plain_sasl.create_client_session: no password \
                   found in credentials" in
-    { cstate = `Emit;
+    { cstate = if req_mutual || req_secure then `Auth_error else `Emit;
       cuser = user;
       cauthz = authz;
       cpasswd = pw;

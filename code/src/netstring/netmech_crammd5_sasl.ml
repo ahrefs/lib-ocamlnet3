@@ -32,11 +32,14 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_state ss = ss.sstate
 
   let create_server_session ~lookup ~params () =
-    let _params = 
+    let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_crammd5_sasl.create_server_session:"
-        [ ]
+        [ "mutual"; "secure" ]
         params in
+    let req_mutual =
+      try List.assoc "mutual" params = "true" with Not_found -> false in
+    (* Ignore "secure" *)
     let r = String.create 16 in
     Netsys_rng.fill_random r;
     let c1 = Netencoding.to_hex ~lc:true r in
@@ -45,7 +48,7 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
         | None -> c1
         | Some c -> c in
     next_challenge := None;
-    { sstate = `Emit;
+    { sstate = if req_mutual then `Auth_error else `Emit;
       schallenge = "<" ^ c ^ ">";
       suser = None;
       lookup
@@ -102,6 +105,8 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
               not available"
              
   let server_emit_challenge ss =
+    if ss.sstate <> `Emit then
+      failwith "Netmech_crammd5_sasl.server_emit_challenge: bad state";
     let data = ss.schallenge in
     ss.sstate <- `Wait;
     data
@@ -153,17 +158,20 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       }
 
   let create_client_session ~user ~authz ~creds ~params () =
-    let _params = 
+    let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_crammd5_sasl.create_client_session:"
-        []
+        [ "mutual"; "secure" ]
         params in
+    let req_mutual =
+      try List.assoc "mutual" params = "true" with Not_found -> false in
+    (* Ignore "secure" *)
     let pw =
       try Netsys_sasl_util.extract_password creds
       with Not_found ->
         failwith "Netmech_crammd5_sasl.create_client_session: no password \
                   found in credentials" in
-    { cstate = `Wait;
+    { cstate = if req_mutual then `Auth_error else `Wait;
       cresp = "";
       cuser = user;
       cauthz = authz;

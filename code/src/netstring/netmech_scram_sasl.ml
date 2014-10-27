@@ -131,7 +131,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
               extract_credentials ~fallback_i creds  (* or Not_found *)
     )
 
-  let server_known_params = [ "i"; "nonce" ]
+  let server_known_params = [ "i"; "nonce"; "mutual"; "secure" ]
 
   let create_server_session ~lookup ~params () =
     let params = 
@@ -220,7 +220,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     else
       assert false
       
-  let client_known_params = [ "nonce" ]
+  let client_known_params = [ "nonce"; "mutual"; "secure" ]
 
   let create_client_session ~user ~authz ~creds ~params () =
     let params = 

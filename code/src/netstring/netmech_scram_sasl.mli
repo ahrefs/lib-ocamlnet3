@@ -74,6 +74,13 @@ module SCRAM (P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM
       The implementation understands the parameter "i", which can be set
       to the iteration count. If omitted, an implementation-defined default
       is used.
+
+      {b Parameters}
+
+       - The parameters [mutual] and [secure] are understood but ignored
+         (there is mutual authentication anyway, and SCRAM is considered as
+         secure method)
+
    *)
 
 module SCRAM_SHA1 : Netsys_sasl_types.SASL_MECHANISM

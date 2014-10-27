@@ -41,7 +41,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_digestmd5_sasl.create_server_session:"
-        [ "realm"; "nonce" ]
+        [ "realm"; "nonce"; "mutual"; "secure" ]
         params in
     let srealm =
       try Some(List.assoc "realm" params)
@@ -49,6 +49,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     let nonce =
       try List.assoc "nonce" params
       with Not_found -> create_nonce() in
+    (* NB. "mutual" is enabled anyway, so no check here *)
     { sstate = `Emit;
       srealm;
       snonce = nonce;
@@ -131,13 +132,14 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     let params = 
       Netsys_sasl_util.preprocess_params
         "Netmech_digestmd5_sasl.create_client_session:"
-        [ "digest-uri"; "realm"; "cnonce" ]
+        [ "digest-uri"; "realm"; "cnonce"; "mutual"; "secure" ]
         params in
     let pw =
       try Netsys_sasl_util.extract_password creds
       with Not_found ->
         failwith "Netmech_digestmd5_sasl.create_client_session: no password \
                   found in credentials" in
+    (* NB. mutual auth is enabled anyway *)
     { cstate = `Wait;
       cresp = None;
       cprofile = profile;
