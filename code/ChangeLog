@@ -1,3 +1,7 @@
+2014-10-27  Gerd Stolpmann  <gerd@thinkpad>
+
+	* Release ocamlnet-3.7.7
+
 2014-10-19  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netsys_posix.mli.mkfifoat: this function is not supported on
