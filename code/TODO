@@ -1,3 +1,14 @@
+GSSAPI:
+ - check when to delete contexts. Fix protocol interpreters
+ - implement channel bindings
+ - check again use of buffers in GSSAPI system bindings
+
+Netmime:
+ - remove email-specific header methods from class type. Provide them
+   as additional functions (Netmime.Header)
+ - move Netmime channel functions to Netmime_channels
+ - Mimestring -> Netmime_string
+
 getrandom()
  - Linux 3.17
  - https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=c6e9d6f38894798696f23c8084ca7edbf16ee895
