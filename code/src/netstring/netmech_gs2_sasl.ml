@@ -146,6 +146,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         try
           let p = ref 0 in
           let (_,_) = Netgssapi_support.wire_decode_token token p in
+          if !p <> String.length token then failwith "bad token";
           (false, String.sub token !p (String.length token - !p))
         with
           | Failure _ ->
