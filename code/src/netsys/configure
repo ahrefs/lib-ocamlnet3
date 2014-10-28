@@ -286,6 +286,14 @@ compile_emit atfunctions HAVE_AT
 
 ######################################################################
 
+# OS X 10.10 does not have mkfifoat but the other "at" functions exist
+printf "Checking for POSIX function mkfifoat... "
+
+cclib=""
+compile_emit atfuns_mkfifoat HAVE_MKFIFOAT
+
+######################################################################
+
 printf "Checking for fchdir... "
 
 cclib=""

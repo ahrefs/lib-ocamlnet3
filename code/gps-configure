@@ -3,5 +3,5 @@
 ./configure -with-nethttpd -enable-gtk2 -enable-zip -enable-pcre \
 	-with-rpc-auth-dh -enable-gnutls \
 	-enable-tcl -equeue-tcl-defs -I/usr/include/tcl8.4 -equeue-tcl-libs -ltcl8.4 \
-	-enable-apache -apxs /usr/bin/apxs -apache /usr/sbin/apache2 \
+	-enable-apache -apxs /usr/bin/apxs2 -apache /usr/sbin/apache2 \
 	"$@"
