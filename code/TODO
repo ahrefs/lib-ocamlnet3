@@ -2,6 +2,8 @@ GSSAPI:
  - check when to delete contexts. Fix protocol interpreters
  - implement channel bindings
  - check again use of buffers in GSSAPI system bindings
+ - Netmech_krb_sasl: avoid that create_client_session can ever create
+   a session that is immediately invalid
 
 Netmime:
  - remove email-specific header methods from class type. Provide them
