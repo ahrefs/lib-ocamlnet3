@@ -7,7 +7,7 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
     let mechanism_name = "GSSAPI"
     let client_first = `Required
     let server_sends_final_data = true
-    let supports_authz = false
+    let supports_authz = true
 
     let available() = true
       (* Well, let's assume this. We don't know yet whether we can get
