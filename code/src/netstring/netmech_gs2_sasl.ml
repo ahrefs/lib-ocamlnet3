@@ -6,35 +6,33 @@ module type PROFILE =
   sig
     val mechanism_name : string
     val announce_channel_binding : bool
-    val mechanism_oid : Netsys_types.oid
-    val mechanism_acceptable_oid_set : Netsys_types.oid list
+    val mechanism_oid : Netsys_gssapi.oid
     val client_additional_params : string list
     val server_additional_params : string list
     val client_map_user_name : 
            params:(string * string) list ->
            string -> 
-             string * Netsys_types.oid
+             string * Netsys_gssapi.oid
     val server_map_user_name : 
            params:(string * string) list ->
-           (string * Netsys_types.oid) ->
+           (string * Netsys_gssapi.oid) ->
              string
     val client_get_target_name :
            params:(string * string) list ->
-             (string * Netsys_types.oid)
+             (string * Netsys_gssapi.oid)
     val server_bind_target_name :
            params:(string * string) list ->
-           (string * Netsys_types.oid) option ->
-             unit
+           (string * Netsys_gssapi.oid) option
     val server_check_target_name :
            params:(string * string) list ->
-           (string * Netsys_types.oid) ->
+           (string * Netsys_gssapi.oid) ->
              bool
     val client_flags :
            params:(string * string) list ->
            ( Netsys_gssapi.req_flag * bool ) list
     val server_flags :
            params:(string * string) list ->
-           ( Netsys_gssapi.req_flag * bool ) list
+           Netsys_gssapi.req_flag list
   end
 
 
@@ -43,7 +41,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
          Netsys_sasl_types.SASL_MECHANISM =
   struct
     let mechanism_name = 
-      G.mechanism_name ^ (if G.announce_channel_binding then "-PLUS" else "")
+      P.mechanism_name ^ (if P.announce_channel_binding then "-PLUS" else "")
     let client_first = `Required
     let server_sends_final_data = true
     let supports_authz = false
@@ -125,6 +123,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                      failwith "mutual authentication requested but not available";
                    List.iter
                      (fun (flag,req) ->
+                        let flag = (flag :> Netsys_gssapi.ret_flag ) in
                         if req && not(List.mem flag ret_flags) then
                           failwith "required flag missing"
                      )
@@ -155,7 +154,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         ""
         [ if non_std then "F," else "";
           "n,";   (* channel binding FIXME *)
-          cs.cauthz;
+          Netgssapi_support.gs2_encode_saslname cs.cauthz;
           ",";
           token_no_header
         ]
@@ -332,11 +331,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
     (* ------------------------ *)
 
 
-    (* TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO *)
-
-
     type server_sub_state =
-        [ `Acc_context | `Neg_security1 | `Neg_security2 | `Established ]
+        [ `Acc_context | `Skip_empty | `Established ]
 
     type server_session =
         { mutable scontext : G.context option;
@@ -347,9 +343,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           mutable sauthz : string option;
           scred : G.credential;
           slookup : (string -> string -> credentials option);
-          smutual : bool;
-          sservice : string;
-          srealm : string option;
+          sparams : (string * string) list;
         }
 
 
@@ -359,23 +353,27 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
       let params = 
         Netsys_sasl_util.preprocess_params
           "Netmech_krb5_sasl.create_server_session:"
-          [ "gssapi-acceptor-service"; "realm"; "mutual"; "secure" ]
+          ( [ "mutual"; "secure" ] @ P.server_additional_params )
           params in
-      let sservice =
-        try List.assoc "gssapi-acceptor-service" params
-        with Not_found ->
-          failwith "Netmech_krb5_sasl.create_server_session: \
-                    missing parameter 'gssapi-acceptor-service'" in
-      let srealm =
-        try Some(List.assoc "realm" params)
-        with Not_found -> None in
-      let smutual =
-        try List.assoc "mutual" params = "true" with Not_found -> false in
+      let scred_name =
+        match P.server_bind_target_name ~params with
+          | None ->
+              G.interface#no_name
+          | Some(name,ty) ->
+              G.interface # import_name
+                ~input_name:name
+                ~input_name_type:ty
+                ~out:(fun ~output_name ~minor_status ~major_status () ->
+                        check_gssapi_status 
+                          "import_name" major_status minor_status;
+                        output_name
+                     )
+                () in
       let scred =
         G.interface # acquire_cred
-          ~desired_name:G.interface#no_name
+          ~desired_name:scred_name
           ~time_req:`Indefinite
-          ~desired_mechs:[ krb5_oid ]
+          ~desired_mechs:[ P.mechanism_oid ]
           ~cred_usage:`Accept
           ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status
                     () ->
@@ -391,9 +389,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         suser = None;
         sauthz = None;
         slookup = lookup;
-        smutual = smutual;
-        sservice;
-        srealm;
+        sparams = params;
         scred;
       }
 
@@ -403,32 +399,29 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         | Some c -> c
 
 
-    let  server_set_neg_security_token ss =
-      (* we do not offer any security layer *)
-      let context = server_context ss in
-      let out_msg = "\001\000\000\000" in
-      let out_message =
-        [ Xdr_mstring.string_to_mstring out_msg ] in
-      let out_msg_wrapped =
-        G.interface # wrap
-          ~context ~conf_req:false ~qop_req:0l
-          ~input_message:out_message
-          ~output_message_preferred_type:`String
-          ~out:(fun ~conf_state ~output_message 
-                    ~minor_status ~major_status () ->
-                  check_gssapi_status
-                    "wrap" major_status minor_status;
-                  Xdr_mstring.concat_mstrings output_message
-               )
-          () in
-      ss.stoken <- out_msg_wrapped
+    let server_finish ss =
+      let user =
+        match ss.suser with
+          | None -> raise Not_found
+          | Some u -> u in
+      let authz =
+        match ss.sauthz with
+          | None -> raise Not_found
+          | Some a -> a in
+      let user_cred_opt =
+        ss.slookup user authz in
+      if user_cred_opt = None then
+        failwith "unauthorized user";
+      ss.ssubstate <- `Established;
+      ss.sstate <- `OK
 
 
     let server_process_response_accept_context ss msg =
+      let flags = P.server_flags ~params:ss.sparams in
       let cont =
         G.interface # accept_sec_context
           ~context:ss.scontext
-          ~acceptor_cred:G.interface#no_credential
+          ~acceptor_cred:ss.scred
           ~input_token:msg
           ~chan_bindings:None
           ~out:(fun ~src_name ~mech_type ~output_context ~output_token
@@ -438,18 +431,28 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                      "accept_sec_context" major_status minor_status;
                    assert(output_context <> None);
                    let (_,_,suppl) = major_status in
-                   let cont = List.mem `Continue_needed suppl in
                    ss.scontext <- output_context;
                    ss.stoken <- output_token;
-                   ss.sstate <- `Emit;  (* even an empty token *)
-                   if not cont then (
-                     if ss.smutual && not(List.mem `Mutual_flag ret_flags) then
+                   if suppl = [] then (
+                     if not(List.mem `Mutual_flag ret_flags) then
                        failwith "mutual auth requested but not available";
+                     List.iter
+                       (fun flag ->
+                          let flag = (flag :> Netsys_gssapi.ret_flag ) in
+                          if not(List.mem flag ret_flags) then
+                            failwith "missing flag";
+                       )
+                       flags;
+                   ) else (
+                     if suppl <> [ `Continue_needed ] then
+                       failwith "unexpected supplemental flags";
                    );
-                   cont
+                   suppl <> []
                )
           () in
-      if not cont then (
+      if cont then
+        ss.sstate <- `Emit
+      else (
         let src_name, targ_name =
           G.interface # inquire_context
             ~context:(server_context ss)
@@ -458,8 +461,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                       ()  ->
                     check_gssapi_status
                       "inquire_context" major_status minor_status;
-                    if mech_type <> krb5_oid then
-                      failwith "the mechanism is not Kerberos 5";
+                    if mech_type <> P.mechanism_oid then
+                      failwith "the mechanism is not the selected one";
                     src_name, targ_name
                  )
             () in
@@ -469,27 +472,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                     () ->
                   check_gssapi_status
                     "display_name" major_status minor_status;
-                  if output_name_type = Netsys_gssapi.nt_hostbased_service ||
-                       output_name_type = Netsys_gssapi.nt_hostbased_service_alt
-                  then(
-                    let service, _ =
-                      Netsys_gssapi.parse_hostbased_service output_name in
-                    if service <> ss.sservice then
-                      failwith "unexpected service"
-                  )
-                  else
-                    if output_name_type = Netsys_gssapi.nt_krb5_principal_name
-                    then
-                      let components, _ =
-                        Netgssapi_support.parse_kerberos_name output_name in
-                      match components with
-                        | [service;_] ->
-                            if service <> ss.sservice then
-                              failwith "unexpected service"
-                        | _ ->
-                            failwith "unexpected target krb5 principal"
-                    else
-                      failwith "unexpected target name"
+                  let ok =
+                    P.server_check_target_name
+                      ~params:ss.sparams (output_name,output_name_type) in
+                  if not ok then
+                    failwith "target name check not passed";
                )
           ();
         G.interface # display_name
@@ -498,71 +485,64 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                     () ->
                   check_gssapi_status
                     "display_name" major_status minor_status;
-                  if output_name_type <> Netsys_gssapi.nt_krb5_principal_name
-                  then
-                    failwith "unexpected client name type";
-                  match ss.srealm with
-                    | None ->
-                        ss.suser <- Some output_name
-                    | Some r ->
-                        let components, realm =
-                          Netgssapi_support.parse_kerberos_name output_name in
-                        if realm <> Some r then
-                          failwith "bad realm";
-                        ( match components with
-                            | [ name ] ->
-                                ss.suser <- Some name
-                            | _ ->
-                                failwith "unexpected form of client principal"
-                        )
+                  let user =
+                    try
+                      P.server_map_user_name
+                        ~params:ss.sparams (output_name,output_name_type)
+                    with
+                      | Not_found -> failwith "user name not acceptable" in
+                  ss.suser <- Some user;
                )
           ();
-        if ss.stoken = "" then (
-          server_set_neg_security_token ss;
-          ss.ssubstate <- `Neg_security2
+        if ss.stoken = "" then
+          server_finish ss
+        else (
+          ss.ssubstate <- `Skip_empty;
+          ss.sstate <- `Emit
         )
-        else
-          ss.ssubstate <- `Neg_security1
       )
 
 
-    let server_process_response_neg_security1 ss msg =
-      (* any msg is acceptable *)
-      server_set_neg_security_token ss;
-      ss.ssubstate <- `Neg_security2;
-      ss.sstate <- `Emit
-      
-    let server_process_response_neg_security2 ss msg =
-      let input_message = [ Xdr_mstring.string_to_mstring msg ] in
-      let context = server_context ss in
-      let msg_unwrapped =
-        G.interface # unwrap
-          ~context ~input_message
-          ~output_message_preferred_type:`String
-          ~out:(fun ~output_message ~conf_state ~qop_state
-                    ~minor_status ~major_status () ->
-                  check_gssapi_status
-                    "unwrap" major_status minor_status;
-                  Xdr_mstring.concat_mstrings output_message
-               )
-          () in
-      if String.length msg_unwrapped < 4 then
-        failwith "bad security token";
-      if String.sub msg_unwrapped 0 4 <> "\001\000\000\000" then
-        failwith "bad security token";
-      let authz =
-        String.sub msg_unwrapped 4 (String.length msg_unwrapped - 4) in
-      ss.sauthz <- Some authz;
-      let user =
-        match ss.suser with
-          | None -> raise Not_found
-          | Some u -> u in
-      let user_cred_opt =
-        ss.slookup user authz in
-      if user_cred_opt = None then
-        failwith "unauthorized user";
-      ss.ssubstate <- `Established;
-      ss.sstate <- `OK
+    let itoken_re =
+      Netstring_str.regexp "\\(F,\\)?\
+                            \\(p=[-a-zA-Z0-9.]*\\|n\\|y\\),\
+                            \\(a=[^,]*\\)?,"
+
+    let server_rewrite_initial_token ss token =
+      match Netstring_str.string_match itoken_re token 0 with
+        | Some m ->
+            let is_non_std =
+              try Netstring_str.matched_group m 1 token <> "" 
+              with Not_found -> false in
+            let cb_str = Netstring_str.matched_group m 2 token in
+            if cb_str <> "n" then (
+              if P.announce_channel_binding then (
+                if cb_str = "y" then failwith "misconfigured channel binding";
+                (* TODO: do something with it *)
+              )
+              else (
+                if cb_str <> "y" then 
+                  failwith "client requests channel binding but this is \
+                            unavailable"
+              )
+            );
+            let a_str =
+              try 
+                let s = Netstring_str.matched_group m 3 token in
+                String.sub s 2 (String.length s - 2)
+              with Not_found -> "" in
+            let authz = Netgssapi_support.gs2_decode_saslname a_str in
+            let p = Netstring_str.match_end m in
+            let token1 = String.sub token p (String.length token - p) in
+            let token2 = 
+              if is_non_std then
+                token1
+              else
+                Netgssapi_support.wire_encode_token P.mechanism_oid token1 in
+            (token2, authz)
+        | None ->
+            failwith "bad initial token"
+
 
 
     let server_process_response ss msg =
@@ -570,11 +550,15 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         if ss.sstate <> `Wait then raise Not_found;
         match ss.ssubstate with
           | `Acc_context ->
-              server_process_response_accept_context ss msg
-          | `Neg_security1 ->
-              server_process_response_neg_security1 ss msg
-          | `Neg_security2 ->
-              server_process_response_neg_security2 ss msg
+              if ss.scontext = None then (
+                let (authz, msg1) = server_rewrite_initial_token ss msg in
+                ss.sauthz <- Some authz;
+                server_process_response_accept_context ss msg1
+              )
+              else
+                server_process_response_accept_context ss msg
+          | `Skip_empty ->
+              server_finish ss
           | `Established ->
               raise Not_found
       with
@@ -584,12 +568,12 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
 
 
     let server_process_response_restart ss msg set_stale =
-      failwith "Netmech_krb5_sasl.server_process_response_restart: \
+      failwith "Netmech_gs2_sasl.server_process_response_restart: \
                 not available"
 
     let server_emit_challenge ss =
       if ss.sstate <> `Emit then
-        failwith "Netmech_krb5_sasl.server_emit_challenge: bad state";
+        failwith "Netmech_gs2_sasl.server_emit_challenge: bad state";
       ss.sstate <- `Wait;
       ss.stoken
 
@@ -602,24 +586,23 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
          so we don't save it at all.
        *)
       if ss.sstate <> `OK then
-        failwith "Netmech_krb5_sasl.server_stash_session: the session \
+        failwith "Netmech_gs2_sasl.server_stash_session: the session \
                   must be established (implementation restriction)";
-      "server,t=GSSAPI;" ^ 
-        Marshal.to_string (ss.suser, ss.sauthz, ss.smutual,
-                           ss.sservice, ss.srealm) []
+      "server,t=GS2;" ^ 
+        Marshal.to_string (ss.suser, ss.sauthz, ss.sparams) []
 
     let ss_re = 
-      Netstring_str.regexp "server,t=GSSAPI;"
+      Netstring_str.regexp "server,t=GS2;"
            
 
     let server_resume_session ~lookup s =
       match Netstring_str.string_match ss_re s 0 with
         | None ->
-            failwith "Netmech_krb5_sasl.server_resume_session"
+            failwith "Netmech_gs2_sasl.server_resume_session"
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (suser, sauthz, smutual, sservice, srealm) =
+            let (suser, sauthz, sparams) =
               Marshal.from_string data 0 in
             { scontext = None;
               sstate = `OK;
@@ -628,9 +611,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               suser;
               sauthz;
               slookup = lookup;
-              smutual;
-              sservice;
-              srealm;
+              sparams;
               scred = G.interface#no_credential
             }
               

@@ -230,42 +230,19 @@ let check_positive_number s =
     | None -> raise(Invalid_encoding("check_positive_number",s))
     | Some _ -> ()
 
-let comma_slash_re = Netstring_str.regexp "[,/]"
-
-let rev_comma_slash_re = Netstring_str.regexp "\\(=2C\\|=3D\\|=\\|,\\)"
-
 let encode_saslname s =
-  ( try
-      Netconversion.verify `Enc_utf8 s
-    with _ -> raise(Invalid_username_encoding("encode_saslname",s))
-  );
-  Netstring_str.global_substitute
-    comma_slash_re
-    (fun r s ->
-       match Netstring_str.matched_string r s with
-	 | "," -> "=2C"
-	 | "/" -> "=3D"
-	 | _ -> assert false
-    )
-    s
+  try
+    Netgssapi_support.gs2_encode_saslname s
+  with
+    | Failure _ ->
+        raise(Invalid_username_encoding("encode_saslname",s))
 
 let decode_saslname s =
-  let s' =
-    Netstring_str.global_substitute
-      rev_comma_slash_re
-      (fun r s ->
-	 match Netstring_str.matched_string r s with
-	   | "=2C" -> ","
-	   | "=3D" -> "/"
-	   | "=" | "," -> raise(Invalid_username_encoding("decode_saslname",s))
-	   | _ -> assert false
-      )
-      s in
-  ( try
-      Netconversion.verify `Enc_utf8 s'
-    with _ -> raise(Invalid_username_encoding("decode_saslname",s))
-  );
-  s'
+  try
+    Netgssapi_support.gs2_decode_saslname s
+  with
+    | Failure _ ->
+        raise(Invalid_username_encoding("decode_saslname",s))
 
 
 let encode_gs2_sasl gs2 =

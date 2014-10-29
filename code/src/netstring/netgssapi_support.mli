@@ -28,6 +28,15 @@ val encode_exported_name : oid -> string -> string
 val decode_exported_name : string -> int ref -> oid * string
   (** Encode names as described in section 3.2 of RFC 2078 *)
 
+val gs2_encode_saslname : string -> string
+val gs2_decode_saslname : string -> string
+  (** Encodes "," and "=" characters, and forbids null bytes, and checks
+      whether the names are UTF-8-encoded
+      (as required for the "saslname" production in section 4 of
+      RFC 5801). Fails if something is wrong.
+   *)
+
+
 val parse_kerberos_name : string -> string list * string option
   (** [let (name_components, realm_opt) = parse_kerberos_name s]:
       Returns the slash-separated name components as [name_components],

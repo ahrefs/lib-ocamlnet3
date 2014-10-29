@@ -229,6 +229,45 @@ let decode_exported_name s cursor =
     | _ -> failwith "Netgssapi_support.decode_exported_name"
 
 
+let comma_equals_re = Netstring_str.regexp "[,=]"
+
+let rev_comma_equals_re = Netstring_str.regexp "\\(=2C\\|=3D\\|=\\|,\\)"
+
+
+let gs2_encode_saslname s =
+  ( try
+      Netconversion.verify `Enc_utf8 s
+    with _ -> failwith "gs2_encode_saslname"
+  );
+  Netstring_str.global_substitute
+    comma_equals_re
+    (fun r s ->
+       match Netstring_str.matched_string r s with
+	 | "," -> "=2C"
+	 | "=" -> "=3D"
+	 | _ -> assert false
+    )
+    s
+
+let gs2_decode_saslname s =
+  let s' =
+    Netstring_str.global_substitute
+      rev_comma_equals_re
+      (fun r s ->
+	 match Netstring_str.matched_string r s with
+	   | "=2C" -> ","
+	   | "=3D" -> "="
+	   | "=" | "," -> failwith "gs2_decode_saslname"
+	   | _ -> assert false
+      )
+      s in
+  ( try
+      Netconversion.verify `Enc_utf8 s'
+    with _ -> failwith "gs2_decode_saslname"
+  );
+  s'
+
+
 let encode_seq_nr x =
   let n7 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 56)
                            0xffL) in

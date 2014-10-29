@@ -11,11 +11,8 @@ module type PROFILE =
           channel bindings in the initial token.
        *)
 
-    val mechanism_oid : Netsys_types.oid
-      (** The OID of the mechanism to use (client) *)
-
-    val mechanism_acceptable_oid_set : Netsys_types.oid list
-      (** OIDs acceptable for the server *)
+    val mechanism_oid : Netsys_gssapi.oid
+      (** The OID of the mechanism to use *)
 
     val client_additional_params : string list
       (** Additional parameters understood by [create_client_session] *)
@@ -26,7 +23,7 @@ module type PROFILE =
     val client_map_user_name : 
            params:(string * string) list ->
            string -> 
-             string * Netsys_types.oid
+             string * Netsys_gssapi.oid
       (** For clients: maps user names to a pair [(name_string,name_type)]
           that can be used in the GSSAPI for acquiring a name. 
           If the [name_type] is the empty
@@ -37,7 +34,7 @@ module type PROFILE =
 
     val server_map_user_name : 
            params:(string * string) list ->
-           (string * Netsys_types.oid) ->
+           (string * Netsys_gssapi.oid) ->
              string
       (** For servers: maps a pair [(name_string,name_type)] coming from the
           GSSAPI to a user name. The
@@ -49,7 +46,7 @@ module type PROFILE =
 
     val client_get_target_name :
            params:(string * string) list ->
-             (string * Netsys_types.oid)
+             (string * Netsys_gssapi.oid)
       (** For clients: get the GSSAPI name of the target to contact as
           [(name_string,name_type)] pair. If the [name_type] is the empty
          array, no target name is passed to the GSSAPI.
@@ -60,15 +57,14 @@ module type PROFILE =
 
     val server_bind_target_name :
            params:(string * string) list ->
-           (string * Netsys_types.oid) option ->
-             unit
+           (string * Netsys_gssapi.oid) option
       (** For servers: optionally bind the GSSAPI name of the server.  The
           [params] are from the [create_server_session] call.
        *)
 
     val server_check_target_name :
            params:(string * string) list ->
-           (string * Netsys_types.oid) ->
+           (string * Netsys_gssapi.oid) ->
              bool
       (** For servers: check whether the GSSAPI name the client sent is the
           right one. This is a more flexible alternative to 
@@ -88,9 +84,8 @@ module type PROFILE =
 
     val server_flags :
            params:(string * string) list ->
-           ( Netsys_gssapi.req_flag * bool ) list
-      (** Flags for [accept_sec_context]. The bool says whether the flag is
-          required (otherwise the feature is only offered). [`Mutual_flag]
+           Netsys_gssapi.req_flag list
+      (** Required flags for [accept_sec_context]. [`Mutual_flag]
           is always required.
        *)
 

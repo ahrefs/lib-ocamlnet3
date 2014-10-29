@@ -377,7 +377,7 @@ Netpop.authenticate
       let cont =
         G.interface # accept_sec_context
           ~context:ss.scontext
-          ~acceptor_cred:G.interface#no_credential
+          ~acceptor_cred:ss.scred
           ~input_token:msg
           ~chan_bindings:None
           ~out:(fun ~src_name ~mech_type ~output_context ~output_token
