@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+(** The GS2 bridge for using GSSAPI mechanisms as SASL mechanisms *)
+
 module type PROFILE =
   sig
     val mechanism_name : string

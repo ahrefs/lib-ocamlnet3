@@ -118,7 +118,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     else if Netmech_scram.server_finish_flag ss.ss then
       `OK
     else if Netmech_scram.server_error_flag ss.ss then
-      `Auth_error
+      `Auth_error "SCRAM error"
     else
       assert false
 
@@ -206,6 +206,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       
   type client_session =
       { mutable cs : Netmech_scram.client_session;
+        mutable cerror : string;
       }
 
   let client_state cs =
@@ -216,7 +217,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     else if Netmech_scram.client_finish_flag cs.cs then
       `OK
     else if Netmech_scram.client_error_flag cs.cs then
-      `Auth_error
+      `Auth_error cs.cerror
     else
       assert false
       
@@ -240,7 +241,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
         user
         authz
         pw in
-    { cs }
+    { cs; cerror = "no error" }
 
   let client_configure_channel_binding cs cb =
     Netmech_scram.client_configure_channel_binding cs.cs cb
@@ -261,18 +262,37 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
         authz
         pw in
     cs.cs <- new_cs
+
+  let error_of_exn =
+    function
+    | Netmech_scram.Invalid_encoding(m,_) ->
+        "Invalid encoding: " ^ m
+    | Netmech_scram.Invalid_username_encoding(m,_) ->
+        "Invalid user name encoding: " ^ m
+    | Netmech_scram.Extensions_not_supported(m,_) ->
+        "Extensions not supported: " ^ m
+    | Netmech_scram.Protocol_error m ->
+        "Protocol error: " ^ m
+    | Netmech_scram.Invalid_server_signature ->
+        "Invalid server signature"
+    | Netmech_scram.Server_error code ->
+        let m = Netmech_scram.string_of_server_error code in
+        "Server error code: " ^ m
+
       
   let client_process_challenge cs msg =
     try
       Netmech_scram.client_recv_message cs.cs msg
     with
-      | Netmech_scram.Invalid_encoding _
+      ( Netmech_scram.Invalid_encoding _
       | Netmech_scram.Invalid_username_encoding _
       | Netmech_scram.Extensions_not_supported _
       | Netmech_scram.Protocol_error _
       | Netmech_scram.Invalid_server_signature
-      | Netmech_scram.Server_error _ ->
+      | Netmech_scram.Server_error _
+      ) as exn ->
           assert(Netmech_scram.client_error_flag cs.cs);
+          cs.cerror <- error_of_exn exn;
           ()
                                       
   let client_emit_response cs =
@@ -291,7 +311,9 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       | Some m ->
            let data_pos = Netstring_str.match_end m in
            let data = String.sub s data_pos (String.length s - data_pos) in
-           { cs = Netmech_scram.client_import data }
+           { cs = Netmech_scram.client_import data;
+             cerror = "unknown"; (* FIXME *)
+           }
       
   let client_session_id cs =
     None

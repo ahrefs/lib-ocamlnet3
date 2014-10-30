@@ -1,16 +1,18 @@
 (* $Id$ *)
 
-module KRB5(GSS:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM
+(** Kerberos 5 as SASL mechanism *)
+
+module Krb5_gs1(GSS:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM
   (** This is an adapter turning the Kerberos 5 GSSAPI mechanism into
       a SASL mechanism. Note that there are two ways of doing this,
-      RFC 4752 and RFC 5801, and this is the former way. The SASL
+      RFC 4752 and RFC 5801, and this is the former way ("gs1"). The SASL
       name is "GSSAPI". Although this name may suggest that all GSSAPI
       mechanisms are understood, the RFC requires that this protocol
       is only used for Kerberos 5.
 
       Create the final module like
       {[
-module K = Netmech_krb5_sasl.KRB5(Netgss.System)
+module K = Netmech_krb5_sasl.Krb5_gs1(Netgss.System)
       ]}
 
       {b Remarks for clients:}
@@ -69,3 +71,17 @@ let ss =
          (Kerberos is considered as secure method)
 
    *)
+
+
+module Krb5_gs2(GSS:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM
+  (** This is the other adapter turning the Kerberos 5 GSSAPI mechanism into
+      a SASL mechanism. This follows the specification in RFC 5801 ("gs2").
+
+      The usage is the same as {!Netmech_krb5_sasl.Krb5_gs1}.
+
+      This adapter doesn't announce channel bindings.
+   *)
+
+module Krb5_gs2_profile : Netmech_gs2_sasl.PROFILE
+  (** This is the profile used for {!Netmech_krb5_sasl.Krb5_gs2} *)
+

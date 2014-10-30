@@ -2227,7 +2227,7 @@ let generic_auth_session_for_challenge
             | `Emit | `Stale ->
                 assert(not reauth_flag);
                 ()   (* strange, but just let's skip the challenge *)
-            | `Auth_error ->
+            | `Auth_error _ ->
                 ()
         );
         match M.client_state session with
@@ -2271,7 +2271,7 @@ let generic_auth_session_for_challenge
               `Continue out
           | `Wait ->
               assert false
-          | `Auth_error ->
+          | `Auth_error msg ->
               cur_auth_domain := [];
               `Auth_error
 

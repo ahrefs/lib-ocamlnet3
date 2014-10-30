@@ -31,6 +31,9 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let server_state ss = ss.sstate
 
+  let no_mutual =
+    "The CRAM-MD5 mechanism does not support mutual authentication"
+
   let create_server_session ~lookup ~params () =
     let params = 
       Netsys_sasl_util.preprocess_params
@@ -48,7 +51,7 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
         | None -> c1
         | Some c -> c in
     next_challenge := None;
-    { sstate = if req_mutual then `Auth_error else `Emit;
+    { sstate = if req_mutual then `Auth_error no_mutual else `Emit;
       schallenge = "<" ^ c ^ ">";
       suser = None;
       lookup
@@ -74,11 +77,11 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let verify_utf8 s =
     try
       Netconversion.verify `Enc_utf8 s
-    with _ -> raise Not_found
+    with _ -> failwith "UTF-8 mismatch"
 
   let server_process_response ss msg =
     try
-      if ss.sstate <> `Wait then raise Not_found;
+      if ss.sstate <> `Wait then failwith "protocol error";
       let n = String.length msg in
       let k1 = String.rindex msg ' ' in
       let user = String.sub msg 0 k1 in
@@ -86,19 +89,19 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       let expected_password =
         match ss.lookup user "" with
           | None ->
-               raise Not_found
+              failwith "unknown user"
           | Some creds ->
                Netsys_sasl_util.extract_password creds in
       let expected_msg =
         compute_response user expected_password ss.schallenge in
-      if msg <> expected_msg then raise Not_found;
+      if msg <> expected_msg then failwith "bad password";
       verify_utf8 user;
       verify_utf8 expected_password;
       ss.sstate <- `OK;
       ss.suser <- Some user;
     with
-      | Not_found ->
-           ss.sstate <- `Auth_error
+      | Failure msg ->
+           ss.sstate <- `Auth_error msg
 
   let server_process_response_restart ss msg set_stale =
     failwith "Netmech_crammd5_sasl.server_process_response_restart: \
@@ -171,7 +174,7 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       with Not_found ->
         failwith "Netmech_crammd5_sasl.create_client_session: no password \
                   found in credentials" in
-    { cstate = if req_mutual then `Auth_error else `Wait;
+    { cstate = if req_mutual then `Auth_error no_mutual else `Wait;
       cresp = "";
       cuser = user;
       cauthz = authz;
@@ -195,7 +198,7 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let client_process_challenge cs msg =
     if cs.cstate <> `Wait then
-      cs.cstate <- `Auth_error
+      cs.cstate <- `Auth_error "protocol error"
     else (
       cs.cresp <- compute_response cs.cuser cs.cpasswd msg;
       cs.cstate <- `Emit;

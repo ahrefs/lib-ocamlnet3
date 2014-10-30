@@ -34,7 +34,7 @@ let string_of_server_state =
   | `OK -> "*"
   | `Wait -> "w"
   | `Emit -> "e"
-  | `Auth_error -> "F"
+  | `Auth_error s -> "F" ^ s
   | `Restart s -> "r" ^ s
 
 let server_state_of_string s =
@@ -44,7 +44,7 @@ let server_state_of_string s =
       | '*' -> `OK
       | 'w' -> `Wait
       | 'e' -> `Emit
-      | 'F' -> `Auth_error
+      | 'F' -> `Auth_error (String.sub s 1 (String.length s - 1))
       | 'r' -> `Restart (String.sub s 1 (String.length s - 1))
       | _ -> raise Not_found
   with
@@ -56,17 +56,17 @@ let string_of_client_state =
   | `OK -> "*"
   | `Wait -> "w"
   | `Emit -> "e"
-  | `Auth_error -> "F"
+  | `Auth_error s -> "F" ^ s
   | `Stale -> "s"
 
 let client_state_of_string s =
   try
-    if String.length s <> 1 then raise Not_found;
+    if String.length s < 1 then raise Not_found;
     match s.[0] with
       | '*' -> `OK
       | 'w' -> `Wait
       | 'e' -> `Emit
-      | 'F' -> `Auth_error
+      | 'F' -> `Auth_error (String.sub s 1 (String.length s - 1))
       | 's' -> `Stale
       | _ -> raise Not_found
   with

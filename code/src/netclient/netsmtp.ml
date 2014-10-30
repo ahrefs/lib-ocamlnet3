@@ -66,7 +66,11 @@ let handle_answer ic =
 
 let ignore_answer ic = ignore (handle_answer ic)
 
-let final_sasl_states = [ `OK; `Auth_error ]
+let is_final_sasl_states = 
+  function
+  | `OK
+  | `Auth_error _ -> true
+  | _ -> false
 
 (* class *)
 
@@ -117,7 +121,7 @@ object (self)
       Netsys_sasl.Client.create_session ~mech ~user ~authz ~creds ~params () in
     let first = ref true in
     let state = ref  (Netsys_sasl.Client.state sess) in
-    while not (List.mem !state final_sasl_states) do
+    while not (is_final_sasl_states !state) do
       let msg =
         match Netsys_sasl.Client.state sess with
           | `Emit | `Stale -> Some (Netsys_sasl.Client.emit_response sess)
@@ -148,7 +152,7 @@ object (self)
                   | _ -> raise Protocol_error
               with Invalid_argument _ -> raise Protocol_error in
             ( match Netsys_sasl.Client.state sess with
-                | `OK | `Auth_error -> ()
+                | `OK | `Auth_error _ -> ()
                 | `Emit | `Stale -> assert false
                 | `Wait ->
                     Netsys_sasl.Client.process_challenge sess s
@@ -157,11 +161,16 @@ object (self)
             if !state = `OK then state := `Wait  (* we cannot stop now *)
         | 235, _ ->
             state := Netsys_sasl.Client.state sess;
-            if !state <> `OK then state := `Auth_error
+            if !state <> `OK then state := `Auth_error "unexpected 235"
         | _ ->
             raise Protocol_error
     done;
-    if !state = `Auth_error then raise Authentication_error;
+    ( match !state with
+        | `Auth_error msg -> 
+            dlog ("Auth error: " ^ msg);
+            raise Authentication_error
+        | _ -> ()
+    );
     assert(!state = `OK);
     authenticated <- true
 

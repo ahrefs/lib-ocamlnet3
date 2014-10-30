@@ -2,7 +2,91 @@
 
 open Printf
 
-module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
+let krb5_oid =
+  [| 1;2;840;113554;1;2;2 |]
+
+
+module Krb5_gs2_profile = struct
+  let mechanism_name = "GS2-KRB5"
+  let announce_channel_binding = false
+  let mechanism_oid = krb5_oid
+  let client_additional_params = [ "gssapi-acceptor" ]
+  let server_additional_params = [ "gssapi-acceptor-service"; "realm" ]
+
+  let client_map_user_name ~params user =
+    ("", [| |])
+
+  let server_map_user_name ~params (name,name_type) =
+    if name_type <> Netsys_gssapi.nt_krb5_principal_name then
+      raise Not_found;
+    let realm_opt =
+      try Some(List.assoc "realm" params) with Not_found -> None in
+    match realm_opt with
+      | None ->
+          name
+      | Some r ->
+          let components, name_realm =
+            Netgssapi_support.parse_kerberos_name name in
+          if name_realm <> Some r then
+            raise Not_found;
+          ( match components with
+              | [ n ] ->
+                  n
+              | _ ->
+                  raise Not_found
+          )
+
+  let client_get_target_name ~params =
+    try
+      (List.assoc "gssapi-acceptor" params, Netsys_gssapi.nt_hostbased_service)
+    with
+      | Not_found -> failwith "missing parameter 'gssapi-acceptor'"
+
+  let server_bind_target_name ~params =
+    None
+
+  let server_check_target_name ~params (name,name_type) =
+    try
+      let expected_service =
+        List.assoc "gssapi-acceptor-service" params in
+      if name_type = Netsys_gssapi.nt_hostbased_service ||
+           name_type = Netsys_gssapi.nt_hostbased_service_alt
+      then (
+        let service, _ =
+          Netsys_gssapi.parse_hostbased_service name in
+        if service <> expected_service then raise Not_found;
+      )
+      else (
+        if name_type = Netsys_gssapi.nt_krb5_principal_name then (
+          let components, _ =
+            Netgssapi_support.parse_kerberos_name name in
+          match components with
+            | [service;_] ->
+                if service <> expected_service then
+                  raise Not_found
+            | _ ->
+                raise Not_found
+        )
+        else
+          raise Not_found
+      );
+      true
+    with
+      | Not_found
+      | Failure _ ->
+          false
+
+
+  let client_flags ~params = []
+  let server_flags ~params = []
+end
+
+
+module Krb5_gs2(G:Netsys_gssapi.GSSAPI) =
+  Netmech_gs2_sasl.GS2(Krb5_gs2_profile)(G)
+
+
+module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
   struct
     let mechanism_name = "GSSAPI"
     let client_first = `Required
@@ -25,7 +109,9 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
 
 
     type client_sub_state =
-        [ `Init_context | `Skip_empty | `Neg_security | `Established ]
+        [ `Pre_init_context | `Init_context | `Skip_empty | `Neg_security 
+        | `Established
+        ]
 
     type client_session =
         { cauthz : string;
@@ -36,9 +122,6 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           ctarget_name : G.name;
           cmutual : bool;
         }
-
-    let krb5_oid =
-      [| 1;2;840;113554;1;2;2 |]
 
     let client_state cs = cs.cstate
 
@@ -84,6 +167,8 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                  if suppl = [] then
                    cs.csubstate <- 
                      if input_token=None then `Skip_empty else`Neg_security
+                 else
+                   cs.csubstate <- `Init_context
               )
          ()
 
@@ -93,15 +178,12 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           "Netmech_krb5_sasl.create_client_session:"
           [ "gssapi-acceptor"; "mutual"; "secure" ]
           params in
-      let acceptor_name =
-        try List.assoc "gssapi-acceptor" params
-        with Not_found ->
-          failwith "Netmech_krb5_sasl.create_client_session: \
-                    missing parameter 'gssapi-acceptor'" in
+      let acceptor_name, acceptor_name_type =
+        Krb5_gs2_profile.client_get_target_name ~params in
       let ctarget_name =
         G.interface # import_name
           ~input_name:acceptor_name
-          ~input_name_type:Netsys_gssapi.nt_hostbased_service
+          ~input_name_type:acceptor_name_type
           ~out:(fun ~output_name ~minor_status ~major_status () ->
                   check_gssapi_status "import_name" major_status minor_status;
                   output_name
@@ -113,16 +195,11 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
         { cauthz = authz;
           ccontext = None;
           cstate = `Emit;
-          csubstate = `Init_context;
+          csubstate = `Pre_init_context;
           ctoken = "";
           ctarget_name;
           cmutual = req_mutual
         } in
-      ( try
-          call_init_sec_context cs None
-        with
-          | Failure _ -> cs.cstate <- `Auth_error
-      );
       cs
 
     let client_configure_channel_binding cs cb =
@@ -138,9 +215,8 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
         failwith "Netmech_krb5_sasl.client_restart: unfinished auth";
       cs.ccontext <- None;
       cs.cstate <- `Emit;
-      cs.csubstate <- `Init_context;
-      cs.ctoken <- "";
-      call_init_sec_context cs None
+      cs.csubstate <- `Pre_init_context;
+      cs.ctoken <- ""
 
     let client_context cs =
       match cs.ccontext with
@@ -150,15 +226,17 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
 
     let client_process_challenge cs msg =
       if cs.cstate <> `Wait then
-        cs.cstate <- `Auth_error
+        cs.cstate <- `Auth_error "protocol error"
       else
         match cs.csubstate with
+          | `Pre_init_context ->
+              assert false
           | `Init_context ->
                ( try
                    call_init_sec_context cs (Some msg)
                  with
-                   | Failure _ ->
-                        cs.cstate <- `Auth_error
+                   | Failure msg ->
+                        cs.cstate <- `Auth_error msg
                )
           | `Skip_empty ->
                if msg = "" then (
@@ -167,7 +245,7 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                  cs.csubstate <- `Neg_security;
                )
                else
-                 cs.cstate <- `Auth_error
+                 cs.cstate <- `Auth_error "empty token expected"
           | `Neg_security ->
                ( try
                    let input_message = [ Xdr_mstring.string_to_mstring msg ] in
@@ -205,16 +283,29 @@ module KRB5(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                    cs.cstate <- `Emit;
                    cs.csubstate <- `Established
                  with
-                   | Failure _ ->
-                        cs.cstate <- `Auth_error
+                   | Failure msg ->
+                        cs.cstate <- `Auth_error msg
                )
           | `Established ->
-               cs.cstate <- `Auth_error
+               cs.cstate <- `Auth_error "unexpected token"
 
     let client_emit_response cs =
       if cs.cstate <> `Emit then
         failwith "Netmech_krb5_sasl.client_emit_response: bad state";
-      cs.cstate <- (if cs.csubstate = `Established then `OK else `Wait);
+      ( match cs.csubstate with
+          | `Pre_init_context ->
+              ( try
+                  call_init_sec_context cs None;
+                  cs.cstate <- `Wait;
+                with
+                  | Failure msg -> 
+                      cs.cstate <- `Auth_error msg
+              )
+          | `Established ->
+              cs.cstate <- `OK
+          | _ ->
+              cs.cstate <- `Wait
+      );
       cs.ctoken
 
     let client_session_id cs =
@@ -268,7 +359,7 @@ let addr =
     `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "office1", 110),
             Uq_client.default_connect_options);;
 let client = new Netpop.connect addr 60.0;;
-module S = Netmech_krb5_sasl.KRB5(Netgss.System);;
+module S = Netmech_krb5_sasl.Krb5_gs1(Netgss.System);;
 Netpop.authenticate
   ~sasl_mechs:[ (module S)
               ]
@@ -418,27 +509,12 @@ Netpop.authenticate
                     () ->
                   check_gssapi_status
                     "display_name" major_status minor_status;
-                  if output_name_type = Netsys_gssapi.nt_hostbased_service ||
-                       output_name_type = Netsys_gssapi.nt_hostbased_service_alt
-                  then(
-                    let service, _ =
-                      Netsys_gssapi.parse_hostbased_service output_name in
-                    if service <> ss.sservice then
-                      failwith "unexpected service"
-                  )
-                  else
-                    if output_name_type = Netsys_gssapi.nt_krb5_principal_name
-                    then
-                      let components, _ =
-                        Netgssapi_support.parse_kerberos_name output_name in
-                      match components with
-                        | [service;_] ->
-                            if service <> ss.sservice then
-                              failwith "unexpected service"
-                        | _ ->
-                            failwith "unexpected target krb5 principal"
-                    else
-                      failwith "unexpected target name"
+                  let ok =
+                    Krb5_gs2_profile.server_check_target_name
+                      ~params:["gssapi-acceptor-service", ss.sservice]
+                      (output_name, output_name_type) in
+                  if not ok then
+                    failwith "unexpected target or decoding error"
                )
           ();
         G.interface # display_name
@@ -447,23 +523,18 @@ Netpop.authenticate
                     () ->
                   check_gssapi_status
                     "display_name" major_status minor_status;
-                  if output_name_type <> Netsys_gssapi.nt_krb5_principal_name
-                  then
-                    failwith "unexpected client name type";
-                  match ss.srealm with
-                    | None ->
-                        ss.suser <- Some output_name
-                    | Some r ->
-                        let components, realm =
-                          Netgssapi_support.parse_kerberos_name output_name in
-                        if realm <> Some r then
-                          failwith "bad realm";
-                        ( match components with
-                            | [ name ] ->
-                                ss.suser <- Some name
-                            | _ ->
-                                failwith "unexpected form of client principal"
-                        )
+                  try
+                    let n =
+                      Krb5_gs2_profile.server_map_user_name
+                        ~params:( match ss.srealm with
+                                    | None -> []
+                                    | Some r -> ["realm", r]
+                                )
+                        (output_name,output_name_type) in
+                    ss.suser <- Some n
+                  with
+                    | Not_found ->
+                        failwith "cannot parse client name"
                )
           ();
         if ss.stoken = "" then (
@@ -527,9 +598,10 @@ Netpop.authenticate
           | `Established ->
               raise Not_found
       with
-        | Not_found
-        | Failure _ ->
-            ss.sstate <- `Auth_error
+        | Not_found ->
+            ss.sstate <- `Auth_error "unspecified"
+        | Failure msg ->
+            ss.sstate <- `Auth_error msg
 
 
     let server_process_response_restart ss msg set_stale =
@@ -604,6 +676,7 @@ Netpop.authenticate
   end
 
 
+
 (*
 Works only when "test" is added to /etc/services!
 
@@ -611,7 +684,7 @@ KRB5_KTNAME=test.keytab OCAMLPATH=src ledit ocaml
 #use "topfind";;
 #require "netstring,netgss-system";;
 open Printf;;
-module S = Netmech_krb5_sasl.KRB5(Netgss.System);;
+module S = Netmech_krb5_sasl.Krb5_gs1(Netgss.System);;
 let no_creds = S.init_credentials [];;
 let cs = S.create_client_session ~user:"" ~authz:"foo" ~creds:no_creds ~params:[ "gssapi-acceptor", "test@office1.lan.sumadev.de", false ] ();;
 let lookup user authz = eprintf "user=%S authz=%S\n%!" user authz; Some no_creds;;

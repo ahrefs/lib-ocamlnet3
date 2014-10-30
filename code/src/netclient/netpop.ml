@@ -132,7 +132,11 @@ let body_response ic =
 
 let space_re = Netstring_str.regexp " "
 
-let final_sasl_states = [ `OK; `Auth_error ]
+let is_final_sasl_states =
+  function 
+    | `OK
+    | `Auth_error _ -> true
+    | _ -> false
 
 class client
   (ic0 : in_obj_channel)
@@ -227,7 +231,7 @@ object (self)
       Netsys_sasl.Client.create_session ~mech ~user ~authz ~creds ~params () in
     let first = ref true in
     let state = ref  (Netsys_sasl.Client.state sess) in
-    while not (List.mem !state final_sasl_states) do
+    while not (is_final_sasl_states !state) do
       let msg =
         match Netsys_sasl.Client.state sess with
           | `Emit | `Stale -> Some (Netsys_sasl.Client.emit_response sess)
@@ -251,7 +255,7 @@ object (self)
       match sasl_response ic with
         | `Challenge data ->
             ( match Netsys_sasl.Client.state sess with
-                | `OK | `Auth_error -> ()
+                | `OK | `Auth_error _ -> ()
                 | `Emit | `Stale -> assert false
                 | `Wait ->
                     Netsys_sasl.Client.process_challenge sess data
@@ -260,11 +264,16 @@ object (self)
             if !state = `OK then state := `Wait  (* we cannot stop now *)
         | `Ok ->
             state := Netsys_sasl.Client.state sess;
-            if !state <> `OK then state := `Auth_error
+            if !state <> `OK then state := `Auth_error "unspecified"
         | _ ->
             raise Protocol_error
     done;
-    if !state = `Auth_error then raise Authentication_error;
+    ( match !state with
+        | `Auth_error msg -> 
+            dlog ("Auth error: " ^ msg);
+            raise Authentication_error
+        | _ -> ()
+    );
     assert(!state = `OK);
     self#transition `Transaction;
 

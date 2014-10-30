@@ -236,7 +236,8 @@ let rev_comma_equals_re = Netstring_str.regexp "\\(=2C\\|=3D\\|=\\|,\\)"
 
 let gs2_encode_saslname s =
   ( try
-      Netconversion.verify `Enc_utf8 s
+      Netconversion.verify `Enc_utf8 s;
+      if String.contains s '\000' then raise Not_found;
     with _ -> failwith "gs2_encode_saslname"
   );
   Netstring_str.global_substitute
@@ -262,7 +263,8 @@ let gs2_decode_saslname s =
       )
       s in
   ( try
-      Netconversion.verify `Enc_utf8 s'
+      Netconversion.verify `Enc_utf8 s';
+      if String.contains s' '\000' then raise Not_found;
     with _ -> failwith "gs2_decode_saslname"
   );
   s'

@@ -243,7 +243,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
 
     let client_process_challenge cs msg =
       if cs.cstate <> `Wait then
-        cs.cstate <- `Auth_error
+        cs.cstate <- `Auth_error "protocol error"
       else
         match cs.csubstate with
           | `Pre_init_context ->
@@ -252,11 +252,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                ( try
                    call_init_sec_context cs (Some msg)
                  with
-                   | Failure _ ->
-                        cs.cstate <- `Auth_error
+                   | Failure msg ->
+                        cs.cstate <- `Auth_error msg
                )
           | `Established ->
-               cs.cstate <- `Auth_error
+               cs.cstate <- `Auth_error "unexpected challenge"
 
     let client_emit_response cs =
       if cs.cstate <> `Emit then
@@ -268,8 +268,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                   cs.cstate <- `Wait;
                   cs.ctoken <- client_rewrite_initial_token cs cs.ctoken;
                 with
-                  | Failure _ ->
-                      cs.cstate <- `Auth_error
+                  | Failure msg ->
+                      cs.cstate <- `Auth_error msg
               )
           | `Init_context ->
               cs.cstate <- `Wait
@@ -562,9 +562,10 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           | `Established ->
               raise Not_found
       with
-        | Not_found
-        | Failure _ ->
-            ss.sstate <- `Auth_error
+        | Not_found ->
+            ss.sstate <- `Auth_error "unspecified"
+        | Failure msg ->
+            ss.sstate <- `Auth_error msg
 
 
     let server_process_response_restart ss msg set_stale =

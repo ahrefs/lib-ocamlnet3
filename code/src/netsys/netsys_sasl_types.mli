@@ -20,12 +20,13 @@ type cb =
    *)
 
 type server_state =
-  [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
+  [ `Wait | `Emit | `OK | `Auth_error of string | `Restart of string ]
   (** The state of the server session:
           - [`Wait]: it is waited for the client response.
           - [`Emit]: a new server challenge can be emitted.
           - [`OK]: the authentication protocol succeeded
-          - [`Auth_error]: authentication error (it is unspecified which)
+          - [`Auth_error]: authentication error (it is unspecified which;
+            the string may be used for logging)
           - [`Restart session_id]: this state can be entered after getting
             the first client response. It means that the saved session
             [session_id] may be restarted by calling 
@@ -34,12 +35,13 @@ type server_state =
 
 
 type client_state =
-  [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
+  [ `Wait | `Emit | `OK | `Auth_error of string | `Stale ]
       (** The state of the client session:
           - [`Wait]: it is waited for the server challenge.
           - [`Emit]: a new client response can be emitted.
           - [`OK]: the authentication protocol succeeded
-          - [`Auth_error]: authentication error (it is unspecified which)
+          - [`Auth_error]: authentication error (it is unspecified which);
+            the string may be used for logging)
           - [`Stale]: The client session is refused as too old. The password,
             though, is correct. Otherwise this is the same as [`Emit], i.e.
             the authentication process can continue.

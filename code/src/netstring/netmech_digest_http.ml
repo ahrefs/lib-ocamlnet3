@@ -107,7 +107,7 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
             with
               | Not_found
               | Failure _ ->
-                  cs.cstate <- `Auth_error
+                  cs.cstate <- `Auth_error "bad Authentication-info header"
           )
 
 

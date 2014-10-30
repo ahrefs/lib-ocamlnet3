@@ -24,6 +24,9 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let server_state ss = ss.sstate
 
+  let no_mutual = "The PLAIN mechanism does not support mutual authentication"
+  let no_secure = "The PLAIN mechanism is not a secure mechanism"
+
   let create_server_session ~lookup ~params () =
     let params = 
       Netsys_sasl_util.preprocess_params
@@ -34,7 +37,10 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
       try List.assoc "mutual" params = "true" with Not_found -> false in
     let req_secure =
       try List.assoc "secure" params = "true" with Not_found -> false in
-    { sstate = if req_mutual || req_secure then `Auth_error else `Wait;
+    { sstate = ( if req_mutual then `Auth_error no_mutual
+                 else if req_secure then `Auth_error no_secure
+                 else `Wait
+               );
       suser = None;
       sauthz = None;
       lookup
@@ -43,11 +49,11 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
   let verify_utf8 s =
     try
       Netconversion.verify `Enc_utf8 s
-    with _ -> raise Not_found
+    with _ -> failwith "UTF-8 mismatch"
 
   let server_process_response ss msg =
     try
-      if ss.sstate <> `Wait then raise Not_found;
+      if ss.sstate <> `Wait then failwith "protocol error";
       let n = String.length msg in
       let k1 = String.index_from msg 0 '\000' in
       if k1 = n-1 then raise Not_found;
@@ -60,16 +66,16 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
       verify_utf8 passwd;
       match ss.lookup user authz with
         | None ->
-             raise Not_found
+             failwith "unknown user"
         | Some creds ->
              let expected_passwd = Netsys_sasl_util.extract_password creds in
-             if passwd <> expected_passwd then raise Not_found;
+             if passwd <> expected_passwd then failwith "bad password";
              ss.sstate <- `OK;
              ss.suser <- Some user;
              ss.sauthz <- Some authz;
     with
-      | Not_found ->
-           ss.sstate <- `Auth_error
+      | Failure msg ->
+           ss.sstate <- `Auth_error msg
 
   let server_process_response_restart ss msg set_stale =
     failwith "Netmech_plain_sasl.server_process_response_restart: \
@@ -140,7 +146,10 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
       with Not_found ->
         failwith "Netmech_plain_sasl.create_client_session: no password \
                   found in credentials" in
-    { cstate = if req_mutual || req_secure then `Auth_error else `Emit;
+    { cstate = ( if req_mutual then `Auth_error no_mutual
+                 else if req_secure then `Auth_error no_secure
+                 else `Emit
+               );
       cuser = user;
       cauthz = authz;
       cpasswd = pw;
@@ -162,7 +171,7 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
     cs.cstate <- `Emit
 
   let client_process_challenge cs msg =
-    cs.cstate <- `Auth_error
+    cs.cstate <- `Auth_error "protocol error"
 
   let client_emit_response cs =
     if cs.cstate <> `Emit then

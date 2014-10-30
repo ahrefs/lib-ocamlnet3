@@ -8,10 +8,10 @@ type cb =
     ]
 
 type server_state =
-  [ `Wait | `Emit | `OK | `Auth_error | `Restart of string ]
+  [ `Wait | `Emit | `OK | `Auth_error of string | `Restart of string ]
 
 type client_state =
-  [ `Wait | `Emit | `OK | `Auth_error | `Stale ]
+  [ `Wait | `Emit | `OK | `Auth_error of string | `Stale ]
 
 
 module type SASL_MECHANISM = 

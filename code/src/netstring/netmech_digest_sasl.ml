@@ -84,7 +84,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       server_process_response_kv ss msg_params "AUTHENTICATE"
     with
       | Failure _ ->  (* from parse_message *)
-           ss.sstate <- `Auth_error
+           ss.sstate <- `Auth_error "parse error"
 
   let server_process_response_restart ss msg set_stale =
     if ss.sstate <> `OK then
@@ -95,7 +95,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       server_process_response_restart_kv ss msg_params set_stale "AUTHENTICATE"
     with
       | Failure _  -> (* from parse_message *)
-           ss.sstate <- `Auth_error;
+           ss.sstate <- `Auth_error "parse error";
            raise Not_found
 
              
@@ -182,7 +182,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
         client_process_initial_challenge_kv cs msg_params
     with
       | Failure _ ->  (* from parse_message *)
-          cs.cstate <- `Auth_error
+          cs.cstate <- `Auth_error "parse error"
 
 
   let client_emit_response cs =

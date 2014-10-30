@@ -142,7 +142,7 @@ eprintf "compute_response user=%s authz=%s realm=%s password=%s nonce=%s cnonce=
 let verify_utf8 s =
   try
     Netconversion.verify `Enc_utf8 s
-  with _ -> raise Not_found
+  with _ -> failwith "UTF-8 mismatch"
 
 let to_utf8 is_utf8 s =
   (* Convert from client encoding to UTF-8 *)
@@ -170,7 +170,8 @@ let to_client is_utf8 s =
         ~out_enc:`Enc_iso88591
         s
     with
-      | Netconversion.Malformed_code -> raise Not_found
+      | Netconversion.Malformed_code -> 
+          failwith "cannot convert to ISO-8859-1"
 
 
 let to_strmap l =
@@ -255,7 +256,7 @@ let decode_response ptype msg_params method_name =
      a cnonce and nc.
    *)
   let qop = StrMap.find "qop" m in
-  if qop <>"auth" then raise Not_found;
+  if qop <>"auth" then failwith "bad qop";
   let cnonce = StrMap.find "cnonce" m in
   let nc_str = StrMap.find "nc" m in
   let nc = get_nc nc_str in
@@ -268,7 +269,7 @@ let decode_response ptype msg_params method_name =
   let utf8 =
     if StrMap.mem "charset" m then (
       let v = StrMap.find "charset" m in
-      if v <> "utf-8" then raise Not_found;
+      if v <> "utf-8" then failwith "bad charset";
       true
     )
     else
@@ -317,11 +318,15 @@ let validate_response ss r response =
   ( match ss.srealm with
       | None -> ()
       | Some expected_realm ->
-          if expected_realm <> realm_utf8 then raise Not_found
+          if expected_realm <> realm_utf8 then failwith "bad realm";
   );
-  if r.r_hash <> List.hd ss.sprofile.hash_functions then raise Not_found;
-  if r.r_no_sess <> ss.snosess then raise Not_found;
-  if r.r_userhash then raise Not_found; (* not supported on server side *)
+  if r.r_hash <> List.hd ss.sprofile.hash_functions then
+    failwith "unexpected hash function";
+  if r.r_no_sess <> ss.snosess then
+    failwith "parameter mismatch";
+  if r.r_userhash then 
+    failwith "user name hashing not supported"; 
+    (* not supported on server side *)
   let user_utf8 = to_utf8 r.r_utf8 r.r_user in
   let authz =
     match r.r_authz with
@@ -330,12 +335,12 @@ let validate_response ss r response =
   let password_utf8 =
     match ss.lookup user_utf8 authz with
       | None ->
-           raise Not_found
+          failwith "bad user"
       | Some creds ->
            Netsys_sasl_util.extract_password creds in
   let password = to_client r.r_utf8 password_utf8 in
   let expected_response = compute_response r password (r.r_method ^ ":") in
-  if response <> expected_response then raise Not_found;
+  if response <> expected_response then failwith "bad password";
   password
 
 exception Restart of string
@@ -353,8 +358,10 @@ let server_process_response_kv ss msg_params method_name =
     ss.sresponse <- Some(r, response, srv_response);
     ss.sstate <- `Emit;
   with
+    | Failure msg ->
+         ss.sstate <- `Auth_error msg
     | Not_found ->
-         ss.sstate <- `Auth_error
+         ss.sstate <- `Auth_error "unspecified"
     | Restart id ->
          ss.sstate <- `Restart id
 
@@ -390,6 +397,7 @@ let server_process_response_restart_kv ss msg_params set_stale method_name =
       true
     )
   with
+    | Failure _
     | Not_found ->
          ss.snonce <- create_nonce();
          ss.snextnc <- 1;
@@ -439,7 +447,7 @@ let server_prop_i ss key =
             | Some(rp,_,_) ->
                 match key with
                   | "digest-uri" | "uri" ->  rp.r_digest_uri
-                  | "cnonce" -> rp.r_cnonce
+                 | "cnonce" -> rp.r_cnonce
                   | "nc" -> string_of_int rp.r_nc
                   | "realm" ->
                       (* may be in ISO-8859-1 *)
@@ -484,8 +492,11 @@ let client_process_final_challenge_kv cs msg_params =
             cs.cstate <- `OK;
     ) else
       cs.cstate <- `OK
-  with Not_found ->
-       cs.cstate <- `Auth_error
+  with
+    | Failure msg ->
+       cs.cstate <- `Auth_error msg
+    | Not_found ->
+       cs.cstate <- `Auth_error "cannot authenticate server"
 
 
 let client_process_initial_challenge_kv cs msg_params =
@@ -507,11 +518,11 @@ let client_process_initial_challenge_kv cs msg_params =
     let qop_s, rfc2069 = 
       try (StrMap.find "qop" m, false) with Not_found -> ("auth", true) in
     let qop_l = space_split qop_s in
-    if not (List.mem "auth" qop_l) then raise Not_found;
+    if not (List.mem "auth" qop_l) then failwith "bad qop";
     let stale = 
       try StrMap.find "stale" m = "true" with Not_found -> false in
     if stale && cs.cresp = None then raise Not_found;
-    if cs.cprofile.ptype = `SASL && not utf8 then raise Not_found;
+    if cs.cprofile.ptype = `SASL && not utf8 then failwith "missing utf-8";
     let opaque =
       try Some(StrMap.find "opaque" m) with Not_found -> None in
     let domain =
@@ -526,7 +537,8 @@ let client_process_initial_challenge_kv cs msg_params =
     let userhash =
       try StrMap.find "userhash" m = "true" with Not_found -> false in
     if cs.cprofile.ptype = `SASL && no_sess then raise Not_found;
-    if not (List.mem hash cs.cprofile.hash_functions) then raise Not_found;
+    if not (List.mem hash cs.cprofile.hash_functions) then
+      failwith "unsupported hash function";
     (* If this is an initial challenge after we tried to resume the
        old session, we need a new conce *)
     let cnonce =
@@ -554,8 +566,11 @@ let client_process_initial_challenge_kv cs msg_params =
       } in
     cs.cresp <- Some rp;
     cs.cstate <- if stale then `Stale else `Emit;
-  with Not_found ->
-       cs.cstate <- `Auth_error
+  with 
+    | Failure msg ->
+        cs.cstate <- `Auth_error msg
+    | Not_found ->
+        cs.cstate <- `Auth_error "unspecified"
 
 let client_emit_response_kv ?(quote=false) cs =
   (* SASL: method_name="AUTHENTICATE" *)
