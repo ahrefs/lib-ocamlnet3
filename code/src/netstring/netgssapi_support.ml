@@ -42,13 +42,13 @@ let encode_definite_length buf n =
   (* See 8.1.3 of ITU-T X.690 *)
   let rec encode n =
     if n < 256 then
-      [ Char.chr n ]
+      [ n ]
     else
-      (Char.chr (n land 255)) :: encode (n lsr 8) in
+      (n land 255) :: encode (n lsr 8) in
   if n < 128 then (
     Buffer.add_char buf (Char.chr n)
   ) else (
-    let l = encode n in
+    let l = List.map Char.chr (List.rev(encode n)) in
     Buffer.add_char buf (Char.chr (List.length l + 128));
     List.iter (Buffer.add_char buf) l
   )
@@ -101,6 +101,7 @@ let oid_to_der oid =
   let s = oid_to_der_value oid in
   Buffer.add_char buf '\x06';
   encode_definite_length buf (String.length s);
+  Buffer.add_string buf s;
   Buffer.contents buf
 
 

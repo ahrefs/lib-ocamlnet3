@@ -294,6 +294,30 @@ CAMLprim value netgss_no_cb(value dummy) {
 }
 
 
+CAMLprim value netgss_map_cb(value iaddrty, value iaddr, value aaddrty,
+                             value aaddr, value data) {
+    gss_channel_bindings_t cb;
+    size_t iaddr_len, aaddr_len, data_len;
+    iaddr_len = caml_string_length(iaddr);
+    aaddr_len = caml_string_length(aaddr);
+    data_len = caml_string_length(data);
+    cb = (gss_channel_bindings_t)
+            stat_alloc(sizeof(struct gss_channel_bindings_struct));
+    cb->initiator_addrtype = Int_val(iaddrty);
+    cb->initiator_address.length = iaddr_len;
+    cb->initiator_address.value = stat_alloc(iaddr_len);
+    memcpy(cb->initiator_address.value, String_val(iaddr), iaddr_len);
+    cb->acceptor_addrtype = Int_val(aaddrty);
+    cb->acceptor_address.length = aaddr_len;
+    cb->acceptor_address.value = stat_alloc(aaddr_len);
+    memcpy(cb->acceptor_address.value, String_val(aaddr), aaddr_len);
+    cb->application_data.length = data_len;
+    cb->application_data.value = stat_alloc(data_len);
+    memcpy(cb->application_data.value, String_val(data), data_len);
+    return wrap_gss_channel_bindings_t(cb);
+}
+
+
 CAMLprim value netgss_no_ctx(value dummy) {
     return wrap_gss_ctx_id_t(GSS_C_NO_CONTEXT);
 }
@@ -325,4 +349,9 @@ CAMLprim value netgss_no_oid_set(value dummy) {
 }
 
 static void netgss_free_cb(gss_channel_bindings_t x) {
+    if (x != NULL) {
+        stat_free(x->initiator_address.value);
+        stat_free(x->acceptor_address.value);
+        stat_free(x->application_data.value);
+    }
 }

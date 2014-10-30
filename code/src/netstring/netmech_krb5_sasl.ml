@@ -359,7 +359,10 @@ let addr =
     `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "office1", 110),
             Uq_client.default_connect_options);;
 let client = new Netpop.connect addr 60.0;;
+
 module S = Netmech_krb5_sasl.Krb5_gs1(Netgss.System);;
+module S = Netmech_krb5_sasl.Krb5_gs2(Netgss.System);;
+
 Netpop.authenticate
   ~sasl_mechs:[ (module S)
               ]

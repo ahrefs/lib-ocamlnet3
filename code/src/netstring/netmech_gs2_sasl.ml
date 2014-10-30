@@ -75,6 +75,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           ctarget_name : G.name;
           cinit_name : G.name;
           ccred : G.credential;
+          mutable ccb_data : string;
           mutable ccb : Netsys_gssapi.channel_bindings option;
         }
 
@@ -106,19 +107,20 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
          ~context:cs.ccontext
          ~target_name:cs.ctarget_name
          ~mech_type:P.mechanism_oid
-         ~req_flags:(`Mutual_flag  :: flags2)
+         ~req_flags:(`Mutual_flag  :: `Sequence_flag :: flags2)
          ~time_req:None
-         ~chan_bindings:None  (* TODO *)
+         ~chan_bindings:(Some(`Unspecified "", `Unspecified "", cs.ccb_data))
          ~input_token
          ~out:(fun ~actual_mech_type ~output_context ~output_token 
                    ~ret_flags ~time_rec ~minor_status ~major_status () -> 
                  let (_,_,suppl) = major_status in
+                 let cont = List.mem `Continue_needed suppl in
                  check_gssapi_status
                    "init_sec_context" major_status minor_status;
                  assert(output_context <> None);
                  cs.ccontext <- output_context;
                  cs.ctoken <- output_token;
-                 if suppl = [] then (
+                 if not cont then (
                    if not(List.mem `Mutual_flag ret_flags) then
                      failwith "mutual authentication requested but not available";
                    List.iter
@@ -128,12 +130,15 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                           failwith "required flag missing"
                      )
                      flags1;
-                   cs.cstate <- if output_token = "" then `OK else `Emit;
-                   cs.csubstate <- `Established;
+                   cs.cstate <- `Emit;
+                   cs.csubstate <- if output_token = "" then `Established 
+                                   else`Init_context;
                  )
                  else (
+(*
                    if suppl <> [ `Continue_needed ] then
                      failwith "bad supplemental state";
+ *)
                    cs.cstate <- `Emit;
                    cs.csubstate <- `Init_context
                  )
@@ -144,9 +149,9 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
       let (non_std, token_no_header) =
         try
           let p = ref 0 in
-          let (_,_) = Netgssapi_support.wire_decode_token token p in
+          let (_,token') = Netgssapi_support.wire_decode_token token p in
           if !p <> String.length token then failwith "bad token";
-          (false, String.sub token !p (String.length token - !p))
+          (false, token')
         with
           | Failure _ ->
               (true, token) in
@@ -154,11 +159,30 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         ""
         [ if non_std then "F," else "";
           "n,";   (* channel binding FIXME *)
-          Netgssapi_support.gs2_encode_saslname cs.cauthz;
+          ( if cs.cauthz = "" then
+              ""
+            else
+              "a=" ^ Netgssapi_support.gs2_encode_saslname cs.cauthz
+          );
           ",";
           token_no_header
         ]
 
+    let client_create_cb_data cs =
+      (* RFC 5801, section 5.1 *)
+      cs.ccb_data <-
+        String.concat
+          ""
+          [ "n,";   (* FIXME *)
+            ( if cs.cauthz = "" then
+                ""
+              else
+                "a=" ^ Netgssapi_support.gs2_encode_saslname cs.cauthz
+            );
+            ",";
+          (* plus: channel binding data *)
+          ]
+          
     let create_client_session ~user ~authz ~creds ~params () =
       let params = 
         Netsys_sasl_util.preprocess_params
@@ -214,8 +238,10 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           cinit_name;
           ccred;
           cparams = params;
+          ccb_data = "";
           ccb = None;
         } in
+      client_create_cb_data cs;
       cs
 
     let client_configure_channel_binding cs cb =
@@ -322,6 +348,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               ctarget_name = G.interface # no_name;
               cinit_name = G.interface # no_name;
               ccred = G.interface # no_credential;
+              ccb_data = "";
               ccb = None;  (* FIXME *)
             }
 
@@ -341,6 +368,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           mutable stoken : string;
           mutable suser : string option;
           mutable sauthz : string option;
+          mutable scb_data : string;
           scred : G.credential;
           slookup : (string -> string -> credentials option);
           sparams : (string * string) list;
@@ -391,6 +419,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         slookup = lookup;
         sparams = params;
         scred;
+        scb_data = "";
       }
 
     let server_context ss =
@@ -416,6 +445,22 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
       ss.sstate <- `OK
 
 
+    let server_create_cb_data ss authz =
+      (* RFC 5801, section 5.1 *)
+      ss.scb_data <-
+        String.concat
+          ""
+          [ "n,";   (* FIXME *)
+            ( if authz = "" then
+                ""
+              else
+                "a=" ^ Netgssapi_support.gs2_encode_saslname authz
+            );
+            ",";
+          (* plus: channel binding data *)
+          ]
+
+
     let server_process_response_accept_context ss msg =
       let flags = P.server_flags ~params:ss.sparams in
       let cont =
@@ -423,7 +468,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           ~context:ss.scontext
           ~acceptor_cred:ss.scred
           ~input_token:msg
-          ~chan_bindings:None
+          ~chan_bindings:(Some(`Unspecified "", `Unspecified "", ss.scb_data))
           ~out:(fun ~src_name ~mech_type ~output_context ~output_token
                     ~ret_flags ~time_rec ~delegated_cred 
                     ~minor_status ~major_status () ->
@@ -551,8 +596,9 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         match ss.ssubstate with
           | `Acc_context ->
               if ss.scontext = None then (
-                let (authz, msg1) = server_rewrite_initial_token ss msg in
+                let (msg1, authz) = server_rewrite_initial_token ss msg in
                 ss.sauthz <- Some authz;
+                server_create_cb_data ss authz;
                 server_process_response_accept_context ss msg1
               )
               else
@@ -613,7 +659,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               sauthz;
               slookup = lookup;
               sparams;
-              scred = G.interface#no_credential
+              scred = G.interface#no_credential;
+              scb_data = ""
             }
               
  
@@ -644,7 +691,7 @@ KRB5_KTNAME=test.keytab OCAMLPATH=src ledit ocaml
 #use "topfind";;
 #require "netstring,netgss-system";;
 open Printf;;
-module S = Netmech_krb5_sasl.KRB5(Netgss.System);;
+module S = Netmech_krb5_sasl.Krb5_gs2(Netgss.System);;
 let no_creds = S.init_credentials [];;
 let cs = S.create_client_session ~user:"" ~authz:"foo" ~creds:no_creds ~params:[ "gssapi-acceptor", "test@office1.lan.sumadev.de", false ] ();;
 let lookup user authz = eprintf "user=%S authz=%S\n%!" user authz; Some no_creds;;
@@ -655,11 +702,7 @@ S.server_process_response ss msg1;;
 let msg2 = S.server_emit_challenge ss;;
 S.client_process_challenge cs msg2;;
 let msg3 = S.client_emit_response cs;;
-S.server_process_response ss msg3;;
-let msg4 = S.server_emit_challenge ss;;
-S.client_process_challenge cs msg4;;
-let msg5 = S.client_emit_response cs;;
 assert(S.client_state cs = `OK);;
-S.server_process_response ss msg5;;
+S.server_process_response ss msg3;;
 assert(S.server_state ss = `OK);;
  *)

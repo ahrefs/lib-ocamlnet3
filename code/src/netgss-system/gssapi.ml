@@ -45,6 +45,10 @@ external array_of_oid_set : gss_OID_set -> gss_OID array
 external oid_set_of_array : gss_OID array -> gss_OID_set
   = "netgss_oid_set_of_array"
 
+external map_cb : int -> string -> int -> string -> string -> 
+                  gss_channel_bindings_t
+  = "netgss_map_cb"
+
 external no_channel_bindings : unit -> gss_channel_bindings_t
   = "netgss_no_cb"
 

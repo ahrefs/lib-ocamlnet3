@@ -134,9 +134,24 @@ let _message_of_gss_buffer_t pref_type buf =
          let str = string_of_buffer buf in
          [ Xdr_mstring.string_to_mstring str ]
 
-let _gss_channel_bindings_t_of_cb_option _ =
-  (* FIXME *)
-  no_channel_bindings()
+
+let cb_typed_string =
+  function
+  | `Unspecified s -> (0, s)
+  | `Local s -> (1, s)
+  | `Inet addr -> (2, Netsys.protostring_of_inet_addr addr)
+  | `Nulladdr -> (255, "")
+  | `Other(n,s) -> (Int32.to_int n,s)   (* FIXME *)
+
+
+let _gss_channel_bindings_t_of_cb_option cb_opt =
+  match cb_opt with
+    | None ->
+        no_channel_bindings()
+    | Some (i,a,data) ->
+        let (i_ty, i_str) = cb_typed_string i in
+        let (a_ty, a_str) = cb_typed_string a in
+        map_cb i_ty i_str a_ty a_str data
 
 let _oid_of_gss_OID gss_oid =
   try

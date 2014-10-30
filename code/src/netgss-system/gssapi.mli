@@ -14,6 +14,7 @@ val oid_of_der : string -> gss_OID
 val der_of_oid : gss_OID -> string
 val array_of_oid_set : gss_OID_set -> gss_OID array
 val oid_set_of_array : gss_OID array -> gss_OID_set
+val map_cb : int -> string -> int -> string -> string -> gss_channel_bindings_t
 val no_channel_bindings : unit -> gss_channel_bindings_t
 val no_context : unit -> gss_ctx_id_t
 val is_no_context : gss_ctx_id_t -> bool
