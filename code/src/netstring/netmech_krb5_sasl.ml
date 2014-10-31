@@ -440,6 +440,10 @@ Netpop.authenticate
         scred;
       }
 
+    let server_configure_channel_binding ss cb_list =
+      failwith "Netmech_krb5_sasl.Krb5_gs1.server_configure_channel_binding: \
+                not supported"
+
     let server_context ss =
       match ss.scontext with
         | None -> assert false

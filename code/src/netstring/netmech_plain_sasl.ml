@@ -46,6 +46,10 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
       lookup
     }
 
+  let server_configure_channel_binding ss cb_list =
+    failwith "Netmach_plain_sasl.server_configure_channel_binding: \
+              not supported"
+
   let verify_utf8 s =
     try
       Netconversion.verify `Enc_utf8 s

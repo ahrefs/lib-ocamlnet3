@@ -57,6 +57,10 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       lookup
     }
 
+  let server_configure_channel_binding ss cb_list =
+    failwith "Netmach_crammd5_sasl.server_configure_channel_binding: \
+              not supported"
+
   let compute_response user password challenge =
     let k =
       if String.length password < 64 then

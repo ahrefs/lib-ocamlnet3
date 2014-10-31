@@ -76,7 +76,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           cinit_name : G.name;
           ccred : G.credential;
           mutable ccb_data : string;
-          mutable ccb : Netsys_gssapi.channel_bindings option;
+          mutable ccb : Netsys_sasl_types.cb;
         }
 
     let client_state cs = cs.cstate
@@ -145,6 +145,15 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               )
          ()
 
+    let client_cb_string cs =
+      match cs.ccb with
+        | `None -> "n,"
+        | `SASL_none_but_advertise -> "y,"
+        | `SASL_require(ty,data) -> "p=" ^ ty ^ ","
+        | `GSSAPI _ ->
+            failwith "GSSAPI channel binding not supported"
+
+
     let client_rewrite_initial_token cs token =
       let (non_std, token_no_header) =
         try
@@ -158,7 +167,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
       String.concat
         ""
         [ if non_std then "F," else "";
-          "n,";   (* channel binding FIXME *)
+          client_cb_string cs;
           ( if cs.cauthz = "" then
               ""
             else
@@ -173,14 +182,17 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
       cs.ccb_data <-
         String.concat
           ""
-          [ "n,";   (* FIXME *)
+          [ client_cb_string cs;
             ( if cs.cauthz = "" then
                 ""
               else
                 "a=" ^ Netgssapi_support.gs2_encode_saslname cs.cauthz
             );
             ",";
-          (* plus: channel binding data *)
+            ( match cs.ccb with
+                | `SASL_require(_,data) -> data
+                | _ -> ""
+            )
           ]
           
     let create_client_session ~user ~authz ~creds ~params () =
@@ -239,19 +251,16 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           ccred;
           cparams = params;
           ccb_data = "";
-          ccb = None;
+          ccb = `None;
         } in
       client_create_cb_data cs;
       cs
 
     let client_configure_channel_binding cs cb =
-      (* TODO *)
-      if cb <> `None then
-        failwith "Netmech_krb5_sasl.client_configure_channel_binding: \
-                  not supported"
+      cs.ccb <- cb
                  
     let client_state cs = cs.cstate
-    let client_channel_binding cs = `None
+    let client_channel_binding cs = cs.ccb
 
     let client_restart cs =
       if cs.cstate <> `OK then
@@ -325,7 +334,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         failwith "Netmech_gs5_sasl.client_stash_session: the session \
                   must be established (implementation restriction)";
       "client,t=GS2;" ^ 
-        Marshal.to_string (cs.cuser, cs.cauthz, cs.cparams) []
+        Marshal.to_string (cs.cuser, cs.cauthz, cs.cparams, cs.ccb) []
 
     let cs_re = 
       Netstring_str.regexp "client,t=GS2;"
@@ -337,7 +346,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (cuser, cauthz, cparams) = Marshal.from_string data 0 in
+            let (cuser, cauthz, cparams, ccb) = Marshal.from_string data 0 in
             { cuser;
               cauthz;
               ccontext = None;
@@ -349,7 +358,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               cinit_name = G.interface # no_name;
               ccred = G.interface # no_credential;
               ccb_data = "";
-              ccb = None;  (* FIXME *)
+              ccb;
             }
 
 
@@ -372,6 +381,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           scred : G.credential;
           slookup : (string -> string -> credentials option);
           sparams : (string * string) list;
+          mutable scb : (string * string) list;
         }
 
 
@@ -420,7 +430,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         sparams = params;
         scred;
         scb_data = "";
+        scb = [];
       }
+
+    let server_configure_channel_binding ss l =
+      ss.scb <- l
 
     let server_context ss =
       match ss.scontext with
@@ -445,19 +459,27 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
       ss.sstate <- `OK
 
 
-    let server_create_cb_data ss authz =
+    let server_create_cb_data ss authz cb =
       (* RFC 5801, section 5.1 *)
       ss.scb_data <-
         String.concat
           ""
-          [ "n,";   (* FIXME *)
+          [ ( match cb with
+                | `None -> "n,"
+                | `SASL_none_but_advertise -> "y,"
+                | `SASL_require(ty,_) -> "p=" ^ ty ^ ","
+                | `GSSAPI _ -> assert false
+            );
             ( if authz = "" then
                 ""
               else
                 "a=" ^ Netgssapi_support.gs2_encode_saslname authz
             );
             ",";
-          (* plus: channel binding data *)
+            ( match cb with
+                | `SASL_require(_,data) -> data
+                | _ -> ""
+            )
           ]
 
 
@@ -560,17 +582,28 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               try Netstring_str.matched_group m 1 token <> "" 
               with Not_found -> false in
             let cb_str = Netstring_str.matched_group m 2 token in
-            if cb_str <> "n" then (
-              if P.announce_channel_binding then (
-                if cb_str = "y" then failwith "misconfigured channel binding";
-                (* TODO: do something with it *)
-              )
-              else (
-                if cb_str <> "y" then 
-                  failwith "client requests channel binding but this is \
-                            unavailable"
-              )
-            );
+            let cb =
+              if cb_str = "n" then (
+                if P.announce_channel_binding then
+                  failwith "no channel binding from client";
+                `None
+              ) else
+                if cb_str = "y" then (
+                  if P.announce_channel_binding then
+                    failwith "no channel binding from client";
+                  `SASL_none_but_advertise
+                )
+                else (
+                  assert (cb_str.[0] = 'p');
+                  if not P.announce_channel_binding then
+                    failwith "client requires channel binding";
+                  let ty = String.sub cb_str 2 (String.length cb_str - 2) in
+                  let data =
+                    try List.assoc ty ss.scb
+                    with Not_found ->
+                      failwith "unsupported type of channel binding" in
+                  `SASL_require(ty, data)
+                ) in
             let a_str =
               try 
                 let s = Netstring_str.matched_group m 3 token in
@@ -584,7 +617,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                 token1
               else
                 Netgssapi_support.wire_encode_token P.mechanism_oid token1 in
-            (token2, authz)
+            (token2, authz, cb)
         | None ->
             failwith "bad initial token"
 
@@ -596,9 +629,9 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         match ss.ssubstate with
           | `Acc_context ->
               if ss.scontext = None then (
-                let (msg1, authz) = server_rewrite_initial_token ss msg in
+                let (msg1, authz, cb) = server_rewrite_initial_token ss msg in
                 ss.sauthz <- Some authz;
-                server_create_cb_data ss authz;
+                server_create_cb_data ss authz cb;
                 server_process_response_accept_context ss msg1
               )
               else
@@ -636,7 +669,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         failwith "Netmech_gs2_sasl.server_stash_session: the session \
                   must be established (implementation restriction)";
       "server,t=GS2;" ^ 
-        Marshal.to_string (ss.suser, ss.sauthz, ss.sparams) []
+        Marshal.to_string (ss.suser, ss.sauthz, ss.sparams, ss.scb) []
 
     let ss_re = 
       Netstring_str.regexp "server,t=GS2;"
@@ -649,7 +682,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (suser, sauthz, sparams) =
+            let (suser, sauthz, sparams, scb) =
               Marshal.from_string data 0 in
             { scontext = None;
               sstate = `OK;
@@ -660,7 +693,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               slookup = lookup;
               sparams;
               scred = G.interface#no_credential;
-              scb_data = ""
+              scb_data = "";
+              scb
             }
               
  

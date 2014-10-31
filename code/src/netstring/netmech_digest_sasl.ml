@@ -62,6 +62,10 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       lookup
     }
 
+  let server_configure_channel_binding ss cb_list =
+    failwith "Netmech_digest_sasl.server_configure_channel_binding: \
+              not supported"
+
   let format_kv l =
     String.concat "," (List.map (fun (k,v) -> k ^ "=" ^ v) l)
 

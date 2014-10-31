@@ -134,6 +134,12 @@ module type SASL_MECHANISM =
           to the mechanism.
        *)
 
+    val server_configure_channel_binding :
+          server_session -> (string * string) list -> unit
+      (** Configures acceptable channel bindings wiht a list of pairs
+          [(type,data)].
+       *)
+
     val server_process_response :
           server_session -> string -> unit
       (** Process the response from the client. This function must generally

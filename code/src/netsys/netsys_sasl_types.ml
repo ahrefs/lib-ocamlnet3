@@ -37,6 +37,8 @@ module type SASL_MECHANISM =
           params:(string * string * bool) list -> 
           unit ->
             server_session
+    val server_configure_channel_binding :
+          server_session -> (string * string) list -> unit
 
     val server_process_response :
           server_session -> string -> unit

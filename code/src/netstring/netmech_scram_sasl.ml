@@ -108,15 +108,45 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   type server_session =
       { ss : Netmech_scram.server_session;
         ss_fallback_i : int;
+        mutable ss_cb : (string * string) list;
+        mutable ss_cb_ok : bool option;
       }
+
+  let check_channel_binding ss =
+    match ss.ss_cb_ok with
+      | None ->
+          let flag =
+           match Netmech_scram.server_channel_binding ss.ss with
+              | `None
+              | `SASL_none_but_advertise ->
+                  not (P.announce_channel_binding)
+              | `SASL_require(ty,data) ->
+                  P.announce_channel_binding && (
+                    try
+                      let exp_data = List.assoc ty ss.ss_cb in
+                      data = exp_data
+                    with
+                      | Not_found -> false
+                  )
+              | `GSSAPI _ ->
+                  assert false in
+          ss.ss_cb_ok <- Some flag;
+          flag
+      | Some flag ->
+          flag
+
 
   let server_state ss =
     if Netmech_scram.server_emit_flag ss.ss then
       `Emit
     else if Netmech_scram.server_recv_flag ss.ss then
       `Wait
-    else if Netmech_scram.server_finish_flag ss.ss then
-      `OK
+    else if Netmech_scram.server_finish_flag ss.ss then (
+      if check_channel_binding ss then
+        `OK
+      else
+        `Auth_error "bad channel binding"
+    )
     else if Netmech_scram.server_error_flag ss.ss then
       `Auth_error "SCRAM error"
     else
@@ -148,8 +178,14 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
         profile
         (scram_auth fallback_i lookup) in
     { ss;
-      ss_fallback_i = fallback_i
+      ss_fallback_i = fallback_i;
+      ss_cb = [];
+      ss_cb_ok = None;
     }
+
+  let server_configure_channel_binding ss cb_list =
+    ss.ss_cb <- cb_list
+
 
   let server_process_response ss msg =
     Netmech_scram.server_recv_message ss.ss msg
@@ -165,28 +201,25 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     Netmech_scram.server_channel_binding ss.ss
                                       
   let server_stash_session ss =
-    sprintf "server,t=SCRAM,i=%d;" ss.ss_fallback_i ^ 
-      Netmech_scram.server_export ss.ss
+    sprintf "server,t=SCRAM,%s"
+      (Marshal.to_string (Netmech_scram.server_export ss.ss,
+                          ss.ss_fallback_i, ss.ss_cb, ss.ss_cb_ok) [])
+
     
-  let ss_re = Netstring_str.regexp "server,t=SCRAM,i=\\([^,;]*\\);"
+  let ss_re = Netstring_str.regexp "server,t=SCRAM,"
   
   let server_resume_session ~lookup s =
     match Netstring_str.string_match ss_re s 0 with
       | None ->
            failwith "Netmech_scram_sasl.server_resume_session"
       | Some m ->
-           let ss_fallback_i =
-             try
-               int_of_string (Netstring_str.matched_group m 1 s)
-             with _ -> 
-               failwith "Netmech_scram_sasl.server_resume_session" in
-           let data_pos = Netstring_str.match_end m in
-           let data = String.sub s data_pos (String.length s - data_pos) in
-           let auth = scram_auth ss_fallback_i lookup in
-           let ss = Netmech_scram.server_import_any2 data auth in
-           { ss;
-             ss_fallback_i;
-           }
+          let p = Netstring_str.match_end m in
+          let data = String.sub s p (String.length s - p) in
+          let (scram_data, ss_fallback_i, ss_cb, ss_cb_ok) =
+            Marshal.from_string data 0 in 
+          let auth = scram_auth ss_fallback_i lookup in
+          let ss = Netmech_scram.server_import_any2 scram_data auth in
+          { ss; ss_fallback_i; ss_cb; ss_cb_ok }
 
   let server_session_id ss =
     None
@@ -278,7 +311,8 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     | Netmech_scram.Server_error code ->
         let m = Netmech_scram.string_of_server_error code in
         "Server error code: " ^ m
-
+    | _ ->
+        assert false
       
   let client_process_challenge cs msg =
     try
@@ -331,3 +365,28 @@ end
 
 module SCRAM_SHA1 = SCRAM(SHA1)
 module SCRAM_SHA1_PLUS = SCRAM(SHA1_PLUS)
+
+
+(*
+#use "topfind";;
+#require "netclient,nettls-gnutls";;
+Netpop.Debug.enable := true;;
+let addr =
+    `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "office1", 110),
+            Uq_client.default_connect_options);;
+let client = new Netpop.connect addr 60.0;;
+
+module S = Netmech_scram_sasl.SCRAM_SHA1;;
+
+let password = "xxx";;
+
+Netpop.authenticate
+  ~sasl_mechs:[ (module S)
+              ]
+  ~user:"gerd"
+  ~creds:[ "password", password, [] ]
+  ~sasl_params:[]
+  client;;
+
+
+ *)
