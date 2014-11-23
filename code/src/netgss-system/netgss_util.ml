@@ -59,16 +59,16 @@ let decode_status n : major_status =
     if bits_calling_error >= Array.length calling_errors then raise Not_found;
     if bits_routine_error >= Array.length routine_errors then raise Not_found;
     let suppl_info, _ =
-      Array.fold_right
-        (fun flag (l, k) ->
+      Array.fold_left
+        (fun (l, k) flag ->
            let is_set = (1 lsl k) land bits_suppl_info <> 0 in
            if is_set then
              (flag :: l, k+1)
            else
              (l, k+1)
         )
-        suppl_status_flags
-        ([], 0) in
+        ([], 0)
+        suppl_status_flags in
     (calling_errors.(bits_calling_error),
      routine_errors.(bits_routine_error),
      suppl_info
