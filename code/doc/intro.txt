@@ -58,6 +58,7 @@ A number of ideas and concepts are used throughout the libraries:
 - {!Crypto}: Cryptography
 - {!Authentication}: Authentication frameworks
 - {!Credentials}: How to express and store credentials
+- {!Gssapi}: The GSSAPI security layer
 - {!Regexp}: Regular expression backends
 
 {divend guide}

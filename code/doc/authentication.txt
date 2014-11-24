@@ -89,7 +89,7 @@ Module types:
 
  - SASL: {!Netsys_sasl_types.SASL_MECHANISM}
  - HTTP: {!Nethttp.HTTP_MECHANISM}
- - GSS-API: TBD
+ - GSS-API: {!Netsys_gssapi.GSSAPI}
  - TLS: {!Netsys_crypto_types.TLS_PROVIDER}
 
 Mechanisms:
@@ -98,7 +98,7 @@ Mechanisms:
  - CRAM-MD5: {!Netmech_crammd5_sasl}
  - DIGEST: {!Netmech_digest_sasl}, {!Netmech_digest_http}
  - SCRAM: {!Netmech_scram_sasl}, {!Netmech_scram_gssapi}, HTTP: TBD
- - GSS-API system authentication: TBD
+ - GSS-API system authentication: {!Netgss.System}
  - TLS: TLS mechanisms are defined by the provider of TLS. At present,
    there is {!Nettls_gnutls} covering all TLS 1.2 mechanisms.
 
@@ -111,7 +111,7 @@ expressed:
 
  - For SASL, user names are simply UTF-8 encoded strings. Credentials
    can be specified in many forms (see the separate page about
-   {!Credentials}. For Ocamlnet, SASL credentials are expressed
+   {!Credentials}). For Ocamlnet, SASL credentials are expressed
    as list of credential elements, and every element includes a type,
    a value, and optional parameters:
    {[
@@ -138,8 +138,9 @@ type credentials =
    checking. In Ocamlnet GSS-API mechanisms can be either written in OCaml,
    or the system libraries can be used. In the former case, the credentials
    are usually specified when the GSS-API object is instantiated (in a
-   mechanism-specific way). In the latter case, there is no way to specify
-   credentials from OCaml code.
+   mechanism-specific way). In the latter case, there is so far no way to
+   specify credentials from OCaml code (but this may change in the future,
+   as there is a GSSAPI extension for specifying passwords).
  - TLS uses certificates as (extended) user names, and credentials are
    public/private key pairs. The public key is embedded in the certificate.
    Normally certificates and private keys are stored in specially encoded

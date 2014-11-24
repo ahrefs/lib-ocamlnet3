@@ -1,0 +1,98 @@
+{1 The GSSAPI}
+
+The GSSAPI is a cryptographic API allowing the authentication of
+clients and servers, and provides integrity and privacy protection of
+messages. There is often already a GSSAPI library installed on system
+level (e.g. MIT Kerberos or Heimdal), and this library provides such
+services in a portable way. There are many crypto mechanisms specified
+for GSSAPI, and worthwhile to mention are:
+
+ - Kerberos 5
+ - SPNEGO
+ - SCRAM
+
+The GSSAPI as such is a C API. OCamlnet defines the "OCamlized" version
+{!Netsys_gssapi.GSSAPI} as a first-class module. We don't want to go here
+into detail how the GSSAPI functions are called, but instead explain how
+you can use the GSSAPI together with the network protocol implementations
+in OCamlnet.
+
+{2 Compatibility}
+
+So far, OCamlnet only supports the base interface as speficied in the RFCs
+2743 and 2744. There are interesting extensions, in particular for setting
+session parameters and for getting credentials with passwords. These will
+be added in future OCamlnet releases.
+
+{b The GSSAPI on Windows:} Microsoft "sort of" implements the GSSAPI. However,
+instead of using the C API specified by the IETF Windows goes its own
+proprietary way. At this point, OCamlnet does not support the SSPI API
+Windows provides, as it would exceed the resources of the developers.
+
+{2 Getting the system-level GSSAPI}
+
+This is simple:
+
+ - add the [netgss-system] findlib package to your build
+ - use {!Netgss.System} which is an implementation of {!Netsys_gssapi.GSSAPI}:
+   {[ let gssapi = (module Netgss.System) ]}
+
+Note that in reality you also need to configure the system-level GSSAPI.
+Normally, only the Kerberos mechanism and SPNEGO are enabled. By changing
+files in /etc/gssapi_mech.conf you can make further mechanisms accessible.
+
+For using Kerberos you need to configure the system for Kerberos.
+
+{2 Defining a GSSAPI module on OCaml level}
+
+As we are only using the GSSAPI functions from OCaml, it is also possible
+to define a GSSAPI module directly in OCaml instead of wrapping C functions.
+Within OCamlnet, there is so far only {!Netmech_scram_gssapi} following this
+path. The nice aspect of this approach is that we can configure the security
+mechanism directly, without having to edit files or using obscure helper
+functions, e.g.
+
+{[
+  let gssapi =
+    Netmech_scram_gssapi.scran_gss_api
+      ~client_key_ring
+      (Netmech_scram.profile `GSSAPI `Sha1)
+]}
+
+Here, the [client_key_ring] contains already the client credentials, which
+then need not to be passed through the GSSAPI functions.
+
+{2 Passing the GSSAPI module to a protocol interpreter}
+
+The GSSAPI is passed as first-class module to the protocol interpreter.
+In the above code, the variable [gssapi] is already such a module.
+
+At the time of writing this text, these interpreters support the GSSAPI:
+ - RPC clients: {!Rpc_client}
+ - RPC servers: {!Rpc_server}
+ - FTP clients: {!Ftp_client} and {!Ftp_fs}
+ - POP clients (via SASL bridging): {!Netpop}
+ - SMTP clients (via SASL bridging): {!Netsmtp}
+
+Sometimes, the [gssapi] variable can be directly passed to the protocol
+interpreter, but even in this case some extra configuration is often needed.
+An example of this is {!Ftp_fs}:
+
+{[
+let fs =
+  Ftp_fs.ftp_fs
+    ...
+    ~gssapi_provider:gssapi
+    ...
+    "ftp://user@host/path"
+]}
+
+This function also takes another [gssapi_config] parameter with the
+details how to use the GSSAPI (from a client):
+
+ - which security mechanism is used
+ - which service is addressed
+ - the credentials
+ - whether integrity protection or even privacy protection is enabled
+
+XXX
