@@ -152,7 +152,7 @@ let fs2 =
 
 Here, [p] and [c] are the underlying protocol implementations.
 
-{3 Authentication for HTTP}
+{3 Simple authentication for HTTP}
 
 Do it like this in the [config_pipeline] callback:
 
@@ -167,9 +167,18 @@ Do it like this in the [config_pipeline] callback:
   p # add_auth_handler ah
 ]}
 
-This works for both "basic" and "digest" authentication.
+The {!class:Http_client.unified_auth_handler} implements at the moment
+the "basic" and "digest" schemes (and will probably be extended in the
+future). On unencrypted transports the "basic" scheme is disabled by
+default. With
 
-{3 Authentication for FTP}
+{[ new Http_client.unified_auth_handler ~insecure:bool keys ]}
+
+the "basic" scheme is always enabled. (Note that the "basic" scheme sends
+the password in clear text. See below how to activate TLS.)
+
+
+{3 Simple authentication for FTP}
 
 This is not done in the [config_client] callback, but directly when
 creating the filesystem object. The user string is always taken from
@@ -248,12 +257,38 @@ servers support it.
 
 {3 Configure HTTPS}
 
-Support for TLS (SSL) is not available by default. Ocamlnet must be
-compiled with support for TLS, and a certain configuration must be
-applied to the HTTP pipeline.
+In order to use HTTPS the TLS provider must be initialized. This is normally
+GnuTLS:
 
-See the {!Https_client} module for a recipe (this module is part of
-[equeue-ssl]).
+ - add [nettls-gnutls] to the list of findlib packages
+ - call {!Nettls_gnutls.init}
+
+Once this is done, the HTTP client can also process "https" URLs.
+
+NB. In previous versions of OCamlnet there was a separate "Https_client"
+module. This module does not exist anymore, as its functionality is
+integrated into the main {!Http_client} module.
+
+NB. The server is authenticated by default, using the system-wide list
+of CA certificates.
+
+{3 Configure FTPS}
+
+You can also enable TLS for FTP connections if the server supports it
+(of course, you also need to activate GnuTLS as described in the section
+above):
+
+{[
+let fs2 = 
+   Ftp_fs.ftp_fs
+      ...
+      ~tls_enabled:true
+      ~tls_required:true   (* or false *)
+      "ftp://user@foo.org"
+]}
+
+NB. The server is authenticated by default, using the system-wide list
+of CA certificates.
 
 {3 Globbing}
 
@@ -463,3 +498,27 @@ let () = client # exec (quit_method())
 ]}
 
 or just run [client # reset()] to just shut the TCP connection down.
+
+
+{2 Advanced topics for HTTP}
+
+The following things are possible, but would require some more in-depth
+discussion exceeding the scope of this list of recipes:
+
+ - Tweak the TLS configuration: By modifying the [tls] configuration option
+   you can change many aspects of the TLS layer. In particular, you can weaken
+   the authentication by accepting any server certification, and you can
+   make it stronger by requiring a certain certification, or by sending a
+   client certificate. You need to change the option
+   {!Http_client.http_options.tls} for doing so. See {!Tls} for more links.
+
+
+{2 Advanced topics for FTP}
+
+ - Tweak the TLS configuration: {!Ftp_fs} allows it to pass the
+   [tls_config] argument. By setting this explicitly, you can also get
+   any advanced effect.
+ - Use GSSAPI authentication for FTP: The FTP client implements RFC 2228.
+   Often it is only needed to set the [gssapi_provider] argument of
+   {!Ftp_fs.ftp_fs} to {!Netgss.System}, and the ticket-based Kerberos login
+   works.
