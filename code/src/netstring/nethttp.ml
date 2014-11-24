@@ -1710,11 +1710,24 @@ module Header = struct
 	| _ ->
 	    []
 
+    and parse_auth_params_negotiate stream =
+      match Stream.npeek 1 stream with
+        | [ (Atom data) ] ->
+             Stream.junk stream;
+             [ "credentials", data ]
+        | _ ->
+             []
+
     and parse_challenge stream =
       match Stream.peek stream with
         | Some (Atom auth_scheme) ->
             Stream.junk stream;
-            let auth_params = parse_auth_params stream in
+            let auth_params =
+              match String.lowercase auth_scheme with
+                | "negotiate" -> 
+                     parse_auth_params_negotiate stream
+                | _ -> 
+                     parse_auth_params stream in
 	    Some(auth_scheme, auth_params)
         | _ ->
             None
@@ -1730,12 +1743,24 @@ module Header = struct
     String.concat "," 
       (List.map
 	 (fun (auth_name, auth_params) ->
-	    auth_name ^ " " ^ 
-	      (String.concat ","
-		 (List.map
-		    (fun (p_name, p_val) ->
-		       p_name ^ "=" ^ encode_param p_val)
-		    auth_params))
+            let pstring =
+              match String.lowercase auth_name with
+                | "negotiate" ->
+                     ( match auth_params with
+                         | [ "credentials", data ] -> encode_param data
+                         | _ -> ""
+                     )
+                | _ ->
+	             (String.concat
+                        ","
+		        (List.map
+		           (fun (p_name, p_val) ->
+		              p_name ^ "=" ^ encode_param p_val
+                           )
+		           auth_params
+                        )
+                     ) in
+            auth_name ^ (if pstring <> "" then " " ^ pstring else "")
 	 )
 	 fields)
 
@@ -1820,26 +1845,29 @@ module Header = struct
     let v = mh # field fieldname in  (* or Not_found *)
     match Netstring_str.split ws_re v with
       | [ name; creds ] when String.lowercase name = "basic" ->
-	  ("basic", ["credentials", creds])
+	  (name, ["credentials", creds])
+      | [ name; creds ] when String.lowercase name = "negotiate" ->
+	  (name, ["credentials", creds])
       | _ ->
 	  parse_field mh fn_name parse_creds fieldname
 
   let mk_credentials (auth_name, auth_params) =
-    if String.lowercase auth_name = "basic" then (
-      let creds = 
-	try List.assoc "credentials" auth_params 
-	with Not_found -> 
-	  failwith "Nethttp.mk_credentials: basic credentials not found" in
-      "Basic " ^ encode_param creds
-    )
-    else
-      auth_name ^ " " ^ 
-	(String.concat ","
-	   (List.map
-	      (fun (p_name, p_val) ->
-		 p_name ^ "=" ^ encode_param p_val)
-	      auth_params))
-
+    match String.lowercase auth_name with
+      | "basic"
+      | "negotiate" ->
+           let creds = 
+	     try List.assoc "credentials" auth_params 
+	     with Not_found -> 
+	       failwith "Nethttp.mk_credentials: credentials not found" in
+           auth_name ^ " " ^ encode_param creds
+      | _ ->
+           auth_name ^ " " ^ 
+	     (String.concat ","
+	                    (List.map
+	                       (fun (p_name, p_val) ->
+		                p_name ^ "=" ^ encode_param p_val)
+	                       auth_params))
+               
   let get_authorization mh =
     mark_params_decoded
       (parse_credentials mh "Nethttp.get_authorization" "authorization")

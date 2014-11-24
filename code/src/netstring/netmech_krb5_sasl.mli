@@ -25,7 +25,7 @@ module K = Netmech_krb5_sasl.Krb5_gs1(Netgss.System)
       The client needs to know the service name (e.g. "imap") and the
       fully qualified domain name of the server. These must be passed in
       the "gssapi-acceptor" parameter in the form 
-      "service@fully.qualified.domain.name",
+      "service\@fully.qualified.domain.name",
       e.g.
 
       {[
@@ -33,7 +33,7 @@ let cs =
   S.create_client_session
     ~user:"" ~authz:""
     ~creds:(S.init_credentials [])
-    ~params:[ "gssapi-acceptor", "imap@mailprovider.com", false ]
+    ~params:[ "gssapi-acceptor", "imap\@mailprovider.com", false ]
     ()
       ]}
 
@@ -41,7 +41,7 @@ let cs =
 
      Usually the "realm" parameter is set to the name of the realm.
      In this case the realm is stripped off the principal before the
-     [lookup] callback is invoked (e.g. "tim@REALM.NET" is shortened to just
+     [lookup] callback is invoked (e.g. "tim\@REALM.NET" is shortened to just
      "tim"). If the "realm" parameter is not set, the full principal
      name is passed to [lookup].
 

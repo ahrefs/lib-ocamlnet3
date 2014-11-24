@@ -1693,10 +1693,19 @@ let get_challenges mech_name call is_proxy =
   let mech_challenges =
     List.filter
       (fun (name, params) ->
-         name = mech_name_lc && List.mem_assoc "realm" params
+         name = mech_name_lc
       )
       challenges_lc in
   mech_challenges
+
+
+let get_challenges_with_realm mech_name call is_proxy =
+  let l1 = get_challenges mech_name call is_proxy in
+  List.filter
+    (fun (name, params) ->
+       List.mem_assoc "realm" params
+    )
+    l1
 
 
 let decode_challenges l =
@@ -1708,7 +1717,7 @@ let decode_challenges l =
 
 
 let get_realms mech_name call is_proxy =
-  let mech_challenges = get_challenges mech_name call is_proxy in
+  let mech_challenges = get_challenges_with_realm mech_name call is_proxy in
   let mech_challenges = decode_challenges mech_challenges in
   let mech_params =
     List.map snd mech_challenges in
@@ -2134,7 +2143,10 @@ let generic_auth_session_for_challenge
   let session =
     M.create_client_session
       ~user:key#user ~creds 
-      ~params:( [ "realm", realm, true ] @ 
+      ~params:( [ "realm", realm, true;
+                  "target-host", call#get_host(), false;
+                  "target-uri", call#effective_request_uri, false;
+                ] @ 
                   match id_option with
                     | None -> []
                     | Some id -> [ "id", id, true ]
