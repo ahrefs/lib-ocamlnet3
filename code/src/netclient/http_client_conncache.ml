@@ -1,9 +1,9 @@
 (* $Id$ *)
 
-type channel_binding_id = int
+type transport_layer_id = int
  
 type inactive_data =
-    { conn_cb : channel_binding_id;
+    { conn_trans : transport_layer_id;
       tls_stashed_endpoint : exn option;
     }
 
@@ -21,7 +21,7 @@ class type connection_cache =
 object
   method get_connection_state : Unix.file_descr -> conn_state
   method set_connection_state : Unix.file_descr -> peer -> conn_state -> unit
-  method find_inactive_connection : peer -> channel_binding_id -> Unix.file_descr * inactive_data
+  method find_inactive_connection : peer -> transport_layer_id -> Unix.file_descr * inactive_data
   method find_my_connections : < > -> Unix.file_descr list
   method close_connection : Unix.file_descr -> unit
   method close_all : unit -> unit
@@ -98,7 +98,7 @@ object(self)
   val mutable inactive_conns = Hashtbl.create 10
     (* maps file_descr to (inactive_data,sockaddr) *)
   val mutable rev_inactive_conns = Hashtbl.create 10
-    (* maps (cb,sockaddr) to (file_descr * inactive_data) list *)
+    (* maps (trans,sockaddr) to (file_descr * inactive_data) list *)
 
   method get_connection_state fd =
     try
@@ -118,23 +118,23 @@ object(self)
 	  if not (List.mem fd fd_list) then
 	    Hashtbl.replace rev_active_conns owner (fd :: fd_list);
       | `Inactive idata ->
-          let cb = idata.conn_cb in
+          let trans = idata.conn_trans in
 	  ( try
 	      self # forget_active_connection fd;
 	      Hashtbl.replace inactive_conns fd (idata,peer);
 	      let fd_list =
-		try Hashtbl.find rev_inactive_conns (cb,peer)
+		try Hashtbl.find rev_inactive_conns (trans,peer)
 		with Not_found -> [] in
 	      if not (List.mem_assoc fd fd_list) then
 		Hashtbl.replace 
-                  rev_inactive_conns (cb,peer) ((fd,idata) :: fd_list)
+                  rev_inactive_conns (trans,peer) ((fd,idata) :: fd_list)
 	    with
 	      | Unix.Unix_error(Unix.ENOTCONN,_,_) ->
 		  self # close_connection fd
 	  )
 
-  method find_inactive_connection peer cb =
-    match Hashtbl.find rev_inactive_conns (cb,peer) with
+  method find_inactive_connection peer trans =
+    match Hashtbl.find rev_inactive_conns (trans,peer) with
       | [] -> raise Not_found
       | (fd,idata) :: _ -> (fd,idata)
 
@@ -165,15 +165,15 @@ object(self)
     try
       let idata, peer = Hashtbl.find inactive_conns fd in
       (* Do not use getpeername! fd might be disconnected in the meantime! *)
-      let cb = idata.conn_cb in
+      let trans = idata.conn_trans in
       let fd_list = 
-	try Hashtbl.find rev_inactive_conns (cb,peer) with Not_found -> [] in
+	try Hashtbl.find rev_inactive_conns (trans,peer) with Not_found -> [] in
       let fd_list' =
 	List.filter (fun (fd',_) -> fd' <> fd) fd_list in
       if fd_list' <> [] then 
-	Hashtbl.replace rev_inactive_conns (cb,peer) fd_list'
+	Hashtbl.replace rev_inactive_conns (trans,peer) fd_list'
       else
-	Hashtbl.remove rev_inactive_conns (cb,peer);
+	Hashtbl.remove rev_inactive_conns (trans,peer);
       Hashtbl.remove inactive_conns fd;
     with
       | Not_found ->

@@ -262,16 +262,16 @@ type resolver =
           * Only 1:1 resolution is supported, 1:n resolution not.
          *)
 
-type channel_binding_id = int
-    (** A channel binding identifies a requirement for the transport
+type transport_layer_id = int
+    (** The ID identifies a requirement for the transport
 	channel, especially whether plain HTTP is sufficient, or HTTPS
 	needs to be used, and if so, whether there are further requirements
 	for the TLS context. There are the predefined IDs:
 
-	- {!Http_client.http_cb_id} for HTTP connections
-	- {!Http_client.https_cb_id} for HTTPS connections without user
+	- {!Http_client.http_trans_id} for HTTP connections
+	- {!Http_client.https_trans_id} for HTTPS connections without user
 	  certificates
-        - {!Http_client.proxy_only_cb_id} for the restriction that this
+        - {!Http_client.proxy_only_trans_id} for the restriction that this
 	  protocol can only be used via a web proxy
      *)
 
@@ -322,9 +322,9 @@ type http_options =
       tls : Netsys_crypto_types.tls_config option;
         (** The TLS configuration to use by default for https URLs.
             (This can be overridden per request by using a different
-             [channel_binding_id].)
+             [transport_layer_id].)
          *)
-      schemes : (string * Neturl.url_syntax * int option * channel_binding_id) 
+      schemes : (string * Neturl.url_syntax * int option * transport_layer_id) 
                    list;
         (** The list of supported URL schemes. The tuples mean
 	    [(scheme, syntax, default_port, cb)]. By default, the
@@ -436,7 +436,7 @@ object
      *)
 
   method set_request_uri : string -> unit
-    (** Sets the request URI. This implicitly also sets the channel binding
+    (** Sets the request URI. This implicitly also sets the transport layer
 	ID (see below).	
 
 	{b Changed in Ocamlnet-3.3:} The URI is no longer immediately parsed,
@@ -610,8 +610,8 @@ object
 
   method proxy_use_connect : bool
     (** Whether to use the CONNECT method if the connection is made via a
-	web proxy. This is normally true if the channel binding is
-	{!Http_client.https_cb_id}
+	web proxy. This is normally true if the transport layer is
+	{!Http_client.https_trans_id}
      *)
 
   method empty_path_replacement : string
@@ -633,30 +633,28 @@ object
         * except for HEAD.
      *)
 
-  (** {2 Channel bindings} 
+  (** {2 Transport layer bindings} 
 
-      Channel bindings are used to distinguish between security requirements.
+      Transport layer bindings are used to distinguish between security
+      requirements.
       There are normally only two types of requirements:
 
-      - The ID {!Http_client.http_cb_id} is used for messages that can only
+      - The ID {!Http_client.http_trans_id} is used for messages that can only
         be sent over HTTP connections, i.e. unencrypted TCP. It is automatically
         set when the URL of the message starts with "http://".
-      - The ID {!Http_client.https_cb_id} describes the requirement that the
+      - The ID {!Http_client.https_trans_id} describes the requirement that the
         message can only be sent over HTTPS connections, i.e. TLS-protected
         TCP. It is automatically  set when the URL of the message starts with
         "https://".
 
-      It is possible to change the channel binding to establish further
+      It is possible to change the transport binding to establish further
       types of security requirements (e.g. that certain client certificates
       are used), or even other details of the transport connection.
-
-      The method [channel_binding] is gone from this object type.
-      It is now available as part of [pipeline].
    *)
 
-  method set_channel_binding : channel_binding_id -> unit
-    (** Sets the channel binding. Note that [set_request_uri] also sets
-	the channel binding, but always to the default for the type of URL.
+  method set_transport_layer : transport_layer_id -> unit
+    (** Sets the transport layer. Note that [set_request_uri] also sets
+	this ID, but always to the default for the type of URL.
      *)
 
   (** {2 Repeating calls} *)
@@ -669,7 +667,7 @@ object
 	* - The request method remains the same (the class of the returned
 	*   object remains the same)
 	* - The request URI is the same string as the original URI
-	* - The channel binding ID is the same
+	* - The transport layer ID is the same
 	* - The base request header is the same object
 	* - The request body is the same object
 	* - Options like reconnect, redirect mode, and proxy mode are
@@ -778,12 +776,12 @@ end
 (** A cache object for storing TLS session data *)
 class type tls_cache =
 object
-  method set : domain:string -> port:int -> cb:channel_binding_id -> 
+  method set : domain:string -> port:int -> trans:transport_layer_id -> 
                data:string -> unit
     (** This is called by the client to store a new session in the cache.
         It is up to the cache for how long the session is remembered.
      *)
-  method get : domain:string -> port:int -> cb:channel_binding_id -> string
+  method get : domain:string -> port:int -> trans:transport_layer_id -> string
     (** Get a cached session (data string) *)
   method clear : unit -> unit
     (** Clear the cache *)
@@ -806,11 +804,11 @@ object
         IP address. (Set for TLS connections.)
      *)
 
-  method setup_e : Unix.file_descr -> channel_binding_id -> float -> exn ->
+  method setup_e : Unix.file_descr -> transport_layer_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
                    tls_cache ->
                    Uq_engines.multiplex_controller Uq_engines.engine
-  (** [setup fd cb tmo tmo_x host port esys tls_cache]: 
+  (** [setup fd trans tmo tmo_x host port esys tls_cache]: 
       Create or configure a communication
       circuit over the file descriptor [fd] that can be driven by the
       returned multiplex controller object. Since OCamlnet-3.8, the method
@@ -824,7 +822,7 @@ object
       or via a proxy.
    *)
 
-  method continue : Unix.file_descr -> channel_binding_id -> float -> exn ->
+  method continue : Unix.file_descr -> transport_layer_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
                    exn option ->
                    Uq_engines.multiplex_controller
@@ -1162,22 +1160,22 @@ val create_aggressive_cache : unit -> connection_cache
     * cache is no longer in use.
    *)
 
-val http_cb_id : channel_binding_id
-  (** Identifies a channel binding to pure HTTP (without SSL), with or
+val http_trans_id : transport_layer_id
+  (** Identifies the pure HTTP transport (without SSL), with or
       without web proxies
    *)
 
-val https_cb_id : channel_binding_id
-  (** Identifies a channel binding to anonymous HTTPS (i.e. no client
+val https_trans_id : transport_layer_id
+  (** Identifies anonymous HTTPS transport (i.e. no client
       certificates), with or without web proxies.
    *)
 
-val proxy_only_cb_id : channel_binding_id
-  (** Identifies a channel binding to web proxy connections. Use this to
+val proxy_only_trans_id : transport_layer_id
+  (** Identifies web proxy connections. Use this to
       e.g. send an FTP URL to a web proxy via HTTP
    *)
 
-val new_cb_id : unit -> channel_binding_id
+val new_trans_id : unit -> transport_layer_id
   (** Allocates and returns a new ID *)
 
 val http_transport_channel_type : transport_channel_type
@@ -1194,16 +1192,16 @@ val https_transport_channel_type :
       per request:
 
       {[
-        let my_cb_id = Http_client.new_cb_id()
+        let my_trans_id = Http_client.new_trans_id()
         let my_tct = Http_client.https_transport_channel_type my_tls_config
-        pipeline # configure_transport my_cb_id my_tct;
+        pipeline # configure_transport my_trans_id my_tct;
       ]}
 
       Now you can enable this special configuration for a request object
       [call]:
 
       {[
-        call # set_channel_binding my_cb_id
+        call # set_transport_layer my_trans_id
       ]}
 
       If you want to change the TLS configuration for the whole pipeline,
@@ -1309,18 +1307,18 @@ class pipeline :
        *)
 
     method configure_transport : 
-             channel_binding_id -> transport_channel_type -> unit
+             transport_layer_id -> transport_channel_type -> unit
        (** [configure_transport id transport]: Configures that messages with
-	   channel binding ID [id] are exchanged on [transport].
+	   transport layer ID [id] are exchanged on [transport].
 
 	   By default, there is only a configuration for
-	   {!Http_client.http_cb_id}, i.e. for normal unencrypted channels.
+	   {!Http_client.http_trans_id}, i.e. for normal unencrypted channels.
 	*)
 
     method set_tls_cache : tls_cache -> unit
        (** Sets the TLS cache (NB. The default cache is [null_tls_cache]) *)
 
-    method set_transport_proxy : channel_binding_id ->
+    method set_transport_proxy : transport_layer_id ->
                                  string ->
                                  int ->
                                  (string * string * bool) option ->
@@ -1335,7 +1333,7 @@ class pipeline :
 
     method set_transport_proxy_from_environment : 
              insecure:bool ->
-             (string * channel_binding_id) list -> unit
+             (string * transport_layer_id) list -> unit
       (** Like [set_proxy_from_environment], this method inspects environment
 	  variables and configures the proxy settings. This function, however,
 	  is more flexible, and can use different environment variables for
@@ -1344,7 +1342,7 @@ class pipeline :
 	  The argument list has pairs [(var_name, id)] meaning that the
 	  environment variable [var_name] configures the proxy for [id].
 	  For instance, 
-	  {[ [("http_proxy", http_cb_id); ("https_proxy", https_cb_id)] ]}
+	  {[ [("http_proxy", http_trans_id); ("https_proxy", https_trans_id)] ]}
 	  means that these two variables are used for the respective
 	  transports.
 
@@ -1400,8 +1398,8 @@ class pipeline :
     method proxy_type_of_call : http_call -> proxy_type option
       (** Same for an already created call object *)
 
-    method channel_binding : http_call -> channel_binding_id
-      (** Reports the current channel binding of this call *)
+    method transport_layer : http_call -> transport_layer_id
+      (** Reports the current transport of this call *)
 
 
     method run : unit -> unit

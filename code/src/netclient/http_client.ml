@@ -166,7 +166,7 @@ let pipeline_blacklist =
 ;;
 
 
-type channel_binding_id = int
+type transport_layer_id = int
 
 type http_options = 
     { synchronization : synchronization;
@@ -180,7 +180,7 @@ type http_options =
       resolver : resolver;
       configure_socket : Unix.file_descr -> unit;
       tls : Netsys_crypto_types.tls_config option;
-      schemes : (string * Neturl.url_syntax * int option * channel_binding_id)
+      schemes : (string * Neturl.url_syntax * int option * transport_layer_id)
 	         list;
       verbose_status : bool;
       verbose_request_header : bool;
@@ -216,7 +216,7 @@ let parse_url_0 ?base_url schemes url =
 	    | None -> raise err
 	    | Some b -> Neturl.url_scheme b
 	) in
-    let (_,syn,p_opt,cb) = 
+    let (_,syn,p_opt,trans) = 
       List.find (fun (sch',_,_,_) -> sch=sch') schemes in
     let ht = Hashtbl.create 1 in
     Hashtbl.add ht sch syn;
@@ -230,7 +230,7 @@ let parse_url_0 ?base_url schemes url =
 	~schemes:ht ~accept_8bits:true url' in
     let nu2 = 
       Neturl.ensure_absolute_url ?base:base_url nu1 in
-    (Neturl.default_url ?port:p_opt nu2, cb)
+    (Neturl.default_url ?port:p_opt nu2, trans)
   with
     | Neturl.Malformed_URL -> raise Not_found
 
@@ -260,12 +260,12 @@ let parse_url ?base_url options url =
 	(is_https,user,password,host,port,path)
  *)
 
-let new_cb_id () =
+let new_trans_id () =
   Oo.id (object end)
 
-let http_cb_id = new_cb_id()
-let https_cb_id = new_cb_id()
-let proxy_only_cb_id = new_cb_id()
+let http_trans_id = new_trans_id()
+let https_trans_id = new_trans_id()
+let proxy_only_trans_id = new_trans_id()
 
 
 let default_schemes =
@@ -281,9 +281,9 @@ let default_schemes =
     { (Hashtbl.find Neturl.common_url_syntax "ipp") with
       Neturl.url_enable_query = Neturl.Url_part_not_recognized
     } in
-  [ "http", http_syn, Some 80, http_cb_id;
-    "https", https_syn, Some 443, https_cb_id;
-    "ipp", ipp_syn, Some 631, http_cb_id;
+  [ "http", http_syn, Some 80, http_trans_id;
+    "https", https_syn, Some 443, https_trans_id;
+    "ipp", ipp_syn, Some 631, http_trans_id;
   ]
 
 
@@ -462,7 +462,7 @@ object
   method is_idempotent : bool
   method has_req_body : bool
   method has_resp_body : bool
-  method set_channel_binding : channel_binding_id -> unit
+  method set_transport_layer : transport_layer_id -> unit
   method same_call : unit -> http_call
   method get_req_method : unit -> string
   method get_host : unit -> string
@@ -488,7 +488,7 @@ object
   method request_uri_with : ?path:string option -> ?remove_particles:bool ->
                             unit -> Neturl.url
 
-  method channel_binding : http_options ref -> channel_binding_id
+  method transport_layer : http_options ref -> transport_layer_id
 
   method get_error_counter : int
   method set_error_counter : int -> unit
@@ -598,8 +598,8 @@ object(self)
       (* The req_uri must always include the port number *)
   val mutable req_uri_raw = ""
 
-  val mutable req_cb = http_cb_id
-  val mutable req_cb_set = false
+  val mutable req_trans = http_trans_id
+  val mutable req_trans_set = false
   val mutable req_secure = false
   val mutable req_host = ""   (* derived from req_uri *)
   val mutable req_port = 80   (* derived from req_uri *)
@@ -732,7 +732,7 @@ object(self)
 	method parse_request_uri options =
 	  if req_uri = None then (
 	    try
-	      let (nu, cb) = parse_url options req_uri_raw in
+	      let (nu, trans) = parse_url options req_uri_raw in
 	      if (Neturl.url_provides ~user:true nu || 
 		    Neturl.url_provides ~password:true nu)
 	      then
@@ -752,16 +752,16 @@ object(self)
                   with Not_found -> "") ^
                 ( try "?" ^ Neturl.url_query ~encoded:true nu 
                   with Not_found -> "");
-	      if not req_cb_set then
-		req_cb <- cb;
+	      if not req_trans_set then
+		req_trans <- trans;
 	    with
 		Not_found ->
 		  failwith "Http_client: bad URL"
 	  )
 
-	method channel_binding options =
+	method transport_layer options =
 	  pself # parse_request_uri options;
-	  req_cb
+	  req_trans
 
 	method request_uri_with ?path ?(remove_particles=false) () =
 	  match req_uri with
@@ -992,9 +992,9 @@ object(self)
   method request_uri = req_uri_raw
   method set_request_uri uri = req_uri_raw <- uri; req_uri <- None
 
-  method set_channel_binding cb = 
-    req_cb <- cb;
-    req_cb_set <- true
+  method set_transport_layer trans = 
+    req_trans <- trans;
+    req_trans_set <- true
 
 
   method request_header (k:header_kind) =
@@ -1068,7 +1068,7 @@ object(self)
   method set_proxy_enabled e = proxy_enabled <- e
   method no_proxy() = proxy_enabled <- false
   method is_proxy_allowed() = proxy_enabled
-  method proxy_use_connect = (req_cb = https_cb_id)
+  method proxy_use_connect = (req_trans = https_trans_id)
 
   (* Method characteristics *)
 
@@ -4012,14 +4012,14 @@ let proxy_connect_e esys fd fd_open host port options proxy_auth_handler_opt
 
 class type tls_cache =
 object
-  method set : domain:string -> port:int -> cb:channel_binding_id -> 
+  method set : domain:string -> port:int -> trans:transport_layer_id -> 
                data:string -> unit
-  method get : domain:string -> port:int -> cb:channel_binding_id -> string
+  method get : domain:string -> port:int -> trans:transport_layer_id -> string
   method clear : unit -> unit
 end
 
 
-let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
+let tcp_connect_e esys tp trans (peer:peer) conn_cache conn_owner tls_cache
                   options proxy_auth_handler_opt =
   (* An engine connecting to peer_host:peer_port. If a connection is still
      available in conn_cache, use this instead.
@@ -4065,7 +4065,8 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
 	let cache_peer =
 	  rewrite_first_hop hop1_host_ip peer in
 	try
-	  let fd, idata = conn_cache # find_inactive_connection cache_peer cb in
+	  let fd, idata =
+            conn_cache # find_inactive_connection cache_peer trans in
 	  (* Case: reuse old connection *)
 	  conn_cache # set_connection_state fd cache_peer (`Active conn_owner);
 	  if !options.verbose_events then
@@ -4074,7 +4075,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
 		    (Netsys.int64_of_file_descr fd) descr);
 	  let mplex = 
 	    tp # continue 
-	      fd cb !options.connection_timeout tmo_x 
+	      fd trans !options.connection_timeout tmo_x 
 	      real_host real_port esys
               ( let open Http_client_conncache in
                 idata.tls_stashed_endpoint
@@ -4117,7 +4118,7 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
 			  !options.configure_socket fd;
 			  let setup_e() =
 			    tp # setup_e
-			      fd cb !options.connection_timeout tmo_x
+			      fd trans !options.connection_timeout tmo_x
 			      real_host real_port esys tls_cache
 			    >> (function
 				  | `Done(mplex) -> 
@@ -4192,11 +4193,11 @@ let tcp_connect_e esys tp cb (peer:peer) conn_cache conn_owner tls_cache
 class type transport_channel_type =
 object
   method identify_conn_by_name : bool
-  method setup_e : Unix.file_descr -> channel_binding_id -> float -> exn ->
+  method setup_e : Unix.file_descr -> transport_layer_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
                    tls_cache ->
                    Uq_engines.multiplex_controller Uq_engines.engine
-  method continue : Unix.file_descr -> channel_binding_id -> float -> exn ->
+  method continue : Unix.file_descr -> transport_layer_id -> float -> exn ->
                    string -> int -> Unixqueue.event_system ->
                    exn option ->
                    Uq_engines.multiplex_controller
@@ -4207,14 +4208,14 @@ let simple_transport_channel_type default_port : transport_channel_type =
   ( object(self)
       method identify_conn_by_name = false
 
-      method continue fd cb tmo tmo_x host port esys tls_data =
+      method continue fd trans tmo tmo_x host port esys tls_data =
 	Uq_multiplex.create_multiplex_controller_for_connected_socket
 	  ~close_inactive_descr:true
 	  ~supports_half_open_connection:true
 	  ~timeout:( tmo, tmo_x )
 	  fd esys
-      method setup_e fd cb tmo tmo_x host port esys tls_cache =
-	let mplex = self # continue fd cb tmo tmo_x host port esys None in
+      method setup_e fd trans tmo tmo_x host port esys tls_cache =
+	let mplex = self # continue fd trans tmo tmo_x host port esys None in
 	eps_e (`Done mplex) esys
       method default_port = default_port
     end
@@ -4231,7 +4232,7 @@ let https_transport_channel_type config : transport_channel_type =
   ( object(self)
       method identify_conn_by_name = true
 
-      method continue fd cb tmo tmo_x host port esys tls_data =
+      method continue fd trans tmo tmo_x host port esys tls_data =
         let mplex1 =
 	  Uq_multiplex.create_multiplex_controller_for_connected_socket
 	    ~close_inactive_descr:true
@@ -4247,12 +4248,12 @@ let https_transport_channel_type config : transport_channel_type =
                  Uq_multiplex.restore_tls_multiplex_controller
                    exn config mplex1 in
         mplex2
-      method setup_e fd cb tmo tmo_x host port esys tls_cache =
+      method setup_e fd trans tmo tmo_x host port esys tls_cache =
         let on_handshake mplex2 =
           match mplex2#tls_session with
             | None -> ()
             | Some(id,data) ->
-                 tls_cache # set ~domain:host ~port ~cb ~data in
+                 tls_cache # set ~domain:host ~port ~trans ~data in
         let mplex1 =
 	  Uq_multiplex.create_multiplex_controller_for_connected_socket
 	    ~close_inactive_descr:true
@@ -4261,7 +4262,7 @@ let https_transport_channel_type config : transport_channel_type =
 	    fd esys in
         let mplex2 =
           try
-            let tls_data = tls_cache # get ~domain:host ~port ~cb in
+            let tls_data = tls_cache # get ~domain:host ~port ~trans in
             Uq_multiplex.tls_multiplex_controller 
               ~resume:tls_data ~on_handshake ~role:`Client 
               ~peer_name:(Some host) config mplex1
@@ -4278,8 +4279,8 @@ let https_transport_channel_type config : transport_channel_type =
 
 let null_tls_cache() : tls_cache =
   object
-    method set ~domain ~port ~cb ~data = ()
-    method get ~domain ~port ~cb = raise Not_found
+    method set ~domain ~port ~trans ~data = ()
+    method get ~domain ~port ~trans = raise Not_found
     method clear () = ()
   end
 
@@ -4287,10 +4288,10 @@ let null_tls_cache() : tls_cache =
 let unlim_tls_cache() : tls_cache =
   let ht = Hashtbl.create 7 in
   object
-    method set ~domain ~port ~cb ~data =
-      Hashtbl.replace ht (domain,port,cb) data
-    method get ~domain ~port ~cb =
-      Hashtbl.find ht (domain,port,cb)
+    method set ~domain ~port ~trans ~data =
+      Hashtbl.replace ht (domain,port,trans) data
+    method get ~domain ~port ~trans =
+      Hashtbl.find ht (domain,port,trans)
     method clear () =
       Hashtbl.clear ht
   end
@@ -4299,7 +4300,7 @@ let unlim_tls_cache() : tls_cache =
 (**********************************************************************)
 
 let fragile_pipeline 
-       esys  cb
+       esys  trans
        peer cache_peer
        proxy_auth_state proxy_auth_handler_opt
        default_port
@@ -4630,7 +4631,7 @@ let fragile_pipeline
                           match mplex#tls_session with
                             | None -> None
                             | Some _ -> Some(mplex#tls_stashed_endpoint()) in
-                        { Http_client_conncache.conn_cb = cb;
+                        { Http_client_conncache.conn_trans = trans;
                           tls_stashed_endpoint;
                         }
                       with _ -> raise Not_found in
@@ -5288,7 +5289,7 @@ let fragile_pipeline
 (**********************************************************************)
 
 let robust_pipeline 
-      esys tp cb
+      esys tp trans
       peer
       proxy_auth_handler_opt
       default_port
@@ -5428,7 +5429,7 @@ let robust_pipeline
 	  connect_pause
 	  (fun () ->
 	     tcp_connect_e 
-	       esys tp cb peer conn_cache conn_owner tls_cache options 
+	       esys tp trans peer conn_cache conn_owner tls_cache options 
 	       proxy_auth_handler_opt
 	  )
 	  esys in
@@ -5444,7 +5445,7 @@ let robust_pipeline
 		    connecting <- None;
 		    let fp =
 		      fragile_pipeline
-			esys cb peer cache_peer
+			esys trans peer cache_peer
 			proxy_auth_state proxy_auth_handler_opt
                         default_port
 			fd mplex t no_pipelining conn_cache
@@ -5604,8 +5605,8 @@ type proxy_type = [`Http_proxy | `Socks5 ]
 
 let parse_proxy_setting ~insecure url =
   let syn = Neturl.ip_url_syntax in
-  let (nu,cb) = 
-    try parse_url_0 [ "http", syn, Some 80, http_cb_id ] url
+  let (nu,trans) = 
+    try parse_url_0 [ "http", syn, Some 80, http_trans_id ] url
     with Not_found -> failwith ("Invalid proxy URL: " ^ url) in
   let auth =
     try
@@ -5691,8 +5692,8 @@ class pipeline =
     val mutable transports_upd_https = true
 
     initializer (
-      Hashtbl.add transports http_cb_id http_transport_channel_type;
-      Hashtbl.add transports proxy_only_cb_id proxy_transport_channel_type;
+      Hashtbl.add transports http_trans_id http_transport_channel_type;
+      Hashtbl.add transports proxy_only_trans_id proxy_transport_channel_type;
       self # update_https_transport()
     )
 
@@ -5700,10 +5701,10 @@ class pipeline =
       if transports_upd_https then
         match (!options).tls with
           | None ->
-               Hashtbl.remove transports https_cb_id
+               Hashtbl.remove transports https_trans_id
           | Some config ->
                let https_tct = https_transport_channel_type config in
-               Hashtbl.replace transports https_cb_id https_tct
+               Hashtbl.replace transports https_trans_id https_tct
 
 
     method event_system = esys
@@ -5762,12 +5763,12 @@ class pipeline =
 
     method set_transport_proxy_from_environment ~insecure l =
       List.iter
-	(fun (var_name, cb_id) ->
+	(fun (var_name, trans_id) ->
 	   let var =
 	     try Sys.getenv var_name with Not_found -> "" in
 	   if var <> "" then (
 	     let (host,port,auth) = parse_proxy_setting ~insecure var in
-	     self # set_transport_proxy cb_id host port auth `Http_proxy
+	     self # set_transport_proxy trans_id host port auth `Http_proxy
 	   );
 	)
 	l;
@@ -5786,16 +5787,16 @@ class pipeline =
       proxy_type  <- `Socks5
 
 
-    method configure_transport (cb:int) (tp:transport_channel_type) =
-      Hashtbl.replace transports cb tp;
-      if cb = https_cb_id then
+    method configure_transport (trans:int) (tp:transport_channel_type) =
+      Hashtbl.replace transports trans tp;
+      if trans = https_trans_id then
         transports_upd_https <- false  (* never change this magically again *)
 
     method set_tls_cache c =
       tls_cache <- c
 
-    method set_transport_proxy cb host port auth (pt:proxy_type) =
-      Hashtbl.replace tproxy cb (host,port,auth,pt)
+    method set_transport_proxy trans host port auth (pt:proxy_type) =
+      Hashtbl.replace tproxy trans (host,port,auth,pt)
 
     method reset () =
       (* deletes all pending requests; closes connection *)
@@ -5827,7 +5828,7 @@ class pipeline =
 
       let host = request # get_host() in
       let port = request # get_port() in
-      let cb = request # private_api # channel_binding options in
+      let trans = request # private_api # transport_layer options in
 
       let peer_of_proxy h p pt =
       	match pt with
@@ -5861,7 +5862,7 @@ class pipeline =
       try
 	if proxy_possible then ( 
 	  try
-	    let (h,p,a,pt) = Hashtbl.find tproxy cb in
+	    let (h,p,a,pt) = Hashtbl.find tproxy trans in
 	    (peer_of_proxy h p pt, a)
 	  with
 	    | Not_found ->
@@ -5876,7 +5877,7 @@ class pipeline =
 	else raise Not_found
       with Not_found ->
         try
-          let tct = Hashtbl.find transports cb in
+          let tct = Hashtbl.find transports trans in
           if not(tct#identify_conn_by_name) then raise Not_found;
           (`Direct_name(host,port), None)
         with Not_found ->
@@ -5898,13 +5899,13 @@ class pipeline =
       self # proxy_type_of_call request
 
 
-    method channel_binding (req : http_call) =
-      req # private_api # channel_binding options
+    method transport_layer (req : http_call) =
+      req # private_api # transport_layer options
 
 
     method private add_with_callback_no_redirection (request : http_call) f_done =
 
-      let cb = request # private_api # channel_binding options in
+      let trans = request # private_api # transport_layer options in
 
       (* find out the effective peer: *)
       let peer, auth = self # peer_of_call request in
@@ -5918,12 +5919,12 @@ class pipeline =
       let conn = 
 	let connlist = 
 	  try
-	    Hashtbl.find connections (peer, cb) 
+	    Hashtbl.find connections (peer, trans) 
 	  with
 	      Not_found ->
 		let new_connlist = ref [] in
 		Hashtbl.add
-		  connections (peer, cb) new_connlist;
+		  connections (peer, trans) new_connlist;
 		new_connlist
 	in
         let empty_conns = List.exists (fun c -> c#length = 0) !connlist in
@@ -5932,10 +5933,11 @@ class pipeline =
 	then begin
 	    let tp =
 	      try 
-		if cb = proxy_only_cb_id && not use_proxy then raise Not_found;
-		Hashtbl.find transports cb
+		if trans = proxy_only_trans_id && not use_proxy then
+                  raise Not_found;
+		Hashtbl.find transports trans
 	      with Not_found ->
-		failwith "Http_client: No transport for this channel binding" in
+		failwith "Http_client: No transport for this transport ID" in
 	    let proxy_auth_handler_opt =
 	      match auth with
 		| Some(u,p,insecure) ->
@@ -5944,7 +5946,7 @@ class pipeline =
 		| None -> 
 		    None in
 	    let new_conn = robust_pipeline
-	                     esys tp cb
+	                     esys tp trans
 	                     peer
 	                     proxy_auth_handler_opt
                              tp#default_port
@@ -5988,14 +5990,14 @@ class pipeline =
 
 	     let connlist =
 	       try
-		 Hashtbl.find connections (peer, cb);
+		 Hashtbl.find connections (peer, trans);
 	       with
 		   Not_found -> ref []
 	     in
 	     if List.exists (fun c -> c == conn) !connlist then (
 	       connlist := List.filter (fun c -> c != conn) !connlist;
 	       if !connlist = [] then
-		 Hashtbl.remove connections (peer, cb);
+		 Hashtbl.remove connections (peer, trans);
 	     )
 	   end;
 	   self # update_open_messages;

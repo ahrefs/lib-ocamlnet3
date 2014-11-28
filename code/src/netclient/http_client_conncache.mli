@@ -6,11 +6,11 @@
     by deriving from the official ones
  *)
 
-type channel_binding_id = int
-    (** Same as in {!Http_client.channel_binding_id} *)
+type transport_layer_id = int
+    (** Same as in {!Http_client.transport_layer_id} *)
 
 type inactive_data =
-    { conn_cb : channel_binding_id;
+    { conn_trans : transport_layer_id;
       tls_stashed_endpoint : exn option;
     }
 
@@ -20,8 +20,8 @@ type conn_state = [ `Inactive of inactive_data | `Active of < > ]
     * [obj] (this is the {!Http_client.pipeline} coerced to [< >]).
     *
     * Since Ocamlnet-4, [`Inactive] connections carry an [inactive_data]
-    * record (was a [channel_binding_id] before).
-    * Since Ocamlnet-3.3, [`Inactive] connections carry the channel binding
+    * record (was a [transport_layer_id] before).
+    * Since Ocamlnet-3.3, [`Inactive] connections carry the transport
     * ID as argument. Since 3.8, there is the option of storing an exception
     * value [private_data]. This may be used by implementations to store 
     * private data together with the file descriptor.
@@ -45,10 +45,10 @@ object
       * also possible that this method raises [Not_found], leaving it
       * to the caller to close the connection.
      *)
-  method find_inactive_connection : peer -> channel_binding_id ->
+  method find_inactive_connection : peer -> transport_layer_id ->
                                      Unix.file_descr * inactive_data
     (** Returns an inactive connection to the passed peer, or raise
-      * [Not_found]. Since Ocamlnet-3.3, the required channel binding ID
+      * [Not_found]. Since Ocamlnet-3.3, the required transport ID
       * is also an argument of this method. Since Ocamlnet-4, the
       * [inactive_data] record is also returned.
      *)

@@ -251,7 +251,7 @@ class http_fs
       let opts' =
 	{ opts with
 	    Http_client.schemes = opts.Http_client.schemes @
-	    [ "ftp", ftp_syn, Some 21, Http_client.proxy_only_cb_id ]
+	    [ "ftp", ftp_syn, Some 21, Http_client.proxy_only_trans_id ]
 	} in
       p # set_options opts'
     ) in
