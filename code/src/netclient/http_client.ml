@@ -260,12 +260,19 @@ let parse_url ?base_url options url =
 	(is_https,user,password,host,port,path)
  *)
 
-let new_trans_id () =
-  Oo.id (object end)
+let new_trans_id = Nethttp.new_trans_id
+let http_trans_id = Nethttp.http_trans_id
+let https_trans_id = Nethttp.https_trans_id
+let spnego_trans_id = Nethttp.spnego_trans_id
+let proxy_only_trans_id = Nethttp.proxy_only_trans_id
 
-let http_trans_id = new_trans_id()
-let https_trans_id = new_trans_id()
-let proxy_only_trans_id = new_trans_id()
+let https_list =
+  [ https_trans_id; spnego_trans_id ]
+  (* by default, we recognize these two transports as TLS transports *)
+
+let is_https trans_id =
+  List.mem trans_id https_list
+
 
 
 let default_schemes =
@@ -405,6 +412,8 @@ type 'session auth_state =  (* 'session = auth_session, defined below *)
          (* This session had been tried before a 401 response was seen *)
     | `In_reply of 'session * (string * string) list
          (* This session was tried after a 401 response was seen *)
+    | `Resubmit of int
+         (* Resubmit the call on a different transport *)
     | `Auth_error
          (* Failure *)
     | `OK
@@ -417,6 +426,7 @@ type 'a auth_status =
     [ `Continue of 'a
     | `OK
     | `Auth_error
+    | `Reroute of int
     | `None
     ]
 
@@ -489,6 +499,8 @@ object
                             unit -> Neturl.url
 
   method transport_layer : http_options ref -> transport_layer_id
+  method reroute : transport_layer_id -> unit
+  method reroutable : bool
 
   method get_error_counter : int
   method set_error_counter : int -> unit
@@ -599,7 +611,7 @@ object(self)
   val mutable req_uri_raw = ""
 
   val mutable req_trans = http_trans_id
-  val mutable req_trans_set = false
+  val mutable req_trans_set = `None
   val mutable req_secure = false
   val mutable req_host = ""   (* derived from req_uri *)
   val mutable req_port = 80   (* derived from req_uri *)
@@ -752,7 +764,7 @@ object(self)
                   with Not_found -> "") ^
                 ( try "?" ^ Neturl.url_query ~encoded:true nu 
                   with Not_found -> "");
-	      if not req_trans_set then
+	      if req_trans_set = `None then
 		req_trans <- trans;
 	    with
 		Not_found ->
@@ -762,6 +774,15 @@ object(self)
 	method transport_layer options =
 	  pself # parse_request_uri options;
 	  req_trans
+
+        method reroute trans =
+          assert(req_trans_set <> `User);
+          req_trans <- trans;
+          req_trans_set <- `Reroute
+
+        method reroutable =
+          req_trans_set <> `User
+
 
 	method request_uri_with ?path ?(remove_particles=false) () =
 	  match req_uri with
@@ -994,7 +1015,7 @@ object(self)
 
   method set_transport_layer trans = 
     req_trans <- trans;
-    req_trans_set <- true
+    req_trans_set <- `User
 
 
   method request_header (k:header_kind) =
@@ -1068,7 +1089,7 @@ object(self)
   method set_proxy_enabled e = proxy_enabled <- e
   method no_proxy() = proxy_enabled <- false
   method is_proxy_allowed() = proxy_enabled
-  method proxy_use_connect = (req_trans = https_trans_id)
+  method proxy_use_connect = req_trans <> http_trans_id
 
   (* Method characteristics *)
 
@@ -2117,6 +2138,14 @@ let dbg_l f l =
 
 let identity x = x
 
+let get_match_params options call =
+  [ "https", string_of_bool (call # tls_session_props <> None), false;
+    "trans_id", 
+       string_of_int (call # private_api # transport_layer options), false;
+    "target-host", call#get_host(), false;
+    "target-uri", call#effective_request_uri, false;
+  ]
+
 let generic_auth_session_for_challenge
       options
       (key_handler : #key_handler) mech call is_proxy initial_challenge
@@ -2124,10 +2153,13 @@ let generic_auth_session_for_challenge
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
   let mname = M.mechanism_name in
   dlogr (fun () -> sprintf "generic_auth(%s): create" mname);
+  let match_params = get_match_params options call in
+  let match_result = M.client_match ~params:match_params initial_challenge in
   let realm, id_option =
-    match M.client_match ~params:[] initial_challenge with
-      | Some r -> r
-      | None -> 
+    match match_result with
+      | `Accept r -> r
+      | `Reroute(realm,_) -> realm, None
+      | `Reject -> 
           dlogr (fun () -> sprintf "generic_auth(%s): no match " mname);
           raise Not_applicable in
   let request_domain =
@@ -2140,22 +2172,29 @@ let generic_auth_session_for_challenge
       raise Not_applicable in
   let creds =
     M.init_credentials key#credentials in
-  let session =
-    M.create_client_session
-      ~user:key#user ~creds 
-      ~params:( [ "realm", realm, true;
-                  "target-host", call#get_host(), false;
-                  "target-uri", call#effective_request_uri, false;
-                ] @ 
-                  match id_option with
-                    | None -> []
-                    | Some id -> [ "id", id, true ]
-              )
-      () in
+  let session_lz =
+    lazy
+      (M.create_client_session
+         ~user:key#user ~creds 
+         ~params:( [ "realm", realm, true ] @ 
+                     match_params @
+                       match id_option with
+                         | None -> []
+                         | Some id -> [ "id", id, true ]
+                 )
+         ()
+      ) in
   let first = ref true in
   let cur_auth_domain = ref [] in
   let dbg_state() =
-    Netsys_sasl_util.string_of_client_state (M.client_state session) in
+    match match_result with
+      | `Accept _ ->
+           let session = Lazy.force session_lz in
+           Netsys_sasl_util.string_of_client_state (M.client_state session)
+      | `Reroute _ ->
+           "reroute"
+      | _ ->
+           "" in
   ( object
       method auth_scheme = mname
       method auth_domain = !cur_auth_domain
@@ -2173,6 +2212,7 @@ let generic_auth_session_for_challenge
                      )
                      (dbg_state())
           );
+
         let challenge =
           if !first then (
             (* First authentication: just assume that the call is the same *)
@@ -2190,10 +2230,12 @@ let generic_auth_session_for_challenge
               if not auth_call#is_served then raise Not_found;
               let challenges =
                 get_challenges M.mechanism_name auth_call is_proxy in
+              let match_params =
+                get_match_params options auth_call in
               List.find
                 (fun ch ->
-                   match M.client_match ~params:[] ch with
-                     | Some(r,Some id) -> r = realm && Some id = id_option
+                   match M.client_match ~params:match_params ch with
+                     | `Accept(r,Some id) -> r = realm && Some id = id_option
                      | _ -> false
                 )
                 challenges
@@ -2212,86 +2254,103 @@ let generic_auth_session_for_challenge
              sprintf "generic_auth(%s): challenge name=%s params: %s"
                mname (fst challenge) (dbg_kv decode_param (snd challenge))
           );
-        first := false;
-        ( match M.client_state session with
-            | `OK ->
-                (* re-authentication *)
-                if reauth_flag then (
-                  dlogr (fun () -> sprintf "generic_auth(%s): restart" mname);
-                  cur_auth_domain := [];
-                  M.client_restart session;
-                  dlogr (fun () -> 
-                           sprintf "generic_auth(%s): state=%s" 
-                                   mname (dbg_state()));
-                )
-            | `Wait ->
-                dlogr (fun () -> sprintf "generic_auth(%s): process" mname);
-                assert(not reauth_flag);
-                assert(auth_call#is_served);
-                let meth = auth_call # request_method in
-                let uri = auth_call # effective_request_uri in
-                let hdr = auth_call # response_header in
-                M.client_process_challenge
-                  session meth uri hdr challenge;
-                dlogr (fun () -> 
-                         sprintf "generic_auth(%s): state=%s" 
-                                 mname (dbg_state()));
-            | `Emit | `Stale ->
-                assert(not reauth_flag);
-                ()   (* strange, but just let's skip the challenge *)
-            | `Auth_error _ ->
-                ()
-        );
-        match M.client_state session with
-          | `OK ->
-              (* Save the protection space: *)
-              if not is_proxy then (
-                let auth_domain_s = M.client_domain session in
-                let auth_domain =
-                  try
-                    List.map
-                      (normalize_domain options auth_call)
-                      auth_domain_s
-                  with Not_found -> [] in
-                dlogr
-                  (fun () -> sprintf "generic_auth(%s): domains=%s"
-                                     mname (dbg_l norm_neturl auth_domain)
-                  );
-                cur_auth_domain := auth_domain;
-              );
-              `OK
-          | `Emit | `Stale ->
-              dlogr (fun () -> sprintf "generic_auth(%s): emit" mname);
-              let meth = auth_call # request_method in
-              let uri = auth_call # effective_request_uri in
-              let hdr = 
-                if reauth_flag then
-                  new Netmime.basic_mime_header []
-                else
-                  auth_call # response_header in
-              let (creds, new_headers) = 
-                M.client_emit_response session meth uri hdr in
-              dlogr (fun () -> 
-                       sprintf "generic_auth(%s): state=%s" 
-                               mname (dbg_state()));
-              let out = format_credentials is_proxy creds @ new_headers in
-              dlogr (fun () ->
-                       sprintf "generic_auth(%s): headers %s"
-                               mname (dbg_kv identity out)
-                    );
-
-              `Continue out
-          | `Wait ->
-              assert false
-          | `Auth_error msg ->
-              cur_auth_domain := [];
-              `Auth_error
-
+        match match_result with
+          | `Accept _ ->
+               let session = Lazy.force session_lz in
+               first := false;
+               ( match M.client_state session with
+                   | `OK ->
+                        (* re-authentication *)
+                        if reauth_flag then (
+                          dlogr (fun () -> 
+                                   sprintf "generic_auth(%s): restart" mname);
+                          cur_auth_domain := [];
+                          M.client_restart session;
+                          dlogr (fun () -> 
+                                   sprintf "generic_auth(%s): state=%s" 
+                                           mname (dbg_state()));
+                        )
+                   | `Wait ->
+                        dlogr (fun () -> 
+                               sprintf "generic_auth(%s): process" mname);
+                        assert(not reauth_flag);
+                        assert(auth_call#is_served);
+                        let meth = auth_call # request_method in
+                        let uri = auth_call # effective_request_uri in
+                        let hdr = auth_call # response_header in
+                        M.client_process_challenge
+                          session meth uri hdr challenge;
+                        dlogr (fun () -> 
+                                 sprintf "generic_auth(%s): state=%s" 
+                                         mname (dbg_state()));
+                   | `Emit | `Stale ->
+                        assert(not reauth_flag);
+                        ()
+                          (* strange, but just let's skip the challenge *)
+                   | `Auth_error _ ->
+                        ()
+               );
+               ( match M.client_state session with
+                   | `OK ->
+                        (* Save the protection space: *)
+                        if not is_proxy then (
+                          let auth_domain_s = M.client_domain session in
+                          let auth_domain =
+                            try
+                              List.map
+                                (normalize_domain options auth_call)
+                                auth_domain_s
+                            with Not_found -> [] in
+                          dlogr
+                            (fun () -> sprintf "generic_auth(%s): domains=%s"
+                                       mname (dbg_l norm_neturl auth_domain)
+                            );
+                          cur_auth_domain := auth_domain;
+                        );
+                        `OK
+                   | `Emit | `Stale ->
+                        dlogr (fun () ->
+                                 sprintf "generic_auth(%s): emit" mname);
+                        let meth = auth_call # request_method in
+                        let uri = auth_call # effective_request_uri in
+                        let hdr = 
+                          if reauth_flag then
+                            new Netmime.basic_mime_header []
+                          else
+                            auth_call # response_header in
+                        let (creds, new_headers) = 
+                          M.client_emit_response session meth uri hdr in
+                        dlogr (fun () -> 
+                                 sprintf "generic_auth(%s): state=%s" 
+                                         mname (dbg_state()));
+                        let out =
+                          format_credentials is_proxy creds @ new_headers in
+                        dlogr (fun () ->
+                                 sprintf "generic_auth(%s): headers %s"
+                                         mname (dbg_kv identity out)
+                              );
+                        `Continue out
+                   | `Wait ->
+                        assert false
+                   | `Auth_error msg ->
+                        cur_auth_domain := [];
+                        `Auth_error
+               )
+          | `Reroute(_, id) ->
+               `Reroute id
+          | `Reject ->
+               assert false
+                       
       method invalidate call =
         key_handler # invalidate_key key;
 
       method auth_session_id =
-        M.client_session_id session
+        match match_result with
+          | `Accept _ ->
+               let session = Lazy.force session_lz in
+               M.client_session_id session
+          | _ ->
+               None
     end
   )
 
@@ -2302,6 +2361,7 @@ let generic_auth_session options
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
   dlogr (fun () -> 
            sprintf "generic_auth(%s): searching challenge" M.mechanism_name);
+  let match_params = get_match_params options call in
   let mech_challenges =
     try 
       get_challenges M.mechanism_name call is_proxy
@@ -2309,7 +2369,7 @@ let generic_auth_session options
   let matching_challenges =
     List.filter
       (fun challenge ->
-         M.client_match ~params:[] challenge <> None
+         M.client_match ~params:match_params challenge <> `Reject
       )
       mech_challenges in
   dlogr (fun () -> 
@@ -2370,6 +2430,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
       | Not_applicable -> None in
 
   let identify_session is_proxy (call : http_call) options =
+    let match_params = get_match_params options call in
     try
       let all_challenges = get_all_challenges call is_proxy in
       let mech = find_mech all_challenges is_proxy call in
@@ -2378,20 +2439,20 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
       let challenges_m =
         List.map
           (fun ch ->
-             (ch, M.client_match ~params:[] ch)
+             (ch, M.client_match ~params:match_params ch)
           )
           challenges in
       let (challenge, sess_data) =
         List.find
           (fun (ch, m) ->
              match m with
-               | Some(_, Some _) -> true
+               | `Accept(_, Some _) -> true
                | _ -> false
           )
           challenges_m in
       let (realm, session_id) =
         match sess_data with
-          | Some(r, Some sid) -> (r,sid)
+          | `Accept(r, Some sid) -> (r,sid)
           | _ -> raise Not_found in
       Some(M.mechanism_name, realm, session_id)
     with
@@ -3475,7 +3536,8 @@ let transmitter
 		( match session # authenticate msg true with
                     | `Continue headers -> headers
                     | `OK -> []
-                    | `Auth_error | `None -> []  (* Cannot deal with it here *)
+                    | `Auth_error | `None | `Reroute _ -> []
+                        (* Cannot deal with it here *)
                 )
 	    | `In_reply(_,headers) ->
                 headers
@@ -3484,7 +3546,8 @@ let transmitter
             | `Auth_error ->
                 (* retry *)
                 msg # private_api # set_auth_state `None;
-                [] in
+                []
+            | `Resubmit _ -> assert false in
 	let pah =
 	  match !proxy_auth_state with
 	    | `None -> []
@@ -3492,7 +3555,8 @@ let transmitter
 		( match session # authenticate msg true with
                     | `Continue headers -> headers
                     | `OK -> []
-                    | `Auth_error | `None -> [] (* Cannot deal with it here *)
+                    | `Auth_error | `None | `Reroute _ -> []
+                         (* Cannot deal with it here *)
                 )
 	    | `In_reply(_,headers) ->
                 headers
@@ -3501,7 +3565,8 @@ let transmitter
             | `Auth_error ->
                 (* retry *)
                 proxy_auth_state := `None;
-                [] in
+                []
+            | `Resubmit _ -> assert false in
 	let rh = msg # request_header `Effective in
 	List.iter
 	  (fun (n,v) ->
@@ -5179,7 +5244,8 @@ let fragile_pipeline
                                sess # authenticate msg false
                       )
               ) else
-                `OK in
+                `OK
+          | `Resubmit _ -> assert false in
       let is_about_proxy =
         (code=407 && peer_is_proxy) ||
           ( match proxy_response1 with `Continue _ -> true | _ -> false) in
@@ -5202,7 +5268,8 @@ let fragile_pipeline
                         msg # private_api # set_auth_state (`In_reply(sess,[]));
                         Some(sess # authenticate msg false)
                 ) else
-                  Some `OK in
+                  Some `OK 
+            | `Resubmit _ -> assert false in
       (* If we get a 401/407 but still think we are ok, change to error: *)
       let proxy_response2 =
         if proxy_response1 = `OK && code=407 && peer_is_proxy then
@@ -5218,7 +5285,7 @@ let fragile_pipeline
       ( match !proxy_auth_state, proxy_response2 with
           | (`In_reply(sess,_) | `In_advance sess), `Continue next_headers ->
               proxy_auth_state := `In_reply(sess, next_headers)
-          | (`In_reply(sess,_) | `In_advance sess), `Auth_error ->
+          | (`In_reply(sess,_) | `In_advance sess), (`Auth_error|`Reroute _) ->
               sess # invalidate msg;
               proxy_auth_state := `Auth_error
           | (`In_reply(sess,_) | `In_advance sess), `OK ->
@@ -5226,25 +5293,32 @@ let fragile_pipeline
               proxy_auth_state := `In_advance sess
           | _, `OK ->
               proxy_auth_state := `OK
-          | _, (`Auth_error | `None) ->
+          | _, (`Auth_error | `Reroute _ | `None) ->
               proxy_auth_state := `Auth_error
           | _, `Continue _ ->
               assert false
       );
       ( match msg # private_api # auth_state, content_response2 with
-          | (`In_reply(sess,_) | `In_advance sess), Some(`Continue headers) ->
+          | (`In_reply(sess,_)|`In_advance sess), Some(`Continue headers) ->
               msg # private_api # set_auth_state (`In_reply(sess, headers))
-          | (`In_reply(sess,_) | `In_advance sess), Some `Auth_error ->
+          | (`In_reply(sess,_)|`In_advance sess), Some `Auth_error ->
               sess # invalidate msg;
               msg # private_api # set_auth_state  `Auth_error;
               auth_cache # mark_failed_session sess;
-          | (`In_reply(sess,_) | `In_advance sess), Some `OK ->
+          | (`In_reply(sess,_)|`In_advance sess), Some `OK ->
               msg # private_api # set_auth_state `OK;
               auth_cache # mark_successful_session sess
           | _, Some `OK ->
               msg # private_api # set_auth_state `OK
           | _, Some (`Auth_error | `None) ->
               msg # private_api # set_auth_state `Auth_error
+          | _, Some(`Reroute trans_id) ->
+               msg # private_api # set_auth_state
+                 (if msg # private_api # reroutable then
+                    `Resubmit trans_id
+                  else
+                    `Auth_error
+                 )
           | _, Some `Continue _ ->
               assert false
           | _, None ->
@@ -5701,10 +5775,14 @@ class pipeline =
       if transports_upd_https then
         match (!options).tls with
           | None ->
-               Hashtbl.remove transports https_trans_id
+               List.iter
+                 (fun trans -> Hashtbl.remove transports trans)
+                 https_list
           | Some config ->
                let https_tct = https_transport_channel_type config in
-               Hashtbl.replace transports https_trans_id https_tct
+               List.iter
+                 (fun trans -> Hashtbl.replace transports trans https_tct)
+                 https_list
 
 
     method event_system = esys
@@ -5789,7 +5867,7 @@ class pipeline =
 
     method configure_transport (trans:int) (tp:transport_channel_type) =
       Hashtbl.replace transports trans tp;
-      if trans = https_trans_id then
+      if is_https trans then
         transports_upd_https <- false  (* never change this magically again *)
 
     method set_tls_cache c =
@@ -5903,7 +5981,7 @@ class pipeline =
       req # private_api # transport_layer options
 
 
-    method private add_with_callback_no_redirection (request : http_call) f_done =
+    method private add_with_callback_2 (request : http_call) f_done =
 
       let trans = request # private_api # transport_layer options in
 
@@ -6023,9 +6101,28 @@ class pipeline =
 	connections;
 
 
+    method private add_with_callback_1 (request : http_call) f_done =
+      (* this only handles auth-rerouting *)
+      self # add_with_callback_2
+        request
+        (fun m ->
+           match m # private_api # auth_state with
+             | `Resubmit trans_id ->
+	          if !options.verbose_status then
+                    dlog
+                      (sprintf "Call %d - auth-rerouting to trans ID %d"
+                               (Oo.id m) trans_id);
+                  m # private_api # reroute trans_id;
+                  m # private_api # set_auth_state `None;
+	          m # private_api # set_error_counter 0;
+		  self # add_with_callback_2 m f_done
+             | _ ->
+                  f_done m
+        )
+
     method add_with_callback (request : http_call) f_done =
       request # private_api # parse_request_uri options;
-      self # add_with_callback_no_redirection
+      self # add_with_callback_1
 	request
 	(fun m ->
 	   try

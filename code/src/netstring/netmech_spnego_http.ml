@@ -5,58 +5,60 @@
 (* SPNEGO authenticates the whole TCP connection, and not the individual
    request. Our design how to handle this:
 
-    - There is a new channel_binding_id: spnego_cb_id. This implies
+    - There is a new transport_layer_id: spnego_trans_id. This implies
       SPNEGO with "default configuration" and https.
     - If we get a www-authenticate: negotiate header from a server,
-      and the current connection isn't for spnego_cb_id, we return
+      and the current connection isn't for spnego_trans_id, we return
       a special code so that the request is re-routed to a new connection
-      which is then bound to spnego_cb_id.
+      which is then bound to spnego_trans_id.
     - Type changes:
        * client_match may return a new tag for re-routing to a different
-         cb_id: CB_resubmit.
+         trans_id: `Reroute.
     - Changes in Http_client:
-       * pass current_cb_id as part of client_match call
-       * also pass http_cb_id and https_cb_id
-       * what to do for a CB_resubmit: we always follow this. Check whether
-         a connection with the new cb_id exists. If yes, use it. If not,
+       * pass trans_id as part of client_match call
+       * what to do for `Reroute: we always follow this. Check whether
+         a connection with the new trans_id exists. If yes, use it. If not,
          create a new one.
 
-         Changes for http_call:
-         - channel_binding_by_user: whether the user invoked set_channel_binding
-         - update_channel_binding: like set_channel_binding for internal
-           update
-
-         Trace for CB_resubmit:
-         - new case for auth_status: `Resubmit of cb_id
-         - generic_auth_session_for_challenge: test for CB_resubmit condition
+         Trace for `Reroute:
+         - new case for auth_state: `Resubmit of trans_id
+         - generic_auth_session_for_challenge: test for `Reroute condition
            in initializer. If so, we still create the session, but 
-           [authenticate] immediately returns `Resubmit.
-           If the user has set the cb_id we MUST reject this auth method.
+           [authenticate] immediately returns `Reroute.
+           If the user has set the trans_id we MUST reject this auth method.
          - postprocess_complete_message_e: check whether 
-           content_response=`Resubmit. set_auth_state `Resubmit.
+           content_response=`Reroute. set_auth_state `Resubmit.
          - From that point on, the request is handled as a special
            redirect
          - add_with_callback: check whether auth_state=`Resubmit. 
-           In this case, set the cb_id of the request and re-add
+           In this case, set the trans_id of the request and re-add
 
-    - Changes here:
-       * client_match checks whether current_cb_id = spnego_cb_id. If yes,
-         go on. If no, and current_cb_id = acceptable_cb_id, emit a 
-         CB_resubmit. (acceptable_cb_id defaults to https_cb_id but is
-         changable by the user.) In all other cases, emit a None.
  *)
+
+(* Re-auth:
+
+   Better: SPNEGO indicates `Accept on client_match, and reroutes the second
+   request
+
+   New auth_status:
+     - `Continue_reroute. Returned for the first request.
+
+   client_domain: return [ "/" ]
+
+ *)
+
 
 open Printf
 
-type acceptable_cb_id =
-  [ `HTTP | `HTTPS | `CBID of int ]
-
 let spnego_oid = [| 1;3;6;1;5;5;2 |]
+
+let spnego_trans_id = Nethttp.spnego_trans_id
 
 
 module type PROFILE =
   sig
-    val acceptable_channels : acceptable_cb_id list
+    val acceptable_transports : Nethttp.transport_layer_id list
+    val https_required : bool
 
     (* future: configure SPNEGO *)
 
@@ -65,7 +67,8 @@ module type PROFILE =
 
 module Default : PROFILE =
   struct
-    let acceptable_channels = [ `HTTPS ]
+    let acceptable_transports = [ spnego_trans_id ]
+    let https_required = true
   end
 
 
@@ -74,7 +77,8 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
     let mechanism_name = "Negotiate"
 
     let available() = true
-                        
+      (* FIXME: check whether spnego supported *)                       
+ 
     let restart_supported = true
                               
     type credentials = unit
@@ -82,16 +86,33 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
     let init_credentials _ = ()
 
     let client_match ~params (challenge : Nethttp.Header.auth_challenge) =
-      let (ch_name, ch_params) = challenge in
-      if String.lowercase ch_name = "negotiate" then
-        Some("SPNEGO", Some "SPNEGO_ID" )
+      let param name =
+        let (_, v, _) =
+          List.find (fun (n, _, _) -> n = name) params in
+        v in
+      try
+        let trans_id = int_of_string (param "trans_id") in
+        let https = bool_of_string (param "https") in
+        if not (List.mem trans_id P.acceptable_transports) then
+          match P.acceptable_transports with
+            | [] -> raise Not_found
+            | pref_id :: _ -> 
+                 `Reroute("SPNEGO", pref_id)
+        else (
+          if P.https_required && not https then raise Not_found;
+          let (ch_name, ch_params) = challenge in
+          if String.lowercase ch_name = "negotiate" then
+            `Accept("SPNEGO", Some "SPNEGO_ID" )
             (* We use always a the same dummy ID. An ID is needed because
                Http_client is mostly written for per-message authentication,
                and this works only when follow-up messages of an auth attempt
                are tagged with the same ID.
              *)
-      else
-        None
+          else
+            raise Not_found
+        )
+      with
+        | Not_found -> `Reject
 
     type client_sub_state =
         [ `Pre_init_context | `Init_context | `Established
@@ -160,8 +181,11 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       let params = 
         Netsys_sasl_util.preprocess_params
           "Netmech_krb5_sasl.create_client_session:"
-          [ "realm"; "id"; "target-host" ]
+          [ "realm"; "id"; "target-host"; "trans_id"; "https" ]
           params in
+      let https =
+        try List.assoc "https" params = "true"
+        with Not_found -> false in
       let acceptor_name =
         try
           "HTTP@" ^ List.assoc "target-host" params
@@ -178,9 +202,14 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                   output_name
                )
           () in
+      let cstate =
+        if not P.https_required || https then
+          `Wait (* HTTP auth is always "server-first" *)
+        else 
+          `Auth_error "HTTPS required" in
       let cs =
         { ccontext = None;
-          cstate = `Wait;   (* HTTP auth is always "server-first" *)
+          cstate;
           csubstate = `Pre_init_context;
           ctoken = "";
           ctarget_name;
@@ -304,8 +333,10 @@ keys # add_key (key ~user:"krb" ~password:"" ~realm:"SPNEGO" ~domain:[]);;
 let a = new generic_auth_handler keys [ (module A : Nethttp.HTTP_MECHANISM) ];;
 let p = new pipeline;;
 p # add_auth_handler a;;
-let c = new get "https://gps.dynxs.de/krb/";;
-p # add c;;
+let c1 = new get "https://gps.dynxs.de/krb/";;
+let c2 = new get "https://gps.dynxs.de/krb/index.html";;
+p # add c1;;
+p # add c2;;
 p # run();;
 
  *)

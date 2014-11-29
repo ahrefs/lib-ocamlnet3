@@ -2045,6 +2045,23 @@ module Header = struct
 end
 
 
+type transport_layer_id = int
+
+let new_trans_id () =
+  Oo.id (object end)
+
+let http_trans_id = new_trans_id()
+let https_trans_id = new_trans_id()
+let spnego_trans_id = new_trans_id()
+let proxy_only_trans_id = new_trans_id()
+
+type match_result =
+    [ `Accept of string * string option
+    | `Reroute of string * int
+    | `Reject
+    ]
+
+
 module type HTTP_MECHANISM =
   sig
     val mechanism_name : string
@@ -2056,7 +2073,7 @@ module type HTTP_MECHANISM =
             credentials
     val client_match : params:(string * string * bool) list -> 
                        Header.auth_challenge ->
-                         (string * string option) option
+                         match_result
     type client_session
     val client_state : client_session -> Netsys_sasl_types.client_state
     val create_client_session :

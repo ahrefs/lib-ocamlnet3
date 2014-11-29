@@ -199,6 +199,7 @@ for other libraries.
    Netmech_plain_sasl
    Netmech_krb5_sasl
    Netmech_gs2_sasl
+   Netmech_spnego_http
    Rtypes
    Xdr
    Xdr_mstring

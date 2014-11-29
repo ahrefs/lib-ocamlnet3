@@ -1055,6 +1055,34 @@ module Header : sig
 
 end
 
+(** {2 HTTP transport registry} *)
+
+type transport_layer_id = int
+  (** see {!Http_client.transport_layer_id} *)
+
+val new_trans_id : unit -> transport_layer_id
+  (** Allocates and returns a new ID *)
+
+val http_trans_id : transport_layer_id
+  (** Identifies the pure HTTP transport (without SSL), with or
+      without web proxies
+   *)
+
+val https_trans_id : transport_layer_id
+  (** Identifies anonymous HTTPS transport (i.e. no client
+      certificates), with or without web proxies.
+   *)
+
+val spnego_trans_id : transport_layer_id
+  (** Identifies an anonymous HTTPS transport that is additionally
+      authenticated via SPNEGO (as described in RFC 4559)
+   *)
+
+val proxy_only_trans_id : transport_layer_id
+  (** Identifies web proxy connections. Use this to
+      e.g. send an FTP URL to a web proxy via HTTP
+   *)
+
 (** {2 Types for authentication} *)
 
 (** See also {!Netsys_sasl_types.SASL_MECHANISM}. This is very similar,
@@ -1065,6 +1093,13 @@ end
     In SASL terms, HTTP authentication is normally "server first". There
     is only one exception: re-authentication, which is "client first".
  *)
+
+type match_result =
+    [ `Accept of string * string option
+    | `Reroute of string * transport_layer_id
+    | `Reject
+    ]
+  (** See {!Nethttp.HTTP_MECHANISM.client_match} *)
 
 module type HTTP_MECHANISM =
   sig
@@ -1107,11 +1142,12 @@ module type HTTP_MECHANISM =
 
     val client_match : params:(string * string * bool) list -> 
                        Header.auth_challenge ->
-                         (string * string option) option
+                         match_result
       (** Checks whether this mechanism can accept the initial authentication
           challenge (i.e. the first challenge sent from the server to the
           client. The [params] are as for [create_client_session].
-          On success, returns [Some(realm,id_opt)]. On failure, returns None.
+          On success, returns [`Accept(realm,id_opt)]. On failure, returns 
+          [`Reject].
           This function usually does not raise exceptions.
 
           If the mechanism does not support the notion of realms, a
@@ -1122,6 +1158,10 @@ module type HTTP_MECHANISM =
 
           The challenge is from a [www-authenticate] or a 
           [proxy-authenticate] header.
+
+          There is also the result [`Reroute(realm, trans_id)], meaning that the
+          request would be acceptable if it came over the transport identified
+          by [trans_id].
        *)
 
     type client_session
@@ -1148,7 +1188,11 @@ module type HTTP_MECHANISM =
           Available parameters:
            - "realm"
            - "id" (if [client_match] returns a session ID)
-
+           - "trans_id": the {!Http_client.transport_layer_id} of the
+             current HTTP request
+           - "https": is set to "true" if the current connection is TLS-secured
+           - "target-host": the hostname from the HTTP request
+           - "target-uri": the URL from the HTTP request
        *)
 
     val client_configure_channel_binding : client_session -> 

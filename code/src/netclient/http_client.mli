@@ -16,7 +16,7 @@
  *  - chunked message transport
  *  - persistent connections
  *  - connections in pipelining mode ("full duplex" connections)
- *  - modular authentication methods, currently Basic and Digest
+ *  - modular authentication methods, currently Basic, Digest, and Negotiate
  *  - event-driven implementation; allows concurrent service for
  *    several network connections 
  *  - HTTP proxy support, also with Basic and Digest
@@ -139,6 +139,7 @@ type 'a auth_status =
     [ `Continue of 'a
     | `OK
     | `Auth_error
+    | `Reroute of int
     | `None
     ]
   (** Status of HTTP-level authentication:
@@ -151,6 +152,8 @@ type 'a auth_status =
     *   this state can also be reached for an otherwise successful HTTP
     *   response (i.e. code 200) when the client could not authenticate the
     *   server and the protocol demands this.
+    * - [`Reroute trans_id]: The request should be retried on a new connection
+    *   for the transport identified by [trans_id]
     * - [`Continue]: The authentication is still in progress. Normally the
     *   user should not see this state as the engine automatically continues
     *   the protocol. The argument of [`Continue] is private.
@@ -1136,6 +1139,11 @@ class generic_auth_handler : #key_handler ->
   (** Authenticate with the passed generic HTTP mechanisms *)
 
 
+(** For the [Negotiate] method (SPNEGO/GSSAPI), have a look at
+    {!Netmech_spnego_http}.
+ *)
+
+
 (** {1 Transport} *)
 
 (** A connection cache is an object that keeps connections open that
@@ -1168,6 +1176,11 @@ val http_trans_id : transport_layer_id
 val https_trans_id : transport_layer_id
   (** Identifies anonymous HTTPS transport (i.e. no client
       certificates), with or without web proxies.
+   *)
+
+val spnego_trans_id : transport_layer_id
+  (** Identifies an anonymous HTTPS transport that is additionally
+      authenticated via SPNEGO (as described in RFC 4559)
    *)
 
 val proxy_only_trans_id : transport_layer_id

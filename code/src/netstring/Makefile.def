@@ -71,7 +71,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netgssapi_support.mli netchannels_crypto.mli \
 	netmech_plain_sasl.mli netmech_crammd5_sasl.mli \
 	netmech_digest_sasl.mli netmech_digest_http.mli \
-	netmech_krb5_sasl.mli netmech_gs2_sasl.mli \
+	netmech_krb5_sasl.mli netmech_gs2_sasl.mli netmech_spnego_http.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 

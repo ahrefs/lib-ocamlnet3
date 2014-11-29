@@ -163,15 +163,15 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
       if cs.cstate = `Emit then
         match cs.cresp with
           | Some rp ->
-              Some(rp.r_realm, None)
+              `Accept(rp.r_realm, None)
           | None ->
-              None
+              `Reject
       else
-        None
+        `Reject
     with
       | Not_found
       | Failure _ ->
-          None
+          `Reject
 end
 
 
