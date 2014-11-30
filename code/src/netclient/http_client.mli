@@ -140,6 +140,7 @@ type 'a auth_status =
     | `OK
     | `Auth_error
     | `Reroute of int
+    | `Continue_reroute of 'a * int
     | `None
     ]
   (** Status of HTTP-level authentication:
@@ -157,6 +158,9 @@ type 'a auth_status =
     * - [`Continue]: The authentication is still in progress. Normally the
     *   user should not see this state as the engine automatically continues
     *   the protocol. The argument of [`Continue] is private.
+    * - [`Continue_reroute]: the combination of continue and reroute: the
+    *   auth protocol continues, but the next request must be sent on the
+    *   indicated transport.
     *)
 
 type 'message_class how_to_reconnect =
@@ -989,8 +993,10 @@ end
 (** The [key_ring] is a cache for keys. The optional [uplink] handler
   * is invoked when no matching key is found in the cache. The [uplink]
     is intended for interactively asking the user for a password.
+    If [no_invalidation] is set, keys are never invalidated (removed after
+    they did not work)
  *)
-class key_ring : ?uplink : #key_handler -> unit ->
+class key_ring : ?uplink : #key_handler -> ?no_invalidation:bool -> unit ->
 object
   inherit key_handler
   method clear : unit -> unit
@@ -1007,10 +1013,12 @@ class type auth_session =
 object
   method auth_scheme : string
     (** The authentication scheme, e.g. "basic" *)
-  method auth_domain : Neturl.url list
+  method auth_domain : Neturl.url list * int
     (** The list of domain URIs defines the protection space. For requests
         of the same protection space the mechanism may perform 
         re-authentication. Setting this to [] disables re-authentication.
+
+        The integer is the transport layer ID.
      *)
   method auth_realm : string
     (** The realm *)
@@ -1055,13 +1063,13 @@ object
   method create_proxy_session : http_call -> http_options ref -> auth_session option
     (** Same for proxy authentication (status 407) *)
   method identify_session : http_call -> http_options ref -> 
-                            (string * string * string) option
-    (** Extracts (mech_name,realm,sess_id) if possible. Only needed for
+                            (string * string * string * int) option
+    (** Extracts (mech_name,realm,sess_id,trans_id) if possible. Only needed for
         multi-step challenge/response authentication. THIS IS STILL
         EXPERIMENTAL.
      *)
   method identify_proxy_session : http_call -> http_options ref -> 
-                                  (string * string * string) option
+                                  (string * string * string * int) option
     (** Same for proxies. THIS IS STILL EXPERIMENTAL *)
   method skip_challenge : bool
     (** If true, this method allows to skip the challenge entirely

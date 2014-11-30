@@ -70,6 +70,7 @@ In the above code, the variable [gssapi] is already such a module.
 At the time of writing this text, these interpreters support the GSSAPI:
  - RPC clients: {!Rpc_client}
  - RPC servers: {!Rpc_server}
+ - HTTP clients: {!Http_client} with the help of {!Netmech_spnego_http}
  - FTP clients: {!Ftp_client} and {!Ftp_fs}
  - POP clients (via SASL bridging): {!Netpop}
  - SMTP clients (via SASL bridging): {!Netsmtp}

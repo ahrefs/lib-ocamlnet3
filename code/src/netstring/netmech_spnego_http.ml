@@ -57,8 +57,9 @@ let spnego_trans_id = Nethttp.spnego_trans_id
 
 module type PROFILE =
   sig
-    val acceptable_transports : Nethttp.transport_layer_id list
-    val https_required : bool
+    val acceptable_transports_http : Nethttp.transport_layer_id list
+    val acceptable_transports_https : Nethttp.transport_layer_id list
+    val enable_delegation : bool
 
     (* future: configure SPNEGO *)
 
@@ -67,8 +68,9 @@ module type PROFILE =
 
 module Default : PROFILE =
   struct
-    let acceptable_transports = [ spnego_trans_id ]
-    let https_required = true
+    let acceptable_transports_http = [ ]
+    let acceptable_transports_https = [ spnego_trans_id ]
+    let enable_delegation = true
   end
 
 
@@ -85,37 +87,37 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                          
     let init_credentials _ = ()
 
+    let realm = "SPNEGO"
+
     let client_match ~params (challenge : Nethttp.Header.auth_challenge) =
       let param name =
         let (_, v, _) =
           List.find (fun (n, _, _) -> n = name) params in
         v in
       try
+        let (ch_name, ch_params) = challenge in
+        if String.lowercase ch_name <> "negotiate" then raise Not_found;
         let trans_id = int_of_string (param "trans_id") in
         let https = bool_of_string (param "https") in
-        if not (List.mem trans_id P.acceptable_transports) then
-          match P.acceptable_transports with
+        let acceptable_transports =
+          if https then
+            P.acceptable_transports_https
+          else
+            P.acceptable_transports_http in
+        let is_acceptable_trans =
+          List.mem trans_id acceptable_transports in
+        if is_acceptable_trans then
+          `Accept(realm, None)
+        else
+          match acceptable_transports with
             | [] -> raise Not_found
             | pref_id :: _ -> 
-                 `Reroute("SPNEGO", pref_id)
-        else (
-          if P.https_required && not https then raise Not_found;
-          let (ch_name, ch_params) = challenge in
-          if String.lowercase ch_name = "negotiate" then
-            `Accept("SPNEGO", Some "SPNEGO_ID" )
-            (* We use always a the same dummy ID. An ID is needed because
-               Http_client is mostly written for per-message authentication,
-               and this works only when follow-up messages of an auth attempt
-               are tagged with the same ID.
-             *)
-          else
-            raise Not_found
-        )
+                 `Accept_reroute(realm, None, pref_id)
       with
         | Not_found -> `Reject
 
     type client_sub_state =
-        [ `Pre_init_context | `Init_context | `Established
+        [ `Pre_init_context | `Init_context | `Established | `Restart
         ]
 
     type client_session =
@@ -123,6 +125,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
           mutable cstate : Netsys_sasl_types.client_state;
           mutable csubstate : client_sub_state;
           mutable ctoken : string;
+          mutable cconn : int;
           ctarget_name : G.name;
         }
 
@@ -152,7 +155,9 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
          ~context:cs.ccontext
          ~target_name:cs.ctarget_name
          ~mech_type:spnego_oid
-         ~req_flags:[ `Integ_flag; `Mutual_flag ]
+         ~req_flags:( [ `Integ_flag; `Mutual_flag ] @
+                        ( if P.enable_delegation then [`Deleg_flag] else [])
+                    )
          ~time_req:None
          ~chan_bindings:None
          ~input_token
@@ -181,11 +186,11 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       let params = 
         Netsys_sasl_util.preprocess_params
           "Netmech_krb5_sasl.create_client_session:"
-          [ "realm"; "id"; "target-host"; "trans_id"; "https" ]
+          [ "realm"; "id"; "target-host"; "trans_id"; "conn_id"; "https" ]
           params in
-      let https =
-        try List.assoc "https" params = "true"
-        with Not_found -> false in
+      let conn_id =
+        try int_of_string (List.assoc "conn_id" params)
+        with Not_found -> failwith "missing parameter: conn_id" in
       let acceptor_name =
         try
           "HTTP@" ^ List.assoc "target-host" params
@@ -202,17 +207,14 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                   output_name
                )
           () in
-      let cstate =
-        if not P.https_required || https then
-          `Wait (* HTTP auth is always "server-first" *)
-        else 
-          `Auth_error "HTTPS required" in
+      let cstate = `Wait (* HTTP auth is always "server-first" *) in
       let cs =
         { ccontext = None;
           cstate;
           csubstate = `Pre_init_context;
           ctoken = "";
           ctarget_name;
+          cconn = conn_id;
         } in
       cs
 
@@ -224,17 +226,27 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
     let client_state cs = cs.cstate
     let client_channel_binding cs = `None
 
-    let client_restart cs =
+    let client_restart ~params cs =
       (* There is actually no restart protocol. As we authenticate the TCP
          connection, we just claim we can restart.
        *)
-      (* FIXME: how do we check that the cbid is the same? *)
       if cs.cstate <> `OK then
         failwith "Netmech_spnego_http.client_restart: unfinished auth";
+      let params = 
+        Netsys_sasl_util.preprocess_params
+          "Netmech_krb5_sasl.create_client_session:"
+          [ "realm"; "id"; "target-host"; "trans_id"; "conn_id"; "https" ]
+          params in
+      let conn_id =
+        try int_of_string (List.assoc "conn_id" params)
+        with Not_found -> failwith "missing parameter: conn_id" in
       cs.ccontext <- None;
       cs.cstate <- `Emit;
-      cs.csubstate <- `Established;
-      cs.ctoken <- ""
+      cs.ctoken <- "";
+      cs.csubstate <- `Pre_init_context;
+      cs.cconn <- conn_id;
+      call_init_sec_context cs None
+        
 
     let client_context cs =
       match cs.ccontext with
@@ -261,9 +273,25 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
             | Invalid_argument _ -> failwith "Base64 error" in
         match cs.csubstate with
           | `Pre_init_context ->
+               if msg <> "" then failwith "unexpected token";
                call_init_sec_context cs None  (* sets cs.cstate to `Emit *)
           | `Init_context ->
                call_init_sec_context cs (Some msg)
+          | `Restart ->
+               (* THIS PATH IS CURRENTLY NOT TAKEN: on restart, we directly
+                  enter `Pre_init_context state, and generate the token
+                *)
+               (* As SPNEGO authenticates the connection and not the message,
+                  we are done when
+                  the server responds with a non-401 message, and there is
+                  no www-authenticate (here: ch_params=[]). Otherwise,
+                  handle it like `Pre_init_context, and re-run the protocol.
+                *)
+               if ch_params = [] then (
+                 cs.cstate <- `OK;
+                 cs.csubstate <- `Established
+               ) else
+                 call_init_sec_context cs None  (* sets cs.cstate to `Emit *)
           | `Established ->
                failwith "unexpected token"
       with
@@ -283,7 +311,11 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       );
       let b64 = Netencoding.Base64.encode cs.ctoken in
       let creds =
-        ( "Negotiate", [ "credentials", `Q b64 ] ) in
+        ( "Negotiate", 
+          if cs.ctoken="" then [] else [ "credentials", `Q b64 ] ) in
+      (* NB. The case creds=(something,[]) is special-cased in the http client,
+         so that no auth header is added at all
+       *)
       (creds, [])
 
     let client_session_id cs =
@@ -316,27 +348,44 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
         csubstate = `Established;
         ctoken = "";
         ctarget_name = G.interface # no_name;
+        cconn = 0;  (* FIXME *)
       }
 
-    let client_domain s = []
+    let client_domain s = [ "/" ]
+      (* This way the auth sessions get cached *)
 
   end
 
 (*
 #use "topfind";;
 #require "netclient,netgss-system,nettls-gnutls";;
-module A = Netmech_spnego_http.SPNEGO(Netmech_spnego_http.Default)(Netgss.System);;
+
+module D = Netmech_spnego_http.Default;;
+module D = 
+  struct include Netmech_spnego_http.Default let enable_delegation=true end;;
+
+module A = Netmech_spnego_http.SPNEGO(D)(Netgss.System);;
+
 open Http_client;;
 Debug.enable := true;;
-let keys = new key_ring ();;
+let keys = new key_ring ~no_invalidation:true ();;
 keys # add_key (key ~user:"krb" ~password:"" ~realm:"SPNEGO" ~domain:[]);;
 let a = new generic_auth_handler keys [ (module A : Nethttp.HTTP_MECHANISM) ];;
 let p = new pipeline;;
 p # add_auth_handler a;;
 let c1 = new get "https://gps.dynxs.de/krb/";;
 let c2 = new get "https://gps.dynxs.de/krb/index.html";;
+
 p # add c1;;
 p # add c2;;
 p # run();;
+
+p # add_with_callback c1 (fun _ -> p # add c2);;
+p # run();;
+
+c2 # set_transport_layer Http_client.spnego_trans_id;;
+p # add_with_callback c1 (fun _ -> p # add c2);;
+p # run();;
+
 
  *)

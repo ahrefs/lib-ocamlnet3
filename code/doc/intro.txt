@@ -108,8 +108,8 @@ Related external articles:
   {- {!Intro.ch_netproto}
      {ul
        {- {!Intro.netclient}}
-       {- {!Intro.pop}}
-       {- {!Intro.smtp}}
+       {- {!Intro.netpop}}
+       {- {!Intro.netsmtp}}
      }
   }
 }

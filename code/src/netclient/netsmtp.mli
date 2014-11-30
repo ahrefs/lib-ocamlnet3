@@ -214,6 +214,7 @@ Netsmtp.authenticate
 
 val sendmail : client -> Netmime.complex_mime_message -> unit
   (** Sends the email to the receivers in the [to], [cc], and [bcc] headers.
+      The SMTP server must support relaying of emails.
       See also {!Netsendmail.sendmail}.
    *)
 

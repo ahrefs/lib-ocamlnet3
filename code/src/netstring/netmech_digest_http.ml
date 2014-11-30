@@ -65,7 +65,7 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
       failwith "Netmech_digest_http.client_configure_channel_binding: \
                 not supported"
 
-  let client_restart cs =
+  let client_restart ~params cs =
     if cs.cstate <> `OK then
       failwith "Netmech_digest_http.client_restart: unfinished auth";
     client_restart_i cs

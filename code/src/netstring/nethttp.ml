@@ -1716,7 +1716,7 @@ module Header = struct
              Stream.junk stream;
              [ "credentials", data ]
         | _ ->
-             []
+             [ "credentials", "" ]
 
     and parse_challenge stream =
       match Stream.peek stream with
@@ -2058,6 +2058,7 @@ let proxy_only_trans_id = new_trans_id()
 type match_result =
     [ `Accept of string * string option
     | `Reroute of string * int
+    | `Accept_reroute of string * string option * int
     | `Reject
     ]
 
@@ -2084,7 +2085,8 @@ module type HTTP_MECHANISM =
             client_session
     val client_configure_channel_binding : client_session -> 
                                            Netsys_sasl_types.cb -> unit
-    val client_restart : client_session -> unit
+    val client_restart : params:(string * string * bool) list -> 
+                         client_session -> unit
     val client_process_challenge :
           client_session -> string -> string -> #http_header_ro -> 
           Header.auth_challenge -> unit

@@ -412,6 +412,8 @@ type 'session auth_state =  (* 'session = auth_session, defined below *)
          (* This session had been tried before a 401 response was seen *)
     | `In_reply of 'session * (string * string) list
          (* This session was tried after a 401 response was seen *)
+    | `In_reply_reroute of 'session * (string * string) list * int
+         (* In_reply + the next request must use a different transport *)
     | `Resubmit of int
          (* Resubmit the call on a different transport *)
     | `Auth_error
@@ -427,6 +429,7 @@ type 'a auth_status =
     | `OK
     | `Auth_error
     | `Reroute of int
+    | `Continue_reroute of 'a * int
     | `None
     ]
 
@@ -528,6 +531,9 @@ object
   method auth_state : auth_session auth_state
   method set_auth_state : auth_session auth_state -> unit
 
+  method conn_id : int
+  method set_conn_id : int -> unit
+
   method set_tls_session_props : Nettls_support.tls_session_props -> unit
 
   method retry_anyway : bool
@@ -580,7 +586,7 @@ end
 and auth_session =
 object
   method auth_scheme : string
-  method auth_domain : Neturl.url list
+  method auth_domain : Neturl.url list * int
   method auth_realm : string
   method auth_user : string
   method auth_session_id : string option
@@ -654,6 +660,7 @@ object(self)
 
   val mutable tls_session_props = None
 
+  val mutable conn_id = 0
 
   method private resp_body =
     match resp_body with
@@ -732,9 +739,13 @@ object(self)
 	  )
 
 	method auth_state = auth_state
-	method set_auth_state s = auth_state <- s
+	method set_auth_state s =
+          auth_state <- s
 
         method set_tls_session_props p = tls_session_props <- Some p
+
+        method conn_id = conn_id
+        method set_conn_id id = conn_id <- id
 
 	method retry_anyway = retry_anyway
 	method set_retry_anyway flag = retry_anyway <- flag;
@@ -764,8 +775,7 @@ object(self)
                   with Not_found -> "") ^
                 ( try "?" ^ Neturl.url_query ~encoded:true nu 
                   with Not_found -> "");
-	      if req_trans_set = `None then
-		req_trans <- trans;
+	      req_trans <- trans;
 	    with
 		Not_found ->
 		  failwith "Http_client: bad URL"
@@ -773,15 +783,26 @@ object(self)
 
 	method transport_layer options =
 	  pself # parse_request_uri options;
-	  req_trans
+          match req_trans_set with
+            | `None ->
+	         req_trans
+            | `User id ->
+                 id
+            | `Reroute id ->
+                 id
 
-        method reroute trans =
-          assert(req_trans_set <> `User);
-          req_trans <- trans;
-          req_trans_set <- `Reroute
+        method reroute id =
+          match req_trans_set with
+            | `None
+            | `Reroute _ ->
+                 req_trans_set <- `Reroute id
+            | `User _ ->
+                 ()
 
         method reroutable =
-          req_trans_set <> `User
+          match req_trans_set with
+            | `User _ -> false
+            | _ -> true
 
 
 	method request_uri_with ?path ?(remove_particles=false) () =
@@ -1013,9 +1034,8 @@ object(self)
   method request_uri = req_uri_raw
   method set_request_uri uri = req_uri_raw <- uri; req_uri <- None
 
-  method set_transport_layer trans = 
-    req_trans <- trans;
-    req_trans_set <- `User
+  method set_transport_layer id = 
+    req_trans_set <- `User id
 
 
   method request_header (k:header_kind) =
@@ -1516,7 +1536,7 @@ object
 end
 
 
-class key_ring ?uplink () =
+class key_ring ?uplink ?(no_invalidation=false) () =
 object(self)
   val mutable keys = (Hashtbl.create 10 : 
 			(string * string, key * bool) Hashtbl.t)
@@ -1578,28 +1598,29 @@ object(self)
 	    key
 
   method invalidate_key (key : key) =
-    let domains = key # domain in
-    let domain_strings =
-      if domains = [] then
-        [ "*" ]
-      else
-        List.map norm_neturl domains in
-    let realm = key # realm in
-    List.iter
-      (fun dom_uri_s ->
-         try
-           let (_, from_uplink) = Hashtbl.find keys (dom_uri_s, realm) in
-           Hashtbl.remove keys (dom_uri_s, realm);
-           if from_uplink then
-	     ( match uplink with
-	         | None -> assert false
-	         | Some h -> h # invalidate_key key
-	     )
-         with
-	     Not_found -> ()
-      )
-      domain_strings
-
+    if not no_invalidation then (
+      let domains = key # domain in
+      let domain_strings =
+        if domains = [] then
+          [ "*" ]
+        else
+          List.map norm_neturl domains in
+      let realm = key # realm in
+      List.iter
+        (fun dom_uri_s ->
+           try
+             let (_, from_uplink) = Hashtbl.find keys (dom_uri_s, realm) in
+             Hashtbl.remove keys (dom_uri_s, realm);
+             if from_uplink then
+	       ( match uplink with
+	           | None -> assert false
+	           | Some h -> h # invalidate_key key
+	       )
+           with
+	       Not_found -> ()
+        )
+        domain_strings
+    )
 
   method clear () =
     Hashtbl.clear keys
@@ -1648,9 +1669,9 @@ object
   method create_session : secure:bool -> http_call -> http_options ref -> auth_session option
   method create_proxy_session : http_call -> http_options ref -> auth_session option
   method identify_session : http_call -> http_options ref -> 
-                            (string * string * string) option
+                            (string * string * string * int) option
   method identify_proxy_session : http_call -> http_options ref -> 
-                                  (string * string * string) option
+                                  (string * string * string * int) option
   method skip_challenge : bool
   method skip_challenge_session : http_call -> http_options ref -> auth_session option
 end
@@ -1764,17 +1785,20 @@ let rec iterate f args =
 
 
 let format_credentials is_proxy (creds:Nethttp.Header.auth_credentials) =
-  let hdr = new Netmime.basic_mime_header [] in
-  if is_proxy then
-    Nethttp.Header.set_proxy_authorization hdr creds
+  if snd creds = [] then
+    []
   else
-    Nethttp.Header.set_authorization hdr creds;
-  hdr#fields
+    let hdr = new Netmime.basic_mime_header [] in
+    if is_proxy then
+      Nethttp.Header.set_proxy_authorization hdr creds
+    else
+      Nethttp.Header.set_authorization hdr creds;
+    hdr#fields
 
 
 let core_basic_auth_session 
         enable_reauth key_handler is_proxy 
-        request_domain auth_domain realm
+        request_domain auth_domain trans_id realm
         : auth_session =
   (* If enable_reauth, we return [auth_domain] when [auth_domain] is called.
      Usually [auth_domain] is set to the current URI after setting the path to
@@ -1794,7 +1818,7 @@ let core_basic_auth_session
     ref true in
   ( object(self)
       method auth_scheme = "basic"
-      method auth_domain = if enable_reauth then auth_domain else []
+      method auth_domain = (if enable_reauth then auth_domain else []), trans_id
       method auth_realm = key # realm
       method auth_user = key # user
       method auth_session_id = None
@@ -1818,7 +1842,7 @@ let core_basic_auth_session
 
 
 let basic_auth_session enable_reauth
-                       key_handler call is_proxy
+                       key_handler call trans_id is_proxy
     : auth_session =
   let request_domain =
     if is_proxy then None else Some(get_uri_with_path call) in
@@ -1828,7 +1852,8 @@ let basic_auth_session enable_reauth
   iterate
     (fun (realm,params) ->
        core_basic_auth_session
-         enable_reauth key_handler is_proxy request_domain auth_domain realm
+         enable_reauth 
+         key_handler is_proxy request_domain auth_domain trans_id realm
     )
     realms
 
@@ -1840,13 +1865,15 @@ class basic_auth_handler ?(enable_reauth=false)
 object(self)
   method create_session ~secure call options =
     try
-      Some(basic_auth_session enable_reauth key_handler call false)
+      let trans_id = call # private_api # transport_layer options in
+      Some(basic_auth_session enable_reauth key_handler call trans_id false)
     with
 	Not_applicable ->
 	  None
   method create_proxy_session call options =
     try
-      Some(basic_auth_session enable_reauth key_handler call true)
+      let trans_id = call # private_api # transport_layer options in
+      Some(basic_auth_session enable_reauth key_handler call trans_id true)
     with
 	Not_applicable ->
 	  None
@@ -1855,8 +1882,9 @@ object(self)
   method skip_challenge = skip_challenge
   method skip_challenge_session call options =
     try
+      let trans_id = call # private_api # transport_layer options in
       Some(core_basic_auth_session
-             false key_handler false None [] "anywhere")
+             false key_handler false None [] trans_id "anywhere")
     with
 	Not_applicable ->
 	  None
@@ -2142,6 +2170,8 @@ let get_match_params options call =
   [ "https", string_of_bool (call # tls_session_props <> None), false;
     "trans_id", 
        string_of_int (call # private_api # transport_layer options), false;
+    "conn_id",
+       string_of_int (call # private_api # conn_id), false;
     "target-host", call#get_host(), false;
     "target-uri", call#effective_request_uri, false;
   ]
@@ -2153,12 +2183,15 @@ let generic_auth_session_for_challenge
   let module M = (val mech : Nethttp.HTTP_MECHANISM) in
   let mname = M.mechanism_name in
   dlogr (fun () -> sprintf "generic_auth(%s): create" mname);
+  let cur_trans_id = ref (call # private_api # transport_layer options) in
   let match_params = get_match_params options call in
-  let match_result = M.client_match ~params:match_params initial_challenge in
+  let match_result =
+    ref (M.client_match ~params:match_params initial_challenge) in
   let realm, id_option =
-    match match_result with
-      | `Accept r -> r
+    match !match_result with
+      | `Accept(realm,id_opt) -> (realm,id_opt)
       | `Reroute(realm,_) -> realm, None
+      | `Accept_reroute(realm,id_opt,_) -> realm, id_opt
       | `Reject -> 
           dlogr (fun () -> sprintf "generic_auth(%s): no match " mname);
           raise Not_applicable in
@@ -2187,17 +2220,21 @@ let generic_auth_session_for_challenge
   let first = ref true in
   let cur_auth_domain = ref [] in
   let dbg_state() =
-    match match_result with
+    match !match_result with
       | `Accept _ ->
            let session = Lazy.force session_lz in
            Netsys_sasl_util.string_of_client_state (M.client_state session)
+      | `Accept_reroute _ ->
+           let session = Lazy.force session_lz in
+           Netsys_sasl_util.string_of_client_state (M.client_state session) ^
+             "+reroute"
       | `Reroute _ ->
            "reroute"
       | _ ->
            "" in
   ( object
       method auth_scheme = mname
-      method auth_domain = !cur_auth_domain
+      method auth_domain = (!cur_auth_domain, !cur_trans_id)
       method auth_realm = key#realm
       method auth_user = key#user
       method authenticate auth_call reauth_flag =
@@ -2224,9 +2261,6 @@ let generic_auth_session_for_challenge
             (* Subsequent authentications: figure out the right challenge *)
             (* NB. We assume here that the session ID never changes. CHECK *)
             try
-              (* This code is for mechanisms needing several steps. Hence,
-                 an ID is required.
-               *)
               if not auth_call#is_served then raise Not_found;
               let challenges =
                 get_challenges M.mechanism_name auth_call is_proxy in
@@ -2235,7 +2269,9 @@ let generic_auth_session_for_challenge
               List.find
                 (fun ch ->
                    match M.client_match ~params:match_params ch with
-                     | `Accept(r,Some id) -> r = realm && Some id = id_option
+                     | `Accept(r,id_opt)
+                     | `Accept_reroute(r, id_opt, _) -> 
+                          r = realm && id_opt = id_option
                      | _ -> false
                 )
                 challenges
@@ -2254,8 +2290,9 @@ let generic_auth_session_for_challenge
              sprintf "generic_auth(%s): challenge name=%s params: %s"
                mname (fst challenge) (dbg_kv decode_param (snd challenge))
           );
-        match match_result with
-          | `Accept _ ->
+        match !match_result with
+          | `Accept _
+          | `Accept_reroute _ ->
                let session = Lazy.force session_lz in
                first := false;
                ( match M.client_state session with
@@ -2265,7 +2302,15 @@ let generic_auth_session_for_challenge
                           dlogr (fun () -> 
                                    sprintf "generic_auth(%s): restart" mname);
                           cur_auth_domain := [];
-                          M.client_restart session;
+                          let r_match_params =
+                            get_match_params options auth_call in
+                          let r_params = 
+                            [ "realm", realm, true ] @
+                              r_match_params @
+                                match id_option with
+                                  | None -> []
+                                  | Some id -> [ "id", id, true ] in
+                          M.client_restart ~params:r_params session;
                           dlogr (fun () -> 
                                    sprintf "generic_auth(%s): state=%s" 
                                            mname (dbg_state()));
@@ -2329,15 +2374,25 @@ let generic_auth_session_for_challenge
                                  sprintf "generic_auth(%s): headers %s"
                                          mname (dbg_kv identity out)
                               );
-                        `Continue out
+                        ( match !match_result with
+                            | `Accept _ ->
+                                 `Continue out
+                            | `Accept_reroute(realm,id_opt,trans_id) ->
+                                 match_result := `Accept(realm,id_opt);
+                                 cur_trans_id := trans_id;
+                                 `Continue_reroute(out, trans_id)
+                            | _ ->
+                                 assert false
+                        )
                    | `Wait ->
                         assert false
                    | `Auth_error msg ->
                         cur_auth_domain := [];
                         `Auth_error
                )
-          | `Reroute(_, id) ->
-               `Reroute id
+          | `Reroute(_, trans_id) ->
+               cur_trans_id := trans_id;
+               `Reroute trans_id
           | `Reject ->
                assert false
                        
@@ -2345,8 +2400,9 @@ let generic_auth_session_for_challenge
         key_handler # invalidate_key key;
 
       method auth_session_id =
-        match match_result with
-          | `Accept _ ->
+        match !match_result with
+          | `Accept _
+          | `Accept_reroute _ ->
                let session = Lazy.force session_lz in
                M.client_session_id session
           | _ ->
@@ -2430,6 +2486,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
       | Not_applicable -> None in
 
   let identify_session is_proxy (call : http_call) options =
+    let trans_id = call # private_api # transport_layer options in
     let match_params = get_match_params options call in
     try
       let all_challenges = get_all_challenges call is_proxy in
@@ -2447,14 +2504,16 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
           (fun (ch, m) ->
              match m with
                | `Accept(_, Some _) -> true
+               | `Accept_reroute(_, Some _, _) -> true
                | _ -> false
           )
           challenges_m in
       let (realm, session_id) =
         match sess_data with
           | `Accept(r, Some sid) -> (r,sid)
+          | `Accept_reroute(r, Some sid, _) -> (r,sid)
           | _ -> raise Not_found in
-      Some(M.mechanism_name, realm, session_id)
+      Some(M.mechanism_name, realm, session_id, trans_id)
     with
       | Not_found
       | Not_applicable -> None in
@@ -2486,7 +2545,8 @@ object(self)
       | Some s -> Some s
       | None ->
           if secure || insecure then
-            try Some(basic_auth_session false key_handler call false)
+            let trans_id = call # private_api # transport_layer options in
+            try Some(basic_auth_session false key_handler call trans_id false)
             with Not_applicable ->
 	      None
           else
@@ -2495,7 +2555,8 @@ object(self)
     match dg # create_proxy_session call options with
       | Some s -> Some s
       | None ->
-          try Some(basic_auth_session false key_handler call true)
+          let trans_id = call # private_api # transport_layer options in
+          try Some(basic_auth_session false key_handler call trans_id true)
           with Not_applicable ->
 	    None
   method identify_session _ _  = None
@@ -2508,10 +2569,8 @@ let cache_limit = 1000
   (* Currently, an arbitrary limit. FIXME *)
 
 
-(* TODO: once we support channel bindings better, it is probably a good
-   idea to bind auth sessions to channels.
- *)
-
+module AuthSessSet =
+  Set.Make(struct type t = auth_session let compare = compare end)
 
 class auth_cache =
 object(self)
@@ -2520,31 +2579,45 @@ object(self)
   val mutable sessions_by_id2 = Hashtbl.create 10
   val mutable sessions_by_dom1 = Hashtbl.create 10
   val mutable sessions_by_dom2 = Hashtbl.create 10
+  val mutable sessions_by_dom1_adds = 0
+
+  (* There are two mechanisms for picking up old sessions:
+
+     - By authentication ID: This is used when the server includes an ID
+       in the response to the initial, unauthenticated HTTP request, and the
+       ID refers to an old session. So far no auth protocol uses this.
+       This scheme is enabled when http_mechanism#client_match returns a
+       session ID.
+     - By URL prefix: By returning something for http_mechanism#auth_domain
+       any following request for the same file tree may pick up the old
+       session.
+   *)
 
   method add_auth_handler (h : auth_handler) =
     auth_handlers <- auth_handlers @ [h]
 
-  method private add_session_by_id sess =
+  method private add_session_by_id sess trans_id =
     match sess#auth_session_id with
       | None -> ()
       | Some id ->
-          let triple = (sess#auth_scheme, sess#auth_realm, id) in
-          Hashtbl.replace sessions_by_id1 triple sess;
+          let skey = (sess#auth_scheme, sess#auth_realm, id, trans_id) in
+          Hashtbl.replace sessions_by_id1 skey sess;
           if Hashtbl.length sessions_by_id1 >= cache_limit then (
             sessions_by_id2 <- sessions_by_id1;
             sessions_by_id1 <- Hashtbl.create 19
           )
 
-  method private find_session_by_id ((mech, realm, id) as triple) =
+  method private find_session_by_id ((mech, realm, id, trans_id) as skey) =
     try
-      Hashtbl.find sessions_by_id1 triple
+      Hashtbl.find sessions_by_id1 skey
     with
       | Not_found ->
-          Hashtbl.find sessions_by_id2 triple
+          Hashtbl.find sessions_by_id2 skey
 
 
   method auth_response ~secure (call : http_call) options =
     (* Resume an existing session or create a new session, after a 401 *)
+    let trans_id = call # private_api # transport_layer options in
     let create() =
       List.fold_left
         (fun acc_opt handler ->
@@ -2552,7 +2625,7 @@ object(self)
              | None ->
                  ( match handler # create_session ~secure call options with
                      | Some sess ->
-                         self # add_session_by_id sess;
+                         self # add_session_by_id sess trans_id;
                          Some sess
                      | None ->
                          None
@@ -2574,56 +2647,75 @@ object(self)
         None
         auth_handlers in
     match old_session_opt with
-      | Some triple ->
+      | Some skey ->
           ( try 
-              Some(self # find_session_by_id triple)
+              Some(self # find_session_by_id skey)
             with Not_found ->
               create()
           )
       | None ->
           create()
 
-  method mark_successful_session (sess : auth_session) =
+  method add_successful_session (sess : auth_session) =
     (* Called by [postprocess_complete_message] when authentication was
      * successful. If enabled, [sess] can be used for authentication
      * in advance.
      *)
-    let auth_domain = sess#auth_domain in
+    let auth_domain, trans_id = sess#auth_domain in
     dlogr
-      (fun () -> sprintf "mark_successful_session domains=%s"
+      (fun () -> sprintf "add_successful_session domains=%s trans_id=%d"
                          (String.concat "," (List.map norm_neturl auth_domain))
+                         trans_id
       );
     List.iter
       (fun dom_uri ->
          try
 	   let dom_uri' = norm_neturl dom_uri in
-	   Hashtbl.replace sessions_by_dom1 dom_uri' sess
+           let aset =
+             try Hashtbl.find sessions_by_dom1 (dom_uri', trans_id)
+             with Not_found -> AuthSessSet.empty in
+           let aset' =
+             AuthSessSet.add sess aset in
+	   Hashtbl.replace sessions_by_dom1 (dom_uri', trans_id) aset';
+           sessions_by_dom1_adds <- sessions_by_dom1_adds + 1
 	 with
 	   | Neturl.Malformed_URL -> ()
       )
       auth_domain;
-    if Hashtbl.length sessions_by_dom1 > cache_limit then (
+    if sessions_by_dom1_adds > cache_limit then (
       sessions_by_dom2 <- sessions_by_dom1;
-      sessions_by_dom1 <- Hashtbl.create 19
+      sessions_by_dom1 <- Hashtbl.create 19;
+      sessions_by_dom1_adds <- 0
     )
 
-  method mark_failed_session (sess : auth_session) =
+  method remove_session (sess : auth_session) =
     (* Called by [postprocess_complete_message] when authentication 
-     * failed
+     * failed, or when a session is in use for reauth
      *)
-    let auth_domain = sess#auth_domain in
+    let auth_domain, trans_id = sess#auth_domain in
     dlogr
-      (fun () -> sprintf "mark_failed_session domains=%s"
+      (fun () -> sprintf "remove_session domains=%s trans_id=%d"
                          (String.concat "," (List.map norm_neturl auth_domain))
+                         trans_id
       );
     List.iter
       (fun dom_uri ->
 	 try
 	   let dom_uri' = norm_neturl dom_uri in
-	   Hashtbl.remove sessions_by_dom1 dom_uri';
-	   Hashtbl.remove sessions_by_dom2 dom_uri'
+           List.iter
+             (fun sessions_by_dom ->
+                let aset = 
+                  Hashtbl.find sessions_by_dom (dom_uri', trans_id) in
+                let aset' = AuthSessSet.remove sess aset in
+                if aset' = AuthSessSet.empty then
+                  Hashtbl.remove sessions_by_dom (dom_uri', trans_id)
+                else
+                  Hashtbl.replace sessions_by_dom (dom_uri', trans_id) aset'
+             )
+             [ sessions_by_dom1; sessions_by_dom2 ]
 	 with
 	   | Neturl.Malformed_URL -> ()
+           | Not_found -> ()
       )
       auth_domain;
 
@@ -2632,9 +2724,10 @@ object(self)
     (* Find a session suitable for reauthentication. We haven't seen a 401
        yet and need to prepare [call].
      *)
+    let trans_id = call # private_api # transport_layer options in
     let uri = call # private_api # request_uri_with() in
-    dlogr (fun () -> sprintf "find_session_for_reauth: uri=%S" 
-                             (norm_neturl uri));
+    dlogr (fun () -> sprintf "find_session_for_reauth: uri=%S trans_id=%d" 
+                             (norm_neturl uri) trans_id);
     (* We are not only looking for [uri], but also for all prefixes of [uri] *)
     try
       let prefixes = prefixes_of_neturl uri in
@@ -2650,17 +2743,17 @@ object(self)
         let string_prefix =
 	  List.find (* or Not_found *)
 	    (fun string_prefix ->
-	       Hashtbl.mem sessions_by_dom1 string_prefix ||
-	         Hashtbl.mem sessions_by_dom2 string_prefix
+	       Hashtbl.mem sessions_by_dom1 (string_prefix, trans_id) ||
+	         Hashtbl.mem sessions_by_dom2 (string_prefix, trans_id)
 	    )
 	    string_prefixes in
-        let sess =
-          try Hashtbl.find sessions_by_dom1 string_prefix
+        let aset =
+          try Hashtbl.find sessions_by_dom1 (string_prefix, trans_id)
           with Not_found ->
-            Hashtbl.find sessions_by_dom2 string_prefix in
+            Hashtbl.find sessions_by_dom2 (string_prefix, trans_id) in
         dlogr (fun () -> sprintf "find_session_for_reauth: found prefix: %s"
                                  string_prefix);
-        sess
+        AuthSessSet.min_elt aset
       with
         | Not_found ->
             dlog "find_session_for_reauth: no session found";
@@ -3507,7 +3600,7 @@ let transmitter
 
       method send_interrupted = send_interrupted
 
-      method init() =
+      method init conn_id =
 	(* Prepare for (re)transmission:
 	 * - Set the `Effective request header
 	 * - Reset the status info of the http_call
@@ -3517,6 +3610,7 @@ let transmitter
 	  dlogr (fun () -> sprintf "Call %d: initialize transmitter" 
 		   (Oo.id msg));
 	msg # private_api # prepare_transmission();
+        msg # private_api # set_conn_id conn_id;
 	(* Set the effective URI. This must happen before authentication. *)
 	let eff_uri =
 	  if peer_is_proxy then
@@ -3535,11 +3629,13 @@ let transmitter
 	    | `In_advance session -> 
 		( match session # authenticate msg true with
                     | `Continue headers -> headers
+                    | `Continue_reroute(headers,_) -> headers
                     | `OK -> []
                     | `Auth_error | `None | `Reroute _ -> []
                         (* Cannot deal with it here *)
                 )
-	    | `In_reply(_,headers) ->
+	    | `In_reply(_,headers)
+	    | `In_reply_reroute(_,headers,_) ->
                 headers
             | `OK ->
                 []
@@ -3554,11 +3650,13 @@ let transmitter
 	    | `In_advance session ->
 		( match session # authenticate msg true with
                     | `Continue headers -> headers
+                    | `Continue_reroute(headers,_) -> headers
                     | `OK -> []
                     | `Auth_error | `None | `Reroute _ -> []
                          (* Cannot deal with it here *)
                 )
-	    | `In_reply(_,headers) ->
+	    | `In_reply(_,headers)
+	    | `In_reply_reroute(_,headers,_) ->
                 headers
             | `OK ->
                 []
@@ -4524,7 +4622,7 @@ let fragile_pipeline
           Q.add trans unserved_queue
         else (
 	  (* Initialize [trans] for transmission: *)
-	  trans # init();
+	  trans # init (Oo.id self);
 
 	  let n = Queue.length write_queue in
 	  if urgent && n > 0 then (
@@ -5245,7 +5343,8 @@ let fragile_pipeline
                       )
               ) else
                 `OK
-          | `Resubmit _ -> assert false in
+          | `Resubmit _
+          | `In_reply_reroute _ -> assert false in
       let is_about_proxy =
         (code=407 && peer_is_proxy) ||
           ( match proxy_response1 with `Continue _ -> true | _ -> false) in
@@ -5269,7 +5368,8 @@ let fragile_pipeline
                         Some(sess # authenticate msg false)
                 ) else
                   Some `OK 
-            | `Resubmit _ -> assert false in
+            | `Resubmit _ 
+            | `In_reply_reroute _ -> assert false in
       (* If we get a 401/407 but still think we are ok, change to error: *)
       let proxy_response2 =
         if proxy_response1 = `OK && code=407 && peer_is_proxy then
@@ -5285,7 +5385,9 @@ let fragile_pipeline
       ( match !proxy_auth_state, proxy_response2 with
           | (`In_reply(sess,_) | `In_advance sess), `Continue next_headers ->
               proxy_auth_state := `In_reply(sess, next_headers)
-          | (`In_reply(sess,_) | `In_advance sess), (`Auth_error|`Reroute _) ->
+          | (`In_reply(sess,_) | `In_advance sess), 
+                (`Auth_error | `Reroute _ | `Continue_reroute _) ->
+              (* NB. rerouting is invalid for proxy connections *)
               sess # invalidate msg;
               proxy_auth_state := `Auth_error
           | (`In_reply(sess,_) | `In_advance sess), `OK ->
@@ -5295,19 +5397,27 @@ let fragile_pipeline
               proxy_auth_state := `OK
           | _, (`Auth_error | `Reroute _ | `None) ->
               proxy_auth_state := `Auth_error
-          | _, `Continue _ ->
+          | _, (`Continue _ | `Continue_reroute _) ->
               assert false
       );
       ( match msg # private_api # auth_state, content_response2 with
           | (`In_reply(sess,_)|`In_advance sess), Some(`Continue headers) ->
               msg # private_api # set_auth_state (`In_reply(sess, headers))
+          | (`In_reply(sess,_)|`In_advance sess), 
+                Some(`Continue_reroute(headers, trans_id)) ->
+              msg # private_api # set_auth_state
+                (if msg # private_api # reroutable then
+                   `In_reply_reroute(sess, headers, trans_id)
+                 else
+                   `Auth_error
+                )
           | (`In_reply(sess,_)|`In_advance sess), Some `Auth_error ->
               sess # invalidate msg;
               msg # private_api # set_auth_state  `Auth_error;
-              auth_cache # mark_failed_session sess;
+              auth_cache # remove_session sess;
           | (`In_reply(sess,_)|`In_advance sess), Some `OK ->
               msg # private_api # set_auth_state `OK;
-              auth_cache # mark_successful_session sess
+              auth_cache # add_successful_session sess
           | _, Some `OK ->
               msg # private_api # set_auth_state `OK
           | _, Some (`Auth_error | `None) ->
@@ -5319,7 +5429,7 @@ let fragile_pipeline
                   else
                     `Auth_error
                  )
-          | _, Some `Continue _ ->
+          | _, Some (`Continue _ | `Continue_reroute _) ->
               assert false
           | _, None ->
               ()
@@ -5330,6 +5440,7 @@ let fragile_pipeline
           ( match msg # private_api # auth_state with
                 `In_reply _ -> true | _ -> false ) in
       if continue then (
+        (* NB. In_reply_reroute cannot take this abbreviation *)
         msg # private_api # set_retry_anyway true;
         if close_connection then (
           (* this won't picked up by this connection. The robust_pipeline with
@@ -5433,10 +5544,17 @@ let robust_pipeline
 
 
     method add urgent (m : http_call) f_done =
+      (* NB. m may already carry an auth session here *)
       (* Check whether we can authenticate in advance: *)
-      m # private_api # set_auth_state `None;
       ( try
+          if m # private_api # auth_state <> `None then raise Not_found;
 	  let sess = auth_cache # find_session_for_reauth m options in
+          (* Unfortunately we need to remove sess from the cache while
+             the re-authentication is in progress. This can involve state
+             changes of sess, and it would be an error if two requests picked
+             up the same session for re-authentication
+           *)
+          auth_cache # remove_session sess;
 	  m # private_api # set_auth_state (`In_advance sess)
 	with
 	    Not_found -> ()
@@ -6110,17 +6228,28 @@ class pipeline =
              | `Resubmit trans_id ->
 	          if !options.verbose_status then
                     dlog
-                      (sprintf "Call %d - auth-rerouting to trans ID %d"
+                      (sprintf "Call %d - auth-resubmitting to trans ID %d"
                                (Oo.id m) trans_id);
                   m # private_api # reroute trans_id;
                   m # private_api # set_auth_state `None;
 	          m # private_api # set_error_counter 0;
 		  self # add_with_callback_2 m f_done
+             | `In_reply_reroute(sess,headers,trans_id) ->
+	          if !options.verbose_status then
+                    dlog
+                      (sprintf "Call %d - auth-rerouting to trans ID %d"
+                               (Oo.id m) trans_id);
+                  m # private_api # reroute trans_id;
+                  m # private_api # set_auth_state (`In_reply(sess,headers));
+	          m # private_api # set_error_counter 0;
+		  self # add_with_callback_2 m f_done
              | _ ->
+                  m # private_api # set_auth_state `None;
                   f_done m
         )
 
     method add_with_callback (request : http_call) f_done =
+      request # private_api # set_auth_state `None;
       request # private_api # parse_request_uri options;
       self # add_with_callback_1
 	request

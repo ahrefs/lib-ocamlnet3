@@ -836,7 +836,7 @@ module Header : sig
 
   val get_proxy_authenticate : #http_header_ro -> auth_challenge list
     (** Returns the [Proxy-authenticate] header as list of challenges
-      * [(auth_scheme,auth_params)].
+      * [(auth_scheme,auth_params)]. See also [get_www_authenticate].
       *
       * All present [Proxy-authenticate] headers are merged.
       * @raise Not_found when there is no [Proxy-authenticate] header.
@@ -1013,6 +1013,9 @@ module Header : sig
       *
       * All present [WWW-Authenticate] headers are merged.
       *
+      * The scheme "negotiate" uses a deviating header format.
+      * This data is returned as e.g. [("negotiate", ["credentials", data])].
+      *
       * At present, parameters are always decoded ([`V]).
       * @raise Not_found if the header is missing.
      *)
@@ -1097,6 +1100,7 @@ val proxy_only_trans_id : transport_layer_id
 type match_result =
     [ `Accept of string * string option
     | `Reroute of string * transport_layer_id
+    | `Accept_reroute of string * string option * transport_layer_id
     | `Reject
     ]
   (** See {!Nethttp.HTTP_MECHANISM.client_match} *)
@@ -1161,7 +1165,10 @@ module type HTTP_MECHANISM =
 
           There is also the result [`Reroute(realm, trans_id)], meaning that the
           request would be acceptable if it came over the transport identified
-          by [trans_id].
+          by [trans_id]. [`Accept_reroute] is the combination of accepting
+          and rerouting, i.e. the auth protocol can start, but the second
+          request should go over the other transport. Both [`Reroute] and
+          [`Accept_reroute] are only allowed for initial challenges.
        *)
 
     type client_session
@@ -1190,6 +1197,7 @@ module type HTTP_MECHANISM =
            - "id" (if [client_match] returns a session ID)
            - "trans_id": the {!Http_client.transport_layer_id} of the
              current HTTP request
+           - "conn_id": an identifier for the TCP connection
            - "https": is set to "true" if the current connection is TLS-secured
            - "target-host": the hostname from the HTTP request
            - "target-uri": the URL from the HTTP request
@@ -1199,10 +1207,14 @@ module type HTTP_MECHANISM =
                                            Netsys_sasl_types.cb -> unit
       (** Configure GS2-style channel binding *)
 
-    val client_restart : client_session -> unit
+    val client_restart : params:(string * string * bool) list -> 
+                         client_session -> unit
       (** Restart the session for another authentication round. The session
           must be in state [`OK]. After the restart the session will be in
           state [`Emit].
+
+          The params are the same as for [create_client_session], but updated
+          where needed.
        *)
 
     val client_process_challenge :
