@@ -12,25 +12,26 @@ authentication frameworks:
    methods for HTTP ("basic" and "digest"), but recently the IETF paced
    forward and defined not only principles for any HTTP method, but also
    ported a number of SASL methods (SCRAM, updated DIGEST).
- - GSS-API (General Security Services API). This is a stricter approach
+ - GSSAPI (General Security Services API). This is a stricter approach
    for an authentication and security framework than SASL. It is not
    directly defined as a protocol, but as an API, which improves the
-   precision and extends the functionality. In particular, GSS-API also
+   precision and extends the functionality. In particular, GSSAPI also
    includes integrity and privacy protection of the application messages
    as option. It is up to the application protocol how to adopt the API.
-   GSS-API is often used for system authentication (e.g. by wrapping
+   GSSAPI is often used for system authentication (e.g. by wrapping
    the Kerberos suite), but not limited to that. Many SASL mechanisms
-   are also available as GSS-API mechanisms. Note that there is some
-   confusion about the relationship between GSS-API and Kerberos, and
-   sometimes GSS-API is used as synonym for Kerberos. In reality, however,
-   GSS-API means the API (and framework) that is used as primary API
-   for Kerberos. It is just not limited to it. GSS-API is widely deployed
+   are also available as GSSAPI mechanisms. Note that there is some
+   confusion about the relationship between GSSAPI and Kerberos, and
+   sometimes GSSAPI is used as synonym for Kerberos. In reality, however,
+   GSSAPI means the API (and framework) that is used as primary API
+   for Kerberos. It is just not limited to it. GSSAPI is widely deployed
    (e.g. MIT Kerberos and Heimdal for Linux/BSD/Unix/Windows, 
-   and Windows integrates a version of GSS-API with a proprietary interface
+   and Windows integrates a version of GSSAPI with a proprietary interface
    called SSPI).
-   Especially system-oriented protocols support the GSS-API, e.g. SSH,
+   Especially system-oriented protocols support the GSSAPI, e.g. SSH,
    FTP, and ONC-RPC. There is also a somewhat questionable way of
-   using GSS-API together with HTTP ("negotiate" method).
+   using GSSAPI together with HTTP ("negotiate" method). Read more
+   about the GSSAPI here: {!Gssapi}.
  - TLS (Transport Level Security). TLS is often misunderstood as a way
    to encrypt TCP connections. However, this is just a consequence of
    its primary purpose, namely authenticating the endpoints. Normally,
@@ -40,7 +41,8 @@ authentication frameworks:
    Clients may only accept certain server certificates (e.g. those
    with extended validation attributes, or from a certain trust center,
    or with some other specific attributes). Also, it is possible that servers
-   authenticate clients, also using certificates.
+   authenticate clients, also using certificates. Read more about TLS
+   here: {!Tls}
 
 
 
@@ -89,7 +91,7 @@ Module types:
 
  - SASL: {!Netsys_sasl_types.SASL_MECHANISM}
  - HTTP: {!Nethttp.HTTP_MECHANISM}
- - GSS-API: {!Netsys_gssapi.GSSAPI}
+ - GSSAPI: {!Netsys_gssapi.GSSAPI}
  - TLS: {!Netsys_crypto_types.TLS_PROVIDER}
 
 Mechanisms:
@@ -98,7 +100,7 @@ Mechanisms:
  - CRAM-MD5: {!Netmech_crammd5_sasl}
  - DIGEST: {!Netmech_digest_sasl}, {!Netmech_digest_http}
  - SCRAM: {!Netmech_scram_sasl}, {!Netmech_scram_gssapi}, HTTP: TBD
- - GSS-API system authentication: {!Netgss.System}
+ - GSSAPI system authentication: {!Netgss.System}
  - TLS: TLS mechanisms are defined by the provider of TLS. At present,
    there is {!Nettls_gnutls} covering all TLS 1.2 mechanisms.
 
@@ -129,15 +131,15 @@ type credentials =
    which saves computation time.
  - HTTP Authentication expresses user names and credentials in the same
    way as SASL.
- - GSS-API can use several schemes for identifying users. Credentials are
+ - GSSAPI can use several schemes for identifying users. Credentials are
    opaque in the API. It is not specified how credentials look like, and
    there are private mechanism-specific functions covering how to submit
    and how to check credentials. This is usually no problem for system
    authentication where the credentials are implicitly known (e.g. as
    Kerberos tickets), but it is impractical for application-level identity
-   checking. In Ocamlnet GSS-API mechanisms can be either written in OCaml,
+   checking. In Ocamlnet GSSAPI mechanisms can be either written in OCaml,
    or the system libraries can be used. In the former case, the credentials
-   are usually specified when the GSS-API object is instantiated (in a
+   are usually specified when the GSSAPI object is instantiated (in a
    mechanism-specific way). In the latter case, there is so far no way to
    specify credentials from OCaml code (but this may change in the future,
    as there is a GSSAPI extension for specifying passwords).
@@ -214,9 +216,32 @@ run SASL over TLS, because:
 At the moment, these mechanisms are only indirectly available via:
 
  - TLS, or
- - GSS-API system authentication
+ - GSS-API system authentication (so far available, e.g. LIPKEY)
 
 
 {2 Mechanism negotiation}
 
-XXX
+There are more or less two common ways how client and server negotiate a certain
+authentication mechanism:
+
+ - The "relaxed" way, used for SASL and HTTP: The server offers a few
+   authentication options, and the client picks one.
+ - The "strict" way, used for GSSAPI (in the form of SPNEGO) and TLS: 
+   There is a multi-step negotiation protocol
+   between client and server. Both parties can express preferences. The
+   protocol is protected, so that a man-in-the-middle cannot take influence
+   on the outcome.
+
+The "relaxed" negotiation is unprotected, which may have a serious effect
+on the overall security of the mechanism. In particular, a man-in-the-middle
+can run a downgrade attack, so that client and server negotiate a weaker
+mechanism than they actually support. This is in particular dangerous when
+the mechanism is downgraded to a plaintext mechanism, as the attacker can
+then easily sniff the password.
+
+In particular you should keep in mind that the HTTP negotiation is always
+relaxed, and that it is often not possible to turn completely off cleartext
+authentication. This means that offering more secure options makes only
+sense when the communication channel is secure (i.e. when TLS is on). Or
+in other words: you should always use TLS when authentication comes into
+play.

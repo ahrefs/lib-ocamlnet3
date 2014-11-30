@@ -28,20 +28,51 @@ be added in future OCamlnet releases.
 instead of using the C API specified by the IETF Windows goes its own
 proprietary way. At this point, OCamlnet does not support the SSPI API
 Windows provides, as it would exceed the resources of the developers.
+Note that there is also an edition of MIT Kerberos for Windows, and this
+could be an easy path to get full GSSAPI support. It has not yet been
+tested, though (any feedback on this is welcome).
 
-{2 Getting the system-level GSSAPI}
+{2 The system-level GSSAPI: network logins}
 
-This is simple:
+Getting acces to the system-level GSSAPI library is simple:
 
  - add the [netgss-system] findlib package to your build
  - use {!Netgss.System} which is an implementation of {!Netsys_gssapi.GSSAPI}:
    {[ let gssapi = (module Netgss.System) ]}
 
-Note that in reality you also need to configure the system-level GSSAPI.
-Normally, only the Kerberos mechanism and SPNEGO are enabled. By changing
-files in /etc/gssapi_mech.conf you can make further mechanisms accessible.
+The function definitions in {!Netgss.System} are actually wrappers around
+the system-level GSSAPI.
 
-For using Kerberos you need to configure the system for Kerberos.
+What you can do with the system-level GSSAPI: The common way of using
+it is that by calling the GSSAPI with default values you can log in to
+any network services secured with it. For example, if there is
+Kerberos deployed in the local network, the GSSAPI would then make a
+Kerberos login. This is probably the most likely scenario. Of course,
+there could also be some other network authentication service, and the
+GSSAPI could be configured to use this other service for doing network
+logins. The point here is that the client program needs not to know
+which authentication mechanism is deployed in the network.
+
+When used in this way, it is common that the client program requesting
+access to secured services need not know the credentials (i.e. access
+tickets or passwords). The system-level GSSAPI knows how to get the
+credentials and how to use them for a service login. Of course, this
+also means you can only login as system user (i.e. if you are "tim"
+on your local machine, you'll also be "tim" when logging in to a
+network service).
+
+It is outside the scope of this text how you can configure the
+system-level GSSAPI so that the default login method is the default
+network login.
+
+The system-level GSSAPI may also make other mechanisms available to
+client programs. In this case, you need to request specific
+authentication mechanisms and not just the default. Often, it is also
+required to set these mechanisms up in a special way (e.g. provide
+a database with passwords). The GSSAPI as such does not address these
+configuration issues. It only includes functions for using a mechanism
+in a protocol.
+
 
 {2 Defining a GSSAPI module on OCaml level}
 
@@ -75,9 +106,9 @@ At the time of writing this text, these interpreters support the GSSAPI:
  - POP clients (via SASL bridging): {!Netpop}
  - SMTP clients (via SASL bridging): {!Netsmtp}
 
-Sometimes, the [gssapi] variable can be directly passed to the protocol
-interpreter, but even in this case some extra configuration is often needed.
-An example of this is {!Ftp_fs}:
+Sometimes, the [gssapi] variable can be directly passed to the
+protocol interpreter, but even in this case some extra configuration
+is sometimes needed.  An example of this is {!Ftp_fs}:
 
 {[
 let fs =
@@ -88,12 +119,206 @@ let fs =
     "ftp://user@host/path"
 ]}
 
-This function also takes another [gssapi_config] parameter with the
-details how to use the GSSAPI (from a client):
+The protocol interpreters assume then reasonable defaults: they select
+the default authentication mechanism, and assume the default identity.
+This is usually the right thing when you do a system-level network login.
 
- - which security mechanism is used
+However, even in this case there are a few things that may need tuning:
+
  - which service is addressed
- - the credentials
  - whether integrity protection or even privacy protection is enabled
+ - whether other options are enabled, e.g. delegation
 
-XXX
+Most protocol interpreters can be configured to use non-default values.
+For {!Ftp_fs} and some other interpreters you can also pass a
+[gssap_config] argument, which is an instance of {!Netsys_gssapi.client_config}.
+For example, to enforce encryption, you'd do:
+
+{[
+let gssapi_config =
+  Netsys_gssapi.create_client_config
+    ~privacy:`Required
+    ()
+
+let fs =
+  Ftp_fs.ftp_fs
+    ...
+    ~gssapi_provider:gssapi
+    ~gssapi_config
+    ...
+    "ftp://user@host/path"
+]}
+
+(By default, this is set to [`If_possible].)
+
+{2 The GSSAPI and SASL}
+
+SASL is a authentication framework that is very similar to GSSAPI. The
+main difference is that SASL is directly defined as protocol, whereas
+GSSAPI takes the detour and first defines a protocol API, and then 
+describes how to use this API in a concrete protocol. Because of the
+absence of the API, SASL is a lot simpler, and also has fewer features.
+So far, SASL is mainly used for challenge/response password authentication
+whereas GSSAPI targets complicated authentication suites such as Kerberos.
+
+Nevertheless, both approaches are similar enough that it is possible
+to encapsulate any GSSAPI authentication exchange as SASL
+exchange. This is called "bridging". This way it is possible to use
+GSSAPI for protocols that only have a SASL option. Note that there is
+no standard for the opposite direction, as SASL is commonly seen as
+the weaker standard, and there was so far not enough support for
+wrapping SASL mechanisms so that they are usable from GSSAPI (but note
+that there are mechanisms which are defined for both SASL and GSSAPI,
+e.g. SCRAM).
+
+In Ocamlnet, there are two bridging methods:
+
+ - {!Netmech_krb5_sasl.Krb5_gs1} is the older method now called "GS1".
+   It is only used for Kerberos 5.
+ - {!Netmech_gs2_sasl} is the newer method "GS2". It can be used for
+   any mechanism, but needs some configuration. For Kerberos, there is
+   a ready-to-use configuration, and {!Netmech_krb5_sasl.Krb5_gs2} is
+   the new way to wrap Kerberos for SASL.
+
+Let's have a look at an example: POP only supports SASL. For logging
+in to your maildrop using Kerberos you need to use a bridge. The
+Ocamlnet implementation {!Netpop} provides a function for authenticating
+a client with an existing connection to a server. For a normal
+password login using SASL the {!Netpop.authenticate} call could look like
+
+{[
+Netpop.authenticate
+  ~sasl_mechs:[ (module Netmech_scram_sasl.SCRAM_SHA1);
+                (module Netmech_digest_sasl.DIGEST_MD5);
+              ]
+  ~user:"tom"
+  ~creds:[ "password", "sEcReT", [] ]
+  client
+]}
+
+For GSSAPI, you mainly need to wrap the GSSAPI provider with some
+additional configuration. In particular, you need to pass the name
+of the service that is addressed. For POP, this name normally is the
+string "pop@" followed by the fully-qualified host name.
+
+{[
+module K = Netmech_krb5_sasl.Krb5_gs1(Netgss.System)
+
+Netpop.authenticate
+  ~sasl_mechs:[ (module K) ]
+  ~sasl_params:[ "gssapi-acceptor", "pop@mail.provider.com", false ]
+  ~user:"any"
+  ~creds:[]
+  client
+]}
+
+Note that the user name is ignored in this case, and that there are no
+credentials.
+
+{2 The GSSAPI authentication loop}
+
+As an API, this authentication framework defines a handful of functions.
+Only four of these are the really important ones doing all the work
+whereas the remaining ones play only an assisting role:
+
+ - [init_sec_context]: This function is repeatedly called by the client
+   for authentication. After the first call, it generates a token, which
+   needs to be sent to the server. The server responds with a response
+   token, which is fed ot the next invocation of [init_sec_context].
+   This loop goes on until [init_sec_context] signals that the authentication
+   is successful (or failed). In the positive case, the caller gets an
+   initialized security context.
+ - [accept_sec_context]:  This function is the counterpart in the server.
+   Tokens coming from the client are passed as arguments to
+   [accept_sec_context], and the output of the function includes the
+   response tokens. If the authentication is successful, the server
+   also gets a security context.
+ - [wrap]: After the authentication, this function can be called to
+   sign and/or encrypt a message.
+ - [unwrap]: This is the function to check the signature and/or to decrypt
+   the message.
+
+So the login procedure only consists in the exchange of tokens emitted
+and received by [init_sec_context] and [accept_sec_context]. Once the
+authentication is done, the functions [wrap] and [unwrap] can be used
+to securely exchange messages.
+
+Often a protocol utilizes only the authentication service from GSSAPI
+and does not wrap any messages (e.g. HTTP or the bridges for SASL). In
+this case, it is highly recommended to use another security layer such
+as TLS to protect the data exchange. Other protocols, however, securely
+wrap messages and need not the help of TLS. An excample of the latter is
+FTP.
+
+
+{2 Mechanism names}
+
+The GSSAPI identifies authentication mechanisms by OIDs. (If you did not
+yet encounter them, OIDs are a standardized way of naming "objects" that
+often configure network protocols. OIDs are sequences of integers. There
+is some support in {!Netoid}.) Examples:
+
+ - [ [| 1;2;840;113554;1;2;2 |] ] is the OID of Kerberos
+ - [ [| 1;3;6;1;5;5;14 |] ] is the OID of SCRAM
+
+In Ocamlnet, OIDs are represented as [int array].
+
+
+{2 Principal names}
+
+The "principal" is the identity of a client or server with respect to
+the authentication protocol. For clients, this is usually a user name,
+and for servers a service name. The GSSAPI defines a few common ways of
+naming principals:
+
+ - [NT_USER_NAME]: This is the user name as a simple unstructured string,
+   e.g. "tim".
+ - [NT_MACHINE_UID_NAME]: This is the numeric user name as a binary number
+   (big endian)
+ - [NT_STRING_UID_NAME]. The numeric user name as a decimal number
+ - [NT_HOSTNAME_SERVICE]: This name identifies the service by combining
+   a service name like "imap" or "ftp" with the hostname: "service\@host"
+
+As Kerberos is frequently used via GSSAPI, it may also be helpful to
+use Kerberos principals directly:
+
+ - [NT_KRB5_PRINCIPAL_NAME]: This name type follows the Kerberos rules,
+   e.g. "tim@REALM" for users or "ftp/hostname@REALM" for services.
+
+Like mechanisms, name types are identified by OID:
+
+ - {!Netsys_gssapi.nt_user_name} = [ [| 1;2;840;113554;1;2;1;1 |] ]
+ - {!Netsys_gssapi.nt_machine_uid_name} = [ [|1;2;840;113554;1;2;1;2 |] ]
+ - {!Netsys_gssapi.nt_string_uid_name} = [ [|1;2;840;113554;1;2;1;3 |] ]
+ - {!Netsys_gssapi.nt_hostbased_service} = [ [| 1;3;6;1;5;6;2 |] ]
+ - {!Netsys_gssapi.nt_krb5_principal_name} = [ [| 1;2;840;113554;1;2;2;1 |] ]
+
+Where OCamlnet needs a principal name, it usually expects the pair of
+a string and an OID:
+
+{[ string * Netoid.oid ]}
+
+For example, look at the [target_name] argument of
+{!Netsys_gssapi.create_client_config}.
+
+There are also a few helper functions:
+
+ - {!Netsys_gssapi.parse_hostbased_service} for getting the service name
+   and the host name of an [NT_HOSTNAME_SERVICE]
+ - {!Netgssapi_support.parse_kerberos_name} for getting the components
+   of a Kerberos principal
+
+
+{2 Limitations}
+
+So far there is no good support for:
+
+ - Wrapping passwords into the GSSAPI [credential] type. This primarily
+   means that it is unspecified how a user proves its identity. For the
+   system-level GSSAPI this means you can only authenticate as the default
+   principal, i.e. as the user you already be on the system level. It is
+   not possible to log in as another user.
+ - Delegating credentials
+
+and probably other GSSAPI options I'm not aware of.
+

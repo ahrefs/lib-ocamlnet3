@@ -6,7 +6,7 @@ include $(TOP_DIR)/Makefile.conf
 PKGNAME  = netgss-system
 OBJECTS  = netgss_bindings.cmo netgss_util.cmo netgss.cmo
 COBJECTS = netgss_bindings_stubs.o
-DOBJECTS = netgss_bindings.mli
+DOBJECTS = netgss_bindings.mli netgss.mli
 
 LINK_OPTIONS = $(NETGSS_LINK_OPTIONS)
 #LINK_OPTIONS = -lkrb5

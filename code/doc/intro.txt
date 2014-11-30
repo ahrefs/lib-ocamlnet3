@@ -108,8 +108,6 @@ Related external articles:
   {- {!Intro.ch_netproto}
      {ul
        {- {!Intro.netclient}}
-       {- {!Intro.netpop}}
-       {- {!Intro.netsmtp}}
      }
   }
 }
@@ -345,6 +343,22 @@ other Ocamlnet libraries.
     Netsys_gssapi
 }
 
+
+{2:gnutls The [nettls-gnutls] library: GnuTLS bindings}
+
+{!modules:
+    Nettls_gnutls
+    Nettls_gnutls_bindings
+    Nettls_nettle_bindings
+}
+
+
+{2:netgss The [netgss] library: GSSAPI bindings}
+
+{!modules:
+    Netgss
+    Netgss_bindings
+}
 
 {1:ch_web Web Programming}
 

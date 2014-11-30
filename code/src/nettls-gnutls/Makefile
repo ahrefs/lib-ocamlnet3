@@ -11,7 +11,8 @@ OBJECTS  = nettls_gnutls_bindings.cmo \
 COBJECTS = nettls_gnutls_bindings_stubs.o \
 	   nettls_nettle_bindings_stubs.o
 DOBJECTS = nettls_gnutls_bindings.mli \
-	   nettls_nettle_bindings.mli
+	   nettls_nettle_bindings.mli \
+	   nettls_gnutls.mli
 
 LINK_OPTIONS = $(NETTLS_GNUTLS_LINK_OPTIONS)
 #LINK_OPTIONS = -lgnutls
