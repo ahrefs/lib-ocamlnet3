@@ -59,6 +59,8 @@ type crt_list =
           - [`PEM_file name]: The certs are stored in this file, and are
             PEM-encoded.
           - [`DER l]: The certs are given directly in their DER-encoded form
+
+      See also {!Credentials.tls}.
    *)
 
 type crl_list =
@@ -68,6 +70,8 @@ type crl_list =
           - [`PEM_file name]: The CRLs are stored in this file, and are
             PEM-encoded.
           - [`DER l]: The CRLs are given directly in their DER-encoded form
+
+      See also {!Credentials.tls}.
    *)
 
 type private_key =
@@ -88,6 +92,8 @@ type private_key =
           - [`PKCS8 data]: The key is in a PKCS8 data structure
           - [`PKCS8_encrypted data]: The key is in a PKCS8 data structure,
             and is additionally encrypted.
+
+      See also {!Credentials.tls}.
    *)
 
 

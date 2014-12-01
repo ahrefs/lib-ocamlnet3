@@ -1,9 +1,12 @@
 GSSAPI:
  - check when to delete contexts. Fix protocol interpreters
- - implement channel bindings
+ - implement channel bindings - DONE
  - check again use of buffers in GSSAPI system bindings
  - protocol interpreters should return a gssapi_props object
    (patterned after tls_props)
+ - clean up Netmech_scram_gssapi. Use the same credential format
+   as for SASL. Describe this in credentials.txt
+ - check whether RPC + GSSAPI is compatible with Linux
 
 Netmime:
  - remove email-specific header methods from class type. Provide them

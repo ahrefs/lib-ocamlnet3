@@ -108,6 +108,8 @@ module type SASL_MECHANISM =
             [ "userPassword-" ^ scheme, value, [] ]
          ]}
 
+         More information can be found here: {!Credentials.sasl}
+
        *)
 
     type server_session

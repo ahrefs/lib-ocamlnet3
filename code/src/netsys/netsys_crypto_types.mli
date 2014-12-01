@@ -126,6 +126,8 @@ module type TLS_PROVIDER =
           - [`PEM_file name]: The certs are stored in this file, and are
             PEM-encoded.
           - [`DER l]: The certs are given directly in their DER-encoded form
+
+          See also {!Credentials.tls}.
        *)
 
     type crl_list =
@@ -135,6 +137,8 @@ module type TLS_PROVIDER =
           - [`PEM_file name]: The CRLs are stored in this file, and are
             PEM-encoded.
           - [`DER l]: The CRLs are given directly in their DER-encoded form
+
+          See also {!Credentials.tls}.
        *)
 
     type private_key =
@@ -155,6 +159,8 @@ module type TLS_PROVIDER =
           - [`PKCS8 data]: The key is in a PKCS8 data structure
           - [`PKCS8_encrypted data]: The key is in a PKCS8 data structure,
             and is additionally encrypted.
+
+          See also {!Credentials.tls}.
        *)
 
     val create_x509_credentials :

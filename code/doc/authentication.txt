@@ -128,7 +128,7 @@ type credentials =
    be literally "password", and should not be confused with the actual
    password which is the second value. For servers, passwords may be
    given in different forms (i.e. after applying a key derivation function),
-   which saves computation time.
+   which saves computation time. See {!Credentials.sasl} for details.
  - HTTP Authentication expresses user names and credentials in the same
    way as SASL.
  - GSSAPI can use several schemes for identifying users. Credentials are
@@ -143,10 +143,12 @@ type credentials =
    mechanism-specific way). In the latter case, there is so far no way to
    specify credentials from OCaml code (but this may change in the future,
    as there is a GSSAPI extension for specifying passwords).
+   See {!Credentials.gssapi} for details.
  - TLS uses certificates as (extended) user names, and credentials are
    public/private key pairs. The public key is embedded in the certificate.
    Normally certificates and private keys are stored in specially encoded
    files.
+   See {!Credentials.tls} for details.
 
 
 {2 Cleartext passwords}

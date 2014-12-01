@@ -440,6 +440,8 @@ trigger a TCP shutdown on its own.
 
 {2 X.509 Certificates}
 
+For an introduction see {!Credentials.tls}.
+
 Ocamlnet includes now a simple parser for X.509 certificates. You can
 use this parser to add checks to clients and servers whether the
 certificates submitted by the peer are acceptable or not.
