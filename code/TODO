@@ -1,3 +1,7 @@
+User's wishes/fixes:
+ - mode of netplex socket can be set in config file (T. Calderon)
+ - setgid does not work (lookup wrong) (T. Calderon)
+
 GSSAPI:
  - check when to delete contexts. Fix protocol interpreters
  - implement channel bindings - DONE
