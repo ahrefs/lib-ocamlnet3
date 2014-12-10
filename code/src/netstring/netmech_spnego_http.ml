@@ -131,6 +131,15 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
 
     let client_state cs = cs.cstate
 
+    let client_del_ctx cs =
+      match cs.ccontext with
+        | None -> ()
+        | Some ctx ->
+            G.interface # delete_sec_context
+              ~context:ctx
+              ~out:(fun ~minor_status ~major_status () -> ());
+            cs.ccontext <- None
+
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
                             minor_status =
@@ -149,6 +158,15 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                     error ^ " (minor: " ^ minor_s ^ ")")
       )
 
+    let client_check_gssapi_status cs fn_name major_status minor_status =
+      try
+        check_gssapi_status fn_name major_status minor_status
+      with
+        | error ->
+            client_del_ctx cs;
+            raise error
+           
+
     let call_init_sec_context cs input_token =
       G.interface # init_sec_context
          ~initiator_cred:G.interface#no_credential
@@ -164,8 +182,8 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
          ~out:(fun ~actual_mech_type ~output_context ~output_token 
                    ~ret_flags ~time_rec ~minor_status ~major_status () -> 
                  let (_,_,suppl) = major_status in
-                 check_gssapi_status
-                   "init_sec_context" major_status minor_status;
+                 client_check_gssapi_status
+                   cs "init_sec_context" major_status minor_status;
                  assert(output_context <> None);
                  cs.ccontext <- output_context;
                  cs.ctoken <- output_token;
@@ -173,6 +191,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                  if auth_done then (
                    cs.cstate <- if output_token = "" then `OK else `Emit;
                    cs.csubstate <- `Established;
+                   client_del_ctx cs;  (* no longer needed *)
                  )
                  else (
                    assert(suppl = [`Continue_needed]);
@@ -296,6 +315,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                failwith "unexpected token"
       with
         | Failure msg ->
+             client_del_ctx cs;
              cs.cstate <- `Auth_error msg
 
     let client_emit_response cs meth uri hdr =
@@ -305,6 +325,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
           | `Pre_init_context ->
                assert false
           | `Established ->
+              client_del_ctx cs;
               cs.cstate <- `OK
           | _ ->
               cs.cstate <- `Wait

@@ -432,14 +432,22 @@ let authenticate ?tls_config ?(tls_required=false) ?tls_peer
         | Not_found ->
             dlog "None of the server's AUTH mechanisms is supported by us";
             raise Authentication_error in
+    let peer =
+      match tls_peer with Some s -> s | None -> "" in
+    let auto_params =
+      [ "digest-uri", "pop/" ^ peer;     (* for DIGEST-MD5 *)
+        "gssapi-acceptor", "pop"         (* for Kerberos *)
+      ] in
     let x_sasl_params =
-      (* add digest-uri for DIGEST-MD5 *)
-      if List.exists (fun (n,_,_) -> n = "digest-uri") sasl_params then
+      List.fold_left
+        (fun acc (n,v) ->
+           if List.exists (fun (p,_,_) -> p = n) acc then
+             acc
+           else
+             (n,v,false) :: acc
+        )
         sasl_params
-      else
-        let peer =
-          match tls_peer with Some s -> s | None -> "" in
-        ("digest-uri", "pop/" ^ peer, false) :: sasl_params in
+        auto_params in
     client # auth sel_mech user authz creds x_sasl_params;
   )
 
@@ -453,8 +461,12 @@ let tls = Netsys_crypto.current_tls();;
 let tc = Netsys_tls.create_x509_config ~system_trust:true ~peer_auth:`Required tls;;
 let c  = new Netpop.connect addr 300.0;;
 c#stls ~peer_name:(Some "gps.dynxs.de") tc;;
-c#stat;;
+c#stat();;
 
 Netpop.authenticate ~sasl_mechs:[ (module Netmech_digestmd5_sasl.DIGEST_MD5) ] ~user:"gerd" ~creds:["password", "secret", []] c;;
+
+module K = Netmech_krb5_sasl.Krb5_gs1(Netgss.System);;
+Netpop.authenticate ~sasl_mechs:[ (module K) ] c;;
+
 
  *)

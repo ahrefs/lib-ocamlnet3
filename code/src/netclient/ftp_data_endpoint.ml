@@ -58,6 +58,7 @@ type ftp_protector =
       ftp_unwrap_s : string -> string;
       ftp_unwrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
       ftp_prot_level : ftp_data_prot;
+      ftp_close : unit -> unit
     }
 
 class write_out_record_channel 

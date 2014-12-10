@@ -320,14 +320,22 @@ let authenticate ?host ?tls_config ?(tls_required=false) ?tls_peer
         | Not_found ->
             dlog "None of the server's AUTH mechanisms is supported by us";
             raise Authentication_error in
+    let peer =
+      match tls_peer with Some s -> s | None -> "" in
+    let auto_params =
+      [ "digest-uri", "smtp/" ^ peer;     (* for DIGEST-MD5 *)
+        "gssapi-acceptor", "smtp"         (* for Kerberos *)
+      ] in
     let x_sasl_params =
-      (* add digest-uri for DIGEST-MD5 *)
-      if List.exists (fun (n,_,_) -> n = "digest-uri") sasl_params then
+      List.fold_left
+        (fun acc (n,v) ->
+           if List.exists (fun (p,_,_) -> p = n) acc then
+             acc
+           else
+             (n,v,false) :: acc
+        )
         sasl_params
-      else
-        let peer =
-          match tls_peer with Some s -> s | None -> "" in
-        ("digest-uri", "smtp/" ^ peer, false) :: sasl_params in
+        auto_params in
     client # auth sel_mech user authz creds x_sasl_params;
   )
 

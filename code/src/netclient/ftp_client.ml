@@ -1518,6 +1518,10 @@ object(self)
     ctrl # reset();
     ctrl_attached <- false;
     sock_opt <- None;
+    ( match ftp_state.ftp_prot with
+        | None -> ()
+        | Some p -> p.ftp_close()
+    );
     ftp_state <- nc_state();
     dlogr (fun () -> "close ok");
 
@@ -1942,10 +1946,11 @@ let tls_method ~config ~required () (pi:ftp_client_pi) =
      )
 
 
-let check_gssapi_status fn_name 
+let check_gssapi_status ?(onerror = fun _ -> ()) fn_name 
                         ((calling_error,routine_error,_) as major_status) =
   if calling_error <> `None || routine_error <> `None then (
     let error = Netsys_gssapi.string_of_major_status major_status in
+    onerror();
     raise (GSSAPI_error ("Unexpected major status for " ^ fn_name ^ ": " ^ 
                            error))
   )
@@ -2032,6 +2037,17 @@ let gssapi_method ~config ~required
          []
       ) in
 
+  let del_ctx ctx () =
+    G.interface # delete_sec_context
+      ~context:ctx
+      ~out:(fun ~minor_status ~major_status () -> ())
+      () in
+
+  let del_ctx_opt ctx_opt () =
+    match ctx_opt with
+      | None -> ()
+      | Some ctx -> del_ctx ctx () in
+
   let setup_protector context prot =
     let conf_req = (prot = `P) in
     let cached_limit = ref None in
@@ -2092,12 +2108,15 @@ let gssapi_method ~config ~required
                 Xdr_mstring.length_mstrings output_message
              )
         () in
+    let close() =
+      del_ctx context () in
     { ftp_wrap_limit = get_limit;
       ftp_wrap_s = wrap_s;
       ftp_wrap_m = wrap_m;
       ftp_unwrap_s = unwrap_s;
       ftp_unwrap_m = unwrap_m;
       ftp_prot_level = prot;
+      ftp_close = close;
     } in
 
   let auth_done_e context prot =
@@ -2128,6 +2147,8 @@ let gssapi_method ~config ~required
     else
       eps_e (`Done()) pi#event_system in
 
+  let last_context = ref None in
+
   let rec initiate_e context input_token prev_state =
     let out_context, out_token, cont_flag, prot =
       G.interface # init_sec_context
@@ -2141,6 +2162,8 @@ let gssapi_method ~config ~required
          ~input_token
          ~out:(fun ~actual_mech_type ~output_context ~output_token 
                    ~ret_flags ~time_rec ~minor_status ~major_status () -> 
+                 if output_context <> None then
+                   last_context := output_context;
                  check_gssapi_status "init_sec_context" major_status;
                  if config#integrity = `Required || config#privacy = `Required
                  then (
@@ -2193,11 +2216,23 @@ let gssapi_method ~config ~required
       auth_done_e ctx prot
     ) in
 
+  let call_initiate_e() =
+    try
+      initiate_e None None `Init
+      >> (function
+           | `Error e -> del_ctx_opt !last_context (); `Error e
+           | result -> result
+         )
+    with
+      | error ->
+          del_ctx_opt !last_context ();
+          raise error in
+
   pi # exec_e (`AUTH "GSSAPI")
   ++ (fun (st,r) ->
 	match st.cmd_state with
 	  | `Success -> 
-               initiate_e None None `Init
+               call_initiate_e()
           | _ ->
                if required then
                  errorcheck_e pi (st,r)

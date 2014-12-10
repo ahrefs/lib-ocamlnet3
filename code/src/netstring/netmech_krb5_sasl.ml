@@ -125,6 +125,15 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
 
     let client_state cs = cs.cstate
 
+    let client_del_ctx cs =
+      match cs.ccontext with
+        | None -> ()
+        | Some ctx ->
+            G.interface # delete_sec_context
+              ~context:ctx
+              ~out:(fun ~minor_status ~major_status () -> ());
+            cs.ccontext <- None
+
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
                             minor_status =
@@ -143,6 +152,15 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                     error ^ " (minor: " ^ minor_s ^ ")")
       )
 
+    let client_check_gssapi_status cs fn_name major_status minor_status =
+      try
+        check_gssapi_status fn_name major_status minor_status
+      with
+        | error ->
+            client_del_ctx cs;
+            raise error
+           
+
     let call_init_sec_context cs input_token =
       G.interface # init_sec_context
          ~initiator_cred:G.interface#no_credential
@@ -156,8 +174,8 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
          ~out:(fun ~actual_mech_type ~output_context ~output_token 
                    ~ret_flags ~time_rec ~minor_status ~major_status () -> 
                  let (_,_,suppl) = major_status in
-                 check_gssapi_status
-                   "init_sec_context" major_status minor_status;
+                 client_check_gssapi_status
+                   cs "init_sec_context" major_status minor_status;
                  assert(output_context <> None);
                  if cs.cmutual && not(List.mem `Mutual_flag ret_flags) then
                    failwith "mutual authentication requested but not available";
@@ -185,7 +203,8 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           ~input_name:acceptor_name
           ~input_name_type:acceptor_name_type
           ~out:(fun ~output_name ~minor_status ~major_status () ->
-                  check_gssapi_status "import_name" major_status minor_status;
+                  check_gssapi_status
+                    "import_name" major_status minor_status;
                   output_name
                )
           () in
@@ -225,8 +244,10 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
 
 
     let client_process_challenge cs msg =
-      if cs.cstate <> `Wait then
+      if cs.cstate <> `Wait then (
+        client_del_ctx cs;
         cs.cstate <- `Auth_error "protocol error"
+      )
       else
         match cs.csubstate with
           | `Pre_init_context ->
@@ -236,6 +257,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                    call_init_sec_context cs (Some msg)
                  with
                    | Failure msg ->
+                        client_del_ctx cs;
                         cs.cstate <- `Auth_error msg
                )
           | `Skip_empty ->
@@ -244,8 +266,10 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                  cs.ctoken <- "";
                  cs.csubstate <- `Neg_security;
                )
-               else
+               else (
+                 client_del_ctx cs;
                  cs.cstate <- `Auth_error "empty token expected"
+               )
           | `Neg_security ->
                ( try
                    let input_message = [ Xdr_mstring.string_to_mstring msg ] in
@@ -256,8 +280,8 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                        ~output_message_preferred_type:`String
                        ~out:(fun ~output_message ~conf_state ~qop_state
                                  ~minor_status ~major_status () ->
-                               check_gssapi_status
-                                 "unwrap" major_status minor_status;
+                               client_check_gssapi_status
+                                 cs "unwrap" major_status minor_status;
                                Xdr_mstring.concat_mstrings output_message
                             )
                        () in
@@ -274,19 +298,22 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                        ~output_message_preferred_type:`String
                        ~out:(fun ~conf_state ~output_message 
                                  ~minor_status ~major_status () ->
-                               check_gssapi_status
-                                 "wrap" major_status minor_status;
+                               client_check_gssapi_status
+                                 cs "wrap" major_status minor_status;
                                Xdr_mstring.concat_mstrings output_message
                             )
                        () in
                    cs.ctoken <- out_msg_wrapped;
                    cs.cstate <- `Emit;
-                   cs.csubstate <- `Established
+                   cs.csubstate <- `Established;
+                   client_del_ctx cs;   (* no longer needed *)
                  with
                    | Failure msg ->
-                        cs.cstate <- `Auth_error msg
+                       client_del_ctx cs;
+                       cs.cstate <- `Auth_error msg
                )
           | `Established ->
+               client_del_ctx cs;
                cs.cstate <- `Auth_error "unexpected token"
 
     let client_emit_response cs =
@@ -299,9 +326,11 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                   cs.cstate <- `Wait;
                 with
                   | Failure msg -> 
+                      client_del_ctx cs;
                       cs.cstate <- `Auth_error msg
               )
           | `Established ->
+              client_del_ctx cs;   (* no longer needed *)
               cs.cstate <- `OK
           | _ ->
               cs.cstate <- `Wait
@@ -398,6 +427,23 @@ Netpop.authenticate
 
     let server_state ss = ss.sstate
 
+    let server_del_ctx ss =
+      match ss.scontext with
+        | None -> ()
+        | Some ctx ->
+            G.interface # delete_sec_context
+              ~context:ctx
+              ~out:(fun ~minor_status ~major_status () -> ());
+            ss.scontext <- None
+
+    let server_check_gssapi_status ss fn_name major_status minor_status =
+      try
+        check_gssapi_status fn_name major_status minor_status
+      with
+        | error ->
+            server_del_ctx ss;
+            raise error
+
     let create_server_session ~lookup ~params () =
       let params = 
         Netsys_sasl_util.preprocess_params
@@ -463,8 +509,8 @@ Netpop.authenticate
           ~output_message_preferred_type:`String
           ~out:(fun ~conf_state ~output_message 
                     ~minor_status ~major_status () ->
-                  check_gssapi_status
-                    "wrap" major_status minor_status;
+                  server_check_gssapi_status
+                    ss "wrap" major_status minor_status;
                   Xdr_mstring.concat_mstrings output_message
                )
           () in
@@ -481,8 +527,8 @@ Netpop.authenticate
           ~out:(fun ~src_name ~mech_type ~output_context ~output_token
                     ~ret_flags ~time_rec ~delegated_cred 
                     ~minor_status ~major_status () ->
-                   check_gssapi_status
-                     "accept_sec_context" major_status minor_status;
+                   server_check_gssapi_status
+                     ss "accept_sec_context" major_status minor_status;
                    assert(output_context <> None);
                    let (_,_,suppl) = major_status in
                    let cont = List.mem `Continue_needed suppl in
@@ -503,8 +549,8 @@ Netpop.authenticate
             ~out:(fun ~src_name ~targ_name ~lifetime_req ~mech_type ~ctx_flags
                       ~locally_initiated ~is_open ~minor_status ~major_status
                       ()  ->
-                    check_gssapi_status
-                      "inquire_context" major_status minor_status;
+                    server_check_gssapi_status
+                      ss "inquire_context" major_status minor_status;
                     if mech_type <> krb5_oid then
                       failwith "the mechanism is not Kerberos 5";
                     src_name, targ_name
@@ -514,8 +560,8 @@ Netpop.authenticate
           ~input_name:targ_name
           ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
                     () ->
-                  check_gssapi_status
-                    "display_name" major_status minor_status;
+                  server_check_gssapi_status
+                    ss "display_name" major_status minor_status;
                   let ok =
                     Krb5_gs2_profile.server_check_target_name
                       ~params:["gssapi-acceptor-service", ss.sservice]
@@ -528,8 +574,8 @@ Netpop.authenticate
           ~input_name:src_name
           ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
                     () ->
-                  check_gssapi_status
-                    "display_name" major_status minor_status;
+                  server_check_gssapi_status
+                    ss "display_name" major_status minor_status;
                   try
                     let n =
                       Krb5_gs2_profile.server_map_user_name
@@ -568,8 +614,8 @@ Netpop.authenticate
           ~output_message_preferred_type:`String
           ~out:(fun ~output_message ~conf_state ~qop_state
                     ~minor_status ~major_status () ->
-                  check_gssapi_status
-                    "unwrap" major_status minor_status;
+                  server_check_gssapi_status
+                    ss "unwrap" major_status minor_status;
                   Xdr_mstring.concat_mstrings output_message
                )
           () in
@@ -588,6 +634,7 @@ Netpop.authenticate
         ss.slookup user authz in
       if user_cred_opt = None then
         failwith "unauthorized user";
+      server_del_ctx ss;   (* no longer needed *)
       ss.ssubstate <- `Established;
       ss.sstate <- `OK
 
@@ -606,8 +653,10 @@ Netpop.authenticate
               raise Not_found
       with
         | Not_found ->
+            server_del_ctx ss;
             ss.sstate <- `Auth_error "unspecified"
         | Failure msg ->
+            server_del_ctx ss;
             ss.sstate <- `Auth_error msg
 
 

@@ -81,6 +81,15 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
 
     let client_state cs = cs.cstate
 
+    let client_del_ctx cs =
+      match cs.ccontext with
+        | None -> ()
+        | Some ctx ->
+            G.interface # delete_sec_context
+              ~context:ctx
+              ~out:(fun ~minor_status ~major_status () -> ());
+            cs.ccontext <- None
+
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
                             minor_status =
@@ -99,6 +108,14 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                     error ^ " (minor: " ^ minor_s ^ ")")
       )
 
+    let client_check_gssapi_status cs fn_name major_status minor_status =
+      try
+        check_gssapi_status fn_name major_status minor_status
+      with
+        | error ->
+            client_del_ctx cs;
+            raise error
+
     let call_init_sec_context cs input_token =
       let flags1 = P.client_flags ~params:cs.cparams in
       let flags2 = List.map fst flags1 in
@@ -115,8 +132,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                    ~ret_flags ~time_rec ~minor_status ~major_status () -> 
                  let (_,_,suppl) = major_status in
                  let cont = List.mem `Continue_needed suppl in
-                 check_gssapi_status
-                   "init_sec_context" major_status minor_status;
+                 client_check_gssapi_status
+                   cs "init_sec_context" major_status minor_status;
                  assert(output_context <> None);
                  cs.ccontext <- output_context;
                  cs.ctoken <- output_token;
@@ -288,9 +305,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                    call_init_sec_context cs (Some msg)
                  with
                    | Failure msg ->
+                        client_del_ctx cs;
                         cs.cstate <- `Auth_error msg
                )
           | `Established ->
+               client_del_ctx cs;
                cs.cstate <- `Auth_error "unexpected challenge"
 
     let client_emit_response cs =
@@ -304,11 +323,13 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                   cs.ctoken <- client_rewrite_initial_token cs cs.ctoken;
                 with
                   | Failure msg ->
+                      client_del_ctx cs;
                       cs.cstate <- `Auth_error msg
               )
           | `Init_context ->
               cs.cstate <- `Wait
           | `Established ->
+              client_del_ctx cs;  (* no longer needed *)
               cs.cstate <- `OK
       );
       cs.ctoken
@@ -387,6 +408,23 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
 
     let server_state ss = ss.sstate
 
+    let server_del_ctx ss =
+      match ss.scontext with
+        | None -> ()
+        | Some ctx ->
+            G.interface # delete_sec_context
+              ~context:ctx
+              ~out:(fun ~minor_status ~major_status () -> ());
+            ss.scontext <- None
+
+    let server_check_gssapi_status ss fn_name major_status minor_status =
+      try
+        check_gssapi_status fn_name major_status minor_status
+      with
+        | error ->
+            server_del_ctx ss;
+            raise error
+
     let create_server_session ~lookup ~params () =
       let params = 
         Netsys_sasl_util.preprocess_params
@@ -455,6 +493,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         ss.slookup user authz in
       if user_cred_opt = None then
         failwith "unauthorized user";
+      server_del_ctx ss;   (* no longer needed *)
       ss.ssubstate <- `Established;
       ss.sstate <- `OK
 
@@ -494,8 +533,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           ~out:(fun ~src_name ~mech_type ~output_context ~output_token
                     ~ret_flags ~time_rec ~delegated_cred 
                     ~minor_status ~major_status () ->
-                   check_gssapi_status
-                     "accept_sec_context" major_status minor_status;
+                   server_check_gssapi_status
+                     ss "accept_sec_context" major_status minor_status;
                    assert(output_context <> None);
                    let (_,_,suppl) = major_status in
                    ss.scontext <- output_context;
@@ -526,8 +565,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
             ~out:(fun ~src_name ~targ_name ~lifetime_req ~mech_type ~ctx_flags
                       ~locally_initiated ~is_open ~minor_status ~major_status
                       ()  ->
-                    check_gssapi_status
-                      "inquire_context" major_status minor_status;
+                    server_check_gssapi_status
+                      ss "inquire_context" major_status minor_status;
                     if mech_type <> P.mechanism_oid then
                       failwith "the mechanism is not the selected one";
                     src_name, targ_name
@@ -537,8 +576,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           ~input_name:targ_name
           ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
                     () ->
-                  check_gssapi_status
-                    "display_name" major_status minor_status;
+                  server_check_gssapi_status
+                    ss "display_name" major_status minor_status;
                   let ok =
                     P.server_check_target_name
                       ~params:ss.sparams (output_name,output_name_type) in
@@ -550,8 +589,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           ~input_name:src_name
           ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
                     () ->
-                  check_gssapi_status
-                    "display_name" major_status minor_status;
+                  server_check_gssapi_status
+                    ss "display_name" major_status minor_status;
                   let user =
                     try
                       P.server_map_user_name
@@ -642,8 +681,10 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               raise Not_found
       with
         | Not_found ->
+            server_del_ctx ss;
             ss.sstate <- `Auth_error "unspecified"
         | Failure msg ->
+            server_del_ctx ss;
             ss.sstate <- `Auth_error msg
 
 
