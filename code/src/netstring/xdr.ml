@@ -1216,7 +1216,13 @@ let pack_size
       | T_double ->
 	  8
       | T_opaque_fixed n ->
-	  int_of_uint4 n
+	  let x = dest_xv_opaque v in
+	  let i = int_of_uint4 n in
+          if String.length x <> i then
+            raise 
+              (Xdr_failure "opaque string has unexpected length");
+          let i4 = i land 3 in
+          if i4=0 then i else i+(4-i4)
       | T_opaque n ->
 	  let x = dest_xv_opaque v in
 	  sizefn_string n x
