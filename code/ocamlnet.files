@@ -478,6 +478,12 @@ f examples/rpc/sort/sort2_worker.ml
 f examples/rpc/sort/sort2_server.conf
 f examples/rpc/sort/sort2_proto.x
 
+d examples/rpc/nfs4
+f examples/rpc/nfs4/Makefile
+f examples/rpc/nfs4/Makefile.code
+f examples/rpc/nfs4/rfc3530.x
+f examples/rpc/nfs4/demo.ml
+
 d examples/equeue
 d examples/equeue/engines
 p examples/equeue/engines/.*\.ml
