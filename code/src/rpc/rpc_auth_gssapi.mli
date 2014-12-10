@@ -61,24 +61,13 @@ type user_name_interpretation =
     ]
 
 val client_auth_method :
-      ?privacy:support_level ->
-      ?integrity:support_level ->
       ?user_name_interpretation:user_name_interpretation ->
-      (module Netsys_gssapi.GSSAPI) -> oid -> Rpc_client.auth_method
+      (module Netsys_gssapi.GSSAPI) -> 
+      Netsys_gssapi.client_config ->
+        Rpc_client.auth_method
   (** Creates an authentication method from a GSS-API interface.
-      The OID selects the desired authentication method.
 
       Options:
-      - [privacy]: Selects whether messages are encrypted. If [`Required],
-        the authentication method fails if the GSS-API does not support
-        encryption, and it enables encryption if GSS-API supports it.
-        If [`If_possible] encryption is enabled if GSS-API supports it
-        (the default). If [`None], the messages are not encrypted.
-      - [integrity]: Selects whether messages are signed. If [`Required],
-        the authentication method fails if the GSS-API does not support
-        integrity protection, and it enables this feature if GSS-API supports
-        it. If [`If_possible] integrity protection is enabled if GSS-API
-        supports it (the default). If [`None], the messages are not signed.
       - [user_name_format]: Defaults to [`Prefixed_name].
    *)
 

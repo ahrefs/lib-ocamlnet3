@@ -874,16 +874,35 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
 
   let client_auth_method 
-        ?(privacy=`If_possible)
-        ?(integrity=`If_possible)
         ?(user_name_interpretation = `Prefixed_name)
-        (gss_api : G.gss_api) mech : Rpc_client.auth_method =
+        (gss_api : G.gss_api) (cconf : Netsys_gssapi.client_config)
+          : Rpc_client.auth_method =
+
+    let privacy = cconf#privacy in
+    let integrity = cconf#integrity in
 
     let default_initiator_cred() =
+      let desired_name =
+        match cconf # credential with
+          | Some(cred, cred_oid) ->
+              gss_api # import_name
+                ~input_name:cred
+                ~input_name_type:cred_oid
+                ~out:(fun ~output_name ~minor_status ~major_status () ->
+                        let (c_err, r_err, flags) = major_status in
+                        if c_err <> `None || r_err <> `None then
+                          failwith("Rpc_auth_gssapi: Cannot import default creds: " ^ 
+                                     string_of_major_status major_status);
+                        output_name
+                     )
+                ()
+          | None ->
+              gss_api#no_name in
+
       gss_api # acquire_cred
-        ~desired_name:gss_api#no_name
+        ~desired_name
         ~time_req:`Indefinite
-        ~desired_mechs:[mech]
+        ~desired_mechs:[ cconf#mech_type ]
         ~cred_usage:`Initiate
         ~out:(
           fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status() ->
@@ -894,6 +913,26 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             cred
         )
         () in
+
+
+    let get_target_name() =
+      match cconf # target_name with
+        | None ->
+            gss_api # no_name
+              (* For Kerberos, at least, this will not work! *)
+
+        | Some(name,oid) ->
+            gss_api # import_name
+                ~input_name:name
+                ~input_name_type:oid
+                ~out:(fun ~output_name ~minor_status ~major_status () ->
+                        let (c_err, r_err, flags) = major_status in
+                        if c_err <> `None || r_err <> `None then
+                          failwith("Rpc_auth_gssapi: Cannot import target name: " ^ 
+                                     string_of_major_status major_status);
+                        output_name
+                     )
+                () in
 
     let rpc_gss_cred_t =
       Xdr.validate_xdr_type
@@ -1044,7 +1083,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         end
       ) in
 
-    let protocol (m:Rpc_client.auth_method) client cred
+    let protocol (m:Rpc_client.auth_method) client cred target
          : Rpc_client.auth_protocol =
       let first = ref true in
       let state = ref `Emit in
@@ -1104,7 +1143,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                 gss_api # init_sec_context
                   ~initiator_cred:cred
                   ~context:!ctx
-                  ~target_name:gss_api#no_name 
+                  ~target_name:target
                   ~mech_type:[||]
                   ~req_flags
                   ~time_req:None
@@ -1270,6 +1309,8 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                  )
             );
 
+          let target = get_target_name() in
+
           let cred =
             match user_opt with
               | None ->
@@ -1310,7 +1351,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   gss_api # acquire_cred
                     ~desired_name:name
                     ~time_req:`Indefinite
-                    ~desired_mechs:[mech]
+                    ~desired_mechs:[cconf#mech_type]
                     ~cred_usage:`Initiate
                     ~out:(
                       fun ~cred ~actual_mechs ~time_rec ~minor_status
@@ -1324,7 +1365,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                           cred
                     )
                     () in
-          protocol (self :> Rpc_client.auth_method) client cred
+          protocol (self :> Rpc_client.auth_method) client cred target
                    
       end
     )
@@ -1332,13 +1373,12 @@ end
 
 
 let client_auth_method
-      ?privacy ?integrity ?user_name_interpretation
-      (g : (module Netsys_gssapi.GSSAPI)) oid =
+      ?user_name_interpretation
+      (g : (module Netsys_gssapi.GSSAPI)) cconf =
   let module G = (val g : Netsys_gssapi.GSSAPI) in
   let module A = Make(G) in
   A.client_auth_method
-    ?privacy ?integrity ?user_name_interpretation
-    G.interface oid
+    ?user_name_interpretation G.interface cconf
 
 
 let server_auth_method
