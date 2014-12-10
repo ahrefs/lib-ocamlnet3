@@ -99,8 +99,15 @@ let _gss_buffer_t_of_token_option =
        buffer_of_string "" 0 0   (* should be ok for GSS_C_NO_BUFFER *)
 
 
+(* In the following, all *_of_gss_buffer_t functions are destructive, and
+   release (if possible) the buffer arg. This is ok, because these buffer
+   args are output buffers from GSSAPI.
+ *)
+
 let _token_of_gss_buffer_t buf =
-  string_of_buffer buf
+  let s = string_of_buffer buf in
+  release_buffer buf;
+  s
 
 let _gss_buffer_t_of_message (ml : Xdr_mstring.mstring list) =
   match ml with
@@ -109,7 +116,10 @@ let _gss_buffer_t_of_message (ml : Xdr_mstring.mstring list) =
     | [ m ] ->
          ( match m#preferred with
              | `Memory ->
-                  (* No copy in this case *)
+                  (* No copy in this case: buffer_of_memory takes the data
+                     area of mem2 as data area of the gss_buffer_t. It is
+                     ensured that mem2 cannot be collected before buf.
+                   *)
                   let (mem1, pos) = m#as_memory in
                   let mem2 = Bigarray.Array1.sub mem1 pos m#length in
                   buffer_of_memory mem2
@@ -129,9 +139,14 @@ let _message_of_gss_buffer_t pref_type buf =
     | `Memory ->
          let mem = memory_of_buffer buf in
          [ Xdr_mstring.memory_to_mstring mem ]
-         (* CHECK: no copy here. These buffers are "use once" buffers *)
+         (* It is ok not to copy here, i.e. mem and buf share the same data
+            area. buf will not be used for anything else after this call.
+            Also, memory_of_buffer ensures that buf cannot be collected before
+            mem (with a tricky finalizer).
+          *)
     | `String ->
          let str = string_of_buffer buf in
+         release_buffer buf;
          [ Xdr_mstring.string_to_mstring str ]
 
 

@@ -565,6 +565,19 @@ let () =
 
        fprintf f " ~out () ->\n";
        
+       (* Buffer management: *)
+       let have_buffers =
+         List.exists
+           (fun (_, _, p_type) -> p_type = "gss_buffer_t")
+           input_params in
+       if have_buffers then (
+         fprintf f "%s    let buffers = ref [] in\n" indent;
+         fprintf f "%s    let release_soon f arg = \
+                            let buf = f arg in \
+                            buffers := buf :: !buffers; \
+                            buf in\n" indent;
+       );
+
        (* Catching call results: *)
        fprintf f "%s    let major_status, minor_status" indent;
        List.iter
@@ -581,11 +594,16 @@ let () =
        List.iter
          (fun (p_name, p_kind, p_type) ->
             let ocaml_type = map_name fn_name  p_name p_type in
-            let in_convert =
+            let in_convert0 =
               if p_type = ocaml_type then
                 "identity"
               else
                 sprintf "_%s_of_%s" (prep_ty_name p_type) ocaml_type in
+            let in_convert =
+              if p_type = "gss_buffer_t" then
+                "release_soon " ^ in_convert0
+              else
+            in_convert0 in
             fprintf f "\n%s        (%s %s)" indent in_convert p_name
          )
          input_params;
@@ -593,6 +611,10 @@ let () =
          fprintf f "\n%s        ()" indent;
 
        fprintf f " in\n";
+
+       (* Buffer management: *)
+       if have_buffers then
+         fprintf f "%s    List.iter release_buffer !buffers;\n" indent;
 
        (* Invoke the "out" function: *)
        fprintf f "%s    out" indent;
