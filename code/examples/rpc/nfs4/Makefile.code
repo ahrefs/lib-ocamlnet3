@@ -1,0 +1,20 @@
+TOP_DIR = ../../..
+include $(TOP_DIR)/Makefile.rules
+
+REQUIRES = rpc,unix,netgss-system
+OBJ = rfc3530_aux.cmo rfc3530_clnt.cmo
+XOBJ = $(OBJ:.cmo=.cmx)
+
+CLEAN_LIST += 
+
+all: nfs4.cma
+
+opt: nfs4.cmxa
+
+nfs4.cma: $(OBJ)
+	$(OCAMLC) -o nfs4.cma -a $(OBJ)
+
+nfs4.cmxa: $(XOBJ)
+	$(OCAMLOPT) -o nfs4.cmxa -a $(XOBJ)
+
+include depend
