@@ -515,13 +515,18 @@ let continue_call cl call =
       cl rc.prog rc.proc call.xid in
   rc.decoder <- dec_opt;
   let request =
-    Rpc_packer.pack_call
-      ?encoder:enc_opt
-      rc.prog
-      call.xid
-      rc.proc
-      cred_flav cred_data verf_flav verf_data
-      rc.param in
+    try
+      Rpc_packer.pack_call
+        ?encoder:enc_opt
+        rc.prog
+        call.xid
+        rc.proc
+        cred_flav cred_data verf_flav verf_data
+        rc.param
+    with
+      | error ->
+          dlogr cl (fun () -> sprintf "pack_call: %s" (Netexn.to_string error));
+          raise error in
   call.request <- Some request;
 
   Queue.add call cl.waiting_calls
@@ -1012,7 +1017,12 @@ let process_incoming_message cl message peer =
 			Hashtbl.remove cl.delayed_calls call.call_auth_proto;
 			Queue.iter
 			  (fun d_call ->
-			     continue_call cl d_call
+                             (* the call may not be packable! *)
+                             try
+			       continue_call cl d_call
+                             with
+                               | error ->
+                                   pass_exception cl d_call error
 			  )
 			  q;
 			None
