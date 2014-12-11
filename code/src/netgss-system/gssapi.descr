@@ -482,6 +482,10 @@ let () =
   fprintf f "  type req_flags = req_flag list\n";
   fprintf f "  type token_option = token option\n";
   fprintf f "\n";
+  fprintf f "  exception Credential of credential\n";
+  fprintf f "  exception Context of context\n";
+  fprintf f "  exception Name of name\n";
+  fprintf f "\n";
   fprintf f "  class type gss_api = \
                  [ credential, name, context ] Netsys_gssapi.poly_gss_api\n";
   fprintf f "\n";

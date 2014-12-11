@@ -883,7 +883,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
     let default_initiator_cred() =
       let desired_name =
-        match cconf # credential with
+        match cconf # initiator_name with
           | Some(cred, cred_oid) ->
               gss_api # import_name
                 ~input_name:cred

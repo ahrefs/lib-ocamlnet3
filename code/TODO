@@ -78,7 +78,8 @@ SASL:
  - support module Netsys_sasl - DONE
  - implement for POP - DONE
  - implement for SMTP  - DONE
- - GS2 bridge
+ - GS2 bridge - DONE
+ - SASLprep "light"
 
 HTTP:
  - enhance digest and support new algorithms
@@ -307,6 +308,7 @@ Major future directions:
   * sftp: develop
   * async fastcgi client
   * RPC: support RPCBIND versions 3 and 4 (for IPv6 needed)
+  * NFSv4 client as Netfs
 
 - Security
   * Access GnuTLS crypto routines via Cryptokit-like API
@@ -318,6 +320,7 @@ Major future directions:
   * SASL and SMTP - DONE
   * Containers for credentials - DONE
   * Password hashing suite
+  * Password files, e.g. LDIF-compatible
   * Protect RPC better against DoS attacks
   * Netcgi2/Nethttpd w/ authentication
 

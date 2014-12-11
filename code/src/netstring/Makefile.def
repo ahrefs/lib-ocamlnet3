@@ -11,7 +11,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netauth.cmo netnumber.cmo rtypes.cmo xdr_mstring.cmo xdr.cmo \
 	   netasn1.cmo netoid.cmo netdn.cmo netx509.cmo \
            netmappings_asn1.cmo netascii_armor.cmo nettls_support.cmo \
-	   netgssapi_support.cmo \
+	   netgssapi_support.cmo netgssapi_auth.cmo \
 	   netmech_scram.cmo netmech_scram_gssapi.cmo netmech_scram_sasl.cmo \
 	   netmech_plain_sasl.cmo netmech_crammd5_sasl.cmo \
 	   netmech_digest.cmo netmech_digest_sasl.cmo \
@@ -68,7 +68,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
 	netcompression.mli netunichar.mli netasn1.mli netoid.mli \
 	netdn.mli netx509.mli netascii_armor.mli nettls_support.mli \
 	netmech_scram.mli netmech_scram_gssapi.mli netmech_scram_sasl.mli \
-	netgssapi_support.mli netchannels_crypto.mli \
+	netgssapi_support.mli netgssapi_auth.mli netchannels_crypto.mli \
 	netmech_plain_sasl.mli netmech_crammd5_sasl.mli \
 	netmech_digest_sasl.mli netmech_digest_http.mli \
 	netmech_krb5_sasl.mli netmech_gs2_sasl.mli netmech_spnego_http.mli \

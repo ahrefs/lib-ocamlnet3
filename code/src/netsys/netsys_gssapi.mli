@@ -506,7 +506,7 @@ module type GSSAPI =
 
     (** {2 Exceptions} *)
            
-    (** There are no defined exceptions.
+    (** There are no defined exceptions for reporting errors.
 
     Errors should be reported using the [major_status] and [minor_status]
     codes as much as possible.
@@ -514,7 +514,15 @@ module type GSSAPI =
     [Invalid_argument] may be raised for clear violations of calling
     requirements, e.g. when an opaque object is passed to this interface
     that was not returned by it before.
+
+    The following three exceptions can be used to wrap the per-GSSAPI types
+    [credential], [context], and [name]:
      *)
+
+    exception Credential of credential
+    exception Context of context
+    exception Name of name
+
 
     (** {2 The API} *)
 
@@ -570,7 +578,7 @@ val string_of_calling_error : calling_error -> string
 val string_of_routine_error : routine_error -> string
 val string_of_suppl_status : suppl_status -> string
 val string_of_major_status : major_status -> string
-
+val string_of_flag : ret_flag -> string
 
 (** {2 Common OID's for name types} *)
 
@@ -614,30 +622,98 @@ class type client_config =
 object
   method mech_type : oid
   method target_name : (string * oid) option
-  method credential : (string * oid) option
+  method initiator_name : (string * oid) option
   method privacy : support_level
   method integrity : support_level
+  method flags : (req_flag * support_level) list
 end
 
 val create_client_config : 
       ?mech_type:oid ->
+      ?initiator_name:(string * oid) ->
       ?target_name:(string * oid) ->
-      ?credential:(string * oid) ->
       ?privacy:support_level ->
       ?integrity:support_level ->
+      ?flags:(req_flag * support_level) list ->
       unit ->
       client_config
   (** [mech_type] is the GSSAPI mechanism to use. If left unspecified,
     a default is used. [target_name] is the name of the service to
-    connect to. [credential] identifies and authenticates the client.
+    connect to. [initiator_name] identifies and authenticates the client.
     Note that you normally can omit all of [mech_type], [target_name],
-    and [credential] as GSSAPI already substitutes reasonable defaults
+    and [initiator_name] as GSSAPI already substitutes reasonable defaults
     (at least if Kerberos is available as mechanism).
 
     [privacy] and [integrity] specify the desired level of protection.
     By default, both integrity and privacy are enabled if available, but
     it is no error if the mechanism doesn't support these features.
+
+    [flags]: additional GSSAPI flags. These should not contain [`Conf_flag]
+    and [`Integ_flag] (instead use [privacy] and [integrity], resp.).
    *)
+
+(** Return properties of the client context *)
+class type client_props =
+object
+  method mech_type : oid         (** Actual mechanism *)
+  method flags : ret_flag list   (** Actual flags *)
+  method time : time             (** Actual context lifetime *)
+end
+
+(** {2 Configuring servers} *)
+
+(** See {!Netsys_gssapi.create_server_config} *)
+class type server_config =
+object
+  method mech_types : oid list
+  method acceptor_name : (string * oid) option
+  method privacy : support_level
+  method integrity : support_level
+  method flags : (req_flag * support_level) list
+end
+
+val create_server_config : 
+      ?mech_types:oid list ->
+      ?acceptor_name:(string * oid) ->
+      ?privacy:support_level ->
+      ?integrity:support_level ->
+      ?flags:(req_flag * support_level) list ->
+      unit ->
+      server_config
+  (** [mech_types] is the list of GSSAPI mechanism that are acceptable. 
+    If left unspecified,
+    a default is used. [acceptor_name] is the name of the service to
+    offer.
+
+    Note that you normally can omit [mech_types]
+    as GSSAPI already substitutes reasonable defaults
+    (at least if Kerberos is available as mechanism). [acceptor_name] should
+    normally be specified.
+
+    [privacy] and [integrity] specify the desired level of protection.
+    By default, both integrity and privacy are enabled if available, but
+    it is no error if the mechanism doesn't support these features.
+
+    [flags]: additional GSSAPI flags. These should not contain [`Conf_flag]
+    and [`Integ_flag] (instead use [privacy] and [integrity], resp.).
+   *)
+
+(** Return properties of the server context *)
+class type server_props =
+object
+  method mech_type : oid            (** Actual mechanism *)
+  method flags : ret_flag list      (** Actual flags *)
+  method time : time                (** Actual context lifetime *)
+  method initiator_name : (string * oid)
+    (** The name of the initiator. string and [oid] may be empty *)
+  method initiator_name_exported : string
+    (** The name of the initiator in exported format *)
+  method deleg_credential : (exn * time) option
+    (** If a credential was delegated it is returned here as [(e,t)].
+        [e] is the exception [G.Credential] from the GSSAPI provider.
+     *)
+end
+
 
 (** {2 Encodings} *)
 

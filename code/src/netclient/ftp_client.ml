@@ -1963,7 +1963,7 @@ let gssapi_method ~config ~required
 
   let mech_type = config#mech_type in
   let initiator_name =
-    match config#credential with
+    match config#initiator_name with
       | None -> G.interface # no_name  (* means: default credential *)
       | Some(cred_string, cred_name_type) ->
           G.interface # import_name

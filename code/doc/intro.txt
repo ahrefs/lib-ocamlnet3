@@ -188,6 +188,7 @@ for other libraries.
    Netdn
    Netasn1
    Netgssapi_support
+   Netgssapi_auth
    Netmech_scram
    Netmech_scram_sasl
    Netmech_scram_gssapi

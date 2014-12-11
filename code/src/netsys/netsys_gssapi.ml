@@ -388,6 +388,10 @@ module type GSSAPI =
     type context
     type name
 
+    exception Credential of credential
+    exception Context of context
+    exception Name of name
+
     class type gss_api = [credential, name, context] poly_gss_api
 
     val interface : gss_api
@@ -438,6 +442,18 @@ let string_of_major_status (ce,re,sl) =
   (if x <> "" then ";" ^ x else "") ^ 
   ">"
 
+let string_of_flag =
+  function
+  | `Deleg_flag -> "Deleg"
+  | `Mutual_flag -> "Mutual"
+  | `Replay_flag -> "Replay"
+  | `Sequence_flag -> "Sequence"
+  | `Conf_flag -> "Conf"
+  | `Integ_flag -> "Integ"
+  | `Anon_flag -> "Anon"
+  | `Prot_ready_flag -> "Prot_ready"
+  | `Trans_flag -> "Trans"
+
 
 let nt_hostbased_service =
   [| 1; 3; 6; 1; 5; 6; 2 |]
@@ -478,18 +494,58 @@ class type client_config =
 object
   method mech_type : oid
   method target_name : (string * oid) option
-  method credential : (string * oid) option
+  method initiator_name : (string * oid) option
   method privacy : support_level
   method integrity : support_level
+  method flags : (req_flag * support_level) list
 end
 
-let create_client_config ?(mech_type = [| |]) ?target_name ?credential
+let create_client_config ?(mech_type = [| |]) ?initiator_name ?target_name
                          ?(privacy = `If_possible) ?(integrity = `If_possible)
-                         () =
+                         ?(flags=[]) () =
   object
     method mech_type = mech_type
     method target_name = target_name
-    method credential = credential
+    method initiator_name = initiator_name
     method privacy = privacy
     method integrity = integrity
+    method flags = flags
   end
+
+class type server_config =
+object
+  method mech_types : oid list
+  method acceptor_name : (string * oid) option
+  method privacy : support_level
+  method integrity : support_level
+  method flags : (req_flag * support_level) list
+end
+
+let create_server_config ?(mech_types = []) ?acceptor_name
+                         ?(privacy = `If_possible) ?(integrity = `If_possible)
+                         ?(flags=[]) () =
+  object
+    method mech_types = mech_types
+    method acceptor_name = acceptor_name
+    method privacy = privacy
+    method integrity = integrity
+    method flags = flags
+  end
+
+class type client_props =
+object
+  method mech_type : oid
+  method flags : ret_flag list
+  method time : time
+end
+
+
+class type server_props =
+object
+  method mech_type : oid
+  method flags : ret_flag list
+  method time : time
+  method initiator_name : (string * oid)
+  method initiator_name_exported : string
+  method deleg_credential : (exn * time) option
+end

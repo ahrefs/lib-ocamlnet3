@@ -178,6 +178,10 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
   type context = scram_context
   type name = scram_name
 
+  exception Credential of credential
+  exception Context of context
+  exception Name of name
+
   class type gss_api =
      [credential, name, context] Netsys_gssapi.poly_gss_api
 
