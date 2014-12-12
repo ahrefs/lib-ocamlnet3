@@ -34,14 +34,11 @@ let connect host =
   client
 
       
-let test1 host =
-  let client = connect host in
-  NC.nfsproc4_null client ();
-  Rpc_client.shut_down client
+let test1 client =
+  NC.nfsproc4_null client ()
 
 
-let test2 host =
-  let client = connect host in
+let test2 client =
   let req0 =
     `op_putrootfh in
   let req1 =
@@ -50,7 +47,6 @@ let test2 host =
     [| req0; req1 |] in
   let (_, _, resarr) =
     NC.nfsproc4_compound client ("tag1", 0l, reqarr) in
-  Rpc_client.shut_down client;
   if Array.length resarr < Array.length reqarr then
     failwith "not all requests executed";
   ( match resarr.(0) with

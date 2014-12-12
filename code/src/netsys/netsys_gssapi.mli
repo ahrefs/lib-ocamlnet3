@@ -623,6 +623,7 @@ object
   method mech_type : oid
   method target_name : (string * oid) option
   method initiator_name : (string * oid) option
+  method initiator_cred : exn option
   method privacy : support_level
   method integrity : support_level
   method flags : (req_flag * support_level) list
@@ -631,6 +632,7 @@ end
 val create_client_config : 
       ?mech_type:oid ->
       ?initiator_name:(string * oid) ->
+      ?initiator_cred:exn ->
       ?target_name:(string * oid) ->
       ?privacy:support_level ->
       ?integrity:support_level ->
@@ -643,6 +645,10 @@ val create_client_config :
     Note that you normally can omit all of [mech_type], [target_name],
     and [initiator_name] as GSSAPI already substitutes reasonable defaults
     (at least if Kerberos is available as mechanism).
+
+    If you have a delegated credential you can also pass it as
+    [initiator_cred]. This must be a [Credential] exception from the
+    GSSAPI provider. [initiator_cred] has precedence over [initiator_name].
 
     [privacy] and [integrity] specify the desired level of protection.
     By default, both integrity and privacy are enabled if available, but

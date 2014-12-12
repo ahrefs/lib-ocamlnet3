@@ -4,10 +4,18 @@ module type CONFIG = sig
     val raise_error : string -> 'a
 end
 
-module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
+module Manage(G:Netsys_gssapi.GSSAPI) = struct
+  let delete_context ctx_opt () =
+    match ctx_opt with
+      | None -> ()
+      | Some ctx ->
+          G.interface # delete_sec_context
+            ~context:ctx
+            ~out:(fun ~minor_status ~major_status () -> ())
+            ()
 
-  let check_status ?fn ?minor_status 
-                   ((calling_error,routine_error,_) as major_status) =
+  let format_status ?fn ?minor_status 
+                    ((calling_error,routine_error,_) as major_status) =
     if calling_error <> `None || routine_error <> `None then (
         let error = Netsys_gssapi.string_of_major_status major_status in
         let minor_s =
@@ -26,19 +34,26 @@ module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
           match fn with
             | None -> ""
             | Some n -> " for " ^ n in
-        C.raise_error ("GSSAPI error" ^ s1 ^ ": " ^ 
-                    error ^ minor_s)
+        "GSSAPI error" ^ s1 ^ ": " ^ error ^ minor_s
     )
+    else
+      let s1 =
+        match fn with
+          | None -> ""
+          | Some n -> " " ^ n in
+      "GSSAPI call" ^ s1 ^ " is successful"
+
+end
 
 
-  let delete_context ctx_opt () =
-    match ctx_opt with
-      | None -> ()
-      | Some ctx ->
-          G.interface # delete_sec_context
-            ~context:ctx
-            ~out:(fun ~minor_status ~major_status () -> ())
-            ()
+module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
+  module M = Manage(G)
+
+  let check_status ?fn ?minor_status
+                   ((calling_error,routine_error,_) as major_status) =
+    if calling_error <> `None || routine_error <> `None then
+      C.raise_error(M.format_status ?fn ?minor_status major_status)
+
 
   let get_initiator_name (config:Netsys_gssapi.client_config) =
     match config#initiator_name with
@@ -66,19 +81,28 @@ module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
                   )
              () 
 
-  let get_initiator_cred ~initiator_name (config:Netsys_gssapi.client_config) =
+  let acquire_initiator_cred ~initiator_name 
+                             (config:Netsys_gssapi.client_config) =
     let mech_type = config#mech_type in
     G.interface # acquire_cred
-       ~desired_name:initiator_name
-       ~time_req:`Indefinite
-       ~desired_mechs:(if mech_type = [| |] then [] else [mech_type])
-       ~cred_usage:`Initiate
-       ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status
-                 ~major_status () ->
-               check_status ~fn:"acquire_cred" ~minor_status major_status;
-               cred
-            )
-       () 
+      ~desired_name:initiator_name
+      ~time_req:`Indefinite
+      ~desired_mechs:(if mech_type = [| |] then [] else [mech_type])
+      ~cred_usage:`Initiate
+      ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status
+                ~major_status () ->
+              check_status ~fn:"acquire_cred" ~minor_status major_status;
+              cred
+           )
+      () 
+
+  let get_initiator_cred ~initiator_name (config:Netsys_gssapi.client_config) =
+    let mech_type = config#mech_type in
+    match config#initiator_cred with
+      | Some(G.Credential cred) ->
+          cred
+      | _ ->
+          acquire_initiator_cred ~initiator_name config
 
   let get_acceptor_cred ~acceptor_name (config:Netsys_gssapi.server_config) =
     G.interface # acquire_cred
@@ -188,28 +212,33 @@ module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
       ~input_token
       ~out:(fun ~actual_mech_type ~output_context ~output_token 
                 ~ret_flags ~time_rec ~minor_status ~major_status () -> 
-              check_status ~fn:"init_sec_context" ~minor_status major_status;
-              let ctx =
-                match output_context with
-                  | None -> assert false
-                  | Some ctx -> ctx in
-              let (_,_,suppl) = major_status in
-              let cont_flag = List.mem `Continue_needed suppl in
-              if cont_flag then (
-                assert(output_token <> "");
-                (ctx, output_token, None)
-              )
-              else (
-                check_client_flags config ret_flags;
-                let props =
-                  ( object
-                      method mech_type = actual_mech_type
-                      method flags = ret_flags
-                      method time = time_rec
-                    end
-                  ) in
-                (ctx, output_token, Some props)
-              )
+              try
+                check_status ~fn:"init_sec_context" ~minor_status major_status;
+                let ctx =
+                  match output_context with
+                    | None -> assert false
+                    | Some ctx -> ctx in
+                let (_,_,suppl) = major_status in
+                let cont_flag = List.mem `Continue_needed suppl in
+                if cont_flag then (
+                  assert(output_token <> "");
+                  (ctx, output_token, ret_flags, None)
+                )
+                else (
+                  check_client_flags config ret_flags;
+                  let props =
+                    ( object
+                        method mech_type = actual_mech_type
+                        method flags = ret_flags
+                        method time = time_rec
+                      end
+                    ) in
+                  (ctx, output_token, ret_flags, Some props)
+                )
+              with
+                | error ->
+                    M.delete_context output_context ();
+                    raise error
            )
       ()
 
@@ -223,47 +252,53 @@ module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
       ~out:(fun ~src_name ~mech_type ~output_context ~output_token
                 ~ret_flags ~time_rec ~delegated_cred 
                 ~minor_status ~major_status () ->
-              check_status ~fn:"accept_sec_context" ~minor_status major_status;
-              let ctx =
-                match output_context with
-                  | None -> assert false
-                  | Some ctx -> ctx in
-              let (_,_,suppl) = major_status in
-              let cont_flag = List.mem `Continue_needed suppl in
-              if cont_flag then (
-                assert(output_token <> "");
-                (ctx, output_token, None)
-              )
-              else (
-                check_server_flags config ret_flags;
-                let (props : Netsys_gssapi.server_props) =
-                  ( object
-                      method mech_type = mech_type
-                      method flags = ret_flags
-                      method time = time_rec
-                      method initiator_name =
-                        get_display_name src_name
-                      method initiator_name_exported =
-                        get_exported_name src_name
-                      method deleg_credential =
-                        if List.mem `Deleg_flag ret_flags then
-                          let t =
-                            G.interface # inquire_cred
-                              ~cred:delegated_cred
-                              ~out:(fun ~name ~lifetime ~cred_usage ~mechanisms
-                                        ~minor_status ~major_status () ->
-                                      check_status ~fn:"inquire_cred"
-                                                   ~minor_status major_status;
-                                      lifetime
-                                   )
-                              () in
-                          Some(G.Credential delegated_cred, t)
-                        else
-                          None
-                    end
-                  ) in
-                (ctx, output_token, Some props)
-              )
+              try
+                check_status ~fn:"accept_sec_context" ~minor_status major_status;
+                let ctx =
+                  match output_context with
+                    | None -> assert false
+                    | Some ctx -> ctx in
+                let (_,_,suppl) = major_status in
+                let cont_flag = List.mem `Continue_needed suppl in
+                if cont_flag then (
+                  assert(output_token <> "");
+                  (ctx, output_token, ret_flags, None)
+                )
+                else (
+                  check_server_flags config ret_flags;
+                  let (props : Netsys_gssapi.server_props) =
+                    ( object
+                        method mech_type = mech_type
+                        method flags = ret_flags
+                        method time = time_rec
+                        method initiator_name =
+                          get_display_name src_name
+                        method initiator_name_exported =
+                          get_exported_name src_name
+                        method deleg_credential =
+                          if List.mem `Deleg_flag ret_flags then
+                            let t =
+                              G.interface # inquire_cred
+                                ~cred:delegated_cred
+                                ~out:(fun ~name ~lifetime ~cred_usage
+                                          ~mechanisms
+                                          ~minor_status ~major_status () ->
+                                        check_status ~fn:"inquire_cred"
+                                                     ~minor_status major_status;
+                                        lifetime
+                                     )
+                                () in
+                            Some(G.Credential delegated_cred, t)
+                          else
+                            None
+                      end
+                    ) in
+                  (ctx, output_token, ret_flags, Some props)
+                )
+              with
+                | error ->
+                    M.delete_context output_context ();
+                    raise error
            )
       ()
 

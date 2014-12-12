@@ -19,31 +19,19 @@ type user_name_format =
    *)
 
 val server_auth_method : 
-      ?require_privacy:bool ->
-      ?require_integrity:bool ->
       ?shared_context:bool ->
-      (* ?acceptor_cred:credential -> *)   (* TODO *)
       ?user_name_format:user_name_format ->
       ?seq_number_window:int ->
-      (module Netsys_gssapi.GSSAPI) -> oid -> Rpc_server.auth_method
+      (module Netsys_gssapi.GSSAPI) -> 
+      Netsys_gssapi.server_config -> Rpc_server.auth_method
   (** Creates an authentication method from a GSS-API interface.
-      The OID selects the desired authentication method.
 
       Options:
-      - [require_privacy]: Whether the messages must be
-        encrypted. If not enabled, the server also accepts non-encrypted
-        messages that are authenticated via GSS-API.
-      - [require_integrity]: Whether integrity checksums must be
-        included. If not enabled, the server also accepts non-signed
-        messages that are authenticated via GSS-API.
       - [shared_context]: Whether this method maintains only one
         security context for all connections. By default,
         each connection has a security context of its own. For UDP,
         this option needs to be set, because each UDP request is
         considered as creating a new connection.
-      - [acceptor_cred]: Overrides the credentials of the server. By
-        default, it is left to [gss_api] which credential is
-        assumed.
       - [user_name_format]: Defaults to [`Prefixed_name].
       - [seq_number_window]: If set, the server checks for replayed
         requests. The integer is the length of the check window (see

@@ -105,6 +105,8 @@ object
          [ `Emit | `Receive of uint4 | `Done of 't pre_auth_session | `Error]
   method emit : uint4 -> uint4 -> uint4 -> Rpc_packer.packed_value
   method receive : Rpc_packer.packed_value -> unit
+  method gssapi_props : Netsys_gssapi.client_props option
+  method destroy : unit -> unit
   method auth_method : 't pre_auth_method
 end
 
@@ -175,6 +177,7 @@ and t =
 	mutable used_xids : unit SessionMap.t;
 	mutable last_replier : Unix.sockaddr option;
 	mutable last_xid : uint4 option;
+        mutable last_auth_proto : t pre_auth_protocol option;
 
 	(* configs: *)
 	mutable timeout : float;
@@ -232,6 +235,8 @@ object(self)
       | Some s -> `Done s
   method emit _ _ _ = assert false
   method receive _ = assert false
+  method gssapi_props = None
+  method destroy() = ()
   method auth_method = m
 end
 
@@ -311,6 +316,7 @@ let stop_retransmission_timer cl call =
 
 let pass_result cl call f =
   (* for regular calls only! *)
+  cl.last_auth_proto <- Some call.call_auth_proto;
 
   (* Stop the timer, if any : *)
   stop_retransmission_timer cl call;
@@ -418,6 +424,8 @@ let close ?error ?(ondown=fun()->()) cl =
     cl.used_xids <- SessionMap.empty;
     Queue.clear cl.waiting_calls;
     Hashtbl.clear cl.delayed_calls;
+    Hashtbl.iter (fun _ p -> p#destroy()) cl.auth_current;
+    Hashtbl.clear cl.auth_current;
     match cl.trans with
       | None -> 
 	  ondown()
@@ -778,6 +786,7 @@ let unbound_async_call_r cl prog procname param receiver authsess_opt =
   in
 
   cl.last_xid <- Some new_call.xid;
+  cl.last_auth_proto <- None;
   cl.used_xids <- SessionMap.add new_call.xid () cl.used_xids;
   cl.next_timeout <- cl.timeout;
   cl.next_max_retransmissions <- cl.max_retransmissions;
@@ -1493,6 +1502,7 @@ let rec internal_create initial_xid
       mstring_factories = Hashtbl.create 1;
       last_replier = None;
       last_xid = None;
+      last_auth_proto = None;
       timeout = (-1.0);
       max_retransmissions = 0;
       exception_handler = (fun _ -> ());
@@ -1887,6 +1897,13 @@ let get_tls_session_props cl =
     | None -> failwith "Rpc_client.get_tls_session_props: not connected"
     | Some trans ->
         trans # tls_session_props
+
+let get_gssapi_props cl =
+  match cl.last_auth_proto with
+    | None ->
+        failwith "Rpc_client.get_gssapi_props: nothing available"
+    | Some proto ->
+        proto # gssapi_props
 
 let verbose b =
   Debug.enable := b

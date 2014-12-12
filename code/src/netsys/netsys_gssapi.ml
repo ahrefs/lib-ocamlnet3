@@ -495,18 +495,21 @@ object
   method mech_type : oid
   method target_name : (string * oid) option
   method initiator_name : (string * oid) option
+  method initiator_cred : exn option
   method privacy : support_level
   method integrity : support_level
   method flags : (req_flag * support_level) list
 end
 
-let create_client_config ?(mech_type = [| |]) ?initiator_name ?target_name
+let create_client_config ?(mech_type = [| |]) ?initiator_name ?initiator_cred
+                         ?target_name
                          ?(privacy = `If_possible) ?(integrity = `If_possible)
-                         ?(flags=[]) () =
+                         ?(flags=[]) () : client_config =
   object
     method mech_type = mech_type
     method target_name = target_name
     method initiator_name = initiator_name
+    method initiator_cred = initiator_cred
     method privacy = privacy
     method integrity = integrity
     method flags = flags

@@ -32,6 +32,7 @@ let () =
 
 
 module Make(G : Netsys_gssapi.GSSAPI) = struct
+  module M = Netgssapi_auth.Manage(G)
 
   type window =
       { window : string;
@@ -53,6 +54,8 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           (* whether privacy-protected msgs are ok *)
 
         ctx_window : window option;
+        mutable ctx_expires : float;
+        mutable ctx_props : Netsys_gssapi.server_props option;
       }
         
   let split_rpc_gss_data_t ms =
@@ -81,19 +84,18 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         ~out:(fun ~msg_token ~minor_status ~major_status () ->
 	        let (c_err, r_err, flags) = major_status in
 	        if c_err <> `None || r_err <> `None then (
+                  let msg = 
+                    M.format_status ~fn:"get_mic" ~minor_status major_status in
 		  if is_server then (
 		    (* The RFC demands that no response is sent if a
 		       get_mic problem occurs in the server
 		     *)
-		    Netlog.logf `Err
-		                "Rpc_auth_gssapi: Cannot obtain MIC: %s"
-		                (string_of_major_status major_status);
+		    Netlog.logf `Err "Rpc_auth_gssapi: %s" msg;
 		    raise Rpc_server.Late_drop
 		  )
 		  else
 		    failwith("Rpc_auth_gssapi: \
-                              Cannot obtain MIC: " ^ 
-			       string_of_major_status major_status);
+                              Cannot obtain MIC: " ^ msg)
 	        );
 	        msg_token
 	     )
@@ -158,10 +160,12 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         ~out:(fun ~qop_state ~minor_status ~major_status () ->
                 let (c_err, r_err, flags) = major_status in
                 if c_err <> `None || r_err <> `None then
+                  let msg = 
+                    M.format_status
+                      ~fn:"verify_mic" ~minor_status major_status in
                   raise(Xdr.Xdr_format(
                           "Rpc_auth_gssapi: \
-                            Cannot verify MIC: " ^ 
-                            string_of_major_status major_status));
+                            Cannot verify MIC: " ^ msg))
              )
         ();
       let (seq, args) =
@@ -197,9 +201,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               try
                 let (c_err, r_err, flags) = major_status in
                 if c_err <> `None || r_err <> `None then (
+                  let msg = 
+                    M.format_status
+                      ~fn:"wrap" ~minor_status major_status in
                   failwith("Rpc_auth_gssapi: \
-                            Cannot wrap message: " ^ 
-                             string_of_major_status major_status);
+                            Cannot wrap message: " ^ msg)
                 );
                 if not conf_state then
                   failwith
@@ -256,11 +262,14 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                 ~major_status
                 () ->
                   let (c_err, r_err, flags) = major_status in
-                  if c_err <> `None || r_err <> `None then
+                  if c_err <> `None || r_err <> `None then (
+                    let msg = 
+                      M.format_status
+                        ~fn:"unwrap" ~minor_status major_status in
                     raise(Xdr.Xdr_format
                             ("Rpc_auth_gssapi: \
-                              Cannot unwrap message: " ^ 
-                               string_of_major_status major_status));
+                              Cannot unwrap message: " ^ msg))
+                  );
                   if not conf_state then
                     raise
                       (Xdr.Xdr_format
@@ -362,32 +371,22 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
 
   let server_auth_method 
-        ?(require_privacy=false)
-        ?(require_integrity=false)
         ?(shared_context=false)
-        ?acceptor_cred
         ?(user_name_format = `Prefixed_name)
         ?seq_number_window
-        (gss_api : G.gss_api) mech : Rpc_server.auth_method =
+        (gss_api : G.gss_api)
+        (sconf : Netsys_gssapi.server_config) : Rpc_server.auth_method =
 
-    let acceptor_cred =
-      match acceptor_cred with
-        | None ->
-            gss_api # acquire_cred
-              ~desired_name:gss_api#no_name
-              ~time_req:`Indefinite
-              ~desired_mechs:[mech]
-              ~cred_usage:`Accept
-              ~out:(
-                fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status() ->
-                  let (c_err, r_err, flags) = major_status in
-                  if c_err <> `None || r_err <> `None then
-                    failwith("Rpc_auth_gssapi: Cannot acquire default creds: " ^ 
-                               string_of_major_status major_status);
-                  cred
-              )
-              ()
-        | Some c -> c in
+    let module C = struct
+      let raise_error msg =
+        failwith ("Rpc_auth_gssapi: " ^ msg)
+    end in
+    let module A = Netgssapi_auth.Auth(G)(C) in
+
+    let acceptor_name = A.get_acceptor_name sconf in
+    let acceptor_cred = A.get_acceptor_cred ~acceptor_name sconf in
+    let require_privacy = sconf # privacy = `Required in
+    let require_integrity = sconf # integrity = `Required in
 
     let rpc_gss_cred_t =
       Xdr.validate_xdr_type
@@ -413,6 +412,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     let ctx_by_handle = Hashtbl.create 42 in
 
     let handle_nr = ref 0 in
+    let last_gc = ref 0.0 in
 
     let new_handle() =
       let n = !handle_nr in
@@ -430,6 +430,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
         method authenticate srv conn_id (details:Rpc_server.auth_details) auth =
           dlog "authenticate";
+          self # collect();
           (* First decode the rpc_gss_cred_t structure in the header: *)
           try
             let (_, cred_data) = details # credential in
@@ -470,6 +471,26 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   (Netexn.to_string error);
                 auth(Rpc_server.Auth_negative Rpc.Auth_failed)
 
+        method private collect() =
+          let t = Unix.time() in
+          if t > !last_gc +. 60.0 then (    (* FIXME: arbitrary *)
+            let l = ref [] in
+            Hashtbl.iter
+              (fun handle ctx ->
+                 if t > ctx.ctx_expires then (
+                   M.delete_context (Some ctx.context) ();
+                   l := handle :: !l
+                 )
+              )
+              ctx_by_handle;
+            List.iter
+              (fun handle ->
+                 Hashtbl.remove ctx_by_handle handle
+              )
+              !l;
+            last_gc := t
+          )
+
         method private get_token details =
           let body_data =
             Rpc_packer.unpack_call_body_raw
@@ -501,6 +522,18 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           ctx.ctx_svc_privacy   <- have_privacy;
 
 
+        method private fixup_expiration ctx =
+          match ctx.ctx_props with
+            | None -> ()
+            | Some p ->
+                ( match p # time with
+                    | `This t ->
+                        ctx.ctx_expires <- Unix.time() +. t
+                    | `Indefinite ->
+                        ()
+                )
+
+
         method private verify_context ctx conn_id =
           ( match ctx.ctx_conn_id with
               | None -> ()
@@ -508,10 +541,10 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   if id <> conn_id then
                     failwith "Rpc_auth_gssapi: this context is unavailable \
                               to this connection"
-          )
-            (* CHECK: do we need to inquire_context, and to check whether
-               the context is fully established?
-             *)
+          );
+          let t = Unix.time() in
+          if t -. 10.0 > ctx.ctx_expires then
+            raise(Rpc.Rpc_server Rpc.RPCSEC_GSS_ctxproblem)
 
         method private get_user ctx =
           let name =
@@ -522,10 +555,8 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                       ~minor_status ~major_status
                       ()
                       ->
-                        let (c_err, r_err, flags) = major_status in
-                        if c_err <> `None || r_err <> `None then
-                          failwith("Rpc_auth_gssapi: Cannot extract name: " 
-                                     ^ string_of_major_status major_status);
+                        A.check_status
+                          ~fn:"inquire_context" ~minor_status major_status;
                         if not is_open then
                           failwith("Rpc_auth_gssapi: get_user: context is not \
                                  fully established");
@@ -536,34 +567,18 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                  )
             () in
           if user_name_format = `Exported_name then
-            gss_api # export_name
-              ~name
-              ~out:(fun ~exported_name ~minor_status ~major_status () ->
-                      let (c_err, r_err, flags) = major_status in
-                      if c_err <> `None || r_err <> `None then
-                        failwith("Rpc_auth_gssapi: Cannot export name: " 
-                                 ^ string_of_major_status major_status);
-                      exported_name
-                   )
-              ()
+            A.get_exported_name name
           else (
-            gss_api # display_name
-              ~input_name:name
-              ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
-                      () ->
-                        match user_name_format with
-                          | `Exported_name -> assert false
-                          | `Prefixed_name ->
-                              let oid_s =
-                                Netoid.to_string_curly output_name_type in
-                              oid_s ^ output_name
-                          | `Plain_name ->
-                              output_name
-                   )
-              ()
+            let (output_name,output_name_type) = A.get_display_name name in
+            match user_name_format with
+              | `Exported_name -> assert false
+              | `Prefixed_name ->
+                  let oid_s =
+                    Netoid.to_string_curly output_name_type in
+                  oid_s ^ output_name
+              | `Plain_name ->
+                  output_name
           )
-
-
 
         method private auth_init srv conn_id details cred1 =
           dlog "auth_init";
@@ -576,62 +591,52 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             failwith "Bad verifier (1)";
           if verf_data <> "" then
             failwith "Bad verifier (2)";
-          gss_api # accept_sec_context
-            ~context:None
-            ~acceptor_cred
-            ~input_token:(self # get_token details)
-            ~chan_bindings:None
-            ~out:(
-              fun ~src_name ~mech_type ~output_context
-                ~output_token ~ret_flags ~time_rec 
-                ~delegated_cred ~minor_status ~major_status
-                () ->
-                  let (c_err, r_err, flags) = major_status in
-                  if c_err <> `None || r_err <> `None then
-                    failwith("Rpc_auth_gssapi: Cannot accept token: " ^ 
-                               string_of_major_status major_status);
-                  let h = new_handle() in
-                  let context =
-                    match output_context with
-                      | None ->
-                          failwith "Rpc_auth_gssapi: no context"
-                      | Some c -> c in
-                  let cont = List.mem `Continue_needed flags in
-                  let ctx =
-                    { context = context;
-                      ctx_continue = cont;
-                      ctx_handle = h;
-                      ctx_conn_id = 
-                        if shared_context then None else Some conn_id;
-                      ctx_svc_none = false;
-                      ctx_svc_integrity = false;
-                      ctx_svc_privacy = false;
-                      ctx_window = ( match seq_number_window with
-                                       | None -> None
-                                       | Some n -> Some(init_window n)
-                                   );
-                    } in
-                  if not cont then
-                    self#fixup_svc_flags ctx ret_flags;
-                  Hashtbl.replace ctx_by_handle h ctx;
-                  let reply =
-                    { res_handle = h;
-                      res_major =
-                        if ctx.ctx_continue 
-                        then gss_s_continue_needed
-                        else gss_s_complete;
-                      res_minor = zero;
-                      res_seq_window = ( match seq_number_window with
-                                           | None ->
-                                               maxseq
-                                           | Some n -> 
-                                               Rtypes.uint4_of_int n
-                                       );
-                      res_token = output_token
-                    } in
-                  self # auth_init_result ctx reply
-            )
-            ()
+          let (context, output_token, ret_flags, props_opt) =
+            A.accept_sec_context
+              ~context:None
+              ~acceptor_cred
+              ~input_token:(self # get_token details)
+              ~chan_bindings:None
+              sconf in
+          let h = new_handle() in
+          let cont = (props_opt = None) in
+          let ctx =
+            { context = context;
+              ctx_continue = cont;
+              ctx_handle = h;
+              ctx_conn_id = 
+                if shared_context then None else Some conn_id;
+              ctx_svc_none = false;
+              ctx_svc_integrity = false;
+              ctx_svc_privacy = false;
+              ctx_window = ( match seq_number_window with
+                               | None -> None
+                               | Some n -> Some(init_window n)
+                           );
+              ctx_expires = 1E99;
+              ctx_props = props_opt;
+            } in
+          if not cont then (
+            self#fixup_svc_flags ctx ret_flags;
+            self#fixup_expiration ctx;
+          );
+          Hashtbl.replace ctx_by_handle h ctx;
+          let reply =
+            { res_handle = h;
+              res_major =
+                if ctx.ctx_continue 
+                then gss_s_continue_needed
+                else gss_s_complete;
+              res_minor = zero;
+              res_seq_window = ( match seq_number_window with
+                                   | None ->
+                                       maxseq
+                                   | Some n -> 
+                                       Rtypes.uint4_of_int n
+                               );
+              res_token = output_token
+            } in
+          self # auth_init_result ctx reply
 
 
         method private auth_cont_init srv conn_id details cred1 =
@@ -651,44 +656,35 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           if not ctx.ctx_continue then
             failwith "Rpc_auth_gssapi: cannot continue context establishment";
           self # verify_context ctx conn_id;
-          gss_api # accept_sec_context
-            ~context:(Some ctx.context)
-            ~acceptor_cred
-            ~input_token:(self # get_token details)
-            ~chan_bindings:None
-            ~out:(
-              fun ~src_name ~mech_type ~output_context
-                ~output_token ~ret_flags ~time_rec 
-                ~delegated_cred ~minor_status ~major_status
-                () ->
-                  let (c_err, r_err, flags) = major_status in
-                  if c_err <> `None || r_err <> `None then
-                    failwith("Rpc_auth_gssapi: Cannot accept token: " ^ 
-                               string_of_major_status major_status);
-                  (* CHECK: do we need to check whether output_context is
-                     the current context? Can this change? 
-                   *)
-                  ctx.ctx_continue <- List.mem `Continue_needed flags;
-                  if not ctx.ctx_continue then
-                    self#fixup_svc_flags ctx ret_flags;
-                  let reply =
-                    { res_handle = h;
-                      res_major =
-                        if ctx.ctx_continue 
-                        then gss_s_continue_needed
-                        else gss_s_complete;
-                      res_minor = zero;
-                      res_seq_window = ( match seq_number_window with
-                                           | None ->
-                                               maxseq
-                                           | Some n -> 
-                                               Rtypes.uint4_of_int n
-                                       );
-                      res_token = output_token
-                    } in
-                  self # auth_init_result ctx reply
-            )
-            ()
+          let (context, output_token, ret_flags, props_opt) =
+            A.accept_sec_context
+              ~context:(Some ctx.context)
+              ~acceptor_cred
+              ~input_token:(self # get_token details)
+              ~chan_bindings:None
+              sconf in
+          ctx.ctx_continue <- (props_opt = None);
+          ctx.ctx_props <- props_opt;
+          if not ctx.ctx_continue then (
+            self#fixup_svc_flags ctx ret_flags;
+            self#fixup_expiration ctx;
+          );
+          let reply =
+            { res_handle = h;
+              res_major =
+                if ctx.ctx_continue 
+                then gss_s_continue_needed
+                else gss_s_complete;
+              res_minor = zero;
+              res_seq_window = ( match seq_number_window with
+                                   | None ->
+                                       maxseq
+                                   | Some n -> 
+                                       Rtypes.uint4_of_int n
+                               );
+              res_token = output_token
+            } in
+          self # auth_init_result ctx reply
 
         method private auth_init_result ctx reply =
           dlog "auth_init_result";
@@ -709,11 +705,8 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   ~qop_req:0l
                   ~message:[Xdr_mstring.string_to_mstring window_s]
                   ~out:(fun ~msg_token ~minor_status ~major_status () ->
-                          let (c_err, r_err, flags) = major_status in
-                          if c_err <> `None || r_err <> `None then
-                            failwith("Rpc_auth_gssapi: \
-                                    Cannot compute MIC: " ^ 
-                                       string_of_major_status major_status);
+                          A.check_status ~fn:"get_mic"
+                                         ~minor_status major_status;
                           msg_token
                        )
                   () in
@@ -727,7 +720,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           let ctx =
             try Hashtbl.find ctx_by_handle h
             with Not_found ->
-              failwith "Rpc_auth_gssapi: unknown context handle" in
+              raise(Rpc.Rpc_server Rpc.RPCSEC_GSS_ctxproblem) in
           self # verify_context ctx conn_id;
 
           (* Verify the header first *)
@@ -747,11 +740,6 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                     if c_err <> `None || r_err <> `None then
                       raise(Rpc.Rpc_server Rpc.RPCSEC_GSS_credproblem)
                         (* demanded by the RFC *)
-  (*
-                      failwith("Rpc_auth_gssapi: \
-                                    Cannot verify MIC: " ^ 
-                                 string_of_major_status major_status);
-   *)
                  )
             ();
 
@@ -760,6 +748,9 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
              We cannot delay this until encoding/decoding because the
              exception handling would not work by then. So it must
              happen now. I have no idea how to do so, though.
+
+             CHECK: there is now a check on ctx_expires in verify_context.
+             Good enough?
            *)
 
           (* Check sequence number *)
@@ -821,11 +812,6 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                       let (c_err, r_err, flags) = major_status in
                       if c_err <> `None || r_err <> `None then
                         raise(Rpc.Rpc_server Rpc.RPCSEC_GSS_ctxproblem);
-  (*
-                        failwith("Rpc_auth_gssapi: \
-                                    Cannot compute MIC: " ^ 
-                                   string_of_major_status major_status);
-   *)
                       msg_token
                    )
               () in
@@ -857,7 +843,12 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
                 (* Now destroy: *)
                 let h = cred1.handle in
-                Hashtbl.remove ctx_by_handle h;
+                ( try 
+                    let ctx = Hashtbl.find ctx_by_handle h in
+                    M.delete_context (Some ctx.context) ();
+                    Hashtbl.remove ctx_by_handle h;
+                  with Not_found -> ()
+                );
 
                 (* Create response: *)
                 let encoded_emptiness =
@@ -881,59 +872,6 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     let privacy = cconf#privacy in
     let integrity = cconf#integrity in
 
-    let default_initiator_cred() =
-      let desired_name =
-        match cconf # initiator_name with
-          | Some(cred, cred_oid) ->
-              gss_api # import_name
-                ~input_name:cred
-                ~input_name_type:cred_oid
-                ~out:(fun ~output_name ~minor_status ~major_status () ->
-                        let (c_err, r_err, flags) = major_status in
-                        if c_err <> `None || r_err <> `None then
-                          failwith("Rpc_auth_gssapi: Cannot import default creds: " ^ 
-                                     string_of_major_status major_status);
-                        output_name
-                     )
-                ()
-          | None ->
-              gss_api#no_name in
-
-      gss_api # acquire_cred
-        ~desired_name
-        ~time_req:`Indefinite
-        ~desired_mechs:[ cconf#mech_type ]
-        ~cred_usage:`Initiate
-        ~out:(
-          fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status() ->
-            let (c_err, r_err, flags) = major_status in
-            if c_err <> `None || r_err <> `None then
-              failwith("Rpc_auth_gssapi: Cannot acquire default creds: " ^ 
-                         string_of_major_status major_status);
-            cred
-        )
-        () in
-
-
-    let get_target_name() =
-      match cconf # target_name with
-        | None ->
-            gss_api # no_name
-              (* For Kerberos, at least, this will not work! *)
-
-        | Some(name,oid) ->
-            gss_api # import_name
-                ~input_name:name
-                ~input_name_type:oid
-                ~out:(fun ~output_name ~minor_status ~major_status () ->
-                        let (c_err, r_err, flags) = major_status in
-                        if c_err <> `None || r_err <> `None then
-                          failwith("Rpc_auth_gssapi: Cannot import target name: " ^ 
-                                     string_of_major_status major_status);
-                        output_name
-                     )
-                () in
-
     let rpc_gss_cred_t =
       Xdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_cred_t in
@@ -950,6 +888,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                 (p:Rpc_client.auth_protocol)
                 ctx service handle cur_seq_num
           : Rpc_client.auth_session =
+      let module C = struct
+        let raise_error msg =
+          failwith ("Rpc_auth_gssapi: " ^ msg)
+      end in
+      let module A = Netgssapi_auth.Auth(G)(C) in
       let seq_num_of_xid = Hashtbl.create 15 in
       ( object(self)
           method next_credentials client prog proc xid =
@@ -985,11 +928,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                 ~qop_req:0l
                 ~message:[Xdr_mstring.string_to_mstring h]
                 ~out:(fun ~msg_token ~minor_status ~major_status () ->
-                        let (c_err, r_err, flags) = major_status in
-                        if c_err <> `None || r_err <> `None then
-                          failwith("Rpc_auth_gssapi: \
-                            Cannot obtain MIC: " ^ 
-                                     string_of_major_status major_status);
+                        A.check_status ~fn:"get_mic" ~minor_status major_status;
                         msg_token
                      )
                 () in
@@ -1071,9 +1010,8 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               ~message:[Xdr_mstring.string_to_mstring seq_s]
               ~token:verf_data
               ~out:(fun ~qop_state ~minor_status ~major_status () ->
-                      let (c_err, r_err, flags) = major_status in
-                      if c_err <> `None || r_err <> `None then
-                        raise(Rpc.Rpc_server Rpc.Auth_invalid_resp);
+                      A.check_status 
+                        ~fn:"verify_mic" ~minor_status major_status;
                    )
               ();
             dlog "server_accepts returns normally"
@@ -1089,14 +1027,79 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       let state = ref `Emit in
       let ctx = ref None in
       let input_token = ref "" in
+      let output_token = ref "" in
       let handle = ref "" in
       let init_prog = ref None in
       let init_service = ref None in
+      let init_props = ref None in
+
+      let delete_context() =
+        M.delete_context !ctx ();
+        ctx := None in
+      let module C = struct
+        let raise_error msg =
+          delete_context();
+          failwith ("Rpc_auth_gssapi: " ^ msg)
+      end in
+      let module A = Netgssapi_auth.Auth(G)(C) in
+          
 
       let get_context() =
         match !ctx with Some c -> c | None -> assert false in
+      let get_service() =
+        match !init_service with Some s -> s | None -> assert false in
+      let get_prog() =
+        match !init_prog with Some p -> p | None -> assert false in
+      let get_props() =
+        match !init_props with Some p -> p | None -> assert false in
 
       (* CHECK: what happens with exceptions thrown here? *)
+
+      let init_sec_context_step() =
+        let prog = get_prog() in
+        let req_flags = A.get_client_flags cconf in
+        let (output_ctx, output_tok, ret_flags, props_opt) =
+          A.init_sec_context
+            ~initiator_cred:cred
+            ~context:!ctx
+            ~target_name:target
+            ~req_flags
+            ~chan_bindings:None
+            ~input_token:(if !first then None else Some !input_token)
+            cconf in
+        let have_priv = List.mem `Conf_flag ret_flags in
+        let have_integ = List.mem `Integ_flag ret_flags in
+        let service_i =
+          match integrity with
+            | `Required ->
+                if not have_integ && not have_priv then
+                  failwith "Rpc_auth_gssapi: Integrity is not available";
+                `rpc_gss_svc_integrity
+            | `If_possible ->
+                if have_integ then
+                  `rpc_gss_svc_integrity
+                else
+                  `rpc_gss_svc_none
+            | `None ->
+                `rpc_gss_svc_none in
+        let service =
+          match privacy with
+            | `Required ->
+                if not have_priv then
+                  failwith "Rpc_auth_gssapi: Privacy is not available";
+                `rpc_gss_svc_privacy
+            | `If_possible ->
+                if have_priv then
+                  `rpc_gss_svc_privacy
+                else
+                  service_i
+            | `None ->
+                service_i in
+        ctx := Some output_ctx;
+        init_service := Some service;
+        output_token := output_tok;
+        init_props := props_opt
+      in
 
       ( object(self)
           method state = !state
@@ -1110,92 +1113,31 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                    (Rtypes.int64_of_uint4 vers_nr)
                    (Rtypes.int64_of_uint4 xid)
               );
+            if !init_prog = None then (
+              let p =
+                Rpc_program.create
+                  prog_nr
+                  vers_nr
+                  (Xdr.validate_xdr_type_system [])
+                  [ "init", 
+                    (  (Rtypes.uint4_of_int 0), 
+                       Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_arg,
+                       Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_res
+                    );
+                  ] in
+              init_prog := Some p;
+            );
+            let prog = get_prog() in
+
             try
-              let prog =
-                match !init_prog with
-                  | None ->
-                      let p =
-                        Rpc_program.create
-                          prog_nr
-                          vers_nr
-                          (Xdr.validate_xdr_type_system [])
-                          [ "init", 
-                            (  (Rtypes.uint4_of_int 0), 
-                               Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_arg,
-                               Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_res
-                            );
-                          ] in
-                      init_prog := Some p;
-                      p
-                  | Some p -> p in
-              let req_flags =
-                ( if integrity=`If_possible || integrity=`Required then
-                    [ `Integ_flag ]
-                  else
-                    []
-                ) @
-                  ( if privacy=`If_possible || privacy=`Required then
-                      [ `Conf_flag ]
-                    else
-                      []
-                  ) in
-              let (output_token, cont_needed, have_priv, have_integ) =
-                gss_api # init_sec_context
-                  ~initiator_cred:cred
-                  ~context:!ctx
-                  ~target_name:target
-                  ~mech_type:[||]
-                  ~req_flags
-                  ~time_req:None
-                  ~chan_bindings:None
-                  ~input_token:(if !first then None else Some !input_token)
-                  ~out:(fun ~actual_mech_type ~output_context ~output_token 
-                          ~ret_flags ~time_rec ~minor_status ~major_status
-                          () ->
-                            let (c_err, r_err, flags) = major_status in
-                            if c_err <> `None || r_err <> `None then
-                              failwith("Rpc_auth_gssapi: Cannot init sec ctx: " ^ 
-                                         string_of_major_status major_status);
-                            ctx := output_context;
-                            (output_token, 
-                             List.mem `Continue_needed flags,
-                             List.mem `Conf_flag ret_flags,
-                             List.mem `Integ_flag ret_flags
-                            )
-                       )
-                  () in
-              let service_i =
-                match integrity with
-                  | `Required ->
-                      if not have_integ && not have_priv then
-                        failwith "Rpc_auth_gssapi: Integrity is not available";
-                      `rpc_gss_svc_integrity
-                  | `If_possible ->
-                      if have_integ then
-                        `rpc_gss_svc_integrity
-                      else
-                        `rpc_gss_svc_none
-                  | `None ->
-                      `rpc_gss_svc_none in
-              let service =
-                match privacy with
-                  | `Required ->
-                      if not have_priv then
-                        failwith "Rpc_auth_gssapi: Privacy is not available";
-                      `rpc_gss_svc_privacy
-                  | `If_possible ->
-                      if have_priv then
-                        `rpc_gss_svc_privacy
-                      else
-                        service_i
-                  | `None ->
-                      service_i in
-              init_service := Some service;
+              if !first then
+                init_sec_context_step();
+              assert(!output_token <> "");
               let cred1 =
                 `_1 { gss_proc = ( if !first then `rpcsec_gss_init
                                    else `rpcsec_gss_continue_init );
                       seq_num = Rtypes.uint4_of_int 0;  (* FIXME *)
-                      service = service;
+                      service = get_service();
                       handle = !handle
                     } in
               let cred1_xdr = _of_rpc_gss_cred_t cred1 in
@@ -1207,7 +1149,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   prog xid "init"
                   "RPCSEC_GSS" cred1_s
                   "AUTH_NONE" ""
-                  (Xdr.XV_struct_fast [| Xdr.XV_opaque output_token |] ) in
+                  (Xdr.XV_struct_fast [| Xdr.XV_opaque !output_token |] ) in
               first := false;
               state := `Receive xid;
               dlog "emit returns normally";
@@ -1217,16 +1159,14 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                 "Rpc_auth_gssapi: Error during message preparation: %s"
                 (Netexn.to_string error);
               state := `Error;
+              delete_context();
               raise error
 
 
           method receive pv =
             try
               dlog "receive";
-              let prog =
-                match !init_prog with
-                  | None -> assert false
-                  | Some p -> p in
+              let prog = get_prog() in
               let (xid, flav_name, flav_data, result_xdr) =
                 Rpc_packer.unpack_reply prog "init" pv in
               assert( !state = `Receive xid );
@@ -1246,6 +1186,16 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   (sprintf "Rpc_auth_gssapi: Got GSS-API error code %Ld"
                      (Rtypes.int64_of_uint4 res.res_major));
 
+              input_token := res.res_token;
+              if !init_props = None then (
+                init_sec_context_step();
+                if cont_needed <> (!output_token <> "") then
+                  failwith "Rpc_auth_gssapi: server expects token but the \
+                            mechanism does not provide one"
+              ) else
+                if !input_token <> "" then
+                  failwith "Rpc_auth_gssapi: unexpected input token";
+
               if cont_needed then (
                 if flav_name <> "AUTH_NONE" || flav_data <> "" then
                   failwith "Rpc_auth_gssapi: bad verifier";
@@ -1253,6 +1203,9 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               else (
                 if flav_name <> "RPCSEC_GSS" then
                   failwith "Rpc_auth_gssapi: bad verifier";
+                if !init_props = None then
+                  failwith "Rpc_auth_gssapi: protocol finished but no complete \
+                            context";
                 let window_s =
                   Rtypes.uint4_as_string res.res_seq_window in
                 gss_api # verify_mic
@@ -1260,29 +1213,24 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   ~message:[Xdr_mstring.string_to_mstring window_s]
                   ~token:flav_data
                   ~out:(fun ~qop_state ~minor_status ~major_status () ->
-                          let (c_err, r_err, flags) = major_status in
-                          if c_err <> `None || r_err <> `None then
-                            failwith("Rpc_auth_gssapi: \
-                                    Cannot verify MIC: " ^ 
-                                       string_of_major_status major_status);
-                          ()
+                          A.check_status ~fn:"verify_mic" 
+                                         ~minor_status major_status;
                        )
                   ()
               );
 
               handle := res.res_handle;	  
-              input_token := res.res_token;
 
               if cont_needed then
                 state := `Emit
               else
                 let c = get_context () in
-                let service =
-                  match !init_service with Some s -> s | None -> assert false in
+                let service = get_service() in
                 let cs = ref (Rtypes.uint4_of_int 0) in
                 let s = 
                   session 
-                    m (self :> Rpc_client.auth_protocol) c service !handle cs in
+                    m (self :> Rpc_client.auth_protocol) c service
+                    !handle cs in
                 state := `Done s;
                 dlog "receive returns normally";
             with error ->
@@ -1290,7 +1238,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                 "Rpc_auth_gssapi: Error during message verification: %s"
                 (Netexn.to_string error);
               state := `Error;
+              delete_context();
               raise error
+
+          method gssapi_props = !init_props
+          method destroy() = delete_context()
 
           method auth_method = m
 
@@ -1301,6 +1253,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         method name = "RPCSEC_GSS"
 
         method new_session client user_opt =
+          let module C = struct
+            let raise_error msg =
+              failwith ("Rpc_auth_gssapi: " ^ msg)
+          end in
+          let module A = Netgssapi_auth.Auth(G)(C) in
           dlogr
             (fun () ->
                sprintf "new_session user=%s"
@@ -1309,12 +1266,13 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                  )
             );
 
-          let target = get_target_name() in
+          let target = A.get_target_name cconf in
 
           let cred =
             match user_opt with
               | None ->
-                  default_initiator_cred()
+                  let n = A.get_initiator_name cconf in
+                  A.get_initiator_cred ~initiator_name:n cconf
               | Some user ->
                   let (input_name, input_name_type) =
                     match user_name_interpretation with
@@ -1340,31 +1298,12 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                       ~input_name_type
                       ~out:(fun ~output_name ~minor_status ~major_status
                               () ->
-                                let (c_err, r_err, flags) = major_status in
-                                if c_err <> `None || r_err <> `None then
-                                  failwith
-                                    ("Rpc_auth_gssapi: Cannot import name: "
-                                     ^ string_of_major_status major_status);
+                                A.check_status ~fn:"import_name"
+                                               ~minor_status major_status;
                                 output_name
                            )
                       () in
-                  gss_api # acquire_cred
-                    ~desired_name:name
-                    ~time_req:`Indefinite
-                    ~desired_mechs:[cconf#mech_type]
-                    ~cred_usage:`Initiate
-                    ~out:(
-                      fun ~cred ~actual_mechs ~time_rec ~minor_status
-                        ~major_status
-                        () ->
-                          let (c_err, r_err, flags) = major_status in
-                          if c_err <> `None || r_err <> `None then
-                            failwith
-                              ("Rpc_auth_gssapi: Cannot acquire default creds: " 
-                               ^ string_of_major_status major_status);
-                          cred
-                    )
-                    () in
+                  A.acquire_initiator_cred ~initiator_name:name cconf in
           protocol (self :> Rpc_client.auth_method) client cred target
                    
       end
@@ -1382,12 +1321,12 @@ let client_auth_method
 
 
 let server_auth_method
-      ?require_privacy ?require_integrity ?shared_context
+      ?shared_context
       ?user_name_format ?seq_number_window
-      (g : (module Netsys_gssapi.GSSAPI)) oid =
+      (g : (module Netsys_gssapi.GSSAPI)) sconf =
   let module G = (val g : Netsys_gssapi.GSSAPI) in
   let module A = Make(G) in
   A.server_auth_method
-    ?require_privacy ?require_integrity ?shared_context
+    ?shared_context
     ?user_name_format ?seq_number_window
-    G.interface oid
+    G.interface sconf

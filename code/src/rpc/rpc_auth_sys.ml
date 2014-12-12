@@ -116,6 +116,8 @@ object(self)
       | Some s -> `Done s
   method emit _ = assert false
   method receive _ = assert false
+  method gssapi_props = None
+  method destroy() = ()
   method auth_method = m
 end
 

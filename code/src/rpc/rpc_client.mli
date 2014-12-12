@@ -406,6 +406,9 @@ val get_protocol : t -> Rpc.protocol
 val get_tls_session_props : t -> Nettls_support.tls_session_props option
   (** Get the TLS properties so far TLS is enabled *)
 
+val get_gssapi_props : t -> Netsys_gssapi.client_props option
+  (** Get the GSSAPI properties of the last call (so far available) *)
+
 val abandon_call : t -> Rtypes.uint4 -> unit
   (** To be used in conjunction with {!Rpc_client.Keep_call}: The call
       with this session identifier is no longer expected, and removed
@@ -600,6 +603,12 @@ object
 	Design limitation: there is right now no way to indicate that the
 	next authentication method should be used instead.
      *)
+
+  method gssapi_props : Netsys_gssapi.client_props option
+    (** Properties of the GSSAPI session (if existing) *)
+
+  method destroy : unit -> unit
+    (** Destroys the session (e.g. delete the GSSAPI context) *)
 
   method auth_method : auth_method
 
