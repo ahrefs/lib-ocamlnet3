@@ -18,7 +18,9 @@ type ftp_protector =
       ftp_unwrap_s : string -> string;
       ftp_unwrap_m : Netsys_types.memory -> Netsys_types.memory -> int;
       ftp_prot_level : ftp_data_prot;
-      ftp_close : unit -> unit
+      ftp_close : unit -> unit;
+      mutable ftp_gssapi_props : Netsys_gssapi.client_props option;
+      mutable ftp_auth_loop : bool;
     }
   (** The functions for encrypting (wrapping) and decrypting (unwrapping)
       messages when an RFC 2228 security layer is active.

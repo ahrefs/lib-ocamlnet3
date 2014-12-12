@@ -547,6 +547,7 @@ object
   method event_system : Unixqueue.event_system
   method is_empty : bool
   method need_ip6 : bool
+  method gssapi_props : Netsys_gssapi.client_props option
   method supports_tvfs : bool
   method supports_mdtm : bool
   method supports_size : bool
@@ -775,15 +776,16 @@ object(self)
     match ftp_state.ftp_prot with
       | None ->
            self # interpret_ctrl_reply code text
-      | Some p ->
+      | Some p when code >= 631 && code <= 633 ->
            let ok =
-             match code with
-               | 631 -> p.ftp_prot_level = `S
-               | 632 -> p.ftp_prot_level = `P
-               | 633 -> p.ftp_prot_level = `C
-               | _ -> false in
+             p.ftp_auth_loop ||
+               match code with
+                 | 631 -> p.ftp_prot_level = `S
+                 | 632 -> p.ftp_prot_level = `P
+                 | 633 -> p.ftp_prot_level = `C
+                 | _ -> false in
            if not ok then
-             proto_viol "Protected command response expected but not found";
+             proto_viol "Wrong type of protected command response";
            let prot_lines1 = Netstring_str.split line_re text in
            let prot_lines2 =
              List.map
@@ -803,7 +805,11 @@ object(self)
            let lines =
              Netstring_str.split line_re text' in
            List.iter (self#parse_ctrl_reply_line ~force_cleartext:true) lines
-               
+      | Some p ->
+           (* we tolerate unprotected responses during the auth loop *)
+           if not p.ftp_auth_loop then
+             proto_viol "Protected command response expected but not found";
+           self # interpret_ctrl_reply code text
 
   method private interpret_ctrl_reply code text =
     (* This method is called whenever a reply has been completely received.
@@ -1404,8 +1410,7 @@ object(self)
 	  if line <> "" then (
             let line' =
               match ftp_state.ftp_prot with
-                | None -> line
-                | Some p ->
+                | Some p when not p.ftp_auth_loop ->
                      let enc_line = p.ftp_wrap_s line in
                      let enc_b64 = Netencoding.Base64.encode enc_line in
                      let prefix =
@@ -1414,7 +1419,8 @@ object(self)
                          | `E -> "CONF"
                          | `P -> "ENC"
                          | `C -> assert false in
-                     prefix ^ " " ^ enc_b64 ^ "\r\n" in
+                     prefix ^ " " ^ enc_b64 ^ "\r\n"
+                | _ -> line in
 	    dlogr (fun () ->
 		     sprintf "command (raw):  %s" line);
 	    dlogr (fun () ->
@@ -1886,6 +1892,15 @@ object(self)
     match ftp_state.ftp_features with
       | None -> false
       | Some l -> List.mem ("AUTH", Some "TLS") l
+
+  method gssapi_props =
+    match ftp_state.ftp_prot with
+      | Some p ->
+          p.ftp_gssapi_props
+      | None ->
+          None
+
+
 end
 
 
@@ -1945,110 +1960,42 @@ let tls_method ~config ~required () (pi:ftp_client_pi) =
                  eps_e (`Done()) pi#event_system
      )
 
-
-let check_gssapi_status ?(onerror = fun _ -> ()) fn_name 
-                        ((calling_error,routine_error,_) as major_status) =
-  if calling_error <> `None || routine_error <> `None then (
-    let error = Netsys_gssapi.string_of_major_status major_status in
-    onerror();
-    raise (GSSAPI_error ("Unexpected major status for " ^ fn_name ^ ": " ^ 
-                           error))
-  )
-
-
 let gssapi_method ~config ~required
                   (gssapi : (module Netsys_gssapi.GSSAPI))
                   (pi:ftp_client_pi) =
   let module G = (val gssapi : Netsys_gssapi.GSSAPI) in
+  let module M = Netgssapi_auth.Manage(G) in
+  let module C1 = struct
+    (* use C1/A1 when there is no context to delete on error *)
+    let raise_error msg = raise(GSSAPI_error msg)
+  end in
+  let module A1 = Netgssapi_auth.Auth(G)(C1) in
 
   let mech_type = config#mech_type in
-  let initiator_name =
-    match config#initiator_name with
-      | None -> G.interface # no_name  (* means: default credential *)
-      | Some(cred_string, cred_name_type) ->
-          G.interface # import_name
-             ~input_name:cred_string
-             ~input_name_type:cred_name_type
-             ~out:(fun ~output_name ~minor_status ~major_status () ->
-                     check_gssapi_status "import_name" major_status;
-                     output_name
-                  )
-             () in
-  let initiator_cred =
-    G.interface # acquire_cred
-       ~desired_name:initiator_name
-       ~time_req:`Indefinite
-       ~desired_mechs:(if mech_type = [| |] then [] else [mech_type])
-       ~cred_usage:`Initiate
-       ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status
-                 ~major_status () ->
-               check_gssapi_status "acquire_cred" major_status;
-               cred
-            )
-       () in
+  let initiator_name = A1.get_initiator_name config in
+  let initiator_cred = A1.get_initiator_cred ~initiator_name config in
   let initiator_real_name =
     G.interface # inquire_cred
        ~cred:initiator_cred
        ~out:(fun ~name ~lifetime ~cred_usage ~mechanisms ~minor_status
                  ~major_status () ->
-               check_gssapi_status "inquire_cred" major_status;
+               A1.check_status ~fn:"inquire_cred" ~minor_status major_status;
                name
             )
        () in
-  let initiator_real_name_string =
-    G.interface # display_name
-       ~input_name:initiator_real_name
-       ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status () ->
-               check_gssapi_status "export_name" major_status;
-               (* let's hope this is what we want... - the user name *)
-               (* eprintf "OID=%s\n" (Netoid.to_string output_name_type); *)
-               output_name
-            )
-       () in
+  let initiator_real_name_string,_ = A1.get_display_name initiator_real_name in
   dlogr (fun () -> sprintf "user identity: %S" initiator_real_name_string);
 
-  let get_target_name () =
-    let (name_string, name_type) =
-      match config#target_name with
-        | Some(n,t) -> (n,t)
-        | None -> ("ftp@" ^ (pi#ftp_state).ftp_host,
-                   Netsys_gssapi.nt_hostbased_service) in
-    G.interface # import_name
-      ~input_name:name_string
-      ~input_name_type:name_type
-      ~out:(fun ~output_name ~minor_status ~major_status () ->
-              check_gssapi_status "import_name" major_status;
-              output_name
-           )
-      () in
-  let req_flags =
-    (* this is only a suggestion... *)
-    (if config#integrity <> `None || config#privacy <> `None then
-       [ `Integ_flag; `Mutual_flag ]
-         (* we also require mutual auth because integrity protection does
-            not make much sense without that
-          *)
-     else
-       []
-    ) @
-      (if config#privacy <> `None then
-         [ `Conf_flag ]
-       else
-         []
+  let target_name_lz =
+    lazy(
+        A1.get_target_name
+          ~default:("ftp@" ^ (pi#ftp_state).ftp_host,
+                    Netsys_gssapi.nt_hostbased_service)
+          config
       ) in
+  let req_flags = A1.get_client_flags config in
 
-  let del_ctx ctx () =
-    G.interface # delete_sec_context
-      ~context:ctx
-      ~out:(fun ~minor_status ~major_status () -> ())
-      () in
-
-  let del_ctx_opt ctx_opt () =
-    match ctx_opt with
-      | None -> ()
-      | Some ctx -> del_ctx ctx () in
-
-  let setup_protector context prot =
+  let setup_protector context prot auth_loop props_opt =
     let conf_req = (prot = `P) in
     let cached_limit = ref None in
     let get_limit() =
@@ -2058,7 +2005,8 @@ let gssapi_method ~config ~required
              G.interface # wrap_size_limit
                ~context ~conf_req ~qop_req:0l ~req_output_size:size
                ~out:(fun ~max_input_size ~minor_status ~major_status () ->
-                       check_gssapi_status "wrap_size_limit" major_status;
+                       A1.check_status ~fn:"wrap_size_limit" 
+                                       ~minor_status major_status;
                        cached_limit := Some max_input_size;
                        max_input_size
                     )
@@ -2070,7 +2018,7 @@ let gssapi_method ~config ~required
         ~context ~conf_req ~qop_req:0l ~input_message
         ~output_message_preferred_type:`String
         ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
-                check_gssapi_status "wrap" major_status;
+                A1.check_status ~fn:"wrap" ~minor_status major_status;
                 Xdr_mstring.concat_mstrings output_message
              )
         () in
@@ -2080,7 +2028,7 @@ let gssapi_method ~config ~required
         ~context ~conf_req ~qop_req:0l ~input_message
         ~output_message_preferred_type:`Memory
         ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
-                check_gssapi_status "wrap" major_status;
+                A1.check_status ~fn:"wrap" ~minor_status major_status;
                 Xdr_mstring.blit_mstrings_to_memory output_message buf;
                 Xdr_mstring.length_mstrings output_message
              )
@@ -2092,7 +2040,7 @@ let gssapi_method ~config ~required
         ~output_message_preferred_type:`String
         ~out:(fun ~output_message ~conf_state ~qop_state
                   ~minor_status ~major_status () ->
-                check_gssapi_status "unwrap" major_status;
+                A1.check_status ~fn:"unwrap" ~minor_status major_status;
                 Xdr_mstring.concat_mstrings output_message
              )
         () in
@@ -2103,13 +2051,13 @@ let gssapi_method ~config ~required
         ~output_message_preferred_type:`Memory
         ~out:(fun ~output_message ~conf_state ~qop_state
                   ~minor_status ~major_status () ->
-                check_gssapi_status "unwrap" major_status;
+                A1.check_status ~fn:"unwrap" ~minor_status major_status;
                 Xdr_mstring.blit_mstrings_to_memory output_message buf;
                 Xdr_mstring.length_mstrings output_message
              )
         () in
     let close() =
-      del_ctx context () in
+      M.delete_context (Some context) () in
     { ftp_wrap_limit = get_limit;
       ftp_wrap_s = wrap_s;
       ftp_wrap_m = wrap_m;
@@ -2117,16 +2065,36 @@ let gssapi_method ~config ~required
       ftp_unwrap_m = unwrap_m;
       ftp_prot_level = prot;
       ftp_close = close;
+      ftp_auth_loop = auth_loop;
+      ftp_gssapi_props = props_opt;
     } in
 
-  let auth_done_e context prot =
-    let prot_size = Netsys_mem.default_block_size in
-    if prot <> `C then (
+  let protected = ref false in
+
+  let auth_protect_e context prot auth_loop props_opt =
+    if !protected || prot=`C then
+      eps_e (`Done()) pi#event_system
+    else (
+      protected := true;
       let protector =
         setup_protector
-          context prot in
+          context prot auth_loop props_opt in
       pi # exec_e (`Start_protection protector)
+      ++ (fun _ -> eps_e (`Done()) pi#event_system)
+    ) in
+
+  let auth_done_e context prot props_opt =
+    let prot_size = Netsys_mem.default_block_size in
+    if prot <> `C then (
+      auth_protect_e context prot false props_opt
       ++ (fun _ ->
+            (* update the protector: *)
+            ( match pi#ftp_state.ftp_prot with
+                | None -> assert false
+                | Some p ->
+                    p.ftp_auth_loop <- false;
+                    p.ftp_gssapi_props <- props_opt
+            );
             pi # exec_e (`PBSZ prot_size)
             ++ (fun (st,r) ->
                   match st.cmd_state with
@@ -2149,83 +2117,81 @@ let gssapi_method ~config ~required
 
   let last_context = ref None in
 
+  let module C2 = struct
+    (* use C2/A2 when there is a context to delete on error *)
+    let raise_error msg =
+      M.delete_context !last_context ();
+      last_context := None;
+      raise(GSSAPI_error msg)
+  end in
+  let module A2 = Netgssapi_auth.Auth(G)(C2) in
+
   let rec initiate_e context input_token prev_state =
-    let out_context, out_token, cont_flag, prot =
-      G.interface # init_sec_context
-         ~initiator_cred
-         ~context
-         ~target_name:(get_target_name())
-         ~mech_type
-         ~req_flags
-         ~time_req:None
-         ~chan_bindings:None  (* FIXME *)
-         ~input_token
-         ~out:(fun ~actual_mech_type ~output_context ~output_token 
-                   ~ret_flags ~time_rec ~minor_status ~major_status () -> 
-                 if output_context <> None then
-                   last_context := output_context;
-                 check_gssapi_status "init_sec_context" major_status;
-                 if config#integrity = `Required || config#privacy = `Required
-                 then (
-                   if not(List.mem `Integ_flag ret_flags) then
-                     raise(GSSAPI_error "Cannot ensure integrity protection");
-                   if not(List.mem `Mutual_flag ret_flags) then
-                     raise(GSSAPI_error "Cannot ensure mutual authentication");
-                 );
-                 if config#privacy = `Required then (
-                   if not(List.mem `Conf_flag ret_flags) then
-                     raise(GSSAPI_error "Cannot ensure privacy protection")
-                 );
-                 let prot =
-                   if List.mem `Integ_flag ret_flags then (
-                     if List.mem `Conf_flag ret_flags then
-                       `P
-                     else
-                       `S
-                   )
-                   else
-                     `C in
-                 let (_,_,suppl) = major_status in
-                 let cont_flag = List.mem `Continue_needed suppl in
-                 assert(output_context <> None);
-                 (output_context, output_token, cont_flag, prot)
-              )
-         () in
+    let out_context, out_token, ret_flags, props_opt =
+      A2.init_sec_context
+        ~initiator_cred
+        ~context
+        ~target_name:(Lazy.force target_name_lz)
+        ~req_flags
+        ~chan_bindings:None
+        ~input_token
+        config in
+    last_context := Some out_context;
+    let prot =
+      if List.mem `Integ_flag ret_flags then (
+        if List.mem `Conf_flag ret_flags then
+          `P
+        else
+          `S
+      )
+      else
+        `C in
     if out_token <> "" then (
       if prev_state = `Success then
         raise(GSSAPI_error "Auth protocol problem - server finishes protocol \
                             prematurely");
-      pi # exec_e (`ADAT out_token)
+      let e0 =
+        if List.mem `Prot_ready_flag ret_flags || props_opt <> None then (
+          (* This way a 63x reply from ADAT is accepted *)
+          eprintf "PROT_READY\n";
+          auth_protect_e out_context prot true props_opt
+        )
+        else
+          eps_e (`Done()) pi#event_system in
+      e0
+      ++ (fun _ -> pi # exec_e (`ADAT out_token))
       ++ (fun (st,r) ->
             match st.ftp_auth_data with
               | None ->
-                   raise(GSSAPI_error "Auth protocol problem - missing \
-                                       server token")
+                  if props_opt = None then
+                    raise(GSSAPI_error "Auth protocol problem - missing \
+                                        server token");
+                  if st.cmd_state <> `Success then
+                    raise(GSSAPI_error "Auth protocol problem - server \
+                                        unexpectedly continues protocol");
+                  auth_done_e out_context prot props_opt
               | Some data ->
-                   initiate_e out_context (Some data) st.cmd_state
+                   initiate_e (Some out_context) (Some data) st.cmd_state
          )
     )
     else (
       if prev_state <> `Success then
         raise(GSSAPI_error "Auth protocol problem - server unexpectedly \
                             continues protocol");
-      let ctx =
-        match out_context with
-          | None -> assert false
-          | Some ctx -> ctx in
-      auth_done_e ctx prot
+      assert(props_opt <> None);
+      auth_done_e out_context prot props_opt
     ) in
 
   let call_initiate_e() =
     try
       initiate_e None None `Init
       >> (function
-           | `Error e -> del_ctx_opt !last_context (); `Error e
+           | `Error e -> M.delete_context !last_context (); `Error e
            | result -> result
          )
     with
       | error ->
-          del_ctx_opt !last_context ();
+          M.delete_context !last_context ();
           raise error in
 
   pi # exec_e (`AUTH "GSSAPI")

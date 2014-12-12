@@ -12,6 +12,7 @@
   * - Directory walking (NVFS) and direct access (TVFS)
   * - TLS (it is required, though, that a TLS provider is initialized, see
   *   {!Tls} for more information)
+  * - GSSAPI (RFC 2228)
   * 
   * The client is written in asynchronous style (using {!Uq_engines}).
   *
@@ -380,6 +381,9 @@ object
 	connecting to a server (i.e. when the IP address family is known).
 	Before, it is always [false].
      *)
+
+  method gssapi_props : Netsys_gssapi.client_props option
+    (** GSSAPI props if GSSAPI security is negotiated *)
 
   (** Feature tests
 
