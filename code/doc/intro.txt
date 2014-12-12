@@ -95,7 +95,6 @@ Related external articles:
      {ul
        {- {!Intro.rpc}}
        {- {!Intro.rpc_local}}
-       {- {!Intro.rpc_authdh}}
        {- {!Intro.rpc_xti}}
      }
   }

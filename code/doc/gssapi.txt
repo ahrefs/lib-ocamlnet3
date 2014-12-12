@@ -318,7 +318,6 @@ So far there is no good support for:
    system-level GSSAPI this means you can only authenticate as the default
    principal, i.e. as the user you already be on the system level. It is
    not possible to log in as another user.
- - Delegating credentials
 
 and probably other GSSAPI options I'm not aware of.
 

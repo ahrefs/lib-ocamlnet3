@@ -3,21 +3,20 @@ User's wishes/fixes:
  - setgid does not work (lookup wrong) (T. Calderon)
 
 GSSAPI:
- - check when to delete contexts. Fix protocol interpreters 
-   RPC server: provide method destroy()
+ - check when to delete contexts. Fix protocol interpreters  - DONE
  - implement channel bindings - DONE
  - check again use of buffers in GSSAPI system bindings - DONE
- - do not block threads during GSSAPI calls
+ - do not block threads during GSSAPI calls - DONE
  - protocol interpreters should return a gssapi_props object
    (patterned after tls_props)
      Rpc_client: DONE
-     Rpc_server: TODO
+     Rpc_server: DONE
  - clean up Netmech_scram_gssapi. Use the same credential format
    as for SASL. Describe this in credentials.txt
     * option for setting a context lifetime
  - check whether RPC + GSSAPI is compatible with Linux
     * client ok
-    * server: need modernization in Rpc_auth_gssapi
+    * server: ok
 
 Netmime:
  - remove email-specific header methods from class type. Provide them

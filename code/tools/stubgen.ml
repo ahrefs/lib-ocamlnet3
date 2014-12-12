@@ -847,6 +847,7 @@ let output_kinds = outonly_kinds @ inout_kinds
 
 let gen_fun c mli ml name args directives free init =
   let optional = List.mem `Optional directives in
+  let blocking = List.mem `Blocking directives in
   let input_args =
     List.filter
       (fun (n,kind,ty) -> List.mem kind input_kinds)
@@ -1280,11 +1281,15 @@ let gen_fun c mli ml name args directives free init =
     directives;
 
   let emit_call() =
+    if blocking then
+      fprintf c "caml_enter_blocking_section();\n  ";
     ( match !c_act_ret with
         | None -> ()
         | Some var -> fprintf c "%s = " var
     );
-    fprintf c "%s(%s);\n" name (String.concat "," (List.rev !c_act_args)); in
+    fprintf c "%s(%s);\n" name (String.concat "," (List.rev !c_act_args));
+    if blocking then
+      fprintf c "  caml_leave_blocking_section();\n" in
 
   if List.mem `GNUTLS_ask_for_size directives then (
     (* Call the function twice: once to get the size of the string buffer,
@@ -1457,6 +1462,7 @@ let gen_c_head c =
              #include \"caml/unixsupport.h\"\n\
              #include \"caml/callback.h\"\n\
              #include \"caml/bigarray.h\"\n\
+             #include \"caml/threads.h\"\n\
              \n\
              static unsigned int uint_val(value v);\n\
              static value protected_copy_string(const char *s);\n\
