@@ -2153,7 +2153,6 @@ let gssapi_method ~config ~required
       let e0 =
         if List.mem `Prot_ready_flag ret_flags || props_opt <> None then (
           (* This way a 63x reply from ADAT is accepted *)
-          eprintf "PROT_READY\n";
           auth_protect_e out_context prot true props_opt
         )
         else
