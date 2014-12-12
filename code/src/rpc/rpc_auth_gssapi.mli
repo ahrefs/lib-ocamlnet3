@@ -22,6 +22,7 @@ val server_auth_method :
       ?shared_context:bool ->
       ?user_name_format:user_name_format ->
       ?seq_number_window:int ->
+      ?max_age:float ->
       (module Netsys_gssapi.GSSAPI) -> 
       Netsys_gssapi.server_config -> Rpc_server.auth_method
   (** Creates an authentication method from a GSS-API interface.
@@ -37,6 +38,8 @@ val server_auth_method :
         requests. The integer is the length of the check window (see
         RFC 2203 section 5.3.3.1). If omitted, no such checks are
         performed (the default). 
+      - [max_age]: The maximum lifetime for security contexts (in seconds).
+        If not specified, the time is taken from the GSSAPI credential.
    *)
 
 type support_level =

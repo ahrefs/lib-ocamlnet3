@@ -49,7 +49,7 @@ static void netgss_free_buffer_contents(long tag, gss_buffer_t buf) {
         if (tag == 0) {
             OM_uint32 major, minor;
             major = gss_release_buffer(&minor, buf);
-            if (major && 0xffff0000 != 0)
+            if ((major & 0xffff0000) != 0)
                 fprintf(stderr, "Netgss: error from gss_release_buffer\n");
         } else {
             if (tag == 1) {
@@ -200,7 +200,7 @@ static void netgss_free_oid_set(long tag, gss_OID_set set) {
     if (tag == 0 || set == GSS_C_NO_OID_SET) {
         OM_uint32 major, minor;
         major = gss_release_oid_set(&minor, &set);
-        if (major && 0xffff0000 != 0)
+        if ((major & 0xffff0000) != 0)
             fprintf(stderr, "Netgss: error from gss_release_oid_set\n");
     } else {
         size_t k;
@@ -263,7 +263,7 @@ static void netgss_free_cred_id(long tag, gss_cred_id_t x) {
     OM_uint32 major, minor;
     if (x != GSS_C_NO_CREDENTIAL) {
         major = gss_release_cred(&minor, &x);
-        if (major && 0xffff0000 != 0)
+        if ((major & 0xffff0000) != 0)
             fprintf(stderr, "Netgss: error from gss_release_cred\n");
     }
 }
@@ -273,7 +273,7 @@ static void netgss_free_ctx_id(long tag, gss_ctx_id_t x) {
     OM_uint32 major, minor;
     if (x != GSS_C_NO_CONTEXT) {
         major = gss_delete_sec_context(&minor, &x, GSS_C_NO_BUFFER);
-        if (major && 0xffff0000 != 0)
+        if ((major & 0xffff0000) != 0)
             fprintf(stderr, "Netgss: error from gss_delete_sec_context\n");
     }
 }
@@ -283,7 +283,7 @@ static void netgss_free_name(long tag, gss_name_t x) {
     OM_uint32 major, minor;
     if (x != GSS_C_NO_NAME) {
         major = gss_release_name(&minor, &x);
-        if (major && 0xffff0000 != 0)
+        if ((major & 0xffff0000) != 0)
             fprintf(stderr, "Netgss: error from gss_release_name\n");
     }
 }

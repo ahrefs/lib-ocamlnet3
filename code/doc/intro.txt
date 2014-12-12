@@ -471,16 +471,6 @@ Authentication for local socket connections.
 {!modules:
     Rpc_auth_local}
 
-{2:rpc_authdh The [rpc-auth-dh] extension: Diffie-Hellman authentication}
-
-This is Diffie-Hellman authentication for OncRPC (also known as
-"Secure RPC").
-
-{!modules:
-    Rpc_auth_dh
-    Rpc_key_service
-    Rpc_time}
-
 {2:rpc_xti The [rpc-xti] extension: System V helpers}
 
 System V provides a network API called XTI in addition to the socket API.

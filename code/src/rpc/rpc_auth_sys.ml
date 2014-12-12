@@ -222,10 +222,13 @@ object
 		    (Array.map (fun u ->  Rtypes.logical_int32_of_uint4 u) gids)
 		    hostname
 	  in
-	  pass (Rpc_server.Auth_positive(username, "AUTH_NONE", "",None,None))
+	  pass (Rpc_server.Auth_positive(username, "AUTH_NONE", "",None,
+                                         None,None))
 
       | _ ->
 	  assert false
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 
 end
 

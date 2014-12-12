@@ -54,7 +54,9 @@ type rule =
 
 type auth_result =
     Auth_positive of
-      (string * string * string * Xdr.encoder option * Xdr.decoder option)
+      (string * string * string * Xdr.encoder option * Xdr.decoder option *
+         Netsys_gssapi.server_props option)
+
   | Auth_negative of Rpc.server_error
   | Auth_reply of (Xdr_mstring.mstring list * string * string)
   | Auth_drop
@@ -88,11 +90,8 @@ end
 class type ['t] pre_auth_method =
 object
   method name : string
-
   method flavors : string list
-
   method peek : auth_peeker
-
   method authenticate :
     't ->
     connection_id ->
@@ -100,6 +99,8 @@ object
     (auth_result -> unit) ->
       unit
 
+  method invalidate_connection : connection_id -> unit
+  method invalidate : unit -> unit
 end
 
 
@@ -228,6 +229,7 @@ and session =
 	auth_ret_data : string;
 	encoder : Xdr.encoder option;
         tls_session_props : Nettls_support.tls_session_props option;
+        gssapi_props : Netsys_gssapi.server_props option;
       }
 
 and connector =
@@ -262,7 +264,9 @@ object
   method flavors = [ "AUTH_NONE" ]
   method peek = `None
   method authenticate _ _ _ f = 
-    f(Auth_positive("","AUTH_NONE","",None,None))
+    f(Auth_positive("","AUTH_NONE","",None,None,None))
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 let auth_none = new auth_none
@@ -274,6 +278,8 @@ object
   method peek = `None
   method authenticate _ _ _ f = 
     f(Auth_negative Auth_too_weak)
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 let auth_too_weak = new auth_too_weak
@@ -296,7 +302,9 @@ object
       | None ->
            f(Auth_negative Auth_too_weak)
       | Some u ->
-           f(Auth_positive(u, "AUTH_NONE", "", None, None))
+           f(Auth_positive(u, "AUTH_NONE", "", None, None, None))
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 let auth_transport = new auth_transport
@@ -473,6 +481,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
       encoder = None;
       ptrace_result = (if !Debug.enable_ptrace then f_ptrace_result() else "");
       tls_session_props = get_tls_session_props();
+      gssapi_props = None;
     }
   in
 
@@ -587,7 +596,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		 | Some uid ->
 		     (conn.peeked_method,
 		      (fun _ _ _ cb ->
-			 cb (Auth_positive(uid, "AUTH_NONE", "", None, None)))
+			 cb (Auth_positive(uid, "AUTH_NONE", "", 
+                                           None, None, None)))
 		     )
 		 | None ->
 		     ( let m =
@@ -623,7 +633,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	     authenticate
 	       srv sess_conn_id auth_details
 	       (function 
-		  Auth_positive(user,ret_flav,ret_data,enc_opt,dec_opt) ->
+		  Auth_positive(user,ret_flav,ret_data,enc_opt,dec_opt,gss) ->
 		  (* user: the username (method-dependent)
 		   * ret_flav: flavour of verifier to return
 		   * ret_data: data of verifier to return
@@ -736,6 +746,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 				 ptrace_result = "";  (* not yet known *)
 				 encoder = enc_opt;
                                  tls_session_props = get_tls_session_props();
+                                 gssapi_props = gss;
 			       } in
 			     conn.next_call_id <- conn.next_call_id + 1;
 			     p.async_invoke this_session param
@@ -788,6 +799,9 @@ let terminate_any srv conn =
 	      ();
 	  with _ -> mplex # inactivate()
 	);
+        Hashtbl.iter
+          (fun _ auth_meth -> auth_meth # invalidate_connection conn.conn_id)
+          srv.auth_methods;
 	srv.connections <- 
 	  List.filter (fun c -> c != conn) srv.connections;
 	if srv.prot = Tcp then (
@@ -1799,6 +1813,8 @@ let get_auth_method sess = sess.auth_method
 let get_last_proc_info srv = srv.get_last_proc()
 
 let get_tls_session_props sess = sess.tls_session_props
+
+let get_gssapi_props sess = sess.gssapi_props
 
   (*****)
 

@@ -374,6 +374,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         ?(shared_context=false)
         ?(user_name_format = `Prefixed_name)
         ?seq_number_window
+        ?(max_age = 1E99)
         (gss_api : G.gss_api)
         (sconf : Netsys_gssapi.server_config) : Rpc_server.auth_method =
 
@@ -471,13 +472,32 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   (Netexn.to_string error);
                 auth(Rpc_server.Auth_negative Rpc.Auth_failed)
 
-        method private collect() =
+
+        method invalidate() =
+          Hashtbl.iter
+            (fun handle ctx ->
+               M.delete_context (Some ctx.context) ()
+            )
+            ctx_by_handle;
+          Hashtbl.clear ctx_by_handle
+
+
+        method invalidate_connection conn_id =
+          self # collect ~conn_id ()
+
+
+        method private collect ?conn_id () =
           let t = Unix.time() in
-          if t > !last_gc +. 60.0 then (    (* FIXME: arbitrary *)
+          if t > !last_gc +. 60.0 || conn_id<>None then ( (* FIXME: arbitrary *)
             let l = ref [] in
             Hashtbl.iter
               (fun handle ctx ->
-                 if t > ctx.ctx_expires then (
+                 let del =
+                   t > ctx.ctx_expires ||
+                     match conn_id with
+                       | None -> false
+                       | Some cid -> ctx.ctx_conn_id = Some cid in
+                 if del then (
                    M.delete_context (Some ctx.context) ();
                    l := handle :: !l
                  )
@@ -526,12 +546,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           match ctx.ctx_props with
             | None -> ()
             | Some p ->
-                ( match p # time with
-                    | `This t ->
-                        ctx.ctx_expires <- Unix.time() +. t
-                    | `Indefinite ->
-                        ()
-                )
+                let t =
+                  match p # time with
+                    | `This t -> min t max_age
+                    | `Indefinite -> max_age in
+                ctx.ctx_expires <- Unix.time() +. t
 
 
         method private verify_context ctx conn_id =
@@ -817,7 +836,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               () in
           Rpc_server.Auth_positive(
             self#get_user ctx,
-            "RPCSEC_GSS", mic, enc_opt, dec_opt
+            "RPCSEC_GSS", mic, enc_opt, dec_opt, ctx.ctx_props
           )
 
         method private auth_destroy srv conn_id details cred1 =
@@ -827,7 +846,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           let r =
             self # auth_data srv conn_id details cred1 in
           match r with
-            | Rpc_server.Auth_positive(_, flav, mic, enc_opt, dec_opt) ->
+            | Rpc_server.Auth_positive(_, flav, mic, enc_opt, dec_opt, _) ->
                 (* Check that the input args are empty: *)
                 let raw_body =
                   Rpc_packer.unpack_call_body_raw 
@@ -1322,11 +1341,11 @@ let client_auth_method
 
 let server_auth_method
       ?shared_context
-      ?user_name_format ?seq_number_window
+      ?user_name_format ?seq_number_window ?max_age
       (g : (module Netsys_gssapi.GSSAPI)) sconf =
   let module G = (val g : Netsys_gssapi.GSSAPI) in
   let module A = Make(G) in
   A.server_auth_method
     ?shared_context
-    ?user_name_format ?seq_number_window
+    ?user_name_format ?seq_number_window ?max_age
     G.interface sconf

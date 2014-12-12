@@ -292,6 +292,9 @@ val is_dummy : t -> bool
 val get_tls_session_props : session -> Nettls_support.tls_session_props option
   (** Get the TLS properties so far TLS is enabled *)
 
+val get_gssapi_props : session -> Netsys_gssapi.server_props option
+  (** Get the GSSAPI properties if available *)
+
 
 type rule =
     [ `Deny
@@ -418,10 +421,11 @@ val stop_connection : t -> connection_id -> unit
 
 type auth_result =
     Auth_positive of (string * string * string * 
-			Xdr.encoder option * Xdr.decoder option)
+			Xdr.encoder option * Xdr.decoder option *
+                          Netsys_gssapi.server_props option)
       (** Successful authentication:
           [(username, returned_verifier_flavour, returned_verifier_data, 
-	    enc_opt, dec_opt
+	    enc_opt, dec_opt, gss_opt
 	  )]
 
 	  Encoders and decoders are allowed to raise the exceptions
@@ -501,6 +505,13 @@ object
      * [procedure], and [xid] are new. Added new [auth_result] of
      * [Auth_reply].
      *)
+
+  method invalidate_connection : connection_id -> unit
+    (** Removes all auth sessions for this connection *)
+
+  method invalidate : unit -> unit
+    (** Remove all auth sessions *)
+
 end
 
 val set_auth_methods : t -> auth_method list -> unit
