@@ -241,6 +241,12 @@ module type SASL_MECHANISM =
     val server_channel_binding : server_session -> cb
       (** Whether the client suggests or demands channel binding *)
 
+    val server_gssapi_props : server_session ->
+                                Netsys_gssapi.server_props
+      (** Return the GSSAPI properties of the server, after the authentication
+          is successful (and raises Not_found up to then).
+       *)
+
     type client_session
 
     val client_state : client_session -> client_state
@@ -312,5 +318,10 @@ module type SASL_MECHANISM =
           be the "realm" sent by the server.
        *)
 
+    val client_gssapi_props : client_session ->
+                                Netsys_gssapi.client_props
+      (** Return the GSSAPI properties of the client, after the authentication
+          is successful (and raises Not_found up to then).
+       *)
 
   end

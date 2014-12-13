@@ -61,8 +61,14 @@ external is_no_context : gss_ctx_id_t -> bool
 external no_credential : unit -> gss_cred_id_t
   = "netgss_no_cred"
 
+external is_no_credential : gss_cred_id_t -> bool
+  = "netgss_is_no_cred"
+
 external no_name : unit -> gss_name_t
   = "netgss_no_name"
+
+external is_no_name : gss_name_t -> bool
+  = "netgss_is_no_name"
 
 external gss_indefinite : unit -> int32
   = "netgss_indefinite"

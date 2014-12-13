@@ -126,6 +126,8 @@ client # auth
   method tls_session_props : Nettls_support.tls_session_props option
     (** Returns the TLS session properties (after [STARTTLS]) *)
 
+  method gssapi_props : Netsys_gssapi.client_props option
+    (** Returns GSSAPI properties, if available *)
 end
 
 

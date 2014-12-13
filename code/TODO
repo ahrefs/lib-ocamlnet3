@@ -7,16 +7,12 @@ GSSAPI:
  - implement channel bindings - DONE
  - check again use of buffers in GSSAPI system bindings - DONE
  - do not block threads during GSSAPI calls - DONE
- - protocol interpreters should return a gssapi_props object
-   (patterned after tls_props)
-     Rpc_client: DONE
-     Rpc_server: DONE
+ - protocol interpreters should return a gssapi_props object - DONE
+ - check whether RPC + GSSAPI is compatible with Linux - DONE
  - clean up Netmech_scram_gssapi. Use the same credential format
    as for SASL. Describe this in credentials.txt
+    * export Netmech_scram_sasl.extract_credentials (in Netmech_scram)
     * option for setting a context lifetime
- - check whether RPC + GSSAPI is compatible with Linux
-    * client ok
-    * server: ok
 
 Netmime:
  - remove email-specific header methods from class type. Provide them

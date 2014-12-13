@@ -113,6 +113,12 @@ module type PROFILE =
           delegation information can be time-consuming (and the HTTP
           client will simply block while doing so).
        *)
+
+    val deleg_credential : exn option
+      (** If you already have a credential, you can set this value to
+          the exception [Credential c] (from the GSSAPI provider).
+       *)
+
   end
 
 

@@ -81,6 +81,7 @@ object (self)
   val mutable ic = ic0
   val mutable oc = oc0
   val mutable tls_endpoint = None
+  val mutable gssapi_props = None
   val mutable ehlo = []
   val mutable authenticated = false
 
@@ -172,6 +173,8 @@ object (self)
         | _ -> ()
     );
     assert(!state = `OK);
+    gssapi_props <- (try Some(Netsys_sasl.Client.gssapi_props sess)
+                     with Not_found -> None);
     authenticated <- true
 
   method authenticated = authenticated
@@ -258,6 +261,8 @@ object (self)
       | None -> None
       | Some ep ->
            Some(Nettls_support.get_tls_session_props ep)
+
+  method gssapi_props = gssapi_props
 
 end
 

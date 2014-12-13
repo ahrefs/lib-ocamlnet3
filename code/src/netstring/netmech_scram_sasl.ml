@@ -227,6 +227,9 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_prop ss key =
     Netmech_scram.server_prop ss.ss key
 
+  let server_gssapi_props ss =
+    raise Not_found
+
   let server_user_name ss =
     match Netmech_scram.server_user_name ss.ss with
       | None -> raise Not_found
@@ -354,6 +357,9 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       
   let client_prop cs key =
     Netmech_scram.client_prop cs.cs key
+
+  let client_gssapi_props cs =
+    raise Not_found
 
   let client_user_name cs =
     Netmech_scram.client_user_name cs.cs

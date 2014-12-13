@@ -136,6 +136,9 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
   let client_prop cs key =
     client_prop_i cs key
 
+  let client_gssapi_props cs =
+    raise Not_found
+
   let client_channel_binding cs = `None
       
   let client_domain cs =

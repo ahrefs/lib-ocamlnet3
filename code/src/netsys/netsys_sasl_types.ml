@@ -57,6 +57,8 @@ module type SASL_MECHANISM =
     val server_user_name : server_session -> string
     val server_authz_name : server_session -> string
     val server_channel_binding : server_session -> cb
+    val server_gssapi_props : server_session ->
+                                Netsys_gssapi.server_props
 
     type client_session
 
@@ -85,4 +87,6 @@ module type SASL_MECHANISM =
              client_session
     val client_session_id : client_session -> string option
     val client_prop : client_session -> string -> string
+    val client_gssapi_props : client_session ->
+                                Netsys_gssapi.client_props
   end

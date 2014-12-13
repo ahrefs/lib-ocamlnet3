@@ -112,6 +112,9 @@ module Client : sig
         be the "realm" sent by the server.
      *)
 
+  val gssapi_props : session -> Netsys_gssapi.client_props
+    (** Get the GSSAPI props, or raise [Not_found] *)
+
 end
 
 
@@ -268,6 +271,9 @@ process_response session msg;
     (** Get a mechanism-specific property of the session. E.g. this can
         be the "digest-uri" sent by the client.
      *)
+
+  val gssapi_props : session -> Netsys_gssapi.server_props
+    (** Get the GSSAPI props, or raise [Not_found] *)
 
   val user_name : session -> string
     (** The name the client has authenticated as (or [Not_found]) *)

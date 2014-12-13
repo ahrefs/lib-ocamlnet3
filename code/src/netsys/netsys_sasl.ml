@@ -44,6 +44,7 @@ module Client = struct
       method stash_session : unit -> string
       method session_id : string option
       method prop : string -> string
+      method gssapi_props : Netsys_gssapi.client_props
     end
 
   let session packed_session : session =
@@ -71,6 +72,8 @@ module Client = struct
         S.client_session_id S.s
       method prop key =
         S.client_prop S.s key
+      method gssapi_props =
+        S.client_gssapi_props S.s
     end
 
   let create_session ~mech ~user ~authz ~creds ~params () =
@@ -105,6 +108,7 @@ module Client = struct
   let stash_session s = s#stash_session()
   let session_id s = s#session_id
   let prop s key = s#prop key
+  let gssapi_props (s:session) = s#gssapi_props
 end
 
 
@@ -127,6 +131,7 @@ module Server = struct
       method channel_binding : Netsys_sasl_types.cb
       method user_name : string
       method authz_name : string
+      method gssapi_props : Netsys_gssapi.server_props
     end
 
   type 'credentials init_credentials =
@@ -155,6 +160,8 @@ module Server = struct
         S.server_user_name S.s
       method authz_name =
         S.server_authz_name S.s
+      method gssapi_props =
+        S.server_gssapi_props S.s
     end
 
   type lookup =
@@ -203,4 +210,5 @@ module Server = struct
   let stash_session s = s#stash_session()
   let session_id s = s#session_id
   let prop s key = s#prop key
+  let gssapi_props (s:session) = s#gssapi_props
 end

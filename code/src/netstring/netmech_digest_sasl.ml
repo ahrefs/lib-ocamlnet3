@@ -118,6 +118,9 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_prop ss key =
     server_prop_i ss key
 
+  let server_gssapi_props ss =
+    raise Not_found
+
   let server_user_name ss =
     match ss.sresponse with
       | None -> raise Not_found
@@ -206,6 +209,9 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       
   let client_prop cs key =
     client_prop_i cs key
+
+  let client_gssapi_props cs =
+    raise Not_found
 
   let client_user_name cs =
     cs.cuser

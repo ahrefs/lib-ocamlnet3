@@ -5,6 +5,12 @@ open Printf
 let krb5_oid =
   [| 1;2;840;113554;1;2;2 |]
 
+let map_opt f =
+  function
+  | None -> None
+  | Some x -> Some(f x)
+                  
+
 
 module Krb5_gs2_profile = struct
   let mechanism_name = "GS2-KRB5"
@@ -79,6 +85,17 @@ module Krb5_gs2_profile = struct
 
   let client_flags ~params = []
   let server_flags ~params = []
+
+  let client_credential = None
+    (* Anybody who wants to pass in a client credential should do so this way:
+       module My_profile =
+         struct
+            include Netmech_krb5_sasl.Krb5_gs2_profile
+            let client_credential = ...
+         end
+       module Krb5_gs2(G:Netsys_gssapi.GSSAPI) =
+         Netmech_gs2_sasl.GS2(My_profile)(G)
+     *)
 end
 
 
@@ -88,6 +105,12 @@ module Krb5_gs2(G:Netsys_gssapi.GSSAPI) =
 
 module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
   struct
+    module M = Netgssapi_auth.Manage(G)
+    module C = struct
+      let raise_error = failwith
+    end
+    module A = Netgssapi_auth.Auth(G)(C)
+
     let mechanism_name = "GSSAPI"
     let client_first = `Required
     let server_sends_final_data = true
@@ -119,8 +142,9 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           mutable cstate : Netsys_sasl_types.client_state;
           mutable csubstate : client_sub_state;
           mutable ctoken : string;
+          cconf : Netsys_gssapi.client_config;
           ctarget_name : G.name;
-          cmutual : bool;
+          mutable cprops : Netsys_gssapi.client_props option;
         }
 
     let client_state cs = cs.cstate
@@ -129,27 +153,17 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
       match cs.ccontext with
         | None -> ()
         | Some ctx ->
-            G.interface # delete_sec_context
-              ~context:ctx
-              ~out:(fun ~minor_status ~major_status () -> ());
+            M.delete_context cs.ccontext ();
             cs.ccontext <- None
 
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
                             minor_status =
       if calling_error <> `None || routine_error <> `None then (
-        let error = Netsys_gssapi.string_of_major_status major_status in
-        let minor_s =
-          G.interface # display_minor_status
-            ~mech_type:[||]
-            ~status_value:minor_status
-            ~out:(fun ~status_strings ~minor_status ~major_status () ->
-                    String.concat "; " status_strings
-                 )
-            () in
+        let msg =
+          M.format_status ~fn:fn_name ~minor_status major_status in
         (* eprintf "STATUS: %s %s %s\n%!" fn_name error minor_s; *)
-        failwith ("Unexpected major status for " ^ fn_name ^ ": " ^ 
-                    error ^ " (minor: " ^ minor_s ^ ")")
+        failwith msg
       )
 
     let client_check_gssapi_status cs fn_name major_status minor_status =
@@ -162,33 +176,23 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
            
 
     let call_init_sec_context cs input_token =
-      G.interface # init_sec_context
-         ~initiator_cred:G.interface#no_credential
-         ~context:cs.ccontext
-         ~target_name:cs.ctarget_name
-         ~mech_type:krb5_oid
-         ~req_flags:[ `Integ_flag; `Mutual_flag ]
-         ~time_req:None
-         ~chan_bindings:None
-         ~input_token
-         ~out:(fun ~actual_mech_type ~output_context ~output_token 
-                   ~ret_flags ~time_rec ~minor_status ~major_status () -> 
-                 let (_,_,suppl) = major_status in
-                 client_check_gssapi_status
-                   cs "init_sec_context" major_status minor_status;
-                 assert(output_context <> None);
-                 if cs.cmutual && not(List.mem `Mutual_flag ret_flags) then
-                   failwith "mutual authentication requested but not available";
-                 cs.ccontext <- output_context;
-                 cs.ctoken <- output_token;
-                 cs.cstate <- `Emit;
-                 if suppl = [] then
-                   cs.csubstate <- 
-                     if input_token=None then `Skip_empty else`Neg_security
-                 else
-                   cs.csubstate <- `Init_context
-              )
-         ()
+      let (out_context, out_token, ret_flags, props_opt) =
+        A.init_sec_context
+          ~initiator_cred:G.interface#no_credential
+          ~context:cs.ccontext
+          ~target_name:cs.ctarget_name
+          ~req_flags:(A.get_client_flags cs.cconf)
+          ~chan_bindings:None
+          ~input_token
+          cs.cconf in
+      cs.ccontext <- Some out_context;
+      cs.ctoken <- out_token;
+      cs.cprops <- props_opt;
+      cs.cstate <- `Emit;
+      if props_opt <> None then
+        cs.csubstate <- `Skip_empty
+      else
+        cs.csubstate <- `Init_context
 
     let create_client_session ~user ~authz ~creds ~params () =
       let params = 
@@ -196,20 +200,20 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           "Netmech_krb5_sasl.create_client_session:"
           [ "gssapi-acceptor"; "mutual"; "secure" ]
           params in
-      let acceptor_name, acceptor_name_type =
-        Krb5_gs2_profile.client_get_target_name ~params in
-      let ctarget_name =
-        G.interface # import_name
-          ~input_name:acceptor_name
-          ~input_name_type:acceptor_name_type
-          ~out:(fun ~output_name ~minor_status ~major_status () ->
-                  check_gssapi_status
-                    "import_name" major_status minor_status;
-                  output_name
-               )
+      let mutual_flag =
+        try if List.assoc "mutual" params = "true" 
+            then [`Mutual_flag,`Required] else []
+        with Not_found -> [] in
+      let cconf =
+        Netsys_gssapi.create_client_config
+          ~mech_type:krb5_oid
+          ~target_name:(Krb5_gs2_profile.client_get_target_name ~params)
+          ~privacy:`None
+          ~integrity:`Required
+          ~flags:( [ `Integ_flag, `Required ] @ mutual_flag )
           () in
-      let req_mutual =
-        try List.assoc "mutual" params = "true" with Not_found -> false in
+      let ctarget_name =
+        A.get_target_name cconf in
       let cs =
         { cauthz = authz;
           ccontext = None;
@@ -217,7 +221,8 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           csubstate = `Pre_init_context;
           ctoken = "";
           ctarget_name;
-          cmutual = req_mutual
+          cconf;
+          cprops = None;
         } in
       cs
 
@@ -260,17 +265,12 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                         client_del_ctx cs;
                         cs.cstate <- `Auth_error msg
                )
+          | `Skip_empty when msg="" ->
+               cs.cstate <- `Emit;
+               cs.ctoken <- "";
+               cs.csubstate <- `Neg_security;
+          | `Neg_security
           | `Skip_empty ->
-               if msg = "" then (
-                 cs.cstate <- `Emit;
-                 cs.ctoken <- "";
-                 cs.csubstate <- `Neg_security;
-               )
-               else (
-                 client_del_ctx cs;
-                 cs.cstate <- `Auth_error "empty token expected"
-               )
-          | `Neg_security ->
                ( try
                    let input_message = [ Xdr_mstring.string_to_mstring msg ] in
                    let context = client_context cs in
@@ -343,6 +343,11 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
     let client_prop cs key =
       raise Not_found
 
+    let client_gssapi_props cs =
+      match cs.cprops with
+        | None -> raise Not_found
+        | Some p -> p
+
     let client_user_name cs =
       ""
 
@@ -358,7 +363,9 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
         failwith "Netmech_krb5_sasl.client_stash_session: the session \
                   must be established (implementation restriction)";
       "client,t=GSSAPI;" ^ 
-        Marshal.to_string (cs.cauthz, cs.cmutual) []
+        Marshal.to_string (cs.cauthz, 
+                           map_opt Netsys_gssapi.marshal_client_props cs.cprops
+                          ) []
 
     let cs_re = 
       Netstring_str.regexp "client,t=GSSAPI;"
@@ -370,14 +377,15 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (cauthz, cmutual) = Marshal.from_string data 0 in
+            let (cauthz, mprops) = Marshal.from_string data 0 in
             { cauthz;
               ccontext = None;
               cstate = `OK;
               csubstate = `Established;
               ctoken = "";
+              cconf = Netsys_gssapi.create_client_config();
               ctarget_name = G.interface # no_name;
-              cmutual
+              cprops = map_opt Netsys_gssapi.unmarshal_client_props mprops;
             }
 
   (*
@@ -417,11 +425,12 @@ Netpop.authenticate
           mutable stoken : string;
           mutable suser : string option;
           mutable sauthz : string option;
+          sconf : Netsys_gssapi.server_config;
           scred : G.credential;
           slookup : (string -> string -> credentials option);
-          smutual : bool;
           sservice : string;
           srealm : string option;
+          mutable sprops : Netsys_gssapi.server_props option;
         }
 
 
@@ -431,9 +440,7 @@ Netpop.authenticate
       match ss.scontext with
         | None -> ()
         | Some ctx ->
-            G.interface # delete_sec_context
-              ~context:ctx
-              ~out:(fun ~minor_status ~major_status () -> ());
+            M.delete_context ss.scontext ();
             ss.scontext <- None
 
     let server_check_gssapi_status ss fn_name major_status minor_status =
@@ -458,21 +465,20 @@ Netpop.authenticate
       let srealm =
         try Some(List.assoc "realm" params)
         with Not_found -> None in
-      let smutual =
-        try List.assoc "mutual" params = "true" with Not_found -> false in
-      let scred =
-        G.interface # acquire_cred
-          ~desired_name:G.interface#no_name
-          ~time_req:`Indefinite
-          ~desired_mechs:[ krb5_oid ]
-          ~cred_usage:`Accept
-          ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status
-                    () ->
-                   check_gssapi_status
-                     "acquire_cred" major_status minor_status;
-                   cred
-               )
+      let mutual_flag =
+        try if List.assoc "mutual" params = "true" 
+            then [`Mutual_flag, `Required] else []
+        with Not_found -> [] in
+      let sconf =
+        Netsys_gssapi.create_server_config
+          ~mech_types:[ krb5_oid ]
+          ~acceptor_name:(sservice, Netsys_gssapi.nt_hostbased_service)
+          ~privacy:`None
+          ~integrity:`Required
+          ~flags:( [`Integ_flag, `Required ] @ mutual_flag )
           () in
+      let scred = 
+        A.get_acceptor_cred ~acceptor_name:G.interface#no_name sconf in
       { scontext = None;
         sstate = `Wait;
         ssubstate = `Acc_context;
@@ -480,10 +486,11 @@ Netpop.authenticate
         suser = None;
         sauthz = None;
         slookup = lookup;
-        smutual = smutual;
         sservice;
         srealm;
         scred;
+        sconf;
+        sprops = None
       }
 
     let server_configure_channel_binding ss cb_list =
@@ -518,31 +525,19 @@ Netpop.authenticate
 
 
     let server_process_response_accept_context ss msg =
-      let cont =
-        G.interface # accept_sec_context
+      let (out_context, out_token, ret_flags, props_opt) =
+        A.accept_sec_context
           ~context:ss.scontext
           ~acceptor_cred:ss.scred
           ~input_token:msg
           ~chan_bindings:None
-          ~out:(fun ~src_name ~mech_type ~output_context ~output_token
-                    ~ret_flags ~time_rec ~delegated_cred 
-                    ~minor_status ~major_status () ->
-                   server_check_gssapi_status
-                     ss "accept_sec_context" major_status minor_status;
-                   assert(output_context <> None);
-                   let (_,_,suppl) = major_status in
-                   let cont = List.mem `Continue_needed suppl in
-                   ss.scontext <- output_context;
-                   ss.stoken <- output_token;
-                   ss.sstate <- `Emit;  (* even an empty token *)
-                   if not cont then (
-                     if ss.smutual && not(List.mem `Mutual_flag ret_flags) then
-                       failwith "mutual auth requested but not available";
-                   );
-                   cont
-               )
-          () in
-      if not cont then (
+          ss.sconf in
+      ss.scontext <- Some out_context;
+      ss.stoken <- out_token;
+      ss.sprops <- props_opt;
+      ss.sstate <- `Emit;  (* even an empty token *)
+      
+      if props_opt <> None then (
         let src_name, targ_name =
           G.interface # inquire_context
             ~context:(server_context ss)
@@ -556,48 +551,40 @@ Netpop.authenticate
                     src_name, targ_name
                  )
             () in
-        G.interface # display_name
-          ~input_name:targ_name
-          ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
-                    () ->
-                  server_check_gssapi_status
-                    ss "display_name" major_status minor_status;
-                  let ok =
-                    Krb5_gs2_profile.server_check_target_name
-                      ~params:["gssapi-acceptor-service", ss.sservice]
-                      (output_name, output_name_type) in
-                  if not ok then
-                    failwith "unexpected target or decoding error"
-               )
-          ();
-        G.interface # display_name
-          ~input_name:src_name
-          ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
-                    () ->
-                  server_check_gssapi_status
-                    ss "display_name" major_status minor_status;
-                  try
-                    let n =
-                      Krb5_gs2_profile.server_map_user_name
-                        ~params:( match ss.srealm with
-                                    | None -> []
-                                    | Some r -> ["realm", r]
-                                )
-                        (output_name,output_name_type) in
-                    ss.suser <- Some n
-                  with
-                    | Not_found ->
-                        failwith "cannot parse client name"
-               )
-          ();
-        if ss.stoken = "" then (
-          server_set_neg_security_token ss;
-          ss.ssubstate <- `Neg_security2
-        )
-        else
-          ss.ssubstate <- `Neg_security1
+        try
+          let (targ_disp_name, targ_disp_name_type) =
+            A.get_display_name targ_name in
+          let ok =
+            Krb5_gs2_profile.server_check_target_name
+              ~params:["gssapi-acceptor-service", ss.sservice]
+              (targ_disp_name, targ_disp_name_type) in
+          if not ok then
+            failwith "unexpected target or decoding error";
+          let (src_disp_name, src_disp_name_type) =
+            A.get_display_name src_name in
+          let n =
+            try
+              Krb5_gs2_profile.server_map_user_name
+                ~params:( match ss.srealm with
+                            | None -> []
+                            | Some r -> ["realm", r]
+                        )
+                (src_disp_name,src_disp_name_type)
+            with
+              | Not_found ->
+                  failwith "cannot parse client name" in
+          ss.suser <- Some n;
+          if ss.stoken = "" then (
+            server_set_neg_security_token ss;
+            ss.ssubstate <- `Neg_security2
+          )
+          else
+            ss.ssubstate <- `Neg_security1
+        with error ->
+          server_del_ctx ss;
+          raise error
       )
-
+                                  
 
     let server_process_response_neg_security1 ss msg =
       (* any msg is acceptable *)
@@ -682,8 +669,10 @@ Netpop.authenticate
         failwith "Netmech_krb5_sasl.server_stash_session: the session \
                   must be established (implementation restriction)";
       "server,t=GSSAPI;" ^ 
-        Marshal.to_string (ss.suser, ss.sauthz, ss.smutual,
-                           ss.sservice, ss.srealm) []
+        Marshal.to_string (ss.suser, ss.sauthz,
+                           ss.sservice, ss.srealm,
+                           map_opt Netsys_gssapi.marshal_server_props ss.sprops
+                          ) []
 
     let ss_re = 
       Netstring_str.regexp "server,t=GSSAPI;"
@@ -696,7 +685,7 @@ Netpop.authenticate
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (suser, sauthz, smutual, sservice, srealm) =
+            let (suser, sauthz, sservice, srealm, mprops) =
               Marshal.from_string data 0 in
             { scontext = None;
               sstate = `OK;
@@ -705,10 +694,11 @@ Netpop.authenticate
               suser;
               sauthz;
               slookup = lookup;
-              smutual;
               sservice;
               srealm;
-              scred = G.interface#no_credential
+              scred = G.interface#no_credential;
+              sconf = Netsys_gssapi.create_server_config();
+              sprops = map_opt Netsys_gssapi.unmarshal_server_props mprops;
             }
               
  
@@ -717,6 +707,11 @@ Netpop.authenticate
 
     let server_prop ss key =
       raise Not_found
+
+    let server_gssapi_props ss =
+      match ss.sprops with
+        | None -> raise Not_found
+        | Some p -> p
 
     let server_user_name ss =
       if ss.sstate <> `OK then raise Not_found;

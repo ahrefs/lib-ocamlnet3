@@ -143,6 +143,12 @@ class type ['credential, 'name, 'context] poly_gss_api =
     method no_name : 'name
         (** A substitute name for [GSS_C_NO_NAME] *)
 
+    method is_no_credential : 'credential -> bool
+        (** A test for [GSS_C_NO_CREDENTIAL] *)
+
+    method is_no_name : 'name -> bool
+        (** A test for [GSS_C_NO_NAME] *)
+
     method accept_sec_context :
           't . context:'context option ->
                acceptor_cred:'credential -> 
@@ -666,6 +672,9 @@ object
   method time : time             (** Actual context lifetime *)
 end
 
+val marshal_client_props : client_props -> string
+val unmarshal_client_props : string -> client_props
+
 (** {2 Configuring servers} *)
 
 (** See {!Netsys_gssapi.create_server_config} *)
@@ -719,6 +728,11 @@ object
         [e] is the exception [G.Credential] from the GSSAPI provider.
      *)
 end
+
+val marshal_server_props : server_props -> string
+val unmarshal_server_props : string -> server_props
+  (** This doesn't restore deleg_credential which is unmarshallable! *)
+
 
 
 (** {2 Encodings} *)

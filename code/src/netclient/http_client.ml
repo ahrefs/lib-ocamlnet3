@@ -439,6 +439,7 @@ object
   method status : status
   method auth_status : unit auth_status
   method tls_session_props : Nettls_support.tls_session_props option
+  method gssapi_props : Netsys_gssapi.client_props option
   method request_method : string
   method request_uri : string
   method set_request_uri : string -> unit
@@ -535,6 +536,7 @@ object
   method set_conn_id : int -> unit
 
   method set_tls_session_props : Nettls_support.tls_session_props -> unit
+  method set_gssapi_props : Netsys_gssapi.client_props -> unit
 
   method retry_anyway : bool
   method set_retry_anyway : bool -> unit
@@ -659,6 +661,7 @@ object(self)
   val mutable auth_state = `None
 
   val mutable tls_session_props = None
+  val mutable gssapi_props = None
 
   val mutable conn_id = 0
 
@@ -743,6 +746,7 @@ object(self)
           auth_state <- s
 
         method set_tls_session_props p = tls_session_props <- Some p
+        method set_gssapi_props p = gssapi_props <- Some p
 
         method conn_id = conn_id
         method set_conn_id id = conn_id <- id
@@ -1027,6 +1031,7 @@ object(self)
       | _ -> `Continue ()
 
   method tls_session_props = tls_session_props
+  method gssapi_props = gssapi_props
 
   (* Accessing the request message (new style) *)
 
@@ -1911,251 +1916,6 @@ let normalize_domain options (call : http_call) s =
         dlog (sprintf "digest: cannot parse 'domain' parameter: %s" s);
         raise Not_found
 
-
-(*
-  (* old implementation. Now Netmech_digest_http *)
-let digest_auth_session_for_realm options
-                                  (key_handler : #key_handler)
-                                  (init_call : http_call) is_proxy
-                                  (init_realm, init_params)
-      : auth_session =
-
-  let decode call realm params =
-    let algorithm_lc =
-      try String.lowercase (List.assoc "algorithm" params)
-      with Not_found -> "md5" in
-  
-    if not (List.mem algorithm_lc [ "md5"; "md5-sess" ]) then
-      raise Not_applicable;
-    if not (try contains_auth (List.assoc "qop" params)
-	    with Not_found -> true) then
-      raise Not_applicable;
-    if not (List.mem_assoc "nonce" params) then
-      raise Not_applicable;
-
-    let request_domain =
-      if is_proxy then None else Some(get_uri_with_path call) in
-    let auth_domain =
-      if is_proxy then [] else
-        try 
-	  List.map
-	    (normalize_domain options call)
-	    (split_words (List.assoc "domain" params))
-        with
-	    Not_found -> [ get_domain_uri call ] in
-    let qop =
-      if List.mem_assoc "qop" params then "auth" else "" in
-      (* "" = RFC 2069 mode *)
-    let nonce = List.assoc "nonce" params in
-    
-    (algorithm_lc, qop, nonce, request_domain, auth_domain) in
-
-  let (algorithm_lc, qop, init_nonce, init_request_domain, auth_domain) =
-    decode init_call init_realm init_params in  (* or Not_applicable *)
-
-  let key =
-    (* Return the selected key, or raise Not_applicable *)
-    try
-     key_handler # inquire_key
-        ~domain:init_request_domain ~realm:init_realm ~auth:"digest"
-    with
-	Not_found -> raise Not_applicable in
-
-  let special_code =
-    if is_proxy then 407 else 401 in
-
-object(self)
-  val mutable cnonce_init = ""
-  val mutable cnonce_incr = 0
-  val mutable nc = 0
-  val mutable opaque = None
-  val mutable a1 = None
-  val mutable nonce = init_nonce
-
-  initializer (
-    self # init_cnonce()
-  )
-
-  method private init_cnonce() =
-    cnonce_init <- 
-      try 
-        let s = String.make 8 'X' in
-        let () = Netsys_rng.fill_random s in
-        s
-      with _ -> string_of_float (Unix.gettimeofday())   (* FIXME *)
-
-  method private first_cnonce =
-    Digest.to_hex
-      (Digest.string (cnonce_init ^ ":0"))
-
-  method private next_cnonce() =
-    let cnonce =
-      Digest.to_hex
-	(Digest.string (cnonce_init ^ ":" ^ string_of_int cnonce_incr)) in
-    cnonce_incr <- cnonce_incr + 1;
-    cnonce
-
-  method private next_nc() =
-    let r = nc in
-    nc <- nc + 1;
-    r
-
-  method private fn_h data =
-    encode_hex (Digest.string data)
-
-  method private fn_kd secret data =
-    encode_hex (Digest.string (secret ^ ":" ^ data))
-
-  method private a1 =
-    match a1 with
-      | Some v -> v
-      | None ->
-	  let v =
-	    match algorithm_lc with
-	      | "md5" ->
-		  key#user ^ ":" ^ init_realm ^ ":" ^ key#password
-	      | "md5-sess" ->
-                  (* We do so as described in RFC-2617 although this was not
-                     intended, and makes RFC-2617 incompatible with RFC-2831.
-                     The latter would not hex-encode the digest.
-                   *)
-		  (self # fn_h
-		     (key#user ^ ":" ^ init_realm ^ ":" ^ key#password)) ^ 
-		  ":" ^ nonce ^ ":" ^ self#first_cnonce
-	      | _ ->
-		  assert false
-	  in
-	  a1 <- Some v;
-	  v
-
-  method private a2 call =
-    let meth = call # request_method in
-    let uri = call # effective_request_uri in
-    meth ^ ":" ^ uri
-
-  method authenticate call reauth_flag =
-    let code = call # private_api # response_code in
-    if reauth_flag then (
-      self # do_authenticate call
-    )
-    else if code = special_code then (
-      (* First decode the call again, and check whether core params did not
-         change
-       *)
-      try
-        let this_realm, these_params =
-          match get_realms "digest" call is_proxy with
-            | [ r, p ] -> (r,p)
-            | _ -> raise Not_applicable in
-        if this_realm <> init_realm then raise Not_applicable;
-        let (this_alg_lc, this_qop, this_nonce, this_request_domain, 
-             this_auth_domain) =
-          decode call this_realm these_params in  (* or Not_applicable *)
-        if this_alg_lc <> algorithm_lc || this_qop <> qop then
-          raise Not_applicable;
-        (* If the nonce changes, we need to reset other stuff: *)
-        if nonce <> this_nonce then (
-          self # init_cnonce();
-          nc <- 0;
-          nonce <- this_nonce;
-          (* Accept this only if the stale flag is set *)
-          let stale =
-            String.lowercase 
-              (try List.assoc "stale" these_params with Not_found -> "")
-              = "true" in
-          if not stale then raise Not_applicable;
-        );
-        self # do_authenticate call
-      with
-        | Not_applicable -> `Auth_error
-    )
-    else `OK
-
-
-  method private do_authenticate call =
-    let cnonce = self#next_cnonce() in
-    let nc = self # next_nc() in
-    let digest =
-      match qop with
-	| "auth" ->
-	    self#fn_kd
-	      (self#fn_h self#a1)
-	      (nonce ^ ":" ^ (Printf.sprintf "%08x" nc) ^ ":" ^ cnonce ^ ":" ^ 
-		 "auth:" ^ (self#fn_h (self#a2 call)))
-	| "" ->
-	    self#fn_kd
-	      (self#fn_h self#a1)
-	      (nonce ^ ":" ^ (self#fn_h (self#a2 call))) 
-	| _ ->
-	    assert false  (* such digests are not accepted *)
-    in
-    let creds =
-      Printf.sprintf
-	"Digest username=\"%s\",realm=\"%s\",nonce=\"%s\",uri=\"%s\",response=\"%s\",algorithm=%s,cnonce=\"%s\",%s%snc=%08x"
-	key#user
-	init_realm
-	nonce
-	call#effective_request_uri
-	digest
-	algorithm_lc
-	cnonce
-	(match opaque with
-	   | None -> ""
-	   | Some s -> "opaque=\"" ^ s ^ "\",")
-	(match qop with
-	   | "" -> ""
-	   | "auth" -> "qop=auth,"
-	   | _ -> assert false)
-	nc in
-    let field_name =
-      if is_proxy then "Proxy-Authorization" else "Authorization" in
-    `Continue [ field_name, creds ]
-
-  method auth_scheme = "digest"
-  method auth_domain = auth_domain
-  method auth_realm = key # realm
-  method auth_user = key # user
-  method auth_session_id = Some nonce
-    (* CHECK: this nonce can change! This may affect auth_cache *)
-
-  method invalidate call =
-    key_handler # invalidate_key key;
-end
-
-
-let digest_auth_session options
-                        key_handler (call : http_call) is_proxy =
-  let realms = get_realms "digest" call is_proxy in
-  iterate
-    (fun (realm,params) ->
-       digest_auth_session_for_realm
-         options key_handler call is_proxy (realm,params)
-    )
-    realms
-
-
-class digest_auth_handler (key_handler : #key_handler)
-      : auth_handler =
-object(self)
-  method create_session ~secure call options =
-    try
-      Some(digest_auth_session options key_handler call false)
-    with
-	Not_applicable ->
-	  None
-  method create_proxy_session call options =
-    try
-      Some(digest_auth_session options key_handler call true)
-    with
-	Not_applicable ->
-	  None
-  method identify_session _ _  = None
-  method identify_proxy_session _ _  = None
-  method skip_challenge = false
-  method skip_challenge_session _ _ = assert false
-end
- *)
-
 let dbg_kv f kv_l =
   String.concat ","
     (List.map (fun kv -> let (k,v) = f kv in sprintf "%s=%S" k v) kv_l)
@@ -2351,6 +2111,11 @@ let generic_auth_session_for_challenge
                                        mname (dbg_l norm_neturl auth_domain)
                             );
                           cur_auth_domain := auth_domain;
+                        );
+                        ( try
+                            let gssapi_props = M.client_gssapi_props session in
+                            call # private_api # set_gssapi_props gssapi_props;
+                          with Not_found -> ()
                         );
                         `OK
                    | `Emit | `Stale ->

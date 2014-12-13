@@ -1712,9 +1712,21 @@ module Header = struct
 
     and parse_auth_params_negotiate stream =
       match Stream.npeek 1 stream with
-        | [ (Atom data) ] ->
+        | [ (Atom d1) ] ->
              Stream.junk stream;
-             [ "credentials", data ]
+             let d2 =
+               match Stream.npeek 1 stream with
+                 | [ Special '=' ] -> 
+                     Stream.junk stream;
+                     ( match Stream.npeek 1 stream with
+                         | [ Special '=' ] -> 
+                             Stream.junk stream;
+                             "=="
+                         | _ ->
+                             "="
+                     )
+                 | _ -> "" in
+             [ "credentials", d1 ^ d2 ]
         | _ ->
              [ "credentials", "" ]
 
@@ -2103,6 +2115,7 @@ module type HTTP_MECHANISM =
     val client_session_id : client_session -> string option
     val client_domain : client_session -> string list
     val client_prop : client_session -> string -> string
+    val client_gssapi_props : client_session -> Netsys_gssapi.client_props
   end
 
 

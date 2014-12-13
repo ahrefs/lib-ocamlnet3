@@ -505,6 +505,8 @@ let () =
   fprintf f "        method provider = \"Netsys_gssapi.System\"\n";
   fprintf f "        method no_credential = no_credential()\n";
   fprintf f "        method no_name = no_name()\n";
+  fprintf f "        method is_no_credential = is_no_credential\n";
+  fprintf f "        method is_no_name = is_no_name\n";
 
   let indent = "        " in
 

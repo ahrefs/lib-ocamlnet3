@@ -1271,6 +1271,9 @@ module type HTTP_MECHANISM =
            - "realm"
            - "domain-uri"
        *)
+
+    val client_gssapi_props : client_session -> Netsys_gssapi.client_props
+      (** Returns the GSSAPI props if available, or raise [Not_found] *)
   end
 
 

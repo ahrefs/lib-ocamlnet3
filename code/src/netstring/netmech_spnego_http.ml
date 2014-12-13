@@ -54,12 +54,18 @@ let spnego_oid = [| 1;3;6;1;5;5;2 |]
 
 let spnego_trans_id = Nethttp.spnego_trans_id
 
+let map_opt f =
+  function
+  | None -> None
+  | Some x -> Some(f x)
+
 
 module type PROFILE =
   sig
     val acceptable_transports_http : Nethttp.transport_layer_id list
     val acceptable_transports_https : Nethttp.transport_layer_id list
     val enable_delegation : bool
+    val deleg_credential : exn option
 
     (* future: configure SPNEGO *)
 
@@ -71,11 +77,18 @@ module Default : PROFILE =
     let acceptable_transports_http = [ ]
     let acceptable_transports_https = [ spnego_trans_id ]
     let enable_delegation = true
+    let deleg_credential = None
   end
 
 
 module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM = 
   struct
+    module M = Netgssapi_auth.Manage(G)
+    module C = struct
+      let raise_error = failwith
+    end
+    module A = Netgssapi_auth.Auth(G)(C)
+
     let mechanism_name = "Negotiate"
 
     let available() = true
@@ -126,7 +139,10 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
           mutable csubstate : client_sub_state;
           mutable ctoken : string;
           mutable cconn : int;
+          cconf : Netsys_gssapi.client_config;
           ctarget_name : G.name;
+          ccred : G.credential;
+          mutable cprops : Netsys_gssapi.client_props option;
         }
 
     let client_state cs = cs.cstate
@@ -135,27 +151,16 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       match cs.ccontext with
         | None -> ()
         | Some ctx ->
-            G.interface # delete_sec_context
-              ~context:ctx
-              ~out:(fun ~minor_status ~major_status () -> ());
+            M.delete_context cs.ccontext ();
             cs.ccontext <- None
 
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
                             minor_status =
       if calling_error <> `None || routine_error <> `None then (
-        let error = Netsys_gssapi.string_of_major_status major_status in
-        let minor_s =
-          G.interface # display_minor_status
-            ~mech_type:[||]
-            ~status_value:minor_status
-            ~out:(fun ~status_strings ~minor_status ~major_status () ->
-                    String.concat "; " status_strings
-                 )
-            () in
-        (* eprintf "STATUS: %s %s %s\n%!" fn_name error minor_s; *)
-        failwith ("Unexpected major status for " ^ fn_name ^ ": " ^ 
-                    error ^ " (minor: " ^ minor_s ^ ")")
+        let msg =
+          M.format_status ~fn:fn_name ~minor_status major_status in
+        failwith msg
       )
 
     let client_check_gssapi_status cs fn_name major_status minor_status =
@@ -168,38 +173,28 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
            
 
     let call_init_sec_context cs input_token =
-      G.interface # init_sec_context
-         ~initiator_cred:G.interface#no_credential
-         ~context:cs.ccontext
-         ~target_name:cs.ctarget_name
-         ~mech_type:spnego_oid
-         ~req_flags:( [ `Integ_flag; `Mutual_flag ] @
-                        ( if P.enable_delegation then [`Deleg_flag] else [])
-                    )
-         ~time_req:None
-         ~chan_bindings:None
-         ~input_token
-         ~out:(fun ~actual_mech_type ~output_context ~output_token 
-                   ~ret_flags ~time_rec ~minor_status ~major_status () -> 
-                 let (_,_,suppl) = major_status in
-                 client_check_gssapi_status
-                   cs "init_sec_context" major_status minor_status;
-                 assert(output_context <> None);
-                 cs.ccontext <- output_context;
-                 cs.ctoken <- output_token;
-                 let auth_done = (suppl = []) in
-                 if auth_done then (
-                   cs.cstate <- if output_token = "" then `OK else `Emit;
-                   cs.csubstate <- `Established;
-                   client_del_ctx cs;  (* no longer needed *)
-                 )
-                 else (
-                   assert(suppl = [`Continue_needed]);
-                   cs.cstate <- `Emit;
-                   cs.csubstate <- `Init_context
-                 )
-              )
-         ()
+      let (out_context, out_token, ret_flags, props_opt) =
+        A.init_sec_context
+          ~initiator_cred:cs.ccred
+          ~context:cs.ccontext
+          ~target_name:cs.ctarget_name
+          ~req_flags:(A.get_client_flags cs.cconf)
+          ~chan_bindings:None
+          ~input_token
+          cs.cconf in
+      cs.ccontext <- Some out_context;
+      cs.ctoken <- out_token;
+      cs.cprops <- props_opt;
+      let auth_done = (props_opt <> None) in
+      if auth_done then (
+        cs.cstate <- if out_token = "" then `OK else `Emit;
+        cs.csubstate <- `Established;
+        client_del_ctx cs;  (* no longer needed *)
+      )
+      else (
+        cs.cstate <- `Emit;
+        cs.csubstate <- `Init_context
+      )
 
     let create_client_session ~user ~creds ~params () =
       let params = 
@@ -210,6 +205,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       let conn_id =
         try int_of_string (List.assoc "conn_id" params)
         with Not_found -> failwith "missing parameter: conn_id" in
+
       let acceptor_name =
         try
           "HTTP@" ^ List.assoc "target-host" params
@@ -217,15 +213,22 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
           | Not_found -> failwith "missing parameter 'target-host'" in
       let acceptor_name_type =
         Netsys_gssapi.nt_hostbased_service in
-      let ctarget_name =
-        G.interface # import_name
-          ~input_name:acceptor_name
-          ~input_name_type:acceptor_name_type
-          ~out:(fun ~output_name ~minor_status ~major_status () ->
-                  check_gssapi_status "import_name" major_status minor_status;
-                  output_name
-               )
+      let cconf =
+        Netsys_gssapi.create_client_config
+          ~mech_type:spnego_oid
+          ~target_name:(acceptor_name, acceptor_name_type)
+          ~privacy:`If_possible
+          ~integrity:`Required
+          ~flags:( [ `Mutual_flag, `Required ] @
+                     ( if P.enable_delegation then [`Deleg_flag, `Required] 
+                       else [] ) )
           () in
+      let ctarget_name =
+        A.get_target_name cconf in
+      let ccred =
+        match P.deleg_credential with
+          | Some (G.Credential c) -> c
+          | _ -> G.interface # no_credential in
       let cstate = `Wait (* HTTP auth is always "server-first" *) in
       let cs =
         { ccontext = None;
@@ -233,7 +236,10 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
           csubstate = `Pre_init_context;
           ctoken = "";
           ctarget_name;
+          cconf;
           cconn = conn_id;
+          ccred;
+          cprops = None;
         } in
       cs
 
@@ -345,6 +351,11 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
     let client_prop cs key =
       raise Not_found
 
+    let client_gssapi_props cs =
+      match cs.cprops with
+        | None -> raise Not_found
+        | Some p -> p
+
     let client_user_name cs =
       ""
 
@@ -359,18 +370,32 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       if cs.cstate <> `OK then
         failwith "Netmech_spnego_http.client_stash_session: the session \
                   must be established (implementation restriction)";
-      "client,t=SPNEGO;"
+      "client,t=SPNEGO;" ^
+        Marshal.to_string
+          (map_opt Netsys_gssapi.marshal_client_props cs.cprops)
+          []
+
+    let cs_re = 
+      Netstring_str.regexp "client,t=SPNEGO;"
 
     let client_resume_session s =
-      if s <> "client,t=SPNEGO;" then
-        failwith "Netmech_spnego_http.client_resume_session";
-      { ccontext = None;
-        cstate = `OK;
-        csubstate = `Established;
-        ctoken = "";
-        ctarget_name = G.interface # no_name;
-        cconn = 0;  (* FIXME *)
-      }
+      match Netstring_str.string_match cs_re s 0 with
+        | None ->
+            failwith "Netmech_spnego_http.client_resume_session"
+        | Some m ->
+            let p = Netstring_str.match_end m in
+            let data = String.sub s p (String.length s - p) in
+            let (mprops) = Marshal.from_string data 0 in
+            { ccontext = None;
+              cstate = `OK;
+              csubstate = `Established;
+              ctoken = "";
+              ctarget_name = G.interface # no_name;
+              cconn = 0;  (* FIXME *)
+              cconf = Netsys_gssapi.create_client_config();
+              ccred =  G.interface # no_credential;
+              cprops = map_opt Netsys_gssapi.unmarshal_client_props mprops;
+            }
 
     let client_domain s = [ "/" ]
       (* This way the auth sessions get cached *)

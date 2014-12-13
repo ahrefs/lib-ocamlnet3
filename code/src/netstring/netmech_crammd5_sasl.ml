@@ -148,6 +148,9 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_prop ss key =
     raise Not_found
 
+  let server_gssapi_props ss =
+    raise Not_found
+
   let server_user_name ss =
     match ss.suser with
       | None -> raise Not_found
@@ -235,6 +238,9 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     None
       
   let client_prop cs key =
+    raise Not_found
+
+  let client_gssapi_props cs =
     raise Not_found
 
   let client_user_name cs =

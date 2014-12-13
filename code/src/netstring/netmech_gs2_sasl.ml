@@ -33,6 +33,7 @@ module type PROFILE =
     val server_flags :
            params:(string * string) list ->
            Netsys_gssapi.req_flag list
+    val client_credential : exn option
   end
 
 
@@ -40,6 +41,13 @@ module type PROFILE =
 module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : 
          Netsys_sasl_types.SASL_MECHANISM =
   struct
+    module M = Netgssapi_auth.Manage(G)
+    module C = struct
+      let raise_error msg =
+        failwith msg
+    end
+    module A = Netgssapi_auth.Auth(G)(C)
+
     let mechanism_name = 
       P.mechanism_name ^ (if P.announce_channel_binding then "-PLUS" else "")
     let client_first = `Required
@@ -55,6 +63,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
     type credentials = unit
 
     let init_credentials _ = ()
+
+    let map_opt f =
+      function
+      | None -> None
+      | Some x -> Some(f x)
 
     (* ------------------------ *)
     (*          Client          *)
@@ -72,95 +85,49 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           mutable csubstate : client_sub_state;
           mutable ctoken : string;
           cparams : (string * string) list;
+          cconf : Netsys_gssapi.client_config;
           ctarget_name : G.name;
-          cinit_name : G.name;
           ccred : G.credential;
           mutable ccb_data : string;
           mutable ccb : Netsys_sasl_types.cb;
+          mutable cprops : Netsys_gssapi.client_props option;
         }
 
     let client_state cs = cs.cstate
 
     let client_del_ctx cs =
-      match cs.ccontext with
-        | None -> ()
-        | Some ctx ->
-            G.interface # delete_sec_context
-              ~context:ctx
-              ~out:(fun ~minor_status ~major_status () -> ());
-            cs.ccontext <- None
+      M.delete_context cs.ccontext ();
+      cs.ccontext <- None
 
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
                             minor_status =
       if calling_error <> `None || routine_error <> `None then (
-        let error = Netsys_gssapi.string_of_major_status major_status in
-        let minor_s =
-          G.interface # display_minor_status
-            ~mech_type:[||]
-            ~status_value:minor_status
-            ~out:(fun ~status_strings ~minor_status ~major_status () ->
-                    String.concat "; " status_strings
-                 )
-            () in
+        let msg =
+          M.format_status ~fn:fn_name ~minor_status major_status in
         (* eprintf "STATUS: %s %s %s\n%!" fn_name error minor_s; *)
-        failwith ("Unexpected major status for " ^ fn_name ^ ": " ^ 
-                    error ^ " (minor: " ^ minor_s ^ ")")
+        failwith msg
       )
 
-    let client_check_gssapi_status cs fn_name major_status minor_status =
-      try
-        check_gssapi_status fn_name major_status minor_status
-      with
-        | error ->
-            client_del_ctx cs;
-            raise error
-
     let call_init_sec_context cs input_token =
-      let flags1 = P.client_flags ~params:cs.cparams in
-      let flags2 = List.map fst flags1 in
-      G.interface # init_sec_context
-         ~initiator_cred:cs.ccred
-         ~context:cs.ccontext
-         ~target_name:cs.ctarget_name
-         ~mech_type:P.mechanism_oid
-         ~req_flags:(`Mutual_flag  :: `Sequence_flag :: flags2)
-         ~time_req:None
-         ~chan_bindings:(Some(`Unspecified "", `Unspecified "", cs.ccb_data))
-         ~input_token
-         ~out:(fun ~actual_mech_type ~output_context ~output_token 
-                   ~ret_flags ~time_rec ~minor_status ~major_status () -> 
-                 let (_,_,suppl) = major_status in
-                 let cont = List.mem `Continue_needed suppl in
-                 client_check_gssapi_status
-                   cs "init_sec_context" major_status minor_status;
-                 assert(output_context <> None);
-                 cs.ccontext <- output_context;
-                 cs.ctoken <- output_token;
-                 if not cont then (
-                   if not(List.mem `Mutual_flag ret_flags) then
-                     failwith "mutual authentication requested but not available";
-                   List.iter
-                     (fun (flag,req) ->
-                        let flag = (flag :> Netsys_gssapi.ret_flag ) in
-                        if req && not(List.mem flag ret_flags) then
-                          failwith "required flag missing"
-                     )
-                     flags1;
-                   cs.cstate <- `Emit;
-                   cs.csubstate <- if output_token = "" then `Established 
-                                   else`Init_context;
-                 )
-                 else (
-(*
-                   if suppl <> [ `Continue_needed ] then
-                     failwith "bad supplemental state";
- *)
-                   cs.cstate <- `Emit;
-                   cs.csubstate <- `Init_context
-                 )
-              )
-         ()
+      let (out_context, out_token, ret_flags, props_opt) =
+        A.init_sec_context
+          ~initiator_cred:cs.ccred
+          ~context:cs.ccontext
+          ~target_name:cs.ctarget_name
+          ~req_flags:(A.get_client_flags cs.cconf)
+          ~chan_bindings:(Some(`Unspecified "", `Unspecified "", cs.ccb_data))
+          ~input_token
+          cs.cconf in
+      cs.ccontext <- Some out_context;
+      cs.ctoken <- out_token;
+      cs.cprops <- props_opt;
+      cs.cstate <- `Emit;
+      if props_opt = None then
+        cs.csubstate <- `Init_context
+      else 
+        cs.csubstate <- if out_token = "" then `Established 
+                        else`Init_context
 
     let client_cb_string cs =
       match cs.ccb with
@@ -218,44 +185,40 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           "Netmech_krb5_sasl.create_client_session:"
           ([ "mutual"; "secure" ] @ P.client_additional_params)
           params in
+
       let (targ_name, target_name_type) = P.client_get_target_name ~params in
-      let ctarget_name =
-        if target_name_type = [| |] then
-          G.interface # no_name
-        else
-          G.interface # import_name
-            ~input_name:targ_name
-            ~input_name_type:target_name_type
-            ~out:(fun ~output_name ~minor_status ~major_status () ->
-                    check_gssapi_status "import_name" major_status minor_status;
-                    output_name
-                 )
-            () in
       let (init_name, init_name_type) = P.client_map_user_name ~params user in
-      let cinit_name =
-        if init_name_type = [| |] then
-          G.interface # no_name
-        else
-          G.interface # import_name
-            ~input_name:init_name
-            ~input_name_type:init_name_type
-            ~out:(fun ~output_name ~minor_status ~major_status () ->
-                    check_gssapi_status "import_name" major_status minor_status;
-                    output_name
-                 )
-            () in
-      let ccred =
-        G.interface # acquire_cred
-          ~desired_name:cinit_name
-          ~time_req:`Indefinite
-          ~desired_mechs:[ P.mechanism_oid ]
-          ~cred_usage:`Initiate
-          ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status
-                    () ->
-                  check_gssapi_status "acquire_cred" major_status minor_status;
-                  cred
-               )
+      let flags =
+        List.map
+          (fun (flag, is_required) ->
+             (flag, (if is_required then `Required else `If_possible))
+          )
+          (P.client_flags ~params) 
+          @ [ `Mutual_flag, `Required ]
+          @ [ `Sequence_flag, `If_possible ] in
+      let integrity =
+        try List.assoc `Integ_flag flags with Not_found -> `None in
+      let privacy =
+        try List.assoc `Conf_flag flags with Not_found -> `None in
+      let cconf =
+        Netsys_gssapi.create_client_config
+          ~mech_type:P.mechanism_oid
+          ?initiator_name:(if init_name_type = [| |] then
+                             None
+                           else
+                             Some(init_name,init_name_type))
+          ?initiator_cred:P.client_credential
+          ?target_name:(if target_name_type = [| |] then
+                          None
+                        else
+                          Some(targ_name, target_name_type))
+          ~flags
+          ~privacy
+          ~integrity
           () in
+      let initiator_name = A.get_initiator_name cconf in
+      let ccred = A.get_initiator_cred ~initiator_name cconf in
+      let ctarget_name = A.get_target_name cconf in
       let cs =
         { cuser = user;
           cauthz = authz;
@@ -263,12 +226,13 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           cstate = `Emit;
           csubstate = `Pre_init_context;
           ctoken = "";
+          cconf;
           ctarget_name;
-          cinit_name;
           ccred;
           cparams = params;
           ccb_data = "";
           ccb = `None;
+          cprops = None;
         } in
       client_create_cb_data cs;
       cs
@@ -340,6 +304,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
     let client_prop cs key =
       raise Not_found
 
+    let client_gssapi_props cs =
+      match cs.cprops with
+        | None -> raise Not_found
+        | Some p -> p
+
     let client_user_name cs =
       ""
 
@@ -355,7 +324,9 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         failwith "Netmech_gs5_sasl.client_stash_session: the session \
                   must be established (implementation restriction)";
       "client,t=GS2;" ^ 
-        Marshal.to_string (cs.cuser, cs.cauthz, cs.cparams, cs.ccb) []
+        Marshal.to_string (cs.cuser, cs.cauthz, cs.cparams, cs.ccb,
+                           map_opt Netsys_gssapi.marshal_client_props cs.cprops)
+                          []
 
     let cs_re = 
       Netstring_str.regexp "client,t=GS2;"
@@ -367,7 +338,8 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (cuser, cauthz, cparams, ccb) = Marshal.from_string data 0 in
+            let (cuser, cauthz, cparams, ccb, mprops) =
+              Marshal.from_string data 0 in
             { cuser;
               cauthz;
               ccontext = None;
@@ -375,11 +347,12 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               csubstate = `Established;
               ctoken = "";
               cparams;
+              cconf = Netsys_gssapi.create_client_config();
               ctarget_name = G.interface # no_name;
-              cinit_name = G.interface # no_name;
               ccred = G.interface # no_credential;
               ccb_data = "";
               ccb;
+              cprops = map_opt Netsys_gssapi.unmarshal_client_props mprops;
             }
 
 
@@ -399,23 +372,20 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           mutable suser : string option;
           mutable sauthz : string option;
           mutable scb_data : string;
+          sconf : Netsys_gssapi.server_config;
           scred : G.credential;
           slookup : (string -> string -> credentials option);
           sparams : (string * string) list;
           mutable scb : (string * string) list;
+          mutable sprops : Netsys_gssapi.server_props option;
         }
 
 
     let server_state ss = ss.sstate
 
     let server_del_ctx ss =
-      match ss.scontext with
-        | None -> ()
-        | Some ctx ->
-            G.interface # delete_sec_context
-              ~context:ctx
-              ~out:(fun ~minor_status ~major_status () -> ());
-            ss.scontext <- None
+      M.delete_context ss.scontext ();
+      ss.scontext <- None
 
     let server_check_gssapi_status ss fn_name major_status minor_status =
       try
@@ -431,33 +401,29 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
           "Netmech_krb5_sasl.create_server_session:"
           ( [ "mutual"; "secure" ] @ P.server_additional_params )
           params in
-      let scred_name =
-        match P.server_bind_target_name ~params with
-          | None ->
-              G.interface#no_name
-          | Some(name,ty) ->
-              G.interface # import_name
-                ~input_name:name
-                ~input_name_type:ty
-                ~out:(fun ~output_name ~minor_status ~major_status () ->
-                        check_gssapi_status 
-                          "import_name" major_status minor_status;
-                        output_name
-                     )
-                () in
-      let scred =
-        G.interface # acquire_cred
-          ~desired_name:scred_name
-          ~time_req:`Indefinite
-          ~desired_mechs:[ P.mechanism_oid ]
-          ~cred_usage:`Accept
-          ~out:(fun ~cred ~actual_mechs ~time_rec ~minor_status ~major_status
-                    () ->
-                   check_gssapi_status
-                     "acquire_cred" major_status minor_status;
-                   cred
-               )
+
+      let flags =
+        List.map
+          (fun (flag, is_required) ->
+             (flag, (if is_required then `Required else `If_possible))
+          )
+          (P.client_flags ~params) 
+          @ [ `Mutual_flag, `Required ]
+          @ [ `Sequence_flag, `If_possible ] in
+      let integrity =
+        try List.assoc `Integ_flag flags with Not_found -> `None in
+      let privacy =
+        try List.assoc `Conf_flag flags with Not_found -> `None in
+      let sconf =
+        Netsys_gssapi.create_server_config
+          ~mech_types:[ P.mechanism_oid ]
+          ?acceptor_name:(P.server_bind_target_name ~params)
+          ~flags
+          ~integrity
+          ~privacy
           () in
+      let scred_name = A.get_acceptor_name sconf in
+      let scred = A.get_acceptor_cred ~acceptor_name:scred_name sconf in
       { scontext = None;
         sstate = `Wait;
         ssubstate = `Acc_context;
@@ -466,9 +432,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         sauthz = None;
         slookup = lookup;
         sparams = params;
+        sconf;
         scred;
         scb_data = "";
         scb = [];
+        sprops = None;
       }
 
     let server_configure_channel_binding ss l =
@@ -523,42 +491,19 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
 
 
     let server_process_response_accept_context ss msg =
-      let flags = P.server_flags ~params:ss.sparams in
-      let cont =
-        G.interface # accept_sec_context
+      let (out_context, out_token, ret_flags, props_opt) =
+        A.accept_sec_context
           ~context:ss.scontext
           ~acceptor_cred:ss.scred
           ~input_token:msg
           ~chan_bindings:(Some(`Unspecified "", `Unspecified "", ss.scb_data))
-          ~out:(fun ~src_name ~mech_type ~output_context ~output_token
-                    ~ret_flags ~time_rec ~delegated_cred 
-                    ~minor_status ~major_status () ->
-                   server_check_gssapi_status
-                     ss "accept_sec_context" major_status minor_status;
-                   assert(output_context <> None);
-                   let (_,_,suppl) = major_status in
-                   ss.scontext <- output_context;
-                   ss.stoken <- output_token;
-                   if suppl = [] then (
-                     if not(List.mem `Mutual_flag ret_flags) then
-                       failwith "mutual auth requested but not available";
-                     List.iter
-                       (fun flag ->
-                          let flag = (flag :> Netsys_gssapi.ret_flag ) in
-                          if not(List.mem flag ret_flags) then
-                            failwith "missing flag";
-                       )
-                       flags;
-                   ) else (
-                     if suppl <> [ `Continue_needed ] then
-                       failwith "unexpected supplemental flags";
-                   );
-                   suppl <> []
-               )
-          () in
-      if cont then
+          ss.sconf in
+      ss.scontext <- Some out_context;
+      ss.stoken <- out_token;
+      if props_opt = None then
         ss.sstate <- `Emit
       else (
+        ss.sprops <- props_opt;
         let src_name, targ_name =
           G.interface # inquire_context
             ~context:(server_context ss)
@@ -572,40 +517,34 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
                     src_name, targ_name
                  )
             () in
-        G.interface # display_name
-          ~input_name:targ_name
-          ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
-                    () ->
-                  server_check_gssapi_status
-                    ss "display_name" major_status minor_status;
-                  let ok =
-                    P.server_check_target_name
-                      ~params:ss.sparams (output_name,output_name_type) in
-                  if not ok then
-                    failwith "target name check not passed";
-               )
-          ();
-        G.interface # display_name
-          ~input_name:src_name
-          ~out:(fun ~output_name ~output_name_type ~minor_status ~major_status
-                    () ->
-                  server_check_gssapi_status
-                    ss "display_name" major_status minor_status;
-                  let user =
-                    try
-                      P.server_map_user_name
-                        ~params:ss.sparams (output_name,output_name_type)
-                    with
-                      | Not_found -> failwith "user name not acceptable" in
-                  ss.suser <- Some user;
-               )
-          ();
-        if ss.stoken = "" then
-          server_finish ss
-        else (
-          ss.ssubstate <- `Skip_empty;
-          ss.sstate <- `Emit
-        )
+        try
+          let (targ_disp_name, targ_disp_name_type) =
+            A.get_display_name targ_name in
+          let ok =
+            P.server_check_target_name
+              ~params:ss.sparams (targ_disp_name,targ_disp_name_type) in
+          if not ok then
+            failwith "target name check not passed";
+          let (src_disp_name, src_disp_name_type) =
+            A.get_display_name src_name in
+          let user =
+            try
+              P.server_map_user_name
+                ~params:ss.sparams (src_disp_name,src_disp_name_type)
+            with
+              | Not_found -> failwith "user name not acceptable" in
+          ss.suser <- Some user;
+
+          if ss.stoken = "" then
+            server_finish ss
+          else (
+            ss.ssubstate <- `Skip_empty;
+            ss.sstate <- `Emit
+          )
+        with
+          | error ->
+              server_del_ctx ss;
+              raise error
       )
 
 
@@ -710,7 +649,9 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         failwith "Netmech_gs2_sasl.server_stash_session: the session \
                   must be established (implementation restriction)";
       "server,t=GS2;" ^ 
-        Marshal.to_string (ss.suser, ss.sauthz, ss.sparams, ss.scb) []
+        Marshal.to_string (ss.suser, ss.sauthz, ss.sparams, ss.scb,
+                           map_opt Netsys_gssapi.marshal_server_props ss.sprops)
+                          []
 
     let ss_re = 
       Netstring_str.regexp "server,t=GS2;"
@@ -723,7 +664,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         | Some m ->
             let p = Netstring_str.match_end m in
             let data = String.sub s p (String.length s - p) in
-            let (suser, sauthz, sparams, scb) =
+            let (suser, sauthz, sparams, scb, mprops) =
               Marshal.from_string data 0 in
             { scontext = None;
               sstate = `OK;
@@ -733,9 +674,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
               sauthz;
               slookup = lookup;
               sparams;
+              sconf = Netsys_gssapi.create_server_config();
               scred = G.interface#no_credential;
               scb_data = "";
-              scb
+              scb;
+              sprops = map_opt Netsys_gssapi.unmarshal_server_props mprops;
             }
               
  
@@ -744,6 +687,11 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
 
     let server_prop ss key =
       raise Not_found
+
+    let server_gssapi_props ss =
+      match ss.sprops with
+        | None -> raise Not_found
+        | Some p -> p
 
     let server_user_name ss =
       if ss.sstate <> `OK then raise Not_found;

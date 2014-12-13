@@ -212,6 +212,10 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 
       method no_name = no_name
 
+      method is_no_credential cred = cred#cred = Cred_none
+
+      method is_no_name name = name#name_type = [| |]
+
       method accept_sec_context : 
           't . context:context option ->
                acceptor_cred:credential -> 

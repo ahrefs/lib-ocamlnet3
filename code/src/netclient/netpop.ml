@@ -146,6 +146,7 @@ object (self)
   val mutable ic = ic0
   val mutable oc = oc0
   val mutable tls_endpoint = None
+  val mutable gssapi_props = None
   val mutable state : state = `Authorization
   val mutable capabilities = []
 
@@ -275,6 +276,8 @@ object (self)
         | _ -> ()
     );
     assert(!state = `OK);
+    gssapi_props <- (try Some(Netsys_sasl.Client.gssapi_props sess)
+                     with Not_found -> None);
     self#transition `Transaction;
 
   (* Transaction Commands *)
@@ -385,6 +388,8 @@ object (self)
       | Some ep ->
            Some(Nettls_support.get_tls_session_props ep)
 
+
+  method gssapi_props = gssapi_props
 end
 
 class connect ?proxy addr timeout =
@@ -466,7 +471,10 @@ c#stat();;
 Netpop.authenticate ~sasl_mechs:[ (module Netmech_digestmd5_sasl.DIGEST_MD5) ] ~user:"gerd" ~creds:["password", "secret", []] c;;
 
 module K = Netmech_krb5_sasl.Krb5_gs1(Netgss.System);;
+module K = Netmech_krb5_sasl.Krb5_gs2(Netgss.System);;
+
 Netpop.authenticate ~sasl_mechs:[ (module K) ] c;;
+Netpop.authenticate ~sasl_mechs:[ (module K) ] ~sasl_params:["mutual", "true", false] c;;
 
 
  *)

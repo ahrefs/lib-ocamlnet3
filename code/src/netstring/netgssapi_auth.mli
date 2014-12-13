@@ -57,6 +57,8 @@ module Auth (G:GSSAPI)(C:CONFIG) : sig
     (** Calls [G.init_sec_context], and returns
         [(out_context,out_token,flags,props_opt)]. If [props_opt] is returned
         the context setup is done.
+
+        Checks already for errors, and client flags.
      *)
 
   (** Server configuration *)
@@ -79,6 +81,8 @@ module Auth (G:GSSAPI)(C:CONFIG) : sig
     (** Calls [G.accept_sec_context], and returns
         [(out_context,out_token,flags,props_opt)]. If [props_opt] is returned
         the context setup is done.
+
+        Checks already for errors, and server flags.
      *)
 
   (** Helpers *)

@@ -91,12 +91,15 @@ module type PROFILE =
           is always required.
        *)
 
+    val client_credential : exn option
+      (** If set, the client will use a certain credential (and not acquire
+          one). This is intended for passing in delegated credentials (well,
+          not really elegant). This needs to be set to the [Credential]
+          exception of the GSSAPI provider.
+       *)
+
   end
 
-(*
-module Krb5_profile : PROFILE
-  (** The profile for Kerberos 5 *)
- *)
 
 module GS2(P:PROFILE)(GSS:Netsys_gssapi.GSSAPI) : 
          Netsys_sasl_types.SASL_MECHANISM

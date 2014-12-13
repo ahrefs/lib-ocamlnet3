@@ -100,6 +100,29 @@ module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
     let mech_type = config#mech_type in
     match config#initiator_cred with
       | Some(G.Credential cred) ->
+          (* Check that this is the cred for init_name *)
+          if not(G.interface # is_no_name initiator_name) then (
+            G.interface # inquire_cred
+              ~cred
+              ~out:(fun ~name ~lifetime ~cred_usage ~mechanisms
+                        ~minor_status ~major_status () ->
+                      check_status ~fn:"inquire_cred" 
+                                   ~minor_status major_status;
+                      G.interface # compare_name
+                        ~name1:name ~name2:initiator_name
+                        ~out:(fun ~name_equal ~minor_status ~major_status
+                                   () ->
+                                check_status ~fn:"compare_name"
+                                             ~minor_status
+                                             major_status;
+                                if not name_equal then
+                                  C.raise_error "The user name does not \
+                                                 match the credential"
+                             )
+                        ()
+                   )
+              ()
+              );
           cred
       | _ ->
           acquire_initiator_cred ~initiator_name config

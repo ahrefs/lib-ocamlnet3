@@ -26,6 +26,8 @@ static gss_buffer_t unwrap_gss_buffer_t(value);
 static gss_OID      unwrap_gss_OID(value);
 static gss_OID_set  unwrap_gss_OID_set(value);
 static gss_ctx_id_t unwrap_gss_ctx_id_t(value);
+static gss_name_t   unwrap_gss_name_t(value);
+static gss_cred_id_t unwrap_gss_cred_id_t(value);
 
 static long         tag_gss_buffer_t(value);
 
@@ -332,8 +334,16 @@ CAMLprim value netgss_no_cred(value dummy) {
     return wrap_gss_cred_id_t(GSS_C_NO_CREDENTIAL);
 }
 
+CAMLprim value netgss_is_no_cred(value cred) {
+    return Val_bool(unwrap_gss_cred_id_t(cred) == GSS_C_NO_CREDENTIAL);
+}
+
 CAMLprim value netgss_no_name(value dummy) {
     return wrap_gss_name_t(GSS_C_NO_NAME);
+}
+
+CAMLprim value netgss_is_no_name(value name) {
+    return Val_bool(unwrap_gss_name_t(name) == GSS_C_NO_NAME);
 }
 
 CAMLprim value netgss_indefinite(value dummy) {

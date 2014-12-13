@@ -71,6 +71,8 @@ class type ['credential, 'name, 'context] poly_gss_api =
     method provider : string
     method no_credential : 'credential
     method no_name : 'name
+    method is_no_credential : 'credential -> bool
+    method is_no_name : 'name -> bool
     method accept_sec_context :
           't . context:'context option ->
                acceptor_cred:'credential -> 
@@ -552,3 +554,34 @@ object
   method initiator_name_exported : string
   method deleg_credential : (exn * time) option
 end
+
+
+let marshal_client_props p =
+  Marshal.to_string (p#mech_type, p#flags, p#time) []
+
+let unmarshal_client_props s =
+  let (mech_type, flags, time) = 
+    Marshal.from_string s 0 in
+  ( object
+      method mech_type = mech_type
+      method flags = flags
+      method time = time
+    end
+  )
+
+let marshal_server_props p =
+  Marshal.to_string (p#mech_type, p#flags, p#time, p#initiator_name,
+                     p#initiator_name_exported) []
+
+let unmarshal_server_props s =
+  let (mech_type, flags, time, initiator_name, initiator_name_exported) =
+    Marshal.from_string s 0 in
+  ( object
+      method mech_type = mech_type
+      method flags = flags
+      method time = time
+      method initiator_name = initiator_name
+      method initiator_name_exported = initiator_name_exported
+      method deleg_credential = None
+    end
+  )

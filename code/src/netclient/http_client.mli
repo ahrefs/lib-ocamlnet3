@@ -427,10 +427,13 @@ object
         {!Netmech_digest_http.Digest_mutual}.
      *)
 
-  (** {2 TLS} *)
+  (** {2 Security} *)
 
   method tls_session_props : Nettls_support.tls_session_props option
     (** If TLS is enabled, this returns the session properties *)
+
+  method gssapi_props : Netsys_gssapi.client_props option
+    (** If GSSAPI is active, return the properties *)
 
   (** {2 Accessing the request message (new style) } *)
 
