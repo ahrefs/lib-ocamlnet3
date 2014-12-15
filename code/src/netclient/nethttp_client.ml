@@ -3825,7 +3825,7 @@ let string_of_peer peer =
 	sprintf "SOCKS connection via %s:%d to %s:%d" host1 port1 host2 port2
 
 
-let proxy_connect_e esys fd fd_open host port options proxy_auth_handler_opt
+let proxy_connect_e esys fd fd_open host_url options msg proxy_auth_handler_opt
                     cur_proxy_session tcp_real_connect_e setup_e =
   (* Send the CONNECT line plus header, and wait for 200.
 
@@ -3841,8 +3841,6 @@ let proxy_connect_e esys fd fd_open host port options proxy_auth_handler_opt
      connect timeout
    *)
   let io = io_buffer options fd mplex Up_rw in
-  let host_url = sprintf "%s:%d" host port in
-  let msg = new connect host_url in
   let hdr = msg # request_header `Effective in
   hdr # update_field "Host" host_url;
   hdr # update_field "Proxy-Connection" "keep-alive";
@@ -4034,6 +4032,7 @@ let tcp_connect_e esys tp trans (peer:peer) conn_cache conn_owner tls_cache
 		      `Sock_inet_byname(Unix.SOCK_STREAM, host2, port2) in
 
 	      let cur_proxy_session = ref None in
+              let connect_msg = ref None in
 
 	      let rec tcp_real_connect_e () =
 		Uq_client.connect_e
@@ -4056,8 +4055,17 @@ let tcp_connect_e esys tp trans (peer:peer) conn_cache conn_owner tls_cache
 			       ) in
 			  ( match peer with
 			      | `Http_proxy_connect(_,(host2,port2)) ->
+                                  let host_url = sprintf "%s:%d" host2 port2 in
+                                  let conn_msg =
+                                    match !connect_msg with
+                                      | None ->
+                                          let c = new connect host_url in
+                                          connect_msg := Some c;
+                                          c
+                                      | Some c -> c in
 				  proxy_connect_e
-				    esys fd fd_open host2 port2 options 
+				    esys fd fd_open host_url options
+                                    conn_msg
 				    proxy_auth_handler_opt
 				    cur_proxy_session
 				    tcp_real_connect_e
