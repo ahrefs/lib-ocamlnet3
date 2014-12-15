@@ -715,6 +715,7 @@ object
   method send : Netsys_mem.memory -> int -> int
   method recv_size : int
   method send_size : int
+  method hidden_exn : exn option
 end
 
 
@@ -738,6 +739,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
   let out_pos = ref 0 in
   let out_size = ref 0 in
   let out_exn = ref None in
+  let hidden_exn = ref None in
 
   let update_input() =
     if !en_recv && !in_size = 0 then (
@@ -746,6 +748,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
           in_pos := 0;
           in_size := p;
           in_exn := exn_opt;
+          hidden_exn := exn_opt;
           if exn_opt <> Some Cancelled then on_input() in
         match in_buf with
           | `Memory mem ->
@@ -766,6 +769,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
           out_size := !out_size - p;
           if !out_size = 0 then out_pos := 0;
           out_exn := exn_opt;
+          hidden_exn := exn_opt;
           if !out_size > 0 && !out_exn = None then update_output();
           if exn_opt <> Some Cancelled then on_output() in
         match out_buf with
@@ -828,8 +832,15 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
                  dlogr (fun () ->
   	                sprintf "tls_adapter: recv exn %s"
                                 (Netexn.to_string exn));
-                 raise exn
+                 (* The caller of this method is GNUTLS, so we cannot raise
+                    arbitrary exceptions here. *)
+                 raise (Unix.Unix_error(Unix.EAGAIN, 
+                                        "Uq_multiplex.tls_adapter",
+                                        ""))
         )
+
+      method hidden_exn =
+        !hidden_exn
 
       method send mem len =
         ( match !out_exn with
@@ -837,7 +848,11 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
                  dlogr (fun () ->
   	                sprintf "tls_adapter: send exn %s"
                                 (Netexn.to_string exn));
-                 raise exn
+                 (* The caller of this method is GNUTLS, so we cannot raise
+                    arbitrary exceptions here. *)
+                 raise (Unix.Unix_error(Unix.EAGAIN, 
+                                        "Uq_multiplex.tls_adapter",
+                                        ""))
             | None ->
                ()
         );
@@ -1005,11 +1020,11 @@ object(self)
     if pos < 0 || len < 0 || pos > String.length s - len then
       invalid_arg "#start_reading";
     if reading <> `None then
-      failwith "#start_reading: already reading";
+      failwith "#start_reading: already reading (tls)";
     if shutting_down <> None then
-      failwith "#start_reading: already shutting down";
+      failwith "#start_reading: already shutting down (tls)";
     if not alive then
-      failwith "#start_reading: inactive connection";
+      failwith "#start_reading: inactive connection (tls)";
     reading <- `String(when_done, peek, s, pos, len);
     dlogr (fun () ->
 	     sprintf
@@ -1022,11 +1037,11 @@ object(self)
     if pos < 0 || len < 0 || pos > Bigarray.Array1.dim m - len then
       invalid_arg "#start_mem_reading";
     if reading <> `None then
-      failwith "#start_mem_reading: already reading";
+      failwith "#start_mem_reading: already reading (tls)";
     if shutting_down <> None then
-      failwith "#start_mem_reading: already shutting down";
+      failwith "#start_mem_reading: already shutting down (tls)";
     if not alive then
-      failwith "#start_mem_reading: inactive connection";
+      failwith "#start_mem_reading: inactive connection (tls)";
     reading <- `Mem(when_done, peek, m, pos, len);
     dlogr (fun () ->
 	     sprintf
@@ -1062,13 +1077,13 @@ object(self)
     if pos < 0 || len < 0 || pos > String.length s - len then
       invalid_arg "#start_writing";
     if writing <> `None || writing_eof <> None then
-      failwith "#start_writing: already writing";
+      failwith "#start_writing: already writing (tls)";
     if shutting_down <> None then
-      failwith "#start_writing: already shutting down";
+      failwith "#start_writing: already shutting down (tls)";
     if wrote_eof then
-      failwith "#start_writing: already past EOF";
+      failwith "#start_writing: already past EOF (tls)";
    if not alive then
-      failwith "#start_writing: inactive connection";
+      failwith "#start_writing: inactive connection (tls)";
     writing <- `String(when_done, s, pos, len);
     dlogr (fun () ->
 	     sprintf
@@ -1080,13 +1095,13 @@ object(self)
     if pos < 0 || len < 0 || pos > Bigarray.Array1.dim m - len then
       invalid_arg "#start_mem_writing";
     if writing <> `None || writing_eof <> None then
-      failwith "#start_mem_writing: already writing";
+      failwith "#start_mem_writing: already writing (tls)";
     if shutting_down <> None then
-      failwith "#start_mem_writing: already shutting down";
+      failwith "#start_mem_writing: already shutting down (tls)";
     if wrote_eof then
-      failwith "#start_mem_writing: already past EOF";
+      failwith "#start_mem_writing: already past EOF (tls)";
     if not alive then
-      failwith "#start_mem_writing: inactive connection";
+      failwith "#start_mem_writing: inactive connection (tls)";
     writing <- `Mem(when_done, m, pos, len);
     dlogr (fun () ->
 	     sprintf
@@ -1097,13 +1112,13 @@ object(self)
   method start_writing_eof ~when_done () =
     (* From here on we know fd is not a named pipe *)
     if writing <> `None || writing_eof <> None then
-      failwith "#start_writing_eof: already writing";
+      failwith "#start_writing_eof: already writing (tls)";
     if shutting_down <> None then
-      failwith "#start_writing_eof: already shutting down";
+      failwith "#start_writing_eof: already shutting down (tls)";
     if wrote_eof then
-      failwith "#start_writing_eof: already past EOF";
+      failwith "#start_writing_eof: already past EOF (tls)";
     if not alive then
-      failwith "#start_writing_eof: inactive connection";
+      failwith "#start_writing_eof: inactive connection (tls)";
     writing_eof <- Some when_done;
     dlogr (fun () ->
 	     sprintf
@@ -1116,6 +1131,7 @@ object(self)
     self # cancel_writing_with Cancelled
 
   method private cancel_writing_with x =
+    Queue.clear out_notify;
     match writing, writing_eof with
       | `None, None ->
 	  ()
@@ -1140,11 +1156,11 @@ object(self)
 
   method start_shutting_down ?linger ~when_done () =
     if reading <> `None || writing <> `None || writing_eof <> None then
-      failwith "#start_shutting_down: still reading or writing";
+      failwith "#start_shutting_down: still reading or writing (tls)";
     if shutting_down <> None then
-      failwith "#start_shutting_down: already shutting down";
+      failwith "#start_shutting_down: already shutting down (tls)";
     if not alive then
-      failwith "#start_shutting_down: inactive connection";
+      failwith "#start_shutting_down: inactive connection (tls)";
     shutting_down <- Some when_done;
     tls_shutdown <- Some (if wrote_eof then `R else `W);
     dlogr (fun () ->
@@ -1213,72 +1229,105 @@ object(self)
 
   method private update_rw () =
     let report = ref (fun _ -> ()) in
-    try
-      ( match writing with
-          | `String(when_done, s, pos, len) ->
-               report := (fun exn -> when_done (Some exn) 0);
-               dlogr 
-                 (fun () ->
-                    sprintf "tls_multiplex_controller: \
-                             tls_send(str) pos=%d len=%d" pos len);
-               let aux_buf = Lazy.force aux_buf_lz in
-               let len' = min len (Bigarray.Array1.dim aux_buf) in
-               Netsys_mem.blit_string_to_memory s pos aux_buf 0 len';
-               let n = Netsys_tls.mem_send ep_mod aux_buf 0 len' in
-               dlogr 
-                 (fun () ->
-                    sprintf "tls_multiplex_controller: tls_send got %d" n);
-               Queue.add (fun () -> when_done None n) out_notify;
-               writing <- `None;
+    if Queue.length out_notify = 0 then (
+      try
+        ( match writing with
+            | `String(when_done, s, pos, len) ->
+                 report := (fun exn -> writing <- `None;
+                                       when_done (Some exn) 0
+                           );
+                 dlogr 
+                   (fun () ->
+                      sprintf "tls_multiplex_controller: \
+                               tls_send(str) pos=%d len=%d" pos len);
+                 let aux_buf = Lazy.force aux_buf_lz in
+                 let len' = min len (Bigarray.Array1.dim aux_buf) in
+                 Netsys_mem.blit_string_to_memory s pos aux_buf 0 len';
+                 let n = Netsys_tls.mem_send ep_mod aux_buf 0 len' in
+                 dlogr 
+                   (fun () ->
+                      sprintf "tls_multiplex_controller: tls_send got %d" n);
+                 Queue.add (fun () -> writing <- `None;
+                                      when_done None n
+                           ) out_notify;
+                 (* writing <- `None; *)
+                 adapter # enable_send (adapter#send_size > 0);
+            | `Mem(when_done, mem, pos, len) ->
+                 report := (fun exn -> writing <- `None;
+                                       when_done (Some exn) 0
+                           );
+                 dlogr 
+                   (fun () ->
+                      sprintf "tls_multiplex_controller:  \
+                               tls_send(mem) pos=%d len=%d" pos len);
+                 let n = Netsys_tls.mem_send ep_mod mem pos len in
+                 dlogr 
+                   (fun () ->
+                      sprintf "tls_multiplex_controller: tls_send got %d" n);
+                 Queue.add (fun () -> writing <- `None;
+                                      when_done None n
+                           ) out_notify;
+                 (* writing <- `None; *)
+                 adapter # enable_send (adapter#send_size > 0);
+            | `None ->
+                 ()
+        );
+        ( match writing_eof with
+            | Some when_done ->
+                 report := (fun exn -> writing_eof <- None;
+                                       when_done (Some exn)
+                           );
+                 dlog "tls_multiplex_controller: tls_send shutdown";
+                 Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_SEND;
+                 dlog "tls_multiplex_controller: tls_send shutdown ok";
+                 Queue.add (fun () -> writing_eof <- None;
+                                      when_done None
+                           ) out_notify;
+                 (* writing_eof <- None; *)
+                 wrote_eof <- true;
+                 adapter # enable_send (adapter#send_size > 0);                 
+            | None ->
+                 ()
+        );
+      with
+        | Netsys_types.EAGAIN_RD ->
+             (* This means there was a re-handshake *)
+             let cont = self # check_for_hidden_exn "send" !report in
+             if cont then (
+               dlog "tls_multiplex_controller: tls_send EAGAIN_RD";
+               tls_handshake <- Some `R;
                adapter # enable_send (adapter#send_size > 0);
-          | `Mem(when_done, mem, pos, len) ->
-               report := (fun exn -> when_done (Some exn) 0);
-               dlogr 
-                 (fun () ->
-                    sprintf "tls_multiplex_controller: 
-                             tls_send(mem) pos=%d len=%d" pos len);
-               let n = Netsys_tls.mem_send ep_mod mem pos len in
-               dlogr 
-                 (fun () ->
-                    sprintf "tls_multiplex_controller: tls_send got %d" n);
-               Queue.add (fun () -> when_done None n) out_notify;
-               writing <- `None;
+             )
+        | Netsys_types.EAGAIN_WR ->
+             let cont = self # check_for_hidden_exn "send" !report in
+             if cont then (
+               (* There is a pending output operation. Some time in the future,
+                  on_output will be called back, and we try then again
+                *)
+               dlog "tls_multiplex_controller: tls_send EAGAIN_WR";
                adapter # enable_send (adapter#send_size > 0);
-          | `None ->
-               ()
-      );
-      ( match writing_eof with
-          | Some when_done ->
-               report := (fun exn -> when_done (Some exn));
-               dlog "tls_multiplex_controller: tls_send shutdown";
-               Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_SEND;
-               dlog "tls_multiplex_controller: tls_send shutdown ok";
-               Queue.add (fun () -> when_done None) out_notify;
-               writing_eof <- None;
-               wrote_eof <- true;
-               adapter # enable_send (adapter#send_size > 0);                 
-          | None ->
-               ()
-      );
-    with
-      | Netsys_types.EAGAIN_RD ->
-           (* This means there was a re-handshake *)
-           dlog "tls_multiplex_controller: tls_send EAGAIN_RD";
-           tls_handshake <- Some `R;
-           adapter # enable_send (adapter#send_size > 0);
-      | Netsys_types.EAGAIN_WR ->
-           (* There is a pending output operation. Some time in the future,
-              on_output will be called back, and we try then again
-            *)
-           dlog "tls_multiplex_controller: tls_send EAGAIN_WR";
-           adapter # enable_send (adapter#send_size > 0);
-           ()
-      | other ->
-           dlogr 
-             (fun () ->
-                sprintf "tls_multiplex_controller: tls_send exn=%s"
-                        (Netexn.to_string other));
-           !report other
+             )
+        | other ->
+             dlogr 
+               (fun () ->
+                  sprintf "tls_multiplex_controller: tls_send exn=%s"
+                          (Netexn.to_string other));
+             !report other
+    )
+
+  method private check_for_hidden_exn op report =
+    (* Check whether we have to restore an exception after EAGAIN *)
+    match adapter # hidden_exn with
+      | None ->
+          (* a real EAGAIN *)
+          true
+      | Some hidden_exn ->
+          dlogr 
+            (fun () ->
+             sprintf "tls_multiplex_controller: tls_%s hidden exn=%s"
+                     op (Netexn.to_string hidden_exn));
+          report hidden_exn;
+          false
       
   method private on_input() =
     match tls_handshake with
@@ -1304,7 +1353,7 @@ object(self)
     try
       ( match reading with
           | `String(when_done, peek, s, pos, len) ->
-               report := (fun exn -> when_done (Some exn) 0);
+               report := (fun exn -> reading <- `None; when_done (Some exn) 0);
                peek();
                dlogr 
                  (fun () ->
@@ -1320,7 +1369,7 @@ object(self)
                reading <- `None;
                notify when_done n
           | `Mem(when_done, peek, mem, pos, len) ->
-               report := (fun exn -> when_done (Some exn) 0);
+               report := (fun exn -> reading <- `None; when_done (Some exn) 0);
                peek();
                dlogr 
                  (fun () ->
@@ -1337,13 +1386,19 @@ object(self)
       )
     with
       | Netsys_types.EAGAIN_RD ->
-           dlog "tls_multiplex_controller: tls_recv EAGAIN_RD";
-           self # update();
+           let cont = self # check_for_hidden_exn "recv" !report in
+           if cont then (
+             dlog "tls_multiplex_controller: tls_recv EAGAIN_RD";
+             self # update();
+           )
       | Netsys_types.EAGAIN_WR ->
            (* This means there was a re-handshake *)
-           dlog "tls_multiplex_controller: tls_recv EAGAIN_WR";
-           tls_handshake <- Some `W;
-           self # update();
+           let cont = self # check_for_hidden_exn "recv" !report in
+           if cont then (
+             dlog "tls_multiplex_controller: tls_recv EAGAIN_WR";
+             tls_handshake <- Some `W;
+             self # update();
+           )
       | other ->
            dlogr 
              (fun () ->
