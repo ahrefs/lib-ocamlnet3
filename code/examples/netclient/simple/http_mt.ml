@@ -12,7 +12,7 @@
  *)
 
 
-open Http_client
+open Nethttp_client
 
 exception HTTP_Job of http_call * (http_call -> unit)
   (* This is not an exception in the usual sense, but simply a tagged

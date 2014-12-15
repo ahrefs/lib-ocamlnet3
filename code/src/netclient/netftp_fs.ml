@@ -1,14 +1,14 @@
 (* $Id$ *)
 
 open Printf
-open Ftp_client
+open Netftp_client
 
 class type ftp_stream_fs =
 object
   inherit Netfs.stream_fs
 
-  method ftp_client : Ftp_client.ftp_client
-  method last_ftp_state : Ftp_client.ftp_state
+  method ftp_client : Netftp_client.ftp_client
+  method last_ftp_state : Netftp_client.ftp_state
   method translate : string -> string
   method close : unit -> unit
 end
@@ -53,7 +53,7 @@ class ftp_fs ?(config_client = fun _ -> ())
       ~accept_8bits:true
       (Neturl.fixup_url_string base_url_s) in
   (* create client and log in: *)
-  let ftp = new Ftp_client.ftp_client () in
+  let ftp = new Netftp_client.ftp_client () in
   let () = config_client ftp in
   let last_ftp_state = ref None in
 
@@ -91,7 +91,7 @@ class ftp_fs ?(config_client = fun _ -> ())
 	try (ftp # pi # ftp_state).ftp_connected
 	with Failure _ -> false in
       if not connected then (
-	ftp # exec (Ftp_client.connect_method
+	ftp # exec (Netftp_client.connect_method
 		      ~host:(Neturl.url_host base_url)
 		      ?port:(try Some(Neturl.url_port base_url) 
 			     with Not_found -> None)
@@ -100,19 +100,19 @@ class ftp_fs ?(config_client = fun _ -> ())
         if tls_enabled then (
           let config = get_tls_config() in
           ftp # exec
-            (Ftp_client.tls_method ~config ~required:tls_required ())
+            (Netftp_client.tls_method ~config ~required:tls_required ())
         );
         ( match gssapi_provider with
             | None -> ()
             | Some g ->
                 ftp # exec
-                  (Ftp_client.gssapi_method ~config:gssapi_config
+                  (Netftp_client.gssapi_method ~config:gssapi_config
                                             ~required:gssapi_required g)
         );
 	let user = 
 	  try Neturl.url_user base_url
 	  with Not_found -> "anonymous" in
-	ftp # exec (Ftp_client.login_method
+	ftp # exec (Netftp_client.login_method
 		      ~user
 		      ~get_password:(fun () -> get_password user)
 		      ~get_account:(fun () -> get_account user)
@@ -122,7 +122,7 @@ class ftp_fs ?(config_client = fun _ -> ())
       let r = f() in
       last_ftp_state := Some(ftp # pi # ftp_state);
       if not keep_open then
-	ftp # exec (Ftp_client.quit_method());
+	ftp # exec (Netftp_client.quit_method());
       r
     with
       | error ->
@@ -134,14 +134,14 @@ class ftp_fs ?(config_client = fun _ -> ())
     transaction
       (fun () ->
 	 ( try
-	     ftp # exec (Ftp_client.feat_method())
+	     ftp # exec (Netftp_client.feat_method())
 	   with
 	     | FTP_method_perm_failure _ -> ()
 	 );
 	 (ftp # pi # supports_tvfs,
 	  ftp # pi # supports_utf8
 	 )
-      ) "" "Ftp_fs" in
+      ) "" "Netftp_fs" in
   let path_encoding =
     if supports_utf8 then Some `Enc_utf8 else None in
   let translate path =
@@ -150,11 +150,11 @@ class ftp_fs ?(config_client = fun _ -> ())
        returns the empty string.
      *)
     if path = "" then
-      einval path "Ftp_fs: path is empty";
+      einval path "Netftp_fs: path is empty";
     if path.[0] <> '/' then
-      einval path "Ftp_fs: path is not absolute";
+      einval path "Netftp_fs: path is not absolute";
     if String.contains path '\000' then
-      einval path "Ftp_fs: path contains NUL byte";
+      einval path "Netftp_fs: path contains NUL byte";
     ( match path_encoding with
 	| None -> ()
 	| Some pe ->
@@ -162,13 +162,13 @@ class ftp_fs ?(config_client = fun _ -> ())
 		Netconversion.verify pe path
 	      with
 		| Netconversion.Malformed_code_at _ ->
-		    einval path "Ftp_fs: path is not properly encoded"
+		    einval path "Netftp_fs: path is not properly encoded"
 	    )
     );
     let npath = Neturl.norm_path(Neturl.split_path path) in
     ( match npath with
         | "" :: ".." :: _ -> (* CHECK: maybe ENOENT? *)
-            einval path "Ftp_fs: path starts with /.."
+            einval path "Netftp_fs: path starts with /.."
         | _ -> ()
     );
     let base_path =
@@ -239,7 +239,7 @@ object(self)
     try
       transaction
 	(fun () ->
-	   ftp # exec (Ftp_client.get_method
+	   ftp # exec (Netftp_client.get_method
 			 ~file:vfs
 			 ~representation
 			 ~store:(fun _ ->
@@ -253,7 +253,7 @@ object(self)
 				)
 			 ()
 		      );
-	) path "Ftp_fs.read";
+	) path "Netftp_fs.read";
       match !cur_tmp with
         | None ->
             assert false
@@ -268,7 +268,7 @@ object(self)
     let (tmp_name,inch,outch,cleanup) = self # read_impl binary path in
     let skip =
       try 
-	Http_fs.find_flag (function `Skip p -> Some p | _ -> None) flags
+	Nethttp_fs.find_flag (function `Skip p -> Some p | _ -> None) flags
       with Not_found -> 0L in
     LargeFile.seek_in inch skip;
     new Netchannels.input_channel
@@ -305,10 +305,10 @@ object(self)
     let excl_flag = List.mem `Exclusive flags in
 
     if not create_flag && not trunc_flag then
-      einval path "Ftp_fs.write: you need to request either file creation \
+      einval path "Netftp_fs.write: you need to request either file creation \
                    or file truncation";
     if create_flag && excl_flag then
-      einval path "Ftp_fs.write: exclusive file creation not supported";
+      einval path "Netftp_fs.write: exclusive file creation not supported";
     
     let req =
       if create_flag && not excl_flag && not trunc_flag then
@@ -327,7 +327,7 @@ object(self)
 	       | Some r_exists ->
 		   let exists =
 		     try
-		       ftp # exec (Ftp_client.mlst_method
+		       ftp # exec (Netftp_client.mlst_method
 				     ~file:vfs
 				     ~process_result:(fun _ -> ())
 				     ()
@@ -338,9 +338,9 @@ object(self)
 		   if exists <> r_exists then
 		     let ecode =
 		       if r_exists then Unix.ENOENT else Unix.EEXIST in
-		     raise(uerror ecode path "Ftp_fs.write");
+		     raise(uerror ecode path "Netftp_fs.write");
 	   );
-	   ftp # exec (Ftp_client.put_method
+	   ftp # exec (Netftp_client.put_method
 			 ~file:vfs
 			 ~representation
 			 ~store:(fun _ -> `File_structure obj_inch)
@@ -354,7 +354,7 @@ object(self)
 	       raise error
       )
       path
-      "Ftp_fs.write"
+      "Netftp_fs.write"
     
   method write flags path =
     let this_cancel_flag = !cancel_flag in
@@ -393,7 +393,7 @@ object(self)
     transaction
       (fun () ->
 	 let n = ref 0L in
-	 ftp # exec (Ftp_client.size_method 
+	 ftp # exec (Netftp_client.size_method 
 		       ~file:vfs
 		       ~representation:`Image
 		       ~process_result:(fun k -> n := k)
@@ -401,7 +401,7 @@ object(self)
 	 !n
       )
       path
-      "Ftp_fs.size"
+      "Netftp_fs.size"
 
   method test flags path typ =
     List.hd (self # test_list flags path [typ])
@@ -414,7 +414,7 @@ object(self)
       (fun () ->
 	 let entries = ref [] in
 	 ( try
-	     ftp # exec (Ftp_client.mlst_method 
+	     ftp # exec (Netftp_client.mlst_method 
 			   ~file:vfs
 			   ~process_result:(fun e -> entries := e)
 			   ());
@@ -471,19 +471,19 @@ object(self)
 	   typl
       )
       path
-      "Ftp_fs.test_list"
+      "Netftp_fs.test_list"
 
   method remove flags path = 
     last_ftp_state := None;
     if List.mem `Recursive flags then
-      einval path "Ftp_fs.remove: recursion not supported";
+      einval path "Netftp_fs.remove: recursion not supported";
     let vfs = translate path in
     transaction
       (fun () ->
-	 ftp # exec (Ftp_client.delete_method vfs)
+	 ftp # exec (Netftp_client.delete_method vfs)
       )
       path
-      "Ftp_fs.remove"
+      "Netftp_fs.remove"
 
   method rename flags path1 path2 =
     last_ftp_state := None;
@@ -491,10 +491,10 @@ object(self)
     let vfs2 = translate path2 in
     transaction
       (fun () ->
-	 ftp # exec (Ftp_client.rename_method ~file_from:vfs1 ~file_to:vfs2 ())
+	 ftp # exec (Netftp_client.rename_method ~file_from:vfs1 ~file_to:vfs2 ())
       )
       path1
-      "Ftp_fs.rename"
+      "Netftp_fs.rename"
 
 
   method readdir flags path =
@@ -504,7 +504,7 @@ object(self)
       (fun () ->
 	 let b = Buffer.create 500 in
 	 let ch = new Netchannels.output_buffer b in
-	 ftp#exec (Ftp_client.nlst_method 
+	 ftp#exec (Netftp_client.nlst_method 
 		     ~dir:vfs 
 		     ~representation:(`ASCII None)
 		     ~store:(fun _ -> `File_structure ch)
@@ -515,7 +515,7 @@ object(self)
 	   (parse_nlst_document (Buffer.contents b))
       )
       path
-      "Ftp_fs.readdir"
+      "Netftp_fs.readdir"
 
   method mkdir flags path =
     (* FIXME: flags *)
@@ -523,27 +523,27 @@ object(self)
     let vfs = translate path in
     transaction
       (fun () ->
-	 ftp # exec (Ftp_client.mkdir_method vfs)
+	 ftp # exec (Netftp_client.mkdir_method vfs)
       )
       path
-      "Ftp_fs.mkdir"
+      "Netftp_fs.mkdir"
 
   method rmdir flags path =
     last_ftp_state := None;
     let vfs = translate path in
     transaction
       (fun () ->
-	 ftp # exec (Ftp_client.rmdir_method vfs)
+	 ftp # exec (Netftp_client.rmdir_method vfs)
       )
       path
-      "Ftp_fs.rmdir"
+      "Netftp_fs.rmdir"
 
 
   (* Unsupported *)
 
-  method symlink _ path1 path2 = enosys path1 "Ftp_fs.symlink not supported"
-  method copy flags path1 path2 = enosys path1 "Ftp_fs.copy not supported"
-  method readlink flags path = enosys path "Ftp_fs.readlink not supported"
+  method symlink _ path1 path2 = enosys path1 "Netftp_fs.symlink not supported"
+  method copy flags path1 path2 = enosys path1 "Netftp_fs.copy not supported"
+  method readlink flags path = enosys path "Netftp_fs.readlink not supported"
 end
 
 

@@ -7,7 +7,7 @@
  *)
 
 type transport_layer_id = int
-    (** Same as in {!Http_client.transport_layer_id} *)
+    (** Same as in {!Nethttp_client.transport_layer_id} *)
 
 type inactive_data =
     { conn_trans : transport_layer_id;
@@ -17,7 +17,7 @@ type inactive_data =
 type conn_state = [ `Inactive of inactive_data | `Active of < > ]
   (** A TCP connection may be either [`Inactive], i.e. it is not used
     * by any pipeline, or [`Active obj], i.e. it is in use by the pipeline
-    * [obj] (this is the {!Http_client.pipeline} coerced to [< >]).
+    * [obj] (this is the {!Nethttp_client.pipeline} coerced to [< >]).
     *
     * Since Ocamlnet-4, [`Inactive] connections carry an [inactive_data]
     * record (was a [transport_layer_id] before).

@@ -4,7 +4,7 @@
  * In the callback function, a second request is pushded onto the queue.
  *)
 
-open Http_client;;
+open Nethttp_client;;
 
 let server = Sys.argv.(1) in
 

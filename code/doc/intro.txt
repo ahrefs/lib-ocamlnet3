@@ -550,13 +550,13 @@ processes, and sending messages between them.
 This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
 
 {!modules:
-   Http_client
-   Http_client_conncache
-   Http_fs
-   Ftp_client
-   Ftp_data_endpoint
-   Ftp_fs
-   Telnet_client
+   Nethttp_client
+   Nethttp_client_conncache
+   Nethttp_fs
+   Netftp_client
+   Netftp_data_endpoint
+   Netftp_fs
+   Nettelnet_client
    Netpop
    Netsmtp
 }

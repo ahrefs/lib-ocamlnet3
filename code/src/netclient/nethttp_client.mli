@@ -8,7 +8,7 @@
 (**********************************************************************)
 
 (** {b Note for beginners:} There is a simplified interface called
-  * {!Http_client.Convenience}.
+  * {!Nethttp_client.Convenience}.
  *)
 
 (** 
@@ -44,7 +44,7 @@
  *     but there is no special support for them.
  *
  * Related modules/software:
- * - {!Http_fs} allows you to access HTTP servers in the style of filesystems
+ * - {!Nethttp_fs} allows you to access HTTP servers in the style of filesystems
  * - WebDAV: If you are looking for WebDAV there is an extension of this module:
  *   {{:http://oss.wink.com/webdav/} Webdav}, which is separately available.
  *)
@@ -111,7 +111,7 @@ exception Http_error of (int * string);;
    * The server sent an error message. The left component of the pair is
    * the error code, the right component is the error text.
    * This exception is only used by [get_resp_body], and by the
-   * {!Http_client.Convenience} module.
+   * {!Nethttp_client.Convenience} module.
    *)
 
 type status =
@@ -275,10 +275,10 @@ type transport_layer_id = int
 	needs to be used, and if so, whether there are further requirements
 	for the TLS context. There are the predefined IDs:
 
-	- {!Http_client.http_trans_id} for HTTP connections
-	- {!Http_client.https_trans_id} for HTTPS connections without user
+	- {!Nethttp_client.http_trans_id} for HTTP connections
+	- {!Nethttp_client.https_trans_id} for HTTPS connections without user
 	  certificates
-        - {!Http_client.proxy_only_trans_id} for the restriction that this
+        - {!Nethttp_client.proxy_only_trans_id} for the restriction that this
 	  protocol can only be used via a web proxy
      *)
 
@@ -621,7 +621,7 @@ object
   method proxy_use_connect : bool
     (** Whether to use the CONNECT method if the connection is made via a
 	web proxy. This is normally true if the transport layer is
-	{!Http_client.https_trans_id}
+	{!Nethttp_client.https_trans_id}
      *)
 
   method empty_path_replacement : string
@@ -649,10 +649,10 @@ object
       requirements.
       There are normally only two types of requirements:
 
-      - The ID {!Http_client.http_trans_id} is used for messages that can only
+      - The ID {!Nethttp_client.http_trans_id} is used for messages that can only
         be sent over HTTP connections, i.e. unencrypted TCP. It is automatically
         set when the URL of the message starts with "http://".
-      - The ID {!Http_client.https_trans_id} describes the requirement that the
+      - The ID {!Nethttp_client.https_trans_id} describes the requirement that the
         message can only be sent over HTTPS connections, i.e. TLS-protected
         TCP. It is automatically  set when the URL of the message starts with
         "https://".
@@ -1162,7 +1162,7 @@ class generic_auth_handler : #key_handler ->
   * pipelines.
  *)
 
-type connection_cache = Http_client_conncache.connection_cache
+type connection_cache = Nethttp_client_conncache.connection_cache
 
 val close_connection_cache : connection_cache -> unit
   (** Closes all descriptors known to the cache *)
@@ -1216,8 +1216,8 @@ val https_transport_channel_type :
       per request:
 
       {[
-        let my_trans_id = Http_client.new_trans_id()
-        let my_tct = Http_client.https_transport_channel_type my_tls_config
+        let my_trans_id = Nethttp_client.new_trans_id()
+        let my_tct = Nethttp_client.https_transport_channel_type my_tls_config
         pipeline # configure_transport my_trans_id my_tct;
       ]}
 
@@ -1229,7 +1229,7 @@ val https_transport_channel_type :
       ]}
 
       If you want to change the TLS configuration for the whole pipeline,
-      just set the [tls] field of {!Http_client.http_options}.
+      just set the [tls] field of {!Nethttp_client.http_options}.
    *)
 
 
@@ -1336,7 +1336,7 @@ class pipeline :
 	   transport layer ID [id] are exchanged on [transport].
 
 	   By default, there is only a configuration for
-	   {!Http_client.http_trans_id}, i.e. for normal unencrypted channels.
+	   {!Nethttp_client.http_trans_id}, i.e. for normal unencrypted channels.
 	*)
 
     method set_tls_cache : tls_cache -> unit
@@ -1549,7 +1549,7 @@ val parse_no_proxy : string -> string list
 
 (** {1 Convenience module for simple applications} *)
 
-(** Do [open Http_client.Convenience] for simple applications. *)
+(** Do [open Nethttp_client.Convenience] for simple applications. *)
 
 
 module Convenience :
@@ -1557,7 +1557,7 @@ sig
  
   (** Convenience module for simple applications *)
 
-  (** Do [open Http_client.Convenience] for simple applications. *)
+  (** Do [open Nethttp_client.Convenience] for simple applications. *)
 
   (** The functions of this module share the following behaviour:
     *
@@ -1585,7 +1585,7 @@ sig
     * a normal operating condition.
     * POST and DELETE requests are never repeated.
     *
-    * Error codes are reported as {!Http_client.Http_error}. Note that
+    * Error codes are reported as {!Nethttp_client.Http_error}. Note that
     * this is different than what the pipeline core does.
     *)
 

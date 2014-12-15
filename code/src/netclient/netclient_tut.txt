@@ -16,13 +16,13 @@ Let's start with an example: We want to get the public files
 For HTTP we need a filesystem object accessing the foo.org server:
 
 {[
-let fs1 = Http_fs.http_fs "http://foo.org"
+let fs1 = Nethttp_fs.http_fs "http://foo.org"
 ]}
 
 The same for FTP looks like:
 
 {[
-let fs2 = Ftp_fs.ftp_fs "ftp://foo.org"
+let fs2 = Netftp_fs.ftp_fs "ftp://foo.org"
 ]}
 
 The objects [fs1] and [fs2] provide now a number of methods for accessing
@@ -140,12 +140,12 @@ almost arbitrary configurations:
 
 {[
 let fs1 = 
-  Http_fs.http_fs
+  Nethttp_fs.http_fs
      ~config_pipeline:(fun p -> ...)
      "http://foo.org"
 
 let fs2 = 
-  Ftp_fs.ftp_fs 
+  Netftp_fs.ftp_fs 
      ~config_client:(fun c -> ...)
      "ftp://foo.org"
 ]}
@@ -161,18 +161,18 @@ Do it like this in the [config_pipeline] callback:
   let password = "secret" in
   let realm = "the realm string" in
   let domain = [ "http://foo.org " ] in
-  let keys = new Http_client.key_ring() in
-  keys # add_key (Http_client.key ~user ~password ~realm ~domain);
-  let ah = new Http_client.unified_auth_handler keys in
+  let keys = new Nethttp_client.key_ring() in
+  keys # add_key (Nethttp_client.key ~user ~password ~realm ~domain);
+  let ah = new Nethttp_client.unified_auth_handler keys in
   p # add_auth_handler ah
 ]}
 
-The {!class:Http_client.unified_auth_handler} implements at the moment
+The {!class:Nethttp_client.unified_auth_handler} implements at the moment
 the "basic" and "digest" schemes (and will probably be extended in the
 future). On unencrypted transports the "basic" scheme is disabled by
 default. With
 
-{[ new Http_client.unified_auth_handler ~insecure:bool keys ]}
+{[ new Nethttp_client.unified_auth_handler ~insecure:bool keys ]}
 
 the "basic" scheme is always enabled. (Note that the "basic" scheme sends
 the password in clear text. See below how to activate TLS.)
@@ -187,7 +187,7 @@ Passwords and account names (if needed) are supplied by callbacks:
 
 {[
 let fs2 = 
-   Ftp_fs.ftp_fs
+   Netftp_fs.ftp_fs
       ~get_password:(fun () -> "secret")
       ~get_account:(fun () -> "account")
       "ftp://user@foo.org"
@@ -215,11 +215,11 @@ Or you can just import this data from the environment variables
 Web proxies often also support FTP URLs, but only for a limited set
 of operations (often only [read] works).
 
-Note that you have to use {!Http_fs} to use this feature, not {!Ftp_fs}:
+Note that you have to use {!Nethttp_fs} to use this feature, not {!Netftp_fs}:
 
 {[
 let fs1 = 
-  Http_fs.http_fs
+  Nethttp_fs.http_fs
      ~config_pipeline:(fun p ->
         p # set_proxy "proxy.company.net" 8080;
         p # set_proxy_auth "user" "secret";
@@ -267,7 +267,7 @@ Once this is done, the HTTP client can also process "https" URLs.
 
 NB. In previous versions of OCamlnet there was a separate "Https_client"
 module. This module does not exist anymore, as its functionality is
-integrated into the main {!Http_client} module.
+integrated into the main {!Nethttp_client} module.
 
 NB. The server is authenticated by default, using the system-wide list
 of CA certificates.
@@ -280,7 +280,7 @@ above):
 
 {[
 let fs2 = 
-   Ftp_fs.ftp_fs
+   Netftp_fs.ftp_fs
       ...
       ~tls_enabled:true
       ~tls_required:true   (* or false *)
@@ -378,9 +378,9 @@ Note that you may run into problems in conjunction with HTTP and FTP:
 
 
 
-{2 Accessing HTTP via {!Http_client}}
+{2 Accessing HTTP via {!Nethttp_client}}
 
-The {!Http_client} module is the real implementation of HTTP. It
+The {!Nethttp_client} module is the real implementation of HTTP. It
 is asynchronous, which means it can do many tasks in parallel, but
 also needs special care when using it.
 
@@ -390,7 +390,7 @@ without having to wait for the response of the prior request. The
 pipeline is available as Ocaml class:
 
 {[
-let p = new Http_client.pipeline
+let p = new Nethttp_client.pipeline
 ]}
 
 By adding requests, the pipeline is told to send them to the right
@@ -399,14 +399,14 @@ is exploited to speed up the accesses. Here, we submit two different
 [GET] requests:
 
 {[
-let x1 = new Http_client.get "http://foo.org/bar"
-let x2 = new Http_client.get "http://foo.org/baz"
+let x1 = new Nethttp_client.get "http://foo.org/bar"
+let x2 = new Nethttp_client.get "http://foo.org/baz"
 
 p # add x1;
 p # add x2
 ]}
 
-The objects [x1] and [x2] are instances of {!Http_client.http_call}.
+The objects [x1] and [x2] are instances of {!Nethttp_client.http_call}.
 They have lots of access methods for changing the request type and
 getting the returned response.
 
@@ -429,12 +429,12 @@ let d1 = x1 # response_body # value
 Before looking at the value, you would normally check the status code
 of the response. There are a few possibilities:
 
-- {!Http_client.http_call.status} only indicates the class of the
+- {!Nethttp_client.http_call.status} only indicates the class of the
   response (success, redirect, client error, server error), or whether
   there was a socket or protocol error.
-- {!Http_client.http_call.response_status} returns the code as
+- {!Nethttp_client.http_call.response_status} returns the code as
   variant
-- {!Http_client.http_call.response_status_code} returns the code numerically
+- {!Nethttp_client.http_call.response_status_code} returns the code numerically
 
 
 {3 How the pipeline works}
@@ -450,11 +450,11 @@ parallel, and the communication is done in parallel.
 
 
 
-{2 Accessing FTP via {!Ftp_client}}
+{2 Accessing FTP via {!Netftp_client}}
 
-The {!Ftp_client} is also an asynchronous implementation. It is a bit
-more difficult to exploit this, though, because {!Ftp_client} is a bit
-simpler than {!Http_client}.
+The {!Netftp_client} is also an asynchronous implementation. It is a bit
+more difficult to exploit this, though, because {!Netftp_client} is a bit
+simpler than {!Nethttp_client}.
 
 Generally, a client can only connect to a single server, not to several
 at once. Also, there is no queue of pending requests - all submitted
@@ -488,7 +488,7 @@ As you see, this is just a sequence of [exec] calls. There is also an
 {!Uq_engines.engine}, allowing asynchronous execution.
 
 FTP has a number of subtle protocol options - like file transfer in
-several modes. Please refer to {!Ftp_client} where these details are
+several modes. Please refer to {!Netftp_client} where these details are
 extensively documented.
 
 You close the connection using the [QUIT] command with
@@ -510,15 +510,15 @@ discussion exceeding the scope of this list of recipes:
    the authentication by accepting any server certification, and you can
    make it stronger by requiring a certain certification, or by sending a
    client certificate. You need to change the option
-   {!Http_client.http_options.tls} for doing so. See {!Tls} for more links.
+   {!Nethttp_client.http_options.tls} for doing so. See {!Tls} for more links.
 
 
 {2 Advanced topics for FTP}
 
- - Tweak the TLS configuration: {!Ftp_fs} allows it to pass the
+ - Tweak the TLS configuration: {!Netftp_fs} allows it to pass the
    [tls_config] argument. By setting this explicitly, you can also get
    any advanced effect.
  - Use GSSAPI authentication for FTP: The FTP client implements RFC 2228.
    Often it is only needed to set the [gssapi_provider] argument of
-   {!Ftp_fs.ftp_fs} to {!Netgss.System}, and the ticket-based Kerberos login
+   {!Netftp_fs.ftp_fs} to {!Netgss.System}, and the ticket-based Kerberos login
    works.

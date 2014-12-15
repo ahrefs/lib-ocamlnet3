@@ -70,7 +70,7 @@ let norm_url s =
    *   = "http://localhost:8080", "/where/to/go"
    *)
   let user,password,host,port,path =
-    Http_client_aux.match_http s in
+    Nethttp_client_aux.match_http s in
   "http://" ^
   (match user with
        None -> ""
@@ -192,7 +192,7 @@ let run_through_db pipeline db =
      * and enters all new hyperlinks to the database 'db'.
      * After that, 'add_next' is called to put new requests on to the pipeline.
      *)
-    let request = new Http_client.get url in
+    let request = new Nethttp_client.get url in
     pipeline # add_with_callback
       request
       (fun m ->
@@ -262,7 +262,7 @@ let run_through_db pipeline db =
      * If the document is not an HTML document (or if an error occurred),
      * 'add_next' is called to put new requests on to the pipeline.
      *)
-    let request = new Http_client.head url in
+    let request = new Nethttp_client.head url in
     pipeline # add_with_callback
       request
       (fun m ->
@@ -393,7 +393,7 @@ let main() =
       (fun s -> start_points := s :: !start_points)
       "usage: spider [options] URL ...";
 
-  let pipeline = new Http_client.pipeline in
+  let pipeline = new Nethttp_client.pipeline in
 
   if !proxy_host <> "" then
     pipeline # set_proxy !proxy_host !proxy_port;
@@ -416,13 +416,13 @@ let main() =
   let opt = pipeline # get_options in
   pipeline # set_options
     { opt with 
-	Http_client.number_of_parallel_connections = 1;
-	Http_client.verbose_status = true;
-        Http_client.verbose_connection = true;
-        Http_client.verbose_response_header = true;
-(*        Http_client.verbose_response_contents = true;
-        Http_client.verbose_request_header = true;
-        Http_client.verbose_request_contents = true;
+	Nethttp_client.number_of_parallel_connections = 1;
+	Nethttp_client.verbose_status = true;
+        Nethttp_client.verbose_connection = true;
+        Nethttp_client.verbose_response_header = true;
+(*        Nethttp_client.verbose_response_contents = true;
+        Nethttp_client.verbose_request_header = true;
+        Nethttp_client.verbose_request_contents = true;
 *)
     };
 

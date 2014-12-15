@@ -1,4 +1,4 @@
-open Http_client
+open Nethttp_client
 
 (* Number of iterations required to trigger bug. *)
 let max_count = 4

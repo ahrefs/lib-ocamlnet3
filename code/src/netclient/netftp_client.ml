@@ -1,7 +1,7 @@
 (* $Id$ *)
 
-open Telnet_client
-open Ftp_data_endpoint
+open Nettelnet_client
+open Netftp_data_endpoint
 open Printf
 open Uq_engines.Operators   (* ++, >>, eps_e *)
 open Netsys_types
@@ -10,11 +10,11 @@ module Debug = struct
   let enable = ref false
 end
 
-let dlog = Netlog.Debug.mk_dlog "Ftp_client" Debug.enable
-let dlogr = Netlog.Debug.mk_dlogr "Ftp_client" Debug.enable
+let dlog = Netlog.Debug.mk_dlog "Netftp_client" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Netftp_client" Debug.enable
 
 let () =
-  Netlog.Debug.register_module "Ftp_client" Debug.enable
+  Netlog.Debug.register_module "Netftp_client" Debug.enable
 
 
 exception FTP_error of exn
@@ -31,7 +31,7 @@ let () =
     (fun e ->
        match e with
 	 | FTP_error e' ->
-	     "Ftp_client.FTP_error(" ^ Netexn.to_string e' ^ ")"
+	     "Netftp_client.FTP_error(" ^ Netexn.to_string e' ^ ")"
 	 | _ -> assert false
     )
 
@@ -79,7 +79,7 @@ type structure =
     ]
 
 type transmission_mode =
-    Ftp_data_endpoint.transmission_mode
+    Netftp_data_endpoint.transmission_mode
 
 type ftp_auth =
   [ `None
@@ -131,10 +131,10 @@ type cmd =
     | `TYPE of representation
     | `STRU of structure
     | `MODE of transmission_mode
-    | `RETR of string * (ftp_state -> Ftp_data_endpoint.local_receiver)
-    | `STOR of string * (ftp_state -> Ftp_data_endpoint.local_sender)
-    | `STOU of (ftp_state -> Ftp_data_endpoint.local_sender)
-    | `APPE of string * (ftp_state -> Ftp_data_endpoint.local_sender)
+    | `RETR of string * (ftp_state -> Netftp_data_endpoint.local_receiver)
+    | `STOR of string * (ftp_state -> Netftp_data_endpoint.local_sender)
+    | `STOU of (ftp_state -> Netftp_data_endpoint.local_sender)
+    | `APPE of string * (ftp_state -> Netftp_data_endpoint.local_sender)
     | `ALLO of int * int option
     | `REST of string
     | `RNFR of string
@@ -143,8 +143,8 @@ type cmd =
     | `RMD of string
     | `MKD of string
     | `PWD
-    | `LIST of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
-    | `NLST of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
+    | `LIST of string option * (ftp_state -> Netftp_data_endpoint.local_receiver)
+    | `NLST of string option * (ftp_state -> Netftp_data_endpoint.local_receiver)
     | `SITE of string
     | `SYST
     | `STAT of string option
@@ -158,7 +158,7 @@ type cmd =
     | `MDTM of string
     | `SIZE of string
     | `MLST of string option
-    | `MLSD of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
+    | `MLSD of string option * (ftp_state -> Netftp_data_endpoint.local_receiver)
     | `AUTH of string
     | `PBSZ of int
     | `PROT of ftp_data_prot
@@ -631,7 +631,7 @@ object(self)
     let opts = ctrl # get_options in
     ctrl # set_options
       { opts with
-	  Telnet_client.connection_timeout = timeout
+	  Nettelnet_client.connection_timeout = timeout
       }
   )
 
@@ -1318,7 +1318,7 @@ object(self)
 	error_callback <- onerror;
 	( match cmd with
 	    | `Connect _ -> 
-		failwith "Ftp_client: Already connected"
+		failwith "Netftp_client: Already connected"
             | `Start_TLS config ->
                 ctrl # start_tls config (Some ftp_state.ftp_host);
                 interaction_state <- `Waiting `Dummy;
@@ -1340,7 +1340,7 @@ object(self)
 			self # setup_active_endpoint `Receiver cmd h f
 
 		    | `Unspecified ->
-			failwith "Ftp_client: Usage error, one must send \
+			failwith "Netftp_client: Usage error, one must send \
                                   `PORT or `PASV before the transfer"
 		)
 	    | `STOR(_,f)
@@ -1357,7 +1357,7 @@ object(self)
 			self # setup_active_endpoint `Sender cmd f h
 
 		    | `Unspecified ->
-			failwith "Ftp_client: Usage error, one must send \
+			failwith "Netftp_client: Usage error, one must send \
                                   `PORT or `PASV before the transfer"
 		)
 	    | _ -> ()
@@ -1375,7 +1375,7 @@ object(self)
 		Unix.bind server_sock (Unix.ADDR_INET(addr,0));
 		Unix.listen server_sock 1;
 		Netlog.Debug.track_fd
-		  ~owner:"Ftp_client"
+		  ~owner:"Netftp_client"
 		  ~descr:("Data server (active mode) for " ^ 
 			    self#peer_str)
 		  server_sock;
@@ -1465,7 +1465,7 @@ object(self)
 	      Uq_engines.when_state
 		~is_done:(function
 			    | `Socket(sock,_) ->
-				(* N.B. This socket is fd-tracked by Telnet_client *)
+				(* N.B. This socket is fd-tracked by Nettelnet_client *)
 				dlogr (fun () ->
 					 sprintf "connected to %s:%d"
 					   host port);
@@ -1489,7 +1489,7 @@ object(self)
 	  | `Disconnect | `Dummy ->
 	      raise Next
 	  | _ -> 
-	      failwith "Ftp_client: Not connected"
+	      failwith "Netftp_client: Not connected"
 	      
       with 
 	| Queue.Empty -> ()
@@ -1601,7 +1601,7 @@ object(self)
                                                 to %s:%d established"
 					 addr port);
 			      Netlog.Debug.track_fd
-				~owner:"Ftp_client"
+				~owner:"Netftp_client"
 				~descr:("Data connection (passive mode) for "^ 
 					  self#peer_str)
 				data_sock;
@@ -1690,7 +1690,7 @@ object(self)
 				       sprintf "accepted new active-mode \
                                                 data connection");
 			      Netlog.Debug.track_fd
-				~owner:"Ftp_client"
+				~owner:"Netftp_client"
 				~descr:("Data connection (active mode) for " ^ 
 					  self#peer_str)
 				data_sock;
@@ -1811,7 +1811,7 @@ object(self)
 	  self # protect (self # send_command_when_ready);
 	  e
       | _ ->
-	  failwith "Ftp_client.ftp_client_pi: Connection already terminated"
+	  failwith "Netftp_client.ftp_client_pi: Connection already terminated"
     
   method send_abort () = ()
     (* TODO *)
@@ -1971,7 +1971,6 @@ let gssapi_method ~config ~required
   end in
   let module A1 = Netgssapi_auth.Auth(G)(C1) in
 
-  let mech_type = config#mech_type in
   let initiator_name = A1.get_initiator_name config in
   let initiator_cred = A1.get_initiator_cred ~initiator_name config in
   let initiator_real_name =
@@ -2210,7 +2209,7 @@ let gssapi_method ~config ~required
 (*
 #use "topfind";;
 #require "netclient,netgss-system";;
-open Ftp_client;;
+open Netftp_client;;
 Debug.enable := true;;
 let client = new ftp_client();;
 client # exec (connect_method ~host:"office1.lan.sumadev.de" ());;    
@@ -2552,11 +2551,11 @@ let rename_method ~file_from ~(file_to : filename) () (pi:ftp_client_pi) =
 	  let p2' = Netstring_str.split slash_re p2 in
 	  let d1 = dirname p1' in
 	  let d2 = dirname p2' in
-	  if d1 <> d2 then invalid_arg "Ftp_client.rename_method";
+	  if d1 <> d2 then invalid_arg "Netftp_client.rename_method";
 	  basename p2'
       | (`Verbatim _), (`Verbatim s) -> s
       | (`TVFS _), (`TVFS s) -> norm_tvfs s
-      | _ -> invalid_arg "Ftp_client.rename_method"
+      | _ -> invalid_arg "Netftp_client.rename_method"
   in
   file_e file_from pi
   ++ (fun filename_from ->
@@ -2643,7 +2642,7 @@ let factvalue_re =
 let parse_entry_line s =
   match Netstring_str.string_match entry_re s 0 with
     | None ->
-	failwith "Ftp_client.parse_entry_line"
+	failwith "Netftp_client.parse_entry_line"
     | Some m ->
 	let facts = Netstring_str.matched_group m 1 s in
 	let name = Netstring_str.matched_group m 2 s in
@@ -2653,7 +2652,7 @@ let parse_entry_line s =
 	    (fun fact ->
 	       match Netstring_str.string_match factvalue_re fact 0 with
 		 | None ->
-		     failwith "Ftp_client.parse_entry_line"
+		     failwith "Netftp_client.parse_entry_line"
 		 | Some m ->
 		     let factname = Netstring_str.matched_group m 1 fact in
 		     let value = Netstring_str.matched_group m 2 fact in
@@ -2850,7 +2849,7 @@ object(self)
 
   method pi =
     match !pi_opt with
-      | None -> failwith "Ftp_client: no protocol interpreter active"
+      | None -> failwith "Netftp_client: no protocol interpreter active"
       | Some pi -> pi
 end
 

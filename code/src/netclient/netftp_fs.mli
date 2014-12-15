@@ -6,10 +6,10 @@ class type ftp_stream_fs =
 object
   inherit Netfs.stream_fs
 
-  method ftp_client : Ftp_client.ftp_client
+  method ftp_client : Netftp_client.ftp_client
     (** The FTP client backing this filesystem *)
 
-  method last_ftp_state : Ftp_client.ftp_state
+  method last_ftp_state : Netftp_client.ftp_state
     (** The last state of the last operation, or [Not_found] *)
 
   method translate : string -> string
@@ -23,7 +23,7 @@ object
 end
 
 
-class ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
+class ftp_fs : ?config_client:(Netftp_client.ftp_client -> unit) ->
                ?tmp_directory:string ->
                ?tmp_prefix:string ->
                ?get_password:(string -> string) ->
@@ -105,7 +105,7 @@ class ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
    *)
 
 
-val ftp_fs : ?config_client:(Ftp_client.ftp_client -> unit) ->
+val ftp_fs : ?config_client:(Netftp_client.ftp_client -> unit) ->
              ?tmp_directory:string ->
              ?tmp_prefix:string ->
              ?get_password:(string -> string) ->

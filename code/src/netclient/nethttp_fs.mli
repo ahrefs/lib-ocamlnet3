@@ -29,7 +29,7 @@
 
     There is an extension to this class for WebDAV:
     - {{:http://oss.wink.com/webdav/} Webdav} provides an extension of
-      {!Http_fs} for the full WebDAV set of filesystem operations
+      {!Nethttp_fs} for the full WebDAV set of filesystem operations
 
 
  *)
@@ -127,7 +127,7 @@ object
         same way as the response header. Raises [Not_found] if unavailable.
      *)
 
-  method pipeline : Http_client.pipeline
+  method pipeline : Nethttp_client.pipeline
     (** The HTTP pipeline backing this file system *)
 
   (** The following methods are the same as in {!Netfs.stream_fs}.
@@ -157,7 +157,7 @@ end
 
 (** {2 The class} *)
 
-class http_fs : ?config_pipeline:(Http_client.pipeline -> unit) ->
+class http_fs : ?config_pipeline:(Nethttp_client.pipeline -> unit) ->
                 ?streaming:bool ->
                 ?tmp_directory:string ->
                 ?tmp_prefix:string ->
@@ -230,10 +230,10 @@ class http_fs : ?config_pipeline:(Http_client.pipeline -> unit) ->
         at a moment where only the response header is available but
         not the response body it is ensured that it will be called
         again with the full response later.
-        Defaults to {!Http_fs.is_error_response}.
+        Defaults to {!Nethttp_fs.is_error_response}.
    *)
 
-val http_fs : ?config_pipeline:(Http_client.pipeline -> unit) ->
+val http_fs : ?config_pipeline:(Nethttp_client.pipeline -> unit) ->
                 ?streaming:bool ->
                 ?tmp_directory:string ->
                 ?tmp_prefix:string ->
@@ -244,7 +244,7 @@ val http_fs : ?config_pipeline:(Http_client.pipeline -> unit) ->
   (** Same as normal function *)
 
 (*
-val is_error_response : string -> Http_client.http_call -> exn option
+val is_error_response : string -> Nethttp_client.http_call -> exn option
   (** Default implementation: The [status] [`Successful] (code in the range
       200 to 299) is considered as successful, and:
       - code 404 is mapped to [ENOENT]

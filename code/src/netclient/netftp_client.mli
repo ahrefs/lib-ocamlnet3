@@ -116,7 +116,7 @@ type representation =
     * selected representation. When files are downloaded, they are stored
     * as they are received. When files are uploaded, they are sent as they
     * are. The user of this client must do recodings when necessary
-    * (the class {!Ftp_data_endpoint.data_converter} may be useful for this).
+    * (the class {!Netftp_data_endpoint.data_converter} may be useful for this).
     *
     * If no representation is selected, FTP servers assume [`ASCII None]
     * as default.
@@ -137,8 +137,8 @@ type structure =
    *   record-structured files often store text files in this format, i.e.
    *   every line is stored in its own record, without end-of-line marker.
    *   If record structure is selected by a STRU command, it is recommended
-   *   to use the classes {!Ftp_data_endpoint.out_record_channel} and
-   *   {!Ftp_data_endpoint.in_record_channel} for the local representation
+   *   to use the classes {!Netftp_data_endpoint.out_record_channel} and
+   *   {!Netftp_data_endpoint.in_record_channel} for the local representation
    *   of the files, otherwise the records may be incorrectly mapped
    *   to the local conventions.
    *
@@ -236,7 +236,7 @@ type ftp_state =
          (** Security protocol for data connections (PROT command) *)
       ftp_data_pbsz : int;
          (** protection buffer size (PBSZ command) *)
-      ftp_prot : Ftp_data_endpoint.ftp_protector option;
+      ftp_prot : Netftp_data_endpoint.ftp_protector option;
          (** a security layer (RFC 2228) *)
     }
   (** The ftp_state reflects the knowledge of the client about what has been
@@ -262,10 +262,10 @@ type cmd =
     | `TYPE of representation
     | `STRU of structure
     | `MODE of transmission_mode
-    | `RETR of string * (ftp_state -> Ftp_data_endpoint.local_receiver)
-    | `STOR of string * (ftp_state -> Ftp_data_endpoint.local_sender)
-    | `STOU of (ftp_state -> Ftp_data_endpoint.local_sender)
-    | `APPE of string * (ftp_state -> Ftp_data_endpoint.local_sender)
+    | `RETR of string * (ftp_state -> Netftp_data_endpoint.local_receiver)
+    | `STOR of string * (ftp_state -> Netftp_data_endpoint.local_sender)
+    | `STOU of (ftp_state -> Netftp_data_endpoint.local_sender)
+    | `APPE of string * (ftp_state -> Netftp_data_endpoint.local_sender)
     | `ALLO of int * int option
     | `REST of string
     | `RNFR of string
@@ -274,8 +274,8 @@ type cmd =
     | `RMD of string
     | `MKD of string
     | `PWD
-    | `LIST of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
-    | `NLST of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
+    | `LIST of string option * (ftp_state -> Netftp_data_endpoint.local_receiver)
+    | `NLST of string option * (ftp_state -> Netftp_data_endpoint.local_receiver)
     | `SITE of string
     | `SYST
     | `STAT of string option
@@ -294,7 +294,7 @@ type cmd =
     | `MDTM of string
     | `SIZE of string
     | `MLST of string option
-    | `MLSD of string option * (ftp_state -> Ftp_data_endpoint.local_receiver)
+    | `MLSD of string option * (ftp_state -> Netftp_data_endpoint.local_receiver)
     (* RFC 2228 *)
     | `AUTH of string
     | `PBSZ of int
@@ -303,7 +303,7 @@ type cmd =
     (* RFC 4217 *)
     | `Start_TLS of (module Netsys_crypto_types.TLS_CONFIG)
     (* A pseudo command enabling a security layer for RFC 2228 *)
-    | `Start_protection of Ftp_data_endpoint.ftp_protector
+    | `Start_protection of Netftp_data_endpoint.ftp_protector
     ]
   (** An FTP command. Not all commands are implemented by all servers. 
 
@@ -526,7 +526,7 @@ type filename =
 
 val get_method : file:filename ->
                  representation:representation ->
-                 store:(ftp_state -> Ftp_data_endpoint.local_receiver) ->
+                 store:(ftp_state -> Netftp_data_endpoint.local_receiver) ->
                  unit ->
                      ftp_method
 (** This FTP method walks to the right directory and gets [file] from
@@ -538,7 +538,7 @@ val get_method : file:filename ->
 val put_method : ?meth:[ `STOR | `APPE ] ->
                  file:filename ->
                  representation:representation ->
-                 store:(ftp_state -> Ftp_data_endpoint.local_sender) ->
+                 store:(ftp_state -> Netftp_data_endpoint.local_sender) ->
                  unit ->
                      ftp_method
 (** This FTP method walks to the right directory and puts [file] to
@@ -581,7 +581,7 @@ val delete_method : filename -> ftp_method
 
 val list_method : dir:filename ->
                   representation:representation ->
-                  store:(ftp_state -> Ftp_data_endpoint.local_receiver) ->
+                  store:(ftp_state -> Netftp_data_endpoint.local_receiver) ->
                   unit ->
                       ftp_method
 (** Lists the contents of the directory [dir] using the LIST command.
@@ -590,7 +590,7 @@ val list_method : dir:filename ->
 
 val nlst_method : dir:filename ->
                   representation:representation ->
-                  store:(ftp_state -> Ftp_data_endpoint.local_receiver) ->
+                  store:(ftp_state -> Netftp_data_endpoint.local_receiver) ->
                   unit ->
                       ftp_method
 (** Lists the contents of the directory [dir] using the NLST command
@@ -622,7 +622,7 @@ val size_method : file:filename ->
 val feat_method : ?process_result:((string * string option) list -> unit) ->
                    unit -> ftp_method
   (** Get the list of feature tokens (see also
-      {!Ftp_client.ftp_state.ftp_features})
+      {!Netftp_client.ftp_state.ftp_features})
    *)
 
 
@@ -639,7 +639,7 @@ val mlst_method : file:filename ->
      (** Get the file entry for [file]. *)
 
 val mlsd_method : dir:filename ->
-                  store:(ftp_state -> Ftp_data_endpoint.local_receiver) ->
+                  store:(ftp_state -> Netftp_data_endpoint.local_receiver) ->
                   unit ->
                       ftp_method
     (** Gets the entries for this directory. *)
@@ -763,7 +763,7 @@ end
   *
   * {[ 
   *    let ch = (as above) in
-  *    let rec_ch = new Ftp_data_endpoint.write_out_record_channel
+  *    let rec_ch = new Netftp_data_endpoint.write_out_record_channel
   *                       ~repr:(`ASCII_unix `Enc_iso88591)
   *                       ch
   *    ...
@@ -779,7 +779,7 @@ end
   *
   * {[ 
   *    let ch = (as above) in
-  *    let converter = new Ftp_data_endpoint.data_converter
+  *    let converter = new Netftp_data_endpoint.data_converter
   *                         ~fromrepr:(`EBCDIC `Enc_cp1047)
   *                         ~torepr:(`ASCII_unix `Enc_iso88591) in
   *    let ch_ebcdic = new Netchannels.output_filter converter ch in

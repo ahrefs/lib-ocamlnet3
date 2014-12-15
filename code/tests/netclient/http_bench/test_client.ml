@@ -1,5 +1,5 @@
 
-open Http_client;;
+open Nethttp_client;;
 
 let print_hex s =
   let hex = [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
@@ -71,8 +71,8 @@ let main() =
 		   number_of_parallel_connections = 1;
 	};
       let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-      let tct = Https_client.https_transport_channel_type ctx in
-      !pipeline # configure_transport Http_client.https_cb_id tct
+      let tct = Nethttp_client.https_transport_channel_type ctx in
+      !pipeline # configure_transport Nethttp_client.https_cb_id tct
     end;
 (*
     if !handshake then begin

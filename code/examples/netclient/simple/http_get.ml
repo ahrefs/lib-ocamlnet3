@@ -7,7 +7,7 @@
  * get_and_print "http://www.caml.org/";;
  *)
 
-open Http_client.Convenience;;
+open Nethttp_client.Convenience;;
 
 let get_and_print url =
   let s = http_get url in

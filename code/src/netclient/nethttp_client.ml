@@ -24,14 +24,14 @@ module Debug = struct
   let enable = ref false
 end
 
-let dlog = Netlog.Debug.mk_dlog "Http_client" Debug.enable
-let dlogr = Netlog.Debug.mk_dlogr "Http_client" Debug.enable
+let dlog = Netlog.Debug.mk_dlog "Nethttp_client" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Nethttp_client" Debug.enable
 
 let () =
-  Netlog.Debug.register_module "Http_client" Debug.enable
+  Netlog.Debug.register_module "Nethttp_client" Debug.enable
 
 
-open Http_client_conncache
+open Nethttp_client_conncache
 open Printf
 open Uq_engines.Operators
 
@@ -52,7 +52,7 @@ let () =
     (fun e ->
        match e with
 	 | Http_protocol e' ->
-	     "Http_client.Http_protocol(" ^ Netexn.to_string e' ^ ")"
+	     "Nethttp_client.Http_protocol(" ^ Netexn.to_string e' ^ ")"
 	 | _ ->
 	     assert false
     )
@@ -678,7 +678,7 @@ object(self)
 	      | `Body f ->
 		  f () 
 	      | `Device _ ->
-		  failwith "Http_client: response is forwarded to device - \
+		  failwith "Nethttp_client: response is forwarded to device - \
                             no accessible response_body" in
 	  resp_body <- Some rbody;
 	  rbody
@@ -763,7 +763,7 @@ object(self)
 	      if (Neturl.url_provides ~user:true nu || 
 		    Neturl.url_provides ~password:true nu)
 	      then
-		failwith "Http_client: URL must not contain user or password";
+		failwith "Nethttp_client: URL must not contain user or password";
 	      req_uri <- Some nu;
 	      req_host <- Neturl.url_host nu;
 	      req_port <- Neturl.url_port nu;
@@ -782,7 +782,7 @@ object(self)
 	      req_trans <- trans;
 	    with
 		Not_found ->
-		  failwith "Http_client: bad URL"
+		  failwith "Nethttp_client: bad URL"
 	  )
 
 	method transport_layer options =
@@ -957,7 +957,7 @@ object(self)
 	    | None ->
 		eps_e (`Done ()) esys
 	    | Some d ->
-(* prerr_endline "Http_cllent SHUTDOWN"; *)
+(* prerr_endline "Nethttp_cllent SHUTDOWN"; *)
 		resp_handle <- None;
 		Uq_io.shutdown_e d
 		>> (fun st -> Uq_io.inactivate d; st)
@@ -1055,7 +1055,7 @@ object(self)
     req_base_header # update_field "Transfer-encoding" "chunked"
   method request_body = 
     if req_dev <> None then
-      failwith "Http_client: No request_body - using a device instead";
+      failwith "Nethttp_client: No request_body - using a device instead";
     req_body
   method set_request_body b = req_body <- b; req_dev <- None
   method set_request_device f = req_dev <- Some f
@@ -1077,7 +1077,7 @@ object(self)
     match status with
       | `Unserved ->
 	  if not resp_header_set then
-	    failwith "Http_client: HTTP call is unserved, no response yet"
+	    failwith "Nethttp_client: HTTP call is unserved, no response yet"
       | `Http_protocol_error e -> 
 	  raise (Http_protocol e)
       | _ -> ()
@@ -1097,7 +1097,7 @@ object(self)
      *)
     self#check_response(); 
     if not finished then 
-      failwith "Http_client: HTTP call is unserved, response not yet complete";
+      failwith "Nethttp_client: HTTP call is unserved, response not yet complete";
     self#resp_body
 
   (* Options *)
@@ -1509,7 +1509,7 @@ let key_creds ~user ~creds options : key =
   let password, params =
     try Netsys_sasl_util.extract_password2 creds
     with Not_found ->
-      raise(Invalid_argument "Http_client.key_creds: no password") in
+      raise(Invalid_argument "Nethttp_client.key_creds: no password") in
   let realm =
     try List.assoc "realm" params
     with Not_found -> 
@@ -2550,7 +2550,7 @@ let proxy_password = "XXX";;
 
 #use "topfind";;
 #require "netclient,nettls-gnutls";;
-open Http_client;;
+open Nethttp_client;;
 Debug.enable := true;;
 let ring = new key_ring();;
 ring # add_key (key ~user:"gerd" ~realm:"Private @ gps.dynxs.de" ~password ~domain:[]);;
@@ -2580,7 +2580,7 @@ p # run();;
 (***                 THE CONNECTION CACHE                           ***)
 (**********************************************************************)
 
-type connection_cache = Http_client_conncache.connection_cache
+type connection_cache = Nethttp_client_conncache.connection_cache
 
 let close_connection_cache conn_cache =
   conn_cache # close_all()
@@ -3161,7 +3161,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 		      | None -> ()
 		      | Some exp_n ->
 			  if n <> exp_n then
-			    failwith "Http_client: announced length of \
+			    failwith "Nethttp_client: announced length of \
                                       request body does not match actual length"
 		  );
 		  `Done ()
@@ -3209,7 +3209,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 	Uq_io.write_eof_e dev
 	++ (fun flag ->
 	      if not flag then
-		failwith "Http_client: \
+		failwith "Nethttp_client: \
                           no support for closing the write side only";
 	      (* It is better to set the new state after a successful
 		 write_eof operation than before. It is possible that the whole
@@ -3537,10 +3537,10 @@ let transmitter
 		      try Int64.of_string (rh # field "Content-Length") 
 		      with
 			| Failure _ -> 
-			    failwith "Http_client: Bad Content-Length field \
+			    failwith "Nethttp_client: Bad Content-Length field \
                                       in request" in
 		    if l < 0L then
-		      failwith "Http_client: Bad Content-Length field in request";
+		      failwith "Nethttp_client: Bad Content-Length field in request";
 		    Some l
 		  with Not_found -> None in
 		Send_body(d, length_opt), length_opt = None
@@ -4005,7 +4005,7 @@ let tcp_connect_e esys tp trans (peer:peer) conn_cache conn_owner tls_cache
 	    tp # continue 
 	      fd trans !options.connection_timeout tmo_x 
 	      real_host real_port esys
-              ( let open Http_client_conncache in
+              ( let open Nethttp_client_conncache in
                 idata.tls_stashed_endpoint
               ) in
 	  eps_e (`Done(fd, cache_peer, mplex, 0.0)) esys
@@ -4093,11 +4093,11 @@ let tcp_connect_e esys tp trans (peer:peer) conn_cache conn_owner tls_cache
 			      (Netsys.int64_of_file_descr fd) descr);
 
 		    Netlog.Debug.track_fd
-		      ~owner:"Http_client"
+		      ~owner:"Nethttp_client"
 		      ~descr:(sprintf 
 				"HTTP %s" descr)
 		      fd;
-		    (* The release_fd is in Http_client_conncache! *)
+		    (* The release_fd is in Nethttp_client_conncache! *)
 
 		    conn_cache # set_connection_state
 		      fd cache_peer (`Active conn_owner);
@@ -4559,7 +4559,7 @@ let fragile_pipeline
                           match mplex#tls_session with
                             | None -> None
                             | Some _ -> Some(mplex#tls_stashed_endpoint()) in
-                        { Http_client_conncache.conn_trans = trans;
+                        { Nethttp_client_conncache.conn_trans = trans;
                           tls_stashed_endpoint;
                         }
                       with _ -> raise Not_found in
@@ -5496,7 +5496,7 @@ let robust_pipeline
 				 * way to report it).
 				 *)
 				x ->
-				  dlog ("Exception caught in Http_client: " 
+				  dlog ("Exception caught in Nethttp_client: " 
 					^ (Netexn.to_string x));
 				  false
 			  )
@@ -5898,7 +5898,7 @@ class pipeline =
                   raise Not_found;
 		Hashtbl.find transports trans
 	      with Not_found ->
-		failwith "Http_client: No transport for this transport ID" in
+		failwith "Nethttp_client: No transport for this transport ID" in
 	    let proxy_auth_handler_opt =
 	      match auth with
 		| Some(u,p,insecure) ->
@@ -6041,7 +6041,7 @@ class pipeline =
 				 x ->
 				   dlog (sprintf 
 					   "Call %d - \
-                                            Exception caught in Http_client %s"
+                                            Exception caught in Nethttp_client %s"
 					   (Oo.id m)
 					   (Netexn.to_string x));
 				   false

@@ -550,7 +550,7 @@ class telnet_session =
     method expect_input flag =
       match group with
 	| None ->
-	    failwith "Telnet_client: not attached"
+	    failwith "Nettelnet_client: not attached"
 	| Some g ->
 	    Unixqueue.remove_resource esys g (Unixqueue.Wait_in socket);
 	    let timeout_value =
@@ -597,7 +597,7 @@ class telnet_session =
 				(fun () -> 
 				   Unix.setsockopt s Unix.SO_OOBINLINE true);
 			      Netlog.Debug.track_fd
-				~owner:"Telnet_client"
+				~owner:"Nettelnet_client"
 				~descr:("connection to " ^ 
 					  hostname ^  ":" ^ string_of_int port)
 				s;
@@ -625,7 +625,7 @@ class telnet_session =
 	    socket <- s;
             socket_style <- Netsys.get_fd_style s;
 	    Netlog.Debug.track_fd
-	      ~owner:"Telnet_client"
+	      ~owner:"Nettelnet_client"
 	      ~descr:("connection to " ^ 
 			try Netsys.string_of_sockaddr(Netsys.getpeername s)
 			with _ -> "(noaddr)")

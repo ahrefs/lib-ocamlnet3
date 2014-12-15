@@ -31,7 +31,7 @@ object
   method write_file : write_file_flag list -> string -> Netfs.local_file -> unit
   method last_response_header : Nethttp.http_header
   method last_response_status : Nethttp.http_status * int * string
-  method pipeline : Http_client.pipeline
+  method pipeline : Nethttp_client.pipeline
   method translate : string -> string
 
   method path_encoding : Netconversion.encoding option
@@ -210,13 +210,13 @@ let is_error_response ?(precondfailed = Unix.EPERM) path call =
     | `Redirection | `Client_error | `Server_error ->
 	( match call # response_status with
 	    | `Not_found ->
-		Some(Unix.Unix_error(Unix.ENOENT, "Http_fs", path))
+		Some(Unix.Unix_error(Unix.ENOENT, "Nethttp_fs", path))
 	    | `Forbidden | `Unauthorized ->
-		Some(Unix.Unix_error(Unix.EACCES, "Http_fs", path))
+		Some(Unix.Unix_error(Unix.EACCES, "Nethttp_fs", path))
 	    | `Precondition_failed ->
-		Some(Unix.Unix_error(precondfailed, "Http_fs", path))
+		Some(Unix.Unix_error(precondfailed, "Nethttp_fs", path))
 	    | _ ->
-		Some(Unix.Unix_error(Unix.EPERM, "Http_fs", path))
+		Some(Unix.Unix_error(Unix.EPERM, "Nethttp_fs", path))
 	)
 
 
@@ -243,15 +243,15 @@ class http_fs
 	?(enable_ftp=false)
 	(* ?(is_error_response = is_error_response) *)
 	base_url : http_stream_fs =
-  let p = new Http_client.pipeline in
+  let p = new Nethttp_client.pipeline in
   let () =
     if enable_ftp then (
       let ftp_syn = Hashtbl.find Neturl.common_url_syntax "ftp" in
       let opts = p # get_options in
       let opts' =
 	{ opts with
-	    Http_client.schemes = opts.Http_client.schemes @
-	    [ "ftp", ftp_syn, Some 21, Http_client.proxy_only_trans_id ]
+	    Nethttp_client.schemes = opts.Nethttp_client.schemes @
+	    [ "ftp", ftp_syn, Some 21, Nethttp_client.proxy_only_trans_id ]
 	} in
       p # set_options opts'
     ) in
@@ -262,22 +262,22 @@ class http_fs
     raise(Unix.Unix_error(Unix.EINVAL, detail, path)) in
   let translate path =
     if path = "" then
-      einval path "Http_fs: path is empty";
+      einval path "Nethttp_fs: path is empty";
     if path.[0] <> '/' then
-      einval path "Http_fs: path is not absolute";
+      einval path "Nethttp_fs: path is not absolute";
     if String.contains path '\000' then
-      einval path "Http_fs: path contains NUL byte";
+      einval path "Nethttp_fs: path contains NUL byte";
     ( try
 	Netconversion.verify path_encoding path
       with
 	| Netconversion.Malformed_code_at _ ->
-	    einval path "Http_fs: path is not properly encoded"
+	    einval path "Nethttp_fs: path is not properly encoded"
     );
     let npath = Neturl.norm_path(Neturl.split_path path) in
     let npath_s = Neturl.join_path npath in
     ( match npath with
 	| "" :: ".." :: _ -> (* CHECK: maybe ENOENT? *)
-	    einval path "Http_fs: path starts with /.."
+	    einval path "Nethttp_fs: path starts with /.."
 	| _ -> ()
     );
     if base_url_ends_with_slash then
@@ -292,7 +292,7 @@ class http_fs
       | _ ->
 	  ( match is_error_response ?precondfailed path call with
 	      | None -> 
-		  failwith "Http_fs: No response received but \
+		  failwith "Nethttp_fs: No response received but \
                             is_error_response does not indicate an error"
 	      | Some e ->
 		  raise e
@@ -302,7 +302,7 @@ class http_fs
     url <> "" && url.[String.length url - 1] = '/' in
   let check_dir url path =
     if is_dir_url url then
-      raise(Unix.Unix_error(Unix.EISDIR, "Http_fs", path)) in
+      raise(Unix.Unix_error(Unix.EISDIR, "Nethttp_fs", path)) in
   let run () =
     try p#run()
     with Interrupt -> () in
@@ -342,7 +342,7 @@ object(self)
 
   method read flags path =
     let url = translate path in
-    let call = new Http_client.get url in
+    let call = new Nethttp_client.get url in
     let g = Unixqueue.new_group p#event_system in
     let req_hdr = call # request_header `Base in
     let skip = 
@@ -390,7 +390,7 @@ object(self)
 			discarding_body()
 	       ));
       (* We cannot reconnect in streaming mode :-( *)
-      call # set_reconnect_mode Http_client.Request_fails;
+      call # set_reconnect_mode Nethttp_client.Request_fails;
       p # add_with_callback call (fun _ -> call_done := true);
       (* Wait until data is available, or the whole call is done (in case
 	 of error)
@@ -481,7 +481,7 @@ object(self)
 
   method read_file flags path =
     let url = translate path in
-    let call = new Http_client.get url in
+    let call = new Nethttp_client.get url in
     let req_hdr = call # request_header `Base in
     call # set_accept_encoding();
     let header =
@@ -538,7 +538,7 @@ object(self)
   method private write_impl flags path local_opt =
     let this_cancel_flag = !cancel_flag in
     let url = translate path in
-    let call = new Http_client.put_call in
+    let call = new Nethttp_client.put_call in
     call # set_request_uri url;
     let g = Unixqueue.new_group p#event_system in
     let req_hdr = call # request_header `Base in
@@ -556,7 +556,7 @@ object(self)
     let excl_flag = List.mem `Exclusive flags in
 
     if not create_flag && not trunc_flag then
-      einval path "Http_fs.write: you need to request either file creation \
+      einval path "Nethttp_fs.write: you need to request either file creation \
                    or file truncation";
 
     let precondfailed = ref Unix.EPERM in
@@ -583,7 +583,7 @@ object(self)
     last_response_status := None;
     if (streaming || List.mem `Streaming flags) && local_opt = None then (
       (* We cannot reconnect in streaming mode :-( *)
-      call # set_reconnect_mode Http_client.Request_fails;
+      call # set_reconnect_mode Nethttp_client.Request_fails;
       (* We have to use chunked transfer encoding: *)
       (* req_hdr # update_field "Transfer-Encoding" "chunked";*)
       call # set_chunked_request();
@@ -690,7 +690,7 @@ object(self)
     last_response_header := None;
     last_response_status := None;
     let url = translate path in
-    let call = new Http_client.head url in
+    let call = new Nethttp_client.head url in
     p#add call;
     p#run();
     self # remember_call call;
@@ -700,9 +700,9 @@ object(self)
 	      Int64.of_string(call # response_header # field "Content-length")
 	    with
 	      | Not_found ->
-		  raise(Unix.Unix_error(Unix.ESPIPE,"Http_fs",path))
+		  raise(Unix.Unix_error(Unix.ESPIPE,"Nethttp_fs",path))
 	      | _ ->
-		  raise(Http_client.Bad_message
+		  raise(Nethttp_client.Bad_message
 			  ("Field Content-length: Parse error"))
 	  )
       | Some _ ->
@@ -715,7 +715,7 @@ object(self)
     last_response_header := None;
     last_response_status := None;
     let url = translate path in
-    let call = new Http_client.head url in
+    let call = new Nethttp_client.head url in
     p#add call;
     p#run();
     self # remember_call call;
@@ -756,7 +756,7 @@ object(self)
       (* We generally return ENOTDIR - meaning we cannot access this as
 	 directory.
        *)
-      raise(Unix.Unix_error(Unix.ENOTDIR,"Http_fs.readdir",path)) in
+      raise(Unix.Unix_error(Unix.ENOTDIR,"Nethttp_fs.readdir",path)) in
     last_response_header := None;
     last_response_status := None;
     let path1 =
@@ -765,7 +765,7 @@ object(self)
       else
 	path in
     let url = translate path1 in
-    let call = new Http_client.get url in
+    let call = new Nethttp_client.get url in
     p#add call;
     p#run();
     self # remember_call call;
@@ -850,10 +850,10 @@ object(self)
     last_response_status := None;
     if List.mem `Recursive flags then
       raise(Unix.Unix_error(Unix.EINVAL,
-			    "Http_fs.remove: recursion not supported",
+			    "Nethttp_fs.remove: recursion not supported",
 			    path));
     let url = translate path in
-    let call = new Http_client.get url in
+    let call = new Nethttp_client.get url in
     p#add call;
     p#run();
     self # remember_call call;
@@ -866,19 +866,19 @@ object(self)
   method copy _ path1 path2 = assert false (* TODO *)
 
   method rename _ path1 path2 =
-    raise(Unix.Unix_error(Unix.ENOSYS, "Http_fs.rename", path1))
+    raise(Unix.Unix_error(Unix.ENOSYS, "Nethttp_fs.rename", path1))
 
   method readlink _ path =
-    raise(Unix.Unix_error(Unix.ENOSYS, "Http_fs.readlink", path))
+    raise(Unix.Unix_error(Unix.ENOSYS, "Nethttp_fs.readlink", path))
 
   method symlink _ path1 path2 = 
-    raise(Unix.Unix_error(Unix.ENOSYS, "Http_fs.symlink", path1))
+    raise(Unix.Unix_error(Unix.ENOSYS, "Nethttp_fs.symlink", path1))
 
   method mkdir _ path = 
-    raise(Unix.Unix_error(Unix.ENOSYS, "Http_fs.mkdir", path))
+    raise(Unix.Unix_error(Unix.ENOSYS, "Nethttp_fs.mkdir", path))
 
   method rmdir _ path = 
-    raise(Unix.Unix_error(Unix.ENOSYS, "Http_fs.rmdir", path))
+    raise(Unix.Unix_error(Unix.ENOSYS, "Nethttp_fs.rmdir", path))
 
 end
 
