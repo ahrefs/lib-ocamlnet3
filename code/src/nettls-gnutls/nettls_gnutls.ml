@@ -662,18 +662,22 @@ module Make_TLS_1
         n
 
     let recv ep buf =
-      if ep.state <> `Data_rw && ep.state <> `Data_r && ep.state <> `Data_rs 
-      then
-        unexpected_state();
-      let n =
-        endpoint_exn
-          ~warnings:true
-          ep
-          (G.gnutls_record_recv ep.session)
-          buf in
-      if Bigarray.Array1.dim buf > 0 && n=0 then
-        ep.state <- (if ep.state = `Data_rw then `Data_w else `End);
-      n
+      if ep.state = `Data_w || ep.state = `End then
+        0
+      else (
+        if ep.state <> `Data_rw && ep.state <> `Data_r && ep.state <> `Data_rs 
+        then
+          unexpected_state();
+        let n =
+          endpoint_exn
+            ~warnings:true
+            ep
+            (G.gnutls_record_recv ep.session)
+            buf in
+        if Bigarray.Array1.dim buf > 0 && n=0 then
+          ep.state <- (if ep.state = `Data_rw then `Data_w else `End);
+        n
+      )
 
     let recv_will_not_block ep =
       let f() =
