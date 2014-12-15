@@ -1,3 +1,23 @@
+OCAMLNET 4 RELEASE:
+ - CHECK AGAIN UNIT TESTS
+ - CHECK EXAMPLES
+ - renames: xdr, xdr_mstring, mimestring
+ - Netconversion refactoring
+ - module refactoring so far needed (smaller executables)
+ - RPCBIND
+ - mod_apache build errors
+ - gnutls build warnings
+ - DOC UPDATE
+    * remove all the ocamlnet 3 links
+    * OCamlnet 4 intro
+ - BUILD update
+    * oasis
+ - IF TIME:
+    * Netshm for Mac
+    * SASLprep light
+    * Netplex: user-specific socket dirs
+    * password files
+
 User's wishes/fixes:
  - mode of netplex socket can be set in config file (T. Calderon)
  - setgid does not work (lookup wrong) (T. Calderon)
@@ -386,12 +406,6 @@ docs: Depict mem architecture of netmcore (multiple heaps, pool)
 fix reported problems
 
 - Equeue_ssl: include function to extract cert fingerprint - DONE
-
-- Bug Http_client:
-  Digest auth where the server uses a domain string with several URLs!
-  e.g. domain="/path http://server/path" (legal according to RFC).
-  Symptom: The authenticated request is not tried at all after getting
-  the 401 response
 
 - bug netcgi2-apache:
   add -Wl,--rpath,$(APACHE_OCAMLLIBDIR) to $(APXS) for builing the .so
