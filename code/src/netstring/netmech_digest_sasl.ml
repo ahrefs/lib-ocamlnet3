@@ -78,7 +78,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
           let l = server_emit_initial_challenge_kv ~quote:true ss in
           format_kv l
       | Some _ ->
-          let l = server_emit_final_challenge_kv ss in
+          let l = server_emit_final_challenge_kv ~quote:true ss in
           format_kv l
 
 
