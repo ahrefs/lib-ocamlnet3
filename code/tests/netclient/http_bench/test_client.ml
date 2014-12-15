@@ -46,7 +46,7 @@ let main() =
   let gzip = ref false in
   let response_test = ref None in
 
-  Ssl.init();
+  Nettls_gnutls.init();
   Netgzip.init();
 
   Netsys_rng.set_rng
@@ -69,10 +69,16 @@ let main() =
 		   verbose_connection = true ;
 		   verbose_events = true;
 		   number_of_parallel_connections = 1;
+                   tls = Some (Netsys_tls.create_x509_config
+                                 ~peer_auth:`None
+                                 ~trust:[ `PEM_file "ca.crt" ]
+                                 (module Nettls_gnutls.TLS));
 	};
+(*
       let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
       let tct = Nethttp_client.https_transport_channel_type ctx in
       !pipeline # configure_transport Nethttp_client.https_cb_id tct
+ *)
     end;
 (*
     if !handshake then begin
@@ -85,7 +91,7 @@ let main() =
     if !proxy then begin
       !pipeline # set_proxy !server !port;
       if !proxy_user <> "" then 
-	!pipeline # set_proxy_auth !proxy_user !proxy_password;
+	!pipeline # set_proxy_auth ~insecure:true !proxy_user !proxy_password;
     end;
   in
 
@@ -166,18 +172,22 @@ let main() =
     if !user = "" then failwith "No user specified for authentication module";
     if !realm = "" then failwith "No realm specified for authentication module";
     if !password = "" then failwith "No password specified for authentication module";
-    let m = new basic_auth_method in
-    m # set_realm !realm !user !password;
-    !pipeline # add_authentication_method m
+    let keys = new Nethttp_client.key_ring() in
+    keys # add_key (Nethttp_client.key ~user:!user ~password:!password
+                                       ~realm:!realm ~domain:[]);
+    let m = new basic_auth_handler keys in
+    !pipeline # add_auth_handler m
   in
 
   let add_digest_auth() =
     if !user = "" then failwith "No user specified for authentication module";
     if !realm = "" then failwith "No realm specified for authentication module";
     if !password = "" then failwith "No password specified for authentication module";
-    let m = new digest_auth_method in
-    m # set_realm !realm !user !password;
-    !pipeline # add_authentication_method m
+    let keys = new Nethttp_client.key_ring() in
+    keys # add_key (Nethttp_client.key ~user:!user ~password:!password
+                                       ~realm:!realm ~domain:[]);
+    let m = new digest_auth_handler keys in
+    !pipeline # add_auth_handler m
   in
 
   let rec run_and_catch() =

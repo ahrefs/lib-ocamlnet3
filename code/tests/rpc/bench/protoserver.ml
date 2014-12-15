@@ -37,23 +37,27 @@ let auth_methods =
 		let icount = 4096 in
 		let salt = Netmech_scram.create_salt() in
 		let spw = 
-		  Netmech_scram.salt_password "guest_password" salt icount in
-		(spw, salt, icount)
+		  Netmech_scram.salt_password `SHA_1 
+                                              "guest_password" salt icount in
+		`Salted_password(spw, salt, icount)
 	    | _ ->
 		raise Not_found
       end
     ) in
   let gss_api =
-    new Netmech_scram_gssapi.scram_gss_api
+    Netmech_scram_gssapi.scram_gss_api
       ~server_key_verifier
-      (Netmech_scram.profile `GSSAPI) in
+      (Netmech_scram.profile `GSSAPI `SHA_1) in
   let gss_auth_meth =
     Rpc_auth_gssapi.server_auth_method
       ~shared_context:true  (* for UDP *)
       ~user_name_format:`Plain_name
-      gss_api Netmech_scram_gssapi.scram_mech in
+      gss_api
+      (Netsys_gssapi.create_server_config
+         ~mech_types: [Netmech_scram_gssapi.scram_mech]
+         ()
+      ) in
   [ Rpc_auth_sys.server_auth_method ~require_privileged_port:false ();
-    Rpc_auth_dh.server_auth_method ();
     gss_auth_meth;
     Rpc_server.auth_none;
   ]
@@ -387,11 +391,15 @@ let main() =
     failwith "-udp and -ssl are incompatible";
   let socket_config =
     if !enable_ssl then (
-      Ssl.init();
-      let ctx = 
-	Ssl.create_context Ssl.TLSv1 Ssl.Server_context in
-      Ssl.use_certificate ctx "testserver.crt" "testserver.key";
-      Rpc_ssl.ssl_server_socket_config ctx
+      Nettls_gnutls.init();
+      let tls_config =
+        Netsys_tls.create_x509_config
+          ~keys:[`PEM_file "testserver.crt",
+                 `PEM_file "testserver.key",
+                 None]
+          ~peer_auth:`None
+          (module Nettls_gnutls.TLS) in
+      Rpc_server.tls_socket_config tls_config
     )
     else
       Rpc_server.default_socket_config in

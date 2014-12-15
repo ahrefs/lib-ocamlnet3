@@ -25,8 +25,11 @@ let register_test name f =
 let register_test_triple ?(tcp=true) ?(udp=true) ?(unix=true) name f =
   let socket_config =
     if !enable_ssl then
-      let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-      Rpc_ssl.ssl_client_socket_config ctx
+      let tls_config =
+        Netsys_tls.create_x509_config
+          ~peer_auth:`None
+          (module Nettls_gnutls.TLS) in
+      Rpc_client.tls_socket_config tls_config
     else
       Rpc_client.default_socket_config in
   if tcp then begin
@@ -364,24 +367,6 @@ let register_auth_local () =
 ;;
 
 (**********************************************************************)
-(* auth_dh *)
-
-let register_auth_dh () =
-  let test_filter client =
-    let uid = "unix." ^ string_of_int (Unix.geteuid()) ^ "@" ^
-	      Rpc_auth_dh.domainname() in
-    Rpc_client.set_auth_methods client
-      [ Rpc_auth_dh.client_auth_method uid ];
-    let r = C.auth_dh client() in
-    printf "(user=%s) " r;
-    Rpc_client.shut_down client;
-    r = uid
-  in
-  register_test_triple "auth_dh" test_filter
-;;
-
-
-(**********************************************************************)
 (* GSS-API with SCRAM *)
 
 let register_auth_gssapi_scram () =
@@ -397,16 +382,19 @@ let register_auth_gssapi_scram () =
     ) in
 
   let gss_api =
-    new Netmech_scram_gssapi.scram_gss_api
+    Netmech_scram_gssapi.scram_gss_api
       ~client_key_ring
-      (Netmech_scram.profile `GSSAPI) in
+      (Netmech_scram.profile `GSSAPI `SHA_1) in
 
   let auth_meth =
     Rpc_auth_gssapi.client_auth_method
-      ~privacy:`Required
-      (* ~privacy:`None ~integrity:`Required *)
-      ~user_name_interpretation:(`Plain_name Netgssapi.nt_user_name)
-      gss_api Netmech_scram_gssapi.scram_mech  in
+      ~user_name_interpretation:(`Plain_name Netsys_gssapi.nt_user_name)
+      gss_api
+      (Netsys_gssapi.create_client_config
+         ~privacy:`Required
+         ~mech_type:Netmech_scram_gssapi.scram_mech
+         ()
+      ) in
 
   let test_filter client =
     Rpc_client.set_auth_methods client [auth_meth];
@@ -438,7 +426,6 @@ let main() =
     register_dropping_filter_with_limit();
     register_auth_sys();
     register_auth_local();
-    register_auth_dh();
     register_auth_gssapi_scram();
   in    
 
@@ -479,7 +466,7 @@ let main() =
     "Usage: protoclient [ options ] test ...";
 
   if !enable_ssl then
-    Ssl.init();
+    Nettls_gnutls.init();
 
   do_register();
 

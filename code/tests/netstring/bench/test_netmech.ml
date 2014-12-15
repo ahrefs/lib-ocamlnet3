@@ -18,6 +18,11 @@ let contains ~pat s =
   k <= String.length s - String.length pat
 
 
+let is_auth_error =
+  function
+  | `Auth_error _ -> true
+  | _ -> false
+
 let test_sasl
       ?(check_final_client = fun _ -> true)
       ?(check_final_server = fun _ -> true)
@@ -57,7 +62,7 @@ let test_sasl
       assert(M.client_state cs = `Wait);
       M.client_process_challenge cs msg;
 
-      stop := (M.client_state cs = `OK || M.client_state cs = `Auth_error);
+      stop := (M.client_state cs = `OK || is_auth_error (M.client_state cs));
     );
     (* Emit client response and process it on the server *)
     if M.client_state cs = `Emit || M.client_state cs = `Stale then (
@@ -69,18 +74,18 @@ let test_sasl
       assert(M.server_state ss = `Wait);
       M.server_process_response ss msg;
 
-      stop := (M.client_state cs = `OK || M.client_state cs = `Auth_error ||
-                 M.server_state ss = `OK || M.server_state ss = `Auth_error)
+      stop := (M.client_state cs = `OK || is_auth_error (M.client_state cs) ||
+                 M.server_state ss = `OK || is_auth_error (M.server_state ss))
     )
   done;
 
-  assert(M.server_state ss = `OK || M.server_state ss = `Auth_error);
+  assert(M.server_state ss = `OK || is_auth_error (M.server_state ss));
 
   (* It is possible that the server reaches `Auth_error, but the client
      is not told that via SASL, but with the normal protocol.
    *)
   assert((M.server_state ss = `OK && M.client_state cs = `OK) ||
-           M.server_state ss = `Auth_error);
+           is_auth_error (M.server_state ss));
 
   assert(check_final_server !last_server);
   assert(check_final_client !last_client);
@@ -130,7 +135,7 @@ let t_plain_02() =
   let r =
     test_sasl
       (module Netmech_plain_sasl.PLAIN) c_creds s_creds [] [] "user" "admin" in
-  r = `Auth_error
+  is_auth_error r
 
 
 let t_crammd5_01() =
@@ -147,7 +152,7 @@ let t_crammd5_02() =
     test_sasl
       (module Netmech_crammd5_sasl.CRAM_MD5)
       c_creds s_creds [] [] "user" "" in
-  r = `Auth_error
+  is_auth_error r
 
 let t_crammd5_03() =
   (* The example from RFC 2195 *)
@@ -180,7 +185,7 @@ let t_digestmd5_02() =
     test_sasl
       (module Netmech_digest_sasl.DIGEST_MD5)
       c_creds s_creds [] [] "user" "" in
-  r = `Auth_error
+  is_auth_error r
 
 
 let t_digestmd5_03() =
@@ -195,10 +200,10 @@ let t_digestmd5_03() =
       ~check_client_props:[ "realm", "elwood.innosoft.com";
                             "digest-uri", "imap/elwood.innosoft.com" ]
       ~check_final_client:(fun msg ->
-                             contains ~pat:"response=d388dad90d4bbd760a152321f2143af7" msg
+                             contains ~pat:"response=\"d388dad90d4bbd760a152321f2143af7\"" msg
                           )
       ~check_final_server:(fun msg ->
-                             contains ~pat:"rspauth=ea40f60335c427b5527b84dbabcdfffd" msg
+                             contains ~pat:"rspauth=\"ea40f60335c427b5527b84dbabcdfffd\"" msg
                           )
       (module Netmech_digest_sasl.DIGEST_MD5) 
       creds creds c_params s_params "chris" "" in
@@ -223,7 +228,7 @@ let t_scramsha1_02() =
     test_sasl
       (module Netmech_scram_sasl.SCRAM_SHA1)
       c_creds s_creds [] [] "user" "" in
-  r = `Auth_error
+  is_auth_error r
 
 
 let t_scramsha1_03() =
