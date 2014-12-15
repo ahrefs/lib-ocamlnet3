@@ -231,7 +231,7 @@ let server_emit_final_challenge_kv ?(quote=false) ss =
     | None -> assert false
     | Some(rp,_,srv_resp) ->
         ss.sstate <- `OK;
-        [ "rspauth", srv_resp ] @
+        [ "rspauth", q srv_resp ] @
           ( match ss.sprofile.ptype with
               | `SASL -> []
               | `HTTP ->
