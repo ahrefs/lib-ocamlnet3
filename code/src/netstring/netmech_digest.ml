@@ -596,7 +596,7 @@ let client_emit_response_kv ?(quote=false) cs =
             "realm", q rp.r_realm;
             "nonce", q rp.r_nonce;
             digest_uri_name, q rp.r_digest_uri;
-            "response", resp;
+            "response", q resp;
           ] @
             ( if rp.r_rfc2069 then
                 []
