@@ -541,7 +541,7 @@ module Make_TLS_1
     let verify ep =
       let f() =
         if G.gnutls_certificate_get_peers ep.session = [| |] then (
-          if ep.config.peer_auth <> `Required then
+          if ep.config.peer_auth = `Required then
             raise(Exc.TLS_error (G.gnutls_strerror_name `No_certificate_found))
         )
         else (
