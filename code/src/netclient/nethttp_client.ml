@@ -55,7 +55,17 @@ let () =
 	     "Nethttp_client.Http_protocol(" ^ Netexn.to_string e' ^ ")"
 	 | _ ->
 	     assert false
+    );
+  Netexn.register_printer
+    (Http_error(0,""))
+    (fun e ->
+       match e with
+	 | Http_error(code,text) ->
+	     sprintf "Nethttp_client.Http_error(%d,%S)" code text
+	 | _ ->
+	     assert false
     )
+  
 
 let() =
   Netsys_signal.init()
@@ -230,7 +240,7 @@ let parse_url_0 ?base_url schemes url =
 	~schemes:ht ~accept_8bits:true url' in
     let nu2 = 
       Neturl.ensure_absolute_url ?base:base_url nu1 in
-    (Neturl.default_url ?port:p_opt nu2, trans)
+    (Neturl.default_url ?port:p_opt ~path:[""] nu2, trans)
   with
     | Neturl.Malformed_URL -> raise Not_found
 
@@ -275,18 +285,27 @@ let is_https trans_id =
 
 
 
+
+(* For some time we had
+
+   Neturl.url_enable_query = Neturl.Url_part_not_recognized
+
+   I don't remember what the reason was. However, URLs of the form
+   scheme://host?query cannot be parsed then. (Rev 1625 did that.)
+ *)
+
 let default_schemes =
   let http_syn =
     { (Hashtbl.find Neturl.common_url_syntax "http") with
-      Neturl.url_enable_query = Neturl.Url_part_not_recognized
+      Neturl.url_enable_query = Neturl.Url_part_allowed
     } in
   let https_syn =
     { (Hashtbl.find Neturl.common_url_syntax "https") with
-      Neturl.url_enable_query = Neturl.Url_part_not_recognized
+      Neturl.url_enable_query = Neturl.Url_part_allowed
     } in
   let ipp_syn =
     { (Hashtbl.find Neturl.common_url_syntax "ipp") with
-      Neturl.url_enable_query = Neturl.Url_part_not_recognized
+      Neturl.url_enable_query = Neturl.Url_part_allowed
     } in
   [ "http", http_syn, Some 80, http_trans_id;
     "https", https_syn, Some 443, https_trans_id;
@@ -782,7 +801,7 @@ object(self)
 	      req_trans <- trans;
 	    with
 		Not_found ->
-		  failwith "Nethttp_client: bad URL"
+		  failwith ("Nethttp_client: bad URL (" ^ req_uri_raw ^ ")")
 	  )
 
 	method transport_layer options =
@@ -1430,7 +1449,7 @@ let norm_neturl neturl =
         ~scheme:(Neturl.url_scheme neturl)
         ~host:(Neturl.url_host neturl)
         ~port:(Neturl.url_port neturl)
-        ~path:(try Neturl.url_path neturl with Not_found -> [])
+        ~path:(try Neturl.url_path neturl with Not_found -> [ "" ])
         ?query:(try Some(Neturl.url_query neturl) with Not_found -> None)
         ?fragment:(try Some(Neturl.url_fragment neturl) with Not_found -> None)
         (Neturl.url_syntax_of_url neturl) in
@@ -2847,8 +2866,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 	let header = new Netmime.basic_mime_header header_l in
 	if !options.verbose_response_header then
 	  dump_header "HTTP response " header#fields;
-
-	call # private_api # set_continue (code < 200);
+        call # private_api # set_continue (code < 200);
 	(* Calling set_continue may trigger that the send loop
 	   in [transmitter] resumes its send task. We need to do it
 	   whatever code we see here - not only for code=100.
@@ -2897,8 +2915,9 @@ let io_buffer options fd mplex fd_state : io_buffer =
 		| Not_found -> None in
 	    read_plain_body_e code header out_dev length_opt call
 	  )
-	) else
+	) else (
 	  read_end_e call
+        )
 	
       and read_plain_body_e code header out_dev length_opt call =
 	(* Parses a non-chunked HTTP body. If length_opt=None, the message

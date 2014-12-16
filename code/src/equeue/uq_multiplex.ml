@@ -742,7 +742,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
   let hidden_exn = ref None in
 
   let update_input() =
-    if !en_recv && !in_size = 0 then (
+    if !en_recv && !in_size = 0 && mplex#alive then (
       if not mplex#reading then
         let when_done exn_opt p =
           in_pos := 0;
@@ -762,7 +762,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
       mplex # cancel_reading() in
 
   let rec update_output() =
-    if !en_send && !out_size > 0 then (
+    if !en_send && !out_size > 0 && mplex#alive then (
       if not mplex#writing then
         let when_done exn_opt p =
           out_pos := !out_pos + p;
@@ -840,7 +840,10 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
         )
 
       method hidden_exn =
-        !hidden_exn
+        if !hidden_exn <> Some Cancelled then
+          !hidden_exn
+        else
+          None
 
       method send mem len =
         ( match !out_exn with
@@ -932,6 +935,12 @@ let restore_tls_endpoint exn config mplex on_input on_output =
   (ep_mod, adapter)
 
 
+let notify f_opt =
+  match f_opt with
+    | Some f -> f()
+    | None -> ()
+
+
 class tls_multiplex_controller get_ep config mplex on_handshake
       : multiplex_controller =
   let on_input = ref (fun () -> ()) in
@@ -955,7 +964,6 @@ object(self)
   val mutable tls_shutdown = None
   val mutable tls_session_props = None
   val mutable tls_session = None
-  val mutable out_notify = Queue.create()
   val mutable fatal_exn = None
 
   val aux_buf_lz = lazy(Netsys_mem.pool_alloc_memory Netsys_mem.default_pool)
@@ -973,7 +981,7 @@ object(self)
   initializer
     on_input := self#on_input;
     on_output := self#on_output;
-    self # cont_handshake();
+    ignore(self # cont_handshake())
 
 
   method tls_session_props =
@@ -1089,7 +1097,7 @@ object(self)
 	     sprintf
 	       "start_writing tls_multiplex_controller mplex=%d pos=%d len=%d"
 	       (Oo.id self) pos len);
-    self # update();
+    self # update_writing();
 
   method start_mem_writing ~when_done m pos len =
     if pos < 0 || len < 0 || pos > Bigarray.Array1.dim m - len then
@@ -1107,7 +1115,7 @@ object(self)
 	     sprintf
 	       "start_writing tls_multiplex_controller mplex=%d pos=%d len=%d"
 	       (Oo.id self) pos len);
-    self # update();
+    self # update_writing();
 
   method start_writing_eof ~when_done () =
     (* From here on we know fd is not a named pipe *)
@@ -1124,14 +1132,13 @@ object(self)
 	     sprintf
 	       "start_writing_eof tls_multiplex_controller mplex=%d"
 	       (Oo.id self));
-    self # update();
+    self # update_writing();
 
 
   method cancel_writing () =
     self # cancel_writing_with Cancelled
 
   method private cancel_writing_with x =
-    Queue.clear out_notify;
     match writing, writing_eof with
       | `None, None ->
 	  ()
@@ -1167,7 +1174,7 @@ object(self)
 	     sprintf
 	       "start_shutting_down tls_multiplex_controller mplex=%d"
 	       (Oo.id self));
-    self # update();
+    self # update_writing();
 
   method cancel_shutting_down () =
     self # cancel_shutting_down_with Cancelled
@@ -1192,168 +1199,176 @@ object(self)
 
 
   method private update_reading() =
-    if tls_handshake = None && shutting_down = None && 
-         adapter#recv_size > 0
-    then
-      self # on_input_rw()
+    (* read conditions have changed. Check whether we can immediately react *)
+    if tls_handshake = None && shutting_down = None then
+      match self # try_tls_read() with
+        | Some noti -> notify (Some noti)
+        | None -> self # update_soon()
     else
-      self # update()
+      self # update_soon() 
 
+
+  method private update_writing() =
+    (* write conditions have changed. Check whether we can immediately react *)
+    if tls_handshake = None && shutting_down = None then
+      match self # try_tls_write() with
+        | Some noti -> notify (Some noti)
+        | None -> self # update_soon()
+      else
+        self # update_soon()
+
+  method private update_soon() =
+    let g = Unixqueue.new_group esys in
+    Unixqueue.once esys g 0.0
+      (fun () -> 
+         notify (self # update())
+      )
 
   method private update() =
+    (* any conditions have changed. Return the notification callback *)
     dlog "tls_multiplex_controller: update";
     match fatal_exn with
       | Some exn ->
            (* a delayed exception from the handshake *)
            self # cancel_reading_with exn;
            self # cancel_writing_with exn;
-           self # cancel_shutting_down_with exn
+           self # cancel_shutting_down_with exn;
+           None
 
       | None ->
-           let need_rd = 
-             reading <> `None
-             || tls_handshake = Some `R
-             || tls_shutdown = Some `R in
-           adapter # enable_recv (need_rd && adapter#recv_size = 0);
+           self # config_adapter();
 
-           if tls_handshake = Some `W then (
-             self # cont_handshake();
+           if tls_handshake <> None then (
+             let progress = self # cont_handshake() in
+             if progress then 
+               self#update()
+             else
+               None
            )
            else (
              match shutting_down with
                | Some when_done ->
                     self # cont_shutdown when_done
                | None ->
-                    self # update_rw()
+                    ( match self # try_tls_write() with
+                        | Some noti -> Some noti
+                        | None -> self # try_tls_read()
+                    )
            )
 
-  method private update_rw () =
-    let report = ref (fun _ -> ()) in
-    if Queue.length out_notify = 0 then (
-      try
-        ( match writing with
-            | `String(when_done, s, pos, len) ->
-                 report := (fun exn -> writing <- `None;
-                                       when_done (Some exn) 0
-                           );
-                 dlogr 
-                   (fun () ->
-                      sprintf "tls_multiplex_controller: \
-                               tls_send(str) pos=%d len=%d" pos len);
-                 let aux_buf = Lazy.force aux_buf_lz in
-                 let len' = min len (Bigarray.Array1.dim aux_buf) in
-                 Netsys_mem.blit_string_to_memory s pos aux_buf 0 len';
-                 let n = Netsys_tls.mem_send ep_mod aux_buf 0 len' in
-                 dlogr 
-                   (fun () ->
-                      sprintf "tls_multiplex_controller: tls_send got %d" n);
-                 Queue.add (fun () -> writing <- `None;
-                                      when_done None n
-                           ) out_notify;
-                 (* writing <- `None; *)
-                 adapter # enable_send (adapter#send_size > 0);
-            | `Mem(when_done, mem, pos, len) ->
-                 report := (fun exn -> writing <- `None;
-                                       when_done (Some exn) 0
-                           );
-                 dlogr 
-                   (fun () ->
-                      sprintf "tls_multiplex_controller:  \
-                               tls_send(mem) pos=%d len=%d" pos len);
-                 let n = Netsys_tls.mem_send ep_mod mem pos len in
-                 dlogr 
-                   (fun () ->
-                      sprintf "tls_multiplex_controller: tls_send got %d" n);
-                 Queue.add (fun () -> writing <- `None;
-                                      when_done None n
-                           ) out_notify;
-                 (* writing <- `None; *)
-                 adapter # enable_send (adapter#send_size > 0);
-            | `None ->
-                 ()
-        );
-        ( match writing_eof with
-            | Some when_done ->
-                 report := (fun exn -> writing_eof <- None;
-                                       when_done (Some exn)
-                           );
-                 dlog "tls_multiplex_controller: tls_send shutdown";
-                 Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_SEND;
-                 dlog "tls_multiplex_controller: tls_send shutdown ok";
-                 Queue.add (fun () -> writing_eof <- None;
-                                      when_done None
-                           ) out_notify;
-                 (* writing_eof <- None; *)
-                 wrote_eof <- true;
-                 adapter # enable_send (adapter#send_size > 0);                 
-            | None ->
-                 ()
-        );
-      with
-        | Netsys_types.EAGAIN_RD ->
-             (* This means there was a re-handshake *)
-             let cont = self # check_for_hidden_exn "send" !report in
-             if cont then (
-               dlog "tls_multiplex_controller: tls_send EAGAIN_RD";
-               tls_handshake <- Some `R;
-               adapter # enable_send (adapter#send_size > 0);
-             )
-        | Netsys_types.EAGAIN_WR ->
-             let cont = self # check_for_hidden_exn "send" !report in
-             if cont then (
-               (* There is a pending output operation. Some time in the future,
-                  on_output will be called back, and we try then again
-                *)
-               dlog "tls_multiplex_controller: tls_send EAGAIN_WR";
-               adapter # enable_send (adapter#send_size > 0);
-             )
-        | other ->
-             dlogr 
-               (fun () ->
-                  sprintf "tls_multiplex_controller: tls_send exn=%s"
-                          (Netexn.to_string other));
-             !report other
-    )
+  method private config_adapter() =
+    let need_rd = 
+      (reading <> `None && tls_handshake = None)
+      || tls_handshake = Some `R
+      || tls_shutdown = Some `R in
+    dlogr 
+      (fun () ->
+         sprintf "tls_multiplex_controller: config_adapter recv=%B" need_rd);
+    adapter # enable_recv need_rd;
+    adapter # enable_send true
 
-  method private check_for_hidden_exn op report =
-    (* Check whether we have to restore an exception after EAGAIN *)
-    match adapter # hidden_exn with
-      | None ->
-          (* a real EAGAIN *)
-          true
-      | Some hidden_exn ->
+
+  method private try_tls_write () : (unit -> unit) option =
+    let report = ref (fun _ _ -> ()) in
+    let notify_data n () =
+      !report None n in
+    let notify_error exn () =
+      !report (Some exn) 0 in
+    try
+      ( match writing with
+          | `String(when_done, s, pos, len) ->
+              report := (fun exn_opt n -> writing <- `None;
+                                          when_done exn_opt n
+                        );
+              dlogr 
+                (fun () ->
+                   sprintf "tls_multiplex_controller: \
+                            tls_send(str) pos=%d len=%d" pos len);
+              let aux_buf = Lazy.force aux_buf_lz in
+              let len' = min len (Bigarray.Array1.dim aux_buf) in
+              Netsys_mem.blit_string_to_memory s pos aux_buf 0 len';
+              let n = Netsys_tls.mem_send ep_mod aux_buf 0 len' in
+              dlogr 
+                (fun () ->
+                 sprintf "tls_multiplex_controller: tls_send got %d" n);
+              self # config_adapter();
+              Some(notify_data n)
+          | `Mem(when_done, mem, pos, len) ->
+              report := (fun exn_opt n -> writing <- `None;
+                                          when_done exn_opt n
+                        );
+              dlogr 
+                (fun () ->
+                   sprintf "tls_multiplex_controller:  \
+                            tls_send(mem) pos=%d len=%d" pos len);
+              let n = Netsys_tls.mem_send ep_mod mem pos len in
+              dlogr 
+                (fun () ->
+                 sprintf "tls_multiplex_controller: tls_send got %d" n);
+              self # config_adapter();
+              Some(notify_data n)
+          | `None ->
+              ( match writing_eof with
+                  | Some when_done ->
+                      report := (fun exn_opt n -> writing_eof <- None;
+                                                  when_done exn_opt
+                                );
+                      dlog "tls_multiplex_controller: tls_send shutdown";
+                      Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_SEND;
+                      dlog "tls_multiplex_controller: tls_send shutdown ok";
+                      wrote_eof <- true;
+                      self # config_adapter();
+                      Some(notify_data 0)
+                  | None ->
+                      None
+              )
+      )
+    with
+      | Netsys_types.EAGAIN_RD ->
+          (* This means there was a re-handshake *)
+          ( match self # check_for_hidden_exn "send" notify_error with
+              | None ->
+                  dlog "tls_multiplex_controller: tls_send EAGAIN_RD";
+                  tls_handshake <- Some `R;
+                  self # config_adapter();
+                  None
+              | noti -> noti
+          )
+      | Netsys_types.EAGAIN_WR ->
+          ( match self # check_for_hidden_exn "send" notify_error with
+              | None ->
+                  (* There is a pending output operation. Some time in the
+                     future, on_output will be called back and we try then again
+                   *)
+                  dlog "tls_multiplex_controller: tls_send EAGAIN_WR";
+                  self # config_adapter();
+                  None
+              | noti -> noti
+          )
+      | other ->
           dlogr 
             (fun () ->
-             sprintf "tls_multiplex_controller: tls_%s hidden exn=%s"
-                     op (Netexn.to_string hidden_exn));
-          report hidden_exn;
-          false
-      
-  method private on_input() =
-    match tls_handshake with
-      | Some _ ->
-           self # cont_handshake()
-      | None ->
-           ( match shutting_down with
-               | Some when_done ->
-                    self # cont_shutdown when_done
-               | None ->
-                    self # on_input_rw()
-           )
+               sprintf "tls_multiplex_controller: tls_send exn=%s"
+                       (Netexn.to_string other));
+          Some(notify_error other)
 
-  method private on_input_rw() =
-    let notify when_done n =
+  method private try_tls_read() : (unit -> unit) option =
+    (* try another TLS data read. Return the notification *)
+    let report = ref (fun _ _ -> ()) in
+    let notify_data n () =
       if n=0 then (
         read_eof <- true;
-        when_done (Some End_of_file) 0
+        !report (Some End_of_file) 0
       )
       else
-        when_done None n in
-    let report = ref (fun _ -> ()) in
+        !report None n in
+    let notify_error exn () =
+      !report (Some exn) 0 in
     try
       ( match reading with
           | `String(when_done, peek, s, pos, len) ->
-               report := (fun exn -> reading <- `None; when_done (Some exn) 0);
+               report := 
+                 (fun exn_opt n -> reading <- `None; when_done exn_opt n);
                peek();
                dlogr 
                  (fun () ->
@@ -1366,10 +1381,12 @@ object(self)
                dlogr 
                  (fun () ->
                     sprintf "tls_multiplex_controller: tls_recv got %d" n);
-               reading <- `None;
-               notify when_done n
+               reading <- `None; 
+               self # config_adapter();
+               Some (notify_data n)
           | `Mem(when_done, peek, mem, pos, len) ->
-               report := (fun exn -> reading <- `None; when_done (Some exn) 0);
+               report := 
+                 (fun exn_opt n -> reading <- `None; when_done exn_opt n);
                peek();
                dlogr 
                  (fun () ->
@@ -1379,70 +1396,100 @@ object(self)
                dlogr 
                  (fun () ->
                     sprintf "tls_multiplex_controller: tls_recv got %d" n);
-               reading <- `None;
-               notify when_done n
+               reading <- `None; 
+               self # config_adapter();
+               Some(notify_data n)
           | `None ->
-               ()
+               None
       )
     with
       | Netsys_types.EAGAIN_RD ->
-           let cont = self # check_for_hidden_exn "recv" !report in
-           if cont then (
-             dlog "tls_multiplex_controller: tls_recv EAGAIN_RD";
-             self # update();
+           ( match self # check_for_hidden_exn "recv" notify_error with
+               | None ->
+                   dlog "tls_multiplex_controller: tls_recv EAGAIN_RD";
+                   self # config_adapter();
+                   None
+               | noti ->
+                   noti
            )
       | Netsys_types.EAGAIN_WR ->
            (* This means there was a re-handshake *)
-           let cont = self # check_for_hidden_exn "recv" !report in
-           if cont then (
-             dlog "tls_multiplex_controller: tls_recv EAGAIN_WR";
-             tls_handshake <- Some `W;
-             self # update();
+           ( match self # check_for_hidden_exn "recv" notify_error with
+               | None ->
+                   dlog "tls_multiplex_controller: tls_recv EAGAIN_WR";
+                   tls_handshake <- Some `W;
+                   self # config_adapter();
+                   None
+               | noti ->
+                   noti
            )
       | other ->
            dlogr 
              (fun () ->
                 sprintf "tls_multiplex_controller: tls_recv exn=%s"
                         (Netexn.to_string other));
-           !report other
+           Some(notify_error other)
 
+
+  method private check_for_hidden_exn_raise() =
+    match adapter#hidden_exn with
+      | None -> ()
+      | Some e -> raise e
+
+  method private check_for_hidden_exn op notify_error =
+    (* Check whether we have to restore an exception after EAGAIN *)
+    match adapter # hidden_exn with
+      | None ->
+          (* a real EAGAIN *)
+          None
+      | Some hidden_exn ->
+          dlogr 
+            (fun () ->
+             sprintf "tls_multiplex_controller: tls_%s hidden exn=%s"
+                     op (Netexn.to_string hidden_exn));
+          Some(notify_error hidden_exn)
+      
+  method private on_input() =
+    (* this is invoked when new bytes have been received and it is reasonable
+       to try another TLS read *)
+    notify (self # update())
 
   method private on_output() =
-    self # update();
-    if Queue.length out_notify = 1 then
-      let f = Queue.take out_notify in
-      f()
-    else
-      while Queue.length out_notify > 0 do
-        let f = Queue.take out_notify in
-        Unixqueue.once esys g 0.0 f
-      done
+    (* this is invoked when new bytes have been written and it is reasonable
+       to try another TLS write *)
+    notify (self # update())
 
   method private cont_handshake() =
+    (* Continues the handshake. Returns whether progress was made *)
     try
-      dlog "tls_multiplex_controller: cont_handshake (re)start";
-      Netsys_tls.handshake ep_mod;
-      adapter # enable_send (adapter#send_size > 0);
-      tls_handshake <- None;
-      dlog "tls_multiplex_controller: cont_handshake done";
-      on_handshake (self :> multiplex_controller);
-      self # update();
+      try
+        dlog "tls_multiplex_controller: cont_handshake (re)start";
+        Netsys_tls.handshake ep_mod;
+        self # config_adapter();
+        tls_handshake <- None;
+        dlog "tls_multiplex_controller: cont_handshake done";
+        on_handshake (self :> multiplex_controller);
+        true
+      with
+        | Netsys_types.EAGAIN_RD ->
+            (* There is a pending input operation. Some time in the future,
+              on_output will be called back, and we try then again
+             *)
+            self # check_for_hidden_exn_raise();
+            tls_handshake <- Some `R;
+            self # config_adapter();
+            dlog "tls_multiplex_controller: cont_handshake EAGAIN_RD";
+            false
+        | Netsys_types.EAGAIN_WR ->
+            (* There is a pending output operation. Some time in the future,
+              on_output will be called back, and we try then again
+             *)
+            self # check_for_hidden_exn_raise();
+            tls_handshake <- Some `W;
+            self # config_adapter();
+            dlog "tls_multiplex_controller: cont_handshake EAGAIN_WR";
+            false
     with
-      | Netsys_types.EAGAIN_RD ->
-           (* There is a pending input operation. Some time in the future,
-              on_output will be called back, and we try then again
-            *)
-           tls_handshake <- Some `R;
-           adapter # enable_send (adapter#send_size > 0);
-           adapter # enable_recv true;
-           dlog "tls_multiplex_controller: cont_handshake EAGAIN_RD";
-      | Netsys_types.EAGAIN_WR ->
-           (* There is a pending output operation. Some time in the future,
-              on_output will be called back, and we try then again
-            *)
-           tls_handshake <- Some `W;
-           adapter # enable_send (adapter#send_size > 0);
-           dlog "tls_multiplex_controller: cont_handshake EAGAIN_WR";
       | other ->
            dlogr 
              (fun () ->
@@ -1450,41 +1497,45 @@ object(self)
                         (Netexn.to_string other));
            if fatal_exn = None then
              fatal_exn <- Some other;
-           self # update()
+           true
 
   method private cont_shutdown when_done =
     try
-      dlog "tls_multiplex_controller: cont_shutdown (re)start";
-      Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_ALL;
-      shutting_down <- None;
-      tls_shutdown <- None;
-      read_eof <- true;
-      wrote_eof <- true;
-      when_done None;
-      dlog "tls_multiplex_controller: cont_shutdown done";
-      self # update();
+      try
+        dlog "tls_multiplex_controller: cont_shutdown (re)start";
+        Netsys_tls.shutdown ep_mod Unix.SHUTDOWN_ALL;
+        tls_shutdown <- None;
+        read_eof <- true;
+        wrote_eof <- true;
+        adapter # enable_recv false;
+        dlog "tls_multiplex_controller: cont_shutdown done";
+        Some(fun () -> shutting_down <- None; when_done None)
+      with
+        | Netsys_types.EAGAIN_RD ->
+            (* There is a pending input operation. Some time in the future,
+              on_output will be called back, and we try then again
+             *)
+            self # check_for_hidden_exn_raise();
+            tls_shutdown <- Some `R;
+            self # config_adapter();
+            dlog "tls_multiplex_controller: cont_shutdown EAGAIN_RD";
+            None
+        | Netsys_types.EAGAIN_WR ->
+            (* There is a pending output operation. Some time in the future,
+              on_output will be called back, and we try then again
+             *)
+            self # check_for_hidden_exn_raise();
+            tls_shutdown <- Some `W;
+            self # config_adapter();
+            dlog "tls_multiplex_controller: cont_shutdown EAGAIN_WR";
+            None
     with
-      | Netsys_types.EAGAIN_RD ->
-           (* There is a pending input operation. Some time in the future,
-              on_output will be called back, and we try then again
-            *)
-           tls_shutdown <- Some `R;
-           adapter # enable_send (adapter#send_size > 0);
-           adapter # enable_recv true;
-           dlog "tls_multiplex_controller: cont_shutdown EAGAIN_RD";
-      | Netsys_types.EAGAIN_WR ->
-           (* There is a pending output operation. Some time in the future,
-              on_output will be called back, and we try then again
-            *)
-           tls_shutdown <- Some `W;
-           adapter # enable_send (adapter#send_size > 0);
-           dlog "tls_multiplex_controller: cont_shutdown EAGAIN_WR";
       | other ->
            dlogr 
              (fun () ->
                 sprintf "tls_multiplex_controller: cont_shutdown exn=%s"
                         (Netexn.to_string other));
-           when_done (Some other)
+           Some(fun () -> shutting_down <- None; when_done (Some other))
 
   method inactivate() =
     dlog "tls_multiplex_controller: inactivate";
