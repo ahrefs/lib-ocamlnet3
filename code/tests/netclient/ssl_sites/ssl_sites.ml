@@ -6,12 +6,17 @@ let urls =
     "http://www.gerd-stolpmann.de";
     "https://broking.postbank.de/templates/index.jsp";
     "https://adwords.google.de/select/";
-    "https://www.1822direkt.com/1822central/cms/47.jsp";
-    "https://intranet.fr-aktuell.de/webabo/start.do?";
-    "https://www.cortalconsors.de/euroWebDe/-";
+    "https://www.cortalconsors.de/";
     "https://www.collmex.de/cgi-bin/cgi.exe?35335,0,login";
     "https://www.comfi.com/reg/?l="
-  ] 
+  ] ;;
+
+(*
+Uq_engines.Debug.enable := true;;
+Netsys_tls.Debug.enable := true;;
+Nethttp_client.Debug.enable := true;;
+Nethttp_client.Convenience.http_verbose ~verbose_response_contents:true ();;
+*)
 
 let () =
   Nettls_gnutls.init();

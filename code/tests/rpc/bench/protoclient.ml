@@ -286,7 +286,11 @@ let register_denying_filter () =
     C.ping'async client ()
       (fun get_resp ->
 	 try get_resp() with
-	     Rpc_client.Message_lost -> as_expected := true
+	   | Rpc_client.Message_lost
+           | Rpc_client.Communication_error(
+                 Nettls_gnutls.TLS.Exc.TLS_error(
+                     "GNUTLS_E_UNEXPECTED_PACKET_LENGTH")) ->
+               as_expected := true
       );
     Unixqueue.run esys;
     Rpc_client.shut_down client;

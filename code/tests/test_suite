@@ -42,7 +42,8 @@ dirs="netclient/hhamsters \
       shell"
 
 dirs_ssl="netclient/http_bench
-          netclient/ssl_sites"
+          netclient/ssl_sites
+	  rpc/bench"
 
 
 clean() {
