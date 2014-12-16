@@ -1,5 +1,5 @@
 OCAMLNET 4 RELEASE:
- - CHECK AGAIN UNIT TESTS
+ - CHECK AGAIN UNIT TESTS - DONE
  - CHECK EXAMPLES
  - renames: xdr, xdr_mstring, mimestring
  - Netconversion refactoring
