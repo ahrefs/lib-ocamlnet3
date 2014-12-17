@@ -1349,18 +1349,18 @@ module AES_CTS = struct
     (* Exactly the same, but we get input as "mstring list" and return output
        in the same way
      *)
-    let l = Xdr_mstring.length_mstrings ms_list in
+    let l = Netxdr_mstring.length_mstrings ms_list in
     if l <= 16 then (
-      let s = encrypt key (Xdr_mstring.concat_mstrings ms_list) in
-      [ Xdr_mstring.string_to_mstring s ]
+      let s = encrypt key (Netxdr_mstring.concat_mstrings ms_list) in
+      [ Netxdr_mstring.string_to_mstring s ]
     )
     else (
       let cipher = aes128_cbc() in
       let ctx = cipher # create key `CTS in
       ctx # set_iv (String.make 16 '\000');
-      let ch = Xdr_mstring.in_channel_of_mstrings ms_list in
+      let ch = Netxdr_mstring.in_channel_of_mstrings ms_list in
       let enc_ch = Netchannels_crypto.encrypt_in ctx ch in
-      Xdr_mstring.mstrings_of_in_channel (enc_ch :> Netchannels.in_obj_channel)
+      Netxdr_mstring.mstrings_of_in_channel (enc_ch :> Netchannels.in_obj_channel)
     )
     
 
@@ -1382,17 +1382,17 @@ module AES_CTS = struct
 
 
   let decrypt_mstrings key ms_list =
-    let l = Xdr_mstring.length_mstrings ms_list in
+    let l = Netxdr_mstring.length_mstrings ms_list in
     if l <= 16 then (
-      let s = decrypt key (Xdr_mstring.concat_mstrings ms_list) in
-      [ Xdr_mstring.string_to_mstring s ]
+      let s = decrypt key (Netxdr_mstring.concat_mstrings ms_list) in
+      [ Netxdr_mstring.string_to_mstring s ]
     ) else (
       let cipher = aes128_cbc() in
       let ctx = cipher # create key `CTS in
       ctx # set_iv (String.make 16 '\000');
-      let ch = Xdr_mstring.in_channel_of_mstrings ms_list in
+      let ch = Netxdr_mstring.in_channel_of_mstrings ms_list in
       let dec_ch = Netchannels_crypto.decrypt_in ctx ch in
-      Xdr_mstring.mstrings_of_in_channel (dec_ch :> Netchannels.in_obj_channel)
+      Netxdr_mstring.mstrings_of_in_channel (dec_ch :> Netchannels.in_obj_channel)
     )
 
   (* Test vectors from the RFC (for 128 bit AES): *)
@@ -1486,13 +1486,13 @@ module AES_CTS = struct
     List.for_all
       (fun (k, v_in, v_out) ->
 	 prerr_endline("Test: " ^ string_of_int !j);
-	 let v_in_ms = Xdr_mstring.string_to_mstring v_in in
-	 let v_out_ms = Xdr_mstring.string_to_mstring v_out in
+	 let v_in_ms = Netxdr_mstring.string_to_mstring v_in in
+	 let v_out_ms = Netxdr_mstring.string_to_mstring v_out in
 	 let e = 
-	   Xdr_mstring.concat_mstrings (encrypt_mstrings k [v_in_ms]) in
+	   Netxdr_mstring.concat_mstrings (encrypt_mstrings k [v_in_ms]) in
 	 prerr_endline "  enc ok";
 	 let d =
-	   Xdr_mstring.concat_mstrings (decrypt_mstrings k [v_out_ms]) in
+	   Netxdr_mstring.concat_mstrings (decrypt_mstrings k [v_out_ms]) in
 	 prerr_endline "  dec ok";
 	 incr j;
 	 e = v_out && d = v_in
@@ -1552,16 +1552,16 @@ module Cryptosystem = struct
     let c_bytes = C.c/8 in
     let conf = String.make c_bytes '\000' in
     Netsys_rng.fill_random conf;
-    let l = Xdr_mstring.length_mstrings message in
+    let l = Netxdr_mstring.length_mstrings message in
     let p = (l + c_bytes) mod C.m in
     let pad = 
       if p = 0 then "" else String.make (C.m - p) '\000' in
     let p1 =
-      ( ( Xdr_mstring.string_to_mstring conf ) :: message ) @
-	[ Xdr_mstring.string_to_mstring pad ] in
+      ( ( Netxdr_mstring.string_to_mstring conf ) :: message ) @
+	[ Netxdr_mstring.string_to_mstring pad ] in
     let c1 = C.encrypt_mstrings s_keys.ke p1 in
     let h1 = I.hmac_mstrings s_keys.ki p1 in
-    c1 @ [ Xdr_mstring.string_to_mstring(String.sub h1 0 I.h) ]
+    c1 @ [ Netxdr_mstring.string_to_mstring(String.sub h1 0 I.h) ]
 
   let decrypt_and_verify s_keys ciphertext =
     let c_bytes = C.c/8 in
@@ -1583,21 +1583,21 @@ module Cryptosystem = struct
 
   let decrypt_and_verify_mstrings s_keys ciphertext =
     let c_bytes = C.c/8 in
-    let l = Xdr_mstring.length_mstrings ciphertext in
+    let l = Netxdr_mstring.length_mstrings ciphertext in
     if l < I.h then
       invalid_arg "Netmech_scram.Cryptosystem.decrypt_and_verify";
-    let c1 = Xdr_mstring.shared_sub_mstrings ciphertext 0 (l - I.h) in
+    let c1 = Netxdr_mstring.shared_sub_mstrings ciphertext 0 (l - I.h) in
     let h1 = 
-      Xdr_mstring.concat_mstrings
-	(Xdr_mstring.shared_sub_mstrings ciphertext (l - I.h) I.h) in
+      Netxdr_mstring.concat_mstrings
+	(Netxdr_mstring.shared_sub_mstrings ciphertext (l - I.h) I.h) in
     let p1 = C.decrypt_mstrings s_keys.ke c1 in
     let h1' = String.sub (I.hmac_mstrings s_keys.ki p1) 0 I.h in
     if h1 <> h1' then
       raise Integrity_error;
-    let q = Xdr_mstring.length_mstrings p1 in
+    let q = Netxdr_mstring.length_mstrings p1 in
     if q < c_bytes then
       raise Integrity_error;
-    Xdr_mstring.shared_sub_mstrings p1 c_bytes (q-c_bytes)
+    Netxdr_mstring.shared_sub_mstrings p1 c_bytes (q-c_bytes)
       (* This includes any padding or residue from the lower layer! *)
 
   let get_ec s_keys n =

@@ -259,7 +259,7 @@ module ManagedClient : sig
 	  (** The maximum response length. See 
               {!Rpc_client.set_max_response_length}.
 	   *)
-	mclient_mstring_factories : Xdr_mstring.named_mstring_factories option
+	mclient_mstring_factories : Netxdr_mstring.named_mstring_factories option
 	  (** The factories to use for decoding managed strings *)
       }
 
@@ -279,7 +279,7 @@ module ManagedClient : sig
                               ?user_name:string option ->
                               ?initial_ping:bool ->
                               ?max_response_length:int ->
-                              ?mstring_factories:Xdr_mstring.
+                              ?mstring_factories:Netxdr_mstring.
                                                     named_mstring_factories ->
                               unit -> mclient_config
                                         

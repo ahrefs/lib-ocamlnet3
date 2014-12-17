@@ -28,24 +28,24 @@ type named_mstring_factories =
 
 let sbm s pos len : mstring =
   if len < 0 || pos < 0 || pos > String.length s - len then
-    invalid_arg "Xdr_mstring.sbm";
+    invalid_arg "Netxdr_mstring.sbm";
   ( object
       method length = len
       method blit_to_string mpos u upos l =
 	if l < 0 then
-	  invalid_arg "Xdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_string";
 	if mpos < 0 || mpos > len - l then
-	  invalid_arg "Xdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_string";
 	if upos < 0 || upos > String.length u - l then
-	  invalid_arg "Xdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_string";
 	String.blit s (pos+mpos) u upos l
       method blit_to_memory mpos u upos l =
 	if l < 0 then
-	  invalid_arg "Xdr_mstring#blit_to_memory";
+	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	if mpos < 0 || mpos > len - l then
-	  invalid_arg "Xdr_mstring#blit_to_memory";
+	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	if upos < 0 || upos > Bigarray.Array1.dim u - l then
-	  invalid_arg "Xdr_mstring#blit_to_memory";
+	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	Netsys_mem.blit_string_to_memory s (pos+mpos) u upos l
       method as_string = (s,pos)
       method as_memory =
@@ -59,24 +59,24 @@ let sbm s pos len : mstring =
 
 let mbm m pos len : mstring =
   if len < 0 || pos < 0 || pos > Bigarray.Array1.dim m - len then
-    invalid_arg "Xdr_mstring.mbm";
+    invalid_arg "Netxdr_mstring.mbm";
   ( object
       method length = len
       method blit_to_string mpos u upos l =
 	if l < 0 then
-	  invalid_arg "Xdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_string";
 	if mpos < 0 || mpos > len - l then
-	  invalid_arg "Xdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_string";
 	if upos < 0 || upos > String.length u - l then
-	  invalid_arg "Xdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_string";
 	Netsys_mem.blit_memory_to_string m (pos+mpos) u upos l
       method blit_to_memory mpos u upos l =
 	if l < 0 then
-	  invalid_arg "Xdr_mstring#blit_to_memory";
+	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	if mpos < 0 || mpos > len - l then
-	  invalid_arg "Xdr_mstring#blit_to_memory";
+	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	if upos < 0 || upos > Bigarray.Array1.dim u - l then
-	  invalid_arg "Xdr_mstring#blit_to_memory";
+	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	Bigarray.Array1.blit
 	  (Bigarray.Array1.sub m (pos+mpos) l)
 	  (Bigarray.Array1.sub u upos l)
@@ -217,7 +217,7 @@ let shared_sub_mstring (ms : mstring)
    *)
   let ms_len = ms#length in
   if sub_len < 0 || sub_pos < 0 || sub_pos > ms_len - sub_len then
-    invalid_arg "Xdr_mstring.shared_sub_mstring";
+    invalid_arg "Netxdr_mstring.shared_sub_mstring";
   ( object(self)
       method length = sub_len
       method blit_to_string mpos s spos len =
@@ -238,7 +238,7 @@ let shared_sub_mstring (ms : mstring)
 let shared_sub_mstrings l sub_pos sub_len =
   let l_len = length_mstrings l in
   if sub_len < 0 || sub_pos < 0 || sub_pos > l_len - sub_len then
-    invalid_arg "Xdr_mstring.shared_sub_mstrings";
+    invalid_arg "Netxdr_mstring.shared_sub_mstrings";
   let sub_pos' = sub_pos + sub_len in
   let rec map l pos =
     match l with

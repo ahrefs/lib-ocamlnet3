@@ -26,8 +26,8 @@
  * the answer among all answers.
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 
 exception Connection_lost
@@ -246,7 +246,7 @@ val get_event_system : session -> Unixqueue.event_system
 val get_connection_id : session -> connection_id
   (** Get the connection_id *)
 
-val get_xid : session -> Rtypes.uint4
+val get_xid : session -> Netnumber.uint4
   (** Returns the session ID.
    * Important note: This number identifies the session from the caller's
    * view, not from the server's view!
@@ -345,7 +345,7 @@ val set_session_filter_2 : t -> (Rpc_transport.sockaddr -> connection_id -> rule
     * connection ID.
    *)
 
-val set_mstring_factories : t -> Xdr_mstring.named_mstring_factories -> unit
+val set_mstring_factories : t -> Netxdr_mstring.named_mstring_factories -> unit
   (** Sets the mstring factories to use for decoding requests containing
       managed strings
    *)
@@ -421,7 +421,7 @@ val stop_connection : t -> connection_id -> unit
 
 type auth_result =
     Auth_positive of (string * string * string * 
-			Xdr.encoder option * Xdr.decoder option *
+			Netxdr.encoder option * Netxdr.decoder option *
                           Netsys_gssapi.server_props option)
       (** Successful authentication:
           [(username, returned_verifier_flavour, returned_verifier_data, 
@@ -433,7 +433,7 @@ type auth_result =
        *)
   | Auth_negative of Rpc.server_error
       (** Failed authentication *)
-  | Auth_reply of (Xdr_mstring.mstring list * string * string)
+  | Auth_reply of (Netxdr_mstring.mstring list * string * string)
       (** The authentication method generates the positive response
 	  of this RPC call:
 	  [(data, verf_flavor, verf_data)]

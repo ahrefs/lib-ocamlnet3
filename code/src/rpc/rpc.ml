@@ -18,7 +18,7 @@
  * - UNIX-Authentifizierung, ggf. Interface um weiter Auths einzuhängen
  *)
 
-open Rtypes
+open Netnumber
 
 type protocol =
     Tcp          (* means: stream-oriented connection *)
@@ -57,8 +57,8 @@ let string_of_server_error =
 	"Unavailable_program"
     | Unavailable_version(v1,v2) ->
 	"Unavailable_version(" ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v1) ^ ", " ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v2) ^ ")"
+	  Int64.to_string(Netnumber.int64_of_uint4 v1) ^ ", " ^ 
+	  Int64.to_string(Netnumber.int64_of_uint4 v2) ^ ")"
     | Unavailable_procedure ->
 	"Unavailable_procedure"
     | Garbage ->
@@ -67,8 +67,8 @@ let string_of_server_error =
 	"System_err"
     | Rpc_mismatch(v1,v2) ->
 	"Rpc_mismatch(" ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v1) ^ ", " ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v2) ^ ")"
+	  Int64.to_string(Netnumber.int64_of_uint4 v1) ^ ", " ^ 
+	  Int64.to_string(Netnumber.int64_of_uint4 v2) ^ ")"
     | Auth_bad_cred ->
 	"Auth_bad_cred"
     | Auth_rejected_cred ->

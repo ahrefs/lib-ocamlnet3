@@ -329,7 +329,7 @@ type xdr_value =
   | XV_struct_fast of xdr_value array
   | XV_union_over_enum_fast of (int * xdr_value)
   | XV_array_of_string_fast of string array
-  | XV_mstring of Xdr_mstring.mstring
+  | XV_mstring of Netxdr_mstring.mstring
   | XV_direct of exn * int
 ;;
 
@@ -388,7 +388,7 @@ let dest_xv_union_over_enum_fast v =
 
 
 let fail_map_xv_enum_fast k =
-  failwith ("Xdr.map_xv_enum_fast [" ^ string_of_int k ^ "]") ;;
+  failwith ("Netxdr.map_xv_enum_fast [" ^ string_of_int k ^ "]") ;;
 
 let map_xv_enum_fast0 t v =
   match t.term with
@@ -420,7 +420,7 @@ let map_xv_enum_fast (_,t) v =
 
 
 let fail_map_xv_struct_fast k =
-  failwith ("Xdr.map_xv_struct_fast [" ^ string_of_int k ^ "]") ;;
+  failwith ("Netxdr.map_xv_struct_fast [" ^ string_of_int k ^ "]") ;;
 
 let map_xv_struct_fast0 t v =
   match t.term with
@@ -451,7 +451,7 @@ let map_xv_struct_fast (_,t) v =
   map_xv_struct_fast0 t v
 
 let fail_map_xv_union_over_enum_fast k =
-  failwith ("Xdr.map_xv_union_over_enum_fast [" ^ string_of_int k ^ "]") ;;
+  failwith ("Netxdr.map_xv_union_over_enum_fast [" ^ string_of_int k ^ "]") ;;
 
 let map_xv_union_over_enum_fast0 t v =
   match t.term with
@@ -497,7 +497,7 @@ let () =
     (Xdr_format "")
     (function
        | Xdr_format s ->
-	   sprintf "Xdr.Xdr_format(%S)" s
+	   sprintf "Netxdr.Xdr_format(%S)" s
        | _ ->
 	   assert false
     )
@@ -899,9 +899,9 @@ let rec validate_xdr_type (t:xdr_type_term) : xdr_type =
     (t0', t1')
   with
     Not_found ->
-      failwith "Xdr.validate_xdr_type: unspecified error"
+      failwith "Netxdr.validate_xdr_type: unspecified error"
   | Propagate s ->
-      failwith ("Xdr.validate_xdr_type: " ^ s)
+      failwith ("Netxdr.validate_xdr_type: " ^ s)
 ;;
 
 
@@ -950,8 +950,8 @@ let validate_xdr_type_system (s:xdr_type_term_system) : xdr_type_system =
 	      calc_min_size t1';
 	      (t0',t1')
 	    with
-	      Not_found -> failwith "Xdr.validate_xdr_type_system: unspecified error"
-	    | Propagate s -> failwith ("Xdr.validate_xdr_type_system: " ^ s)
+	      Not_found -> failwith "Netxdr.validate_xdr_type_system: unspecified error"
+	    | Propagate s -> failwith ("Netxdr.validate_xdr_type_system: " ^ s)
 	  end
 	  in
 	  (n,t2)::(r (s1 @ [n,t2]) s2')
@@ -959,7 +959,7 @@ let validate_xdr_type_system (s:xdr_type_term_system) : xdr_type_system =
     r [] s
   end
   else
-    failwith "Xdr.validate_xdr_type_system: type system has members with same names"
+    failwith "Netxdr.validate_xdr_type_system: type system has members with same names"
 ;;
 
 
@@ -1097,7 +1097,7 @@ let rec expanded_xdr_type_term (s:xdr_type_term_system) (t:xdr_type_term)
       let rec r s1 s2 =
 	match s2 with
 	  [] ->
-	    failwith ("Xdr.expanded_xdr_type_term: cannot resolve X_type " ^ n)
+	    failwith ("Netxdr.expanded_xdr_type_term: cannot resolve X_type " ^ n)
 	| (n',t') :: s2' ->
 	      if n = n' then
 		expanded_xdr_type_term s1 t'
@@ -1122,8 +1122,8 @@ let expanded_xdr_type (s:xdr_type_system) (t:xdr_type_term) : xdr_type =
     calc_min_size t1;
     (t0,t1)
   with
-    Not_found -> failwith "Xdr.expanded_xdr_type: unspecified error"
-  | Propagate s -> failwith ("Xdr.expanded_xdr_type: " ^ s)
+    Not_found -> failwith "Netxdr.expanded_xdr_type: unspecified error"
+  | Propagate s -> failwith ("Netxdr.expanded_xdr_type: " ^ s)
 ;;
 
 
@@ -1136,7 +1136,7 @@ let are_compatible (s1:xdr_type) (s2:xdr_type) : bool =
    * enum, struct and union members can be swapped
    *)
 
-  failwith "Xdr.are_compatible: not implemented"
+  failwith "Netxdr.are_compatible: not implemented"
 
 ;;
 
@@ -1150,7 +1150,7 @@ let are_compatible (s1:xdr_type) (s2:xdr_type) : bool =
    loop over the value doing everything. Whoever understands that.
  *)
 
-type encoder = Xdr_mstring.mstring list -> Xdr_mstring.mstring list
+type encoder = Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
 type decoder = string -> int -> int -> (string * int)
 
 
@@ -1356,7 +1356,7 @@ let rec pack_mstring
       (t:xdr_type0)
       (get_param:string->xdr_type)
       (get_encoder:string->encoder option)
-    : Xdr_mstring.mstring list =
+    : Netxdr_mstring.mstring list =
   (* The recursion over pack_mstring is only used for encoded parameters *)
 
   let size = pack_size v t get_param get_encoder in
@@ -1375,7 +1375,7 @@ let rec pack_mstring
   let save_buf() =
     if !buf_pos > !buf_start then (
       let x =
-	Xdr_mstring.string_based_mstrings # create_from_string
+	Netxdr_mstring.string_based_mstrings # create_from_string
 	  buf !buf_start (!buf_pos - !buf_start) false in
       result := x :: !result;
       buf_start := !buf_pos
@@ -1627,15 +1627,15 @@ let pack_xdr_value
 	mstrings
     with
       | Dest_failure ->
-	  raise(Xdr_failure "Xdr.pack_xdr_value [2]: XDR type mismatch")
+	  raise(Xdr_failure "Netxdr.pack_xdr_value [2]: XDR type mismatch")
       | Netnumber.Cannot_represent _ ->
-	  raise(Xdr_failure "Xdr.pack_xdr_value [3]: integer not representable")
+	  raise(Xdr_failure "Netxdr.pack_xdr_value [3]: integer not representable")
       | Netnumber.Out_of_range ->
-	  raise(Xdr_failure "Xdr.pack_xdr_value [4]: index out of range")
+	  raise(Xdr_failure "Netxdr.pack_xdr_value [4]: index out of range")
       | Failure s ->
-	  raise(Xdr_failure ("Xdr.pack_xdr_value [5]: " ^ s))
+	  raise(Xdr_failure ("Netxdr.pack_xdr_value [5]: " ^ s))
   else
-    raise(Xdr_failure "Xdr.pack_xdr_value [1]")
+    raise(Xdr_failure "Netxdr.pack_xdr_value [1]")
 ;;
 
 
@@ -1657,27 +1657,27 @@ let pack_xdr_value_as_string
       let rm_prefix =
 	if rm then
 	  let s = "\000\000\000\000" in
-	  [ Xdr_mstring.string_based_mstrings # create_from_string s 0 4 false ]
+	  [ Netxdr_mstring.string_based_mstrings # create_from_string s 0 4 false ]
 	else
 	  [] in
       let mstrings = rm_prefix @ mstrings0 in
-      Xdr_mstring.concat_mstrings mstrings
+      Netxdr_mstring.concat_mstrings mstrings
     with
       | Dest_failure ->
 (*let bt = Printexc.get_backtrace() in
 eprintf "Backtrace: %s\n" bt; *)
 	  raise(Xdr_failure
-		  "Xdr.pack_xdr_value_as_string [2]: XDR type mismatch")
+		  "Netxdr.pack_xdr_value_as_string [2]: XDR type mismatch")
       | Netnumber.Cannot_represent _ ->
 	  raise(Xdr_failure
-		  "Xdr.pack_xdr_value_as_string [3]: integer not representable")
+		  "Netxdr.pack_xdr_value_as_string [3]: integer not representable")
       | Netnumber.Out_of_range ->
 	  raise(Xdr_failure
-		  "Xdr.pack_xdr_value_as_string [4]: index out of range")
+		  "Netxdr.pack_xdr_value_as_string [4]: index out of range")
       | Failure s ->
-	  raise(Xdr_failure ("Xdr.pack_xdr_value_as_string [5]: " ^ s))
+	  raise(Xdr_failure ("Netxdr.pack_xdr_value_as_string [5]: " ^ s))
   else
-    raise(Xdr_failure "Xdr.pack_xdr_value_as_string [1]")
+    raise(Xdr_failure "Netxdr.pack_xdr_value_as_string [1]")
 ;;
 
 let pack_xdr_value_as_mstrings
@@ -1696,18 +1696,18 @@ let pack_xdr_value_as_mstrings
     with
       | Dest_failure ->
 	  raise(Xdr_failure
-		  "Xdr.pack_xdr_value_as_mstring [2]: XDR type mismatch")
+		  "Netxdr.pack_xdr_value_as_mstring [2]: XDR type mismatch")
       | Netnumber.Cannot_represent _ ->
 	  raise
 	    (Xdr_failure
-	       "Xdr.pack_xdr_value_as_mstring [3]: integer not representable")
+	       "Netxdr.pack_xdr_value_as_mstring [3]: integer not representable")
       | Netnumber.Out_of_range ->
 	  raise(Xdr_failure
-		  "Xdr.pack_xdr_value_as_mstring [4]: index out of range")
+		  "Netxdr.pack_xdr_value_as_mstring [4]: index out of range")
       | Failure s ->
-	  raise(Xdr_failure ("Xdr.pack_xdr_value_as_mstring [5]: " ^ s))
+	  raise(Xdr_failure ("Netxdr.pack_xdr_value_as_mstring [5]: " ^ s))
   else
-    raise(Xdr_failure "Xdr.pack_xdr_value_as_mstring [1]")
+    raise(Xdr_failure "Netxdr.pack_xdr_value_as_mstring [1]")
 ;;
 
 (* "let rec" prevents that these functions are inlined. This is wanted here,
@@ -1811,7 +1811,7 @@ let rec unpack_term
   in
 
   if pos < 0 || len < 0 || len > String.length str - pos then
-    invalid_arg "Xdr.unpack_xdr_value";
+    invalid_arg "Netxdr.unpack_xdr_value";
 
   let k_end = pos+len in
   let k = ref pos in
@@ -2077,7 +2077,7 @@ let unpack_xdr_value
        )
 
   else
-    failwith "Xdr.unpack_xdr_value"
+    failwith "Netxdr.unpack_xdr_value"
 ;;
 
 
@@ -2098,6 +2098,6 @@ let unpack_xdr_value_l
       (fun n -> try Some(List.assoc n decode) with Not_found -> None)
 
   else
-    failwith "Xdr.unpack_xdr_value"
+    failwith "Netxdr.unpack_xdr_value"
 ;;
 

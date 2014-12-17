@@ -11,7 +11,7 @@ type memory =
    *)
 
 
-(** See {!Xdr_mstring.mstring} for documentation *)
+(** See {!Netxdr_mstring.mstring} for documentation *)
 class type mstring =
 object
   method length : int

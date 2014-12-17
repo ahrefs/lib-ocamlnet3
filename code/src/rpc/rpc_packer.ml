@@ -5,8 +5,8 @@
 
 (* packs procedure calls using XDR *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 open Rpc_common
 
@@ -176,7 +176,7 @@ let valid_void = validate_xdr_type X_void
 
 type packed_value =
   | PV of string                       (* as simple string *)
-  | PV_ms of Xdr_mstring.mstring list  (* as concatenation of mstrings *)
+  | PV_ms of Netxdr_mstring.mstring list  (* as concatenation of mstrings *)
 
 (****)
 
@@ -276,7 +276,7 @@ let unpack_call_frame_l  pv =
 	    ~fast:true ~prefix:true octets message_t []
       | PV_ms mstrings ->
 	  (* FIXME: There is no faster method than this right now: *)
-	  let octets = Xdr_mstring.concat_mstrings mstrings in
+	  let octets = Netxdr_mstring.concat_mstrings mstrings in
 	  unpack_xdr_value_l
 	    ~fast:true ~prefix:true octets message_t []
   in
@@ -333,7 +333,7 @@ let unpack_call_body ?mstring_factories ?decoder prog proc pv pos =
   let octets =
     match pv with
 	PV octets -> octets
-      | PV_ms mstrings -> Xdr_mstring.concat_mstrings mstrings
+      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
   in
 
   let decode =
@@ -360,7 +360,7 @@ let unpack_call_body_raw pv pos =
   let octets =
     match pv with
 	PV octets -> octets
-      | PV_ms mstrings -> Xdr_mstring.concat_mstrings mstrings
+      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
   in
 
   String.sub octets pos (String.length octets - pos)
@@ -373,14 +373,14 @@ let extract_call_gssapi_header pv =
     match pv with
       | PV s -> s
       | PV_ms mstrings -> (* FIXME *)
-	  Xdr_mstring.concat_mstrings mstrings in
+	  Netxdr_mstring.concat_mstrings mstrings in
   (* The first 7 words have constant length. The 8th word contains the
      length of the rest (the data part of cred)
    *)
   if String.length octets < 32 then
     failwith "Rpc_packer.extract_call_gssapi_header: too short";
   let n =
-    Rtypes.int_of_uint4 (Rtypes.read_uint4 octets 28) in
+    Netnumber.int_of_uint4 (Netnumber.BE.read_uint4 octets 28) in
   let m = if n land 3 = 0 then n else n+4-(n land 3) in
   32 + m
 
@@ -586,7 +586,7 @@ let unpack_reply ?mstring_factories ?decoder prog proc pv =
   let octets =
     match pv with
 	PV octets -> octets
-      | PV_ms mstrings -> Xdr_mstring.concat_mstrings mstrings
+      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
   in
 
   let decode =
@@ -696,7 +696,7 @@ let unpack_reply_verifier prog proc pv =
   let octets =
     match pv with
 	PV octets -> octets
-      | PV_ms mstrings -> Xdr_mstring.concat_mstrings mstrings
+      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
   in
 
   let message_v =                            (* unpack the value *)
@@ -747,16 +747,16 @@ let peek_xid pv =
 	if String.length octets < 4 then
 	  failwith "peek_xid: message too short [1]";
 
-	Rtypes.mk_uint4 (octets.[0], octets.[1], octets.[2], octets.[3])
+	Netnumber.mk_uint4 (octets.[0], octets.[1], octets.[2], octets.[3])
 
     | PV_ms mstrings ->
-	if Xdr_mstring.length_mstrings mstrings < 4 then
+	if Netxdr_mstring.length_mstrings mstrings < 4 then
 	  failwith "peek_xid: message too short [2]";
 
 	let s = 
-	  Xdr_mstring.prefix_mstrings mstrings 4 in
+	  Netxdr_mstring.prefix_mstrings mstrings 4 in
 
-	Rtypes.mk_uint4 (s.[0], s.[1], s.[2], s.[3])
+	Netnumber.mk_uint4 (s.[0], s.[1], s.[2], s.[3])
 
 (*****)
 
@@ -764,7 +764,7 @@ let peek_auth_error pv =
   let len =
     match pv with
 	PV octets -> String.length octets
-      | PV_ms mstrings -> Xdr_mstring.length_mstrings mstrings in
+      | PV_ms mstrings -> Netxdr_mstring.length_mstrings mstrings in
 
   if len <> 20 then
     None
@@ -772,7 +772,7 @@ let peek_auth_error pv =
     let octets =
       match pv with
 	  PV octets -> octets
-	| PV_ms mstrings -> Xdr_mstring.concat_mstrings mstrings in  
+	| PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings in  
 
     if String.sub octets 4 12 <> 
           "\000\000\000\001\000\000\000\001\000\000\000\001"
@@ -798,13 +798,13 @@ let peek_auth_error pv =
 let length_of_packed_value pv =
   match pv with
       PV octets -> String.length octets
-    | PV_ms mstrings -> Xdr_mstring.length_mstrings mstrings
+    | PV_ms mstrings -> Netxdr_mstring.length_mstrings mstrings
 ;;
 
 let string_of_packed_value pv =
   match pv with
       PV octets -> octets
-    | PV_ms mstrings -> Xdr_mstring.concat_mstrings mstrings
+    | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
 ;;
 
 let packed_value_of_string s = PV s;;
@@ -814,7 +814,7 @@ let packed_value_of_mstrings mstrings = PV_ms mstrings
 let mstrings_of_packed_value pv =
   match pv with
     | PV octets -> 
-	[ Xdr_mstring.string_based_mstrings # create_from_string
+	[ Netxdr_mstring.string_based_mstrings # create_from_string
 	    octets 0 (String.length octets) false ]
     | PV_ms mstrings -> 
 	mstrings
@@ -825,4 +825,4 @@ let prefix_of_packed_value pv n =
     | PV octets ->
 	String.sub octets 0 n
     | PV_ms ms ->
-	Xdr_mstring.prefix_mstrings ms n
+	Netxdr_mstring.prefix_mstrings ms n

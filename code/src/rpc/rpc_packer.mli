@@ -19,8 +19,8 @@
  *   XV_union_over_enum_fast values
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 
 type packed_value
@@ -49,7 +49,7 @@ val pack_call_gssapi_header :
   (* for GSS-API - the call header up to the credentials *)
 
 val unpack_call :
-      ?mstring_factories:Xdr_mstring.named_mstring_factories ->
+      ?mstring_factories:Netxdr_mstring.named_mstring_factories ->
       ?decoder:decoder ->
       Rpc_program.t ->    (* which program to match *)
       string ->           (* which procedure *)
@@ -103,7 +103,7 @@ val extract_call_gssapi_header :
    *)
 
 val unpack_call_body :
-      ?mstring_factories:Xdr_mstring.named_mstring_factories ->
+      ?mstring_factories:Netxdr_mstring.named_mstring_factories ->
       ?decoder:decoder ->
       Rpc_program.t ->    (* which program to match *)
       string ->           (* which procedure *)
@@ -142,7 +142,7 @@ val pack_successful_reply_raw :
       uint4 ->            (* xid *)
       string ->           (* flavour of verifier *)
       string ->           (* data of verifier *)
-      Xdr_mstring.mstring list -> (* raw return data *)
+      Netxdr_mstring.mstring list -> (* raw return data *)
       packed_value
 
 val pack_accepting_reply :
@@ -160,7 +160,7 @@ val pack_rejecting_reply :
       packed_value        (* the reply in XDR representation *)
 
 val unpack_reply :
-      ?mstring_factories:Xdr_mstring.named_mstring_factories ->
+      ?mstring_factories:Netxdr_mstring.named_mstring_factories ->
       ?decoder:decoder ->
       Rpc_program.t ->    (* which program *)
       string ->           (* which procedure *)
@@ -204,8 +204,8 @@ val length_of_packed_value : packed_value -> int
 val string_of_packed_value : packed_value -> string
 val packed_value_of_string : string -> packed_value
 
-val mstrings_of_packed_value : packed_value -> Xdr_mstring.mstring list
-val packed_value_of_mstrings : Xdr_mstring.mstring list -> packed_value 
+val mstrings_of_packed_value : packed_value -> Netxdr_mstring.mstring list
+val packed_value_of_mstrings : Netxdr_mstring.mstring list -> packed_value 
 
 val prefix_of_packed_value : packed_value -> int -> string
   (** The first n bytes of the packed value *)

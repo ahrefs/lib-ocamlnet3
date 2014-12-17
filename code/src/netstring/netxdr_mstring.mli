@@ -14,7 +14,7 @@
     In the encoded XDR stream there is no difference between strings and
     managed strings, i.e. the wire representation is identical. Only
     the Ocaml type differs to which the managed string is mapped. This
-    type is {!Xdr_mstring.mstring} (below).
+    type is {!Netxdr_mstring.mstring} (below).
 
     In the RPC context there is often the problem that the I/O backend
     would profit from a different string representation than the user of
@@ -51,8 +51,8 @@
     Ocaml [string] type, and {!Netsys_mem.memory} which is actually just
     a bigarray of char's. There are two factories [fac],
 
-     - {!Xdr_mstring.string_based_mstrings}, and
-     - {!Xdr_mstring.memory_based_mstrings},
+     - {!Netxdr_mstring.string_based_mstrings}, and
+     - {!Netxdr_mstring.memory_based_mstrings},
 
     and both can be used to create the [mstring] to pass to the
     RPC layer. It should be noted that this layer can process the

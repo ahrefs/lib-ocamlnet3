@@ -7,8 +7,8 @@
  * (version 3 and 4 are called 'rpcbind'), but it is normally available.
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 
 type t =
@@ -153,7 +153,7 @@ let callit pm spec proc arg =
   let (proc_nr, in_t, out_t) = Rpc_program.signature spec proc in
   let prog_nr = Rpc_program.program_number spec in
   let vers_nr = Rpc_program.version_number spec in
-  let arg_value = Xdr.pack_xdr_value_as_string arg in_t [] in
+  let arg_value = Netxdr.pack_xdr_value_as_string arg in_t [] in
   let reply =
     Rpc_simple_client.call
       pm.client

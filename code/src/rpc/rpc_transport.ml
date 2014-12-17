@@ -271,19 +271,19 @@ object(self)
 	    when_done (`Error error) in
 
     let mstrings = mstrings_of_packed_value pv in
-    let len = Xdr_mstring.length_mstrings mstrings in
+    let len = Netxdr_mstring.length_mstrings mstrings in
 
     if len > fallback_size && len <= mem_size && mplex#mem_supported then (
       let m =
 	match !wr_buffer with
 	  | `Mem m -> m
 	  | `None -> failwith "Rpc_transport: read/write not possible" in
-      Xdr_mstring.blit_mstrings_to_memory mstrings m;
+      Netxdr_mstring.blit_mstrings_to_memory mstrings m;
       mplex # start_mem_writing
 	~when_done:(mplex_when_done len) m 0 len
     )
     else
-      let s = Xdr_mstring.concat_mstrings mstrings in
+      let s = Netxdr_mstring.concat_mstrings mstrings in
       mplex # start_writing
 	~when_done:(mplex_when_done len) s 0 len;
     self # timer_event `Start `W
@@ -544,16 +544,16 @@ object(self)
 		let rm_opt =
 		  try
 		    let rm =
-		      Rtypes.int_of_uint4
-			(Rtypes.mk_uint4 
+		      Netnumber.int_of_uint4
+			(Netnumber.mk_uint4 
 			   (rm_0,rm_buffer.[1],rm_buffer.[2],rm_buffer.[3])) in
 		    if rm > Sys.max_string_length then
-		      raise(Rtypes.Cannot_represent "");
+		      raise(Netnumber.Cannot_represent "");
 		    if rd_queue_len > Sys.max_string_length - rm then
-		      raise(Rtypes.Cannot_represent "");
+		      raise(Netnumber.Cannot_represent "");
 		    Some(rm,rm_last)
 		  with
-		    | Rtypes.Cannot_represent _ -> None in
+		    | Netnumber.Cannot_represent _ -> None in
 		( match rm_opt with
 		    | Some(rm,rm_last) ->
 (*eprintf "got RM n=%d last=%b\n%!" rm rm_last; *)
@@ -823,14 +823,14 @@ object(self)
                         cannot send to this address"
     );
     let mstrings0 = mstrings_of_packed_value pv in
-    let payload_len = Xdr_mstring.length_mstrings mstrings0 in
+    let payload_len = Netxdr_mstring.length_mstrings mstrings0 in
     (* Prepend record marker *)
     let s = String.create 4 in
-    let rm = Rtypes.uint4_of_int payload_len in
-    Rtypes.write_uint4 s 0 rm;
+    let rm = Netnumber.uint4_of_int payload_len in
+    Netnumber.BE.write_uint4 s 0 rm;
     s.[0] <- Char.chr (Char.code s.[0] lor 0x80);
     let ms = 
-      Xdr_mstring.string_based_mstrings # create_from_string 
+      Netxdr_mstring.string_based_mstrings # create_from_string 
 	s 0 4 false in
     let mstrings = ms :: mstrings0 in
     let items = items_of_mstrings [] [] 0 mstrings in

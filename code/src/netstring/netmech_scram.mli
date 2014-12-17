@@ -369,10 +369,10 @@ module AES_CTS : sig
   val m : int
   val encrypt : string -> string -> string
   val encrypt_mstrings : 
-    string -> Xdr_mstring.mstring list -> Xdr_mstring.mstring list
+    string -> Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
   val decrypt : string -> string -> string
   val decrypt_mstrings : 
-    string -> Xdr_mstring.mstring list -> Xdr_mstring.mstring list
+    string -> Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
   val tests : (string * string * string) list
   val run_tests : unit -> bool
   val run_mtests : unit -> bool
@@ -399,7 +399,7 @@ module Cryptosystem : sig
      *)
 
   val encrypt_and_sign_mstrings : 
-         specific_keys -> Xdr_mstring.mstring list -> Xdr_mstring.mstring list
+         specific_keys -> Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
     (** Same, but with data representation as [mstring list] *)
 
   val decrypt_and_verify :  specific_keys -> string -> string
@@ -417,7 +417,7 @@ module Cryptosystem : sig
      *)
 
   val decrypt_and_verify_mstrings :
-         specific_keys -> Xdr_mstring.mstring list -> Xdr_mstring.mstring list
+         specific_keys -> Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
     (** Same, but with data representation as [mstring list] *)
 
   val get_ec : specific_keys -> int -> int
@@ -435,7 +435,7 @@ module Cryptosystem : sig
     (** Returns a message integrity code *)
 
   val get_mic_mstrings :
-         specific_keys -> Xdr_mstring.mstring list -> string
+         specific_keys -> Netxdr_mstring.mstring list -> string
     (** Same, but with data representation as [mstring list] *)
 end
 

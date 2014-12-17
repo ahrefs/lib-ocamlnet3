@@ -59,23 +59,23 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       }
         
   let split_rpc_gss_data_t ms =
-    let ms_len =  Xdr_mstring.length_mstrings ms in
+    let ms_len =  Netxdr_mstring.length_mstrings ms in
     if ms_len < 4 then
       failwith "Rpc_auth_gssapi.split_rpc_gss_data_t";
-    let seq_s = Xdr_mstring.prefix_mstrings ms 4 in
-    let rest_s = Xdr_mstring.shared_sub_mstrings ms 4 (ms_len - 4) in
-    let seq = Rtypes.read_uint4 seq_s 0 in
+    let seq_s = Netxdr_mstring.prefix_mstrings ms 4 in
+    let rest_s = Netxdr_mstring.shared_sub_mstrings ms 4 (ms_len - 4) in
+    let seq = Netnumber.BE.read_uint4 seq_s 0 in
     (seq, rest_s)
       
 
-  let omax = Rtypes.mk_uint4 ('\255', '\255', '\255', '\255')
+  let omax = Netnumber.mk_uint4 ('\255', '\255', '\255', '\255')
 
   let integrity_encoder (gss_api : G.gss_api)
                         ctx is_server cred1 rpc_gss_integ_data s =
     dlog "integrity_encoder";
     let data =
-      Xdr_mstring.string_to_mstring 
-        (Rtypes.uint4_as_string cred1.seq_num) ::  s in
+      Netxdr_mstring.string_to_mstring 
+        (Netnumber.BE.uint4_as_string cred1.seq_num) ::  s in
     let mic =
       gss_api # get_mic
         ~context:ctx
@@ -105,27 +105,27 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
      *)
 (*
   let integ =
-    { databody_integ = (Xdr_mstring.concat_mstrings data);
+    { databody_integ = (Netxdr_mstring.concat_mstrings data);
       checksum = mic;
     } in
   let xdr_val = Rpc_auth_gssapi_aux._of_rpc_gss_integ_data integ in
-  Xdr.pack_xdr_value_as_string xdr_val rpc_gss_integ_data []
+  Netxdr.pack_xdr_value_as_string xdr_val rpc_gss_integ_data []
  *)
-    let data_len = Xdr_mstring.length_mstrings data in
-    let data_decolen = Xdr.get_string_decoration_size data_len omax in
-    let data_hdr = Rtypes.uint4_as_string (Rtypes.uint4_of_int data_len) in
+    let data_len = Netxdr_mstring.length_mstrings data in
+    let data_decolen = Netxdr.get_string_decoration_size data_len omax in
+    let data_hdr = Netnumber.BE.uint4_as_string (Netnumber.uint4_of_int data_len) in
     let data_padlen = data_decolen - 4 in
     let data_pad = String.make data_padlen '\000' in
     
     let mic_len = String.length mic in
-    let mic_decolen =  Xdr.get_string_decoration_size mic_len omax in
-    let mic_hdr = Rtypes.uint4_as_string (Rtypes.uint4_of_int mic_len) in
+    let mic_decolen =  Netxdr.get_string_decoration_size mic_len omax in
+    let mic_hdr = Netnumber.BE.uint4_as_string (Netnumber.uint4_of_int mic_len) in
     let mic_padlen = mic_decolen - 4 in
     let mic_pad = String.make mic_padlen '\000' in
     
-    [ Xdr_mstring.string_to_mstring data_hdr ] @
+    [ Netxdr_mstring.string_to_mstring data_hdr ] @
       data @
-        [ Xdr_mstring.string_to_mstring (data_pad ^ 
+        [ Netxdr_mstring.string_to_mstring (data_pad ^ 
 				           mic_hdr ^ mic ^ mic_pad)
         ]
           
@@ -134,7 +134,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
   let ms_factories = Hashtbl.create 3
 
   let () =
-    Hashtbl.add ms_factories "*" Xdr_mstring.string_based_mstrings
+    Hashtbl.add ms_factories "*" Netxdr_mstring.string_based_mstrings
 
 
   let integrity_decoder (gss_api : G.gss_api)
@@ -142,7 +142,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     dlog "integrity_decoder";
     try
       let xdr_val, xdr_len =
-        Xdr.unpack_xdr_value_l
+        Netxdr.unpack_xdr_value_l
           ~pos ~len ~fast:true s rpc_gss_integ_data ~prefix:true
           ~mstring_factories:ms_factories
           [] in
@@ -151,7 +151,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       let data =
         integ.databody_integ in
       (* In the server, any integrity problem should be mapped
-         to GARBAGE. We get this by raising Xdr_format exceptions here.
+         to GARBAGE. We get this by raising xdr_format exceptions here.
        *)
       gss_api # verify_mic
         ~context:ctx
@@ -163,7 +163,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   let msg = 
                     M.format_status
                       ~fn:"verify_mic" ~minor_status major_status in
-                  raise(Xdr.Xdr_format(
+                  raise(Netxdr.Xdr_format(
                           "Rpc_auth_gssapi: \
                             Cannot verify MIC: " ^ msg))
              )
@@ -171,17 +171,17 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       let (seq, args) =
         split_rpc_gss_data_t [data] in
       if seq <> cred1.seq_num then
-        raise(Xdr.Xdr_format "Rpc_auth_gssapi: bad sequence number");
+        raise(Netxdr.Xdr_format "Rpc_auth_gssapi: bad sequence number");
       dlog "integrity_decoder returns normally";
-      (Xdr_mstring.concat_mstrings args, xdr_len)
+      (Netxdr_mstring.concat_mstrings args, xdr_len)
         (* This "concat" is hard to avoid. We are still decoding strings,
            not mstrings.
          *)
     with
-      | Xdr.Xdr_format _ as e ->
+      | Netxdr.Xdr_format _ as e ->
           raise e
       | e ->
-          raise(Xdr.Xdr_format
+          raise(Netxdr.Xdr_format
                   "Rpc_auth_gssapi: cannot decode integrity-proctected message")
 
 
@@ -189,8 +189,8 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                        ctx is_server cred1 rpc_gss_priv_data s =
     dlog "privacy_encoder";
     let data =
-      Xdr_mstring.string_to_mstring 
-        (Rtypes.uint4_as_string cred1.seq_num) ::  s in
+      Netxdr_mstring.string_to_mstring 
+        (Netnumber.BE.uint4_as_string cred1.seq_num) ::  s in
     gss_api # wrap
       ~context:ctx
       ~conf_req:true
@@ -213,23 +213,23 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     (* The commented out code block performs two superflous string copies.
        We avoid this by doing the XDR-ing manually.
      *)
-                let priv_len = Xdr_mstring.length_mstrings output_message in
-                let priv_decolen = Xdr.get_string_decoration_size priv_len omax in
+                let priv_len = Netxdr_mstring.length_mstrings output_message in
+                let priv_decolen = Netxdr.get_string_decoration_size priv_len omax in
                 let priv_hdr = 
-                  Rtypes.uint4_as_string (Rtypes.uint4_of_int priv_len) in
+                  Netnumber.BE.uint4_as_string (Netnumber.uint4_of_int priv_len) in
                 let priv_padlen = priv_decolen - 4 in
                 let priv_pad = String.make priv_padlen '\000' in
-                [ Xdr_mstring.string_to_mstring priv_hdr ] @
+                [ Netxdr_mstring.string_to_mstring priv_hdr ] @
                   output_message @
-                  [ Xdr_mstring.string_to_mstring priv_pad ]
+                  [ Netxdr_mstring.string_to_mstring priv_pad ]
   (*
                 let priv =
                   { databody_priv = output_message } in
                 let xdr_val = Rpc_auth_gssapi_aux._of_rpc_gss_priv_data priv in
-                Xdr.pack_xdr_value_as_mstring xdr_val rpc_gss_priv_data []
+                Netxdr.pack_xdr_value_as_mstring xdr_val rpc_gss_priv_data []
    *)
               with
-                | (Failure s | Xdr.Xdr_failure s) when is_server ->
+                | (Failure s | Netxdr.Xdr_failure s) when is_server ->
                     (* The RFC demands that no response is sent if a
                        wrap problem occurs in the server
                      *)
@@ -243,7 +243,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     dlog "privacy_decoder";
     try
       let xdr_val, xdr_len =
-        Xdr.unpack_xdr_value_l
+        Netxdr.unpack_xdr_value_l
           ~pos ~len ~fast:true ~prefix:true s rpc_gss_priv_data 
           ~mstring_factories:ms_factories
           [] in
@@ -266,28 +266,28 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                     let msg = 
                       M.format_status
                         ~fn:"unwrap" ~minor_status major_status in
-                    raise(Xdr.Xdr_format
+                    raise(Netxdr.Xdr_format
                             ("Rpc_auth_gssapi: \
                               Cannot unwrap message: " ^ msg))
                   );
                   if not conf_state then
                     raise
-                      (Xdr.Xdr_format
+                      (Netxdr.Xdr_format
                          "Rpc_auth_gssapi: no privacy-ensuring unwrapping \
                           possible");
                   let (seq, args) =
                     split_rpc_gss_data_t output_message in
                   if seq <> cred1.seq_num then
-                    raise(Xdr.Xdr_format "Rpc_auth_gssapi: bad sequence number");
+                    raise(Netxdr.Xdr_format "Rpc_auth_gssapi: bad sequence number");
                   dlog "privacy_decoder returns normally";
-                  (Xdr_mstring.concat_mstrings args, xdr_len)
+                  (Netxdr_mstring.concat_mstrings args, xdr_len)
              )
         ()
     with
-      | Xdr.Xdr_format _ as e ->
+      | Netxdr.Xdr_format _ as e ->
           raise e
       | e ->
-          raise(Xdr.Xdr_format
+          raise(Netxdr.Xdr_format
                   "Rpc_auth_gssapi: cannot decode privacy-proctected message")
 
 
@@ -312,7 +312,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
      *)
     let l = String.length w.window * 8 in
     let lL = Int64.of_int l in
-    let seq_numL = Rtypes.int64_of_uint4 seq_num in
+    let seq_numL = Netnumber.int64_of_uint4 seq_num in
     if w.window_length = 0L then (
       (* initialization. Assume ctx.ctx_window is filled with zeros *)
       if seq_numL >= lL then
@@ -390,23 +390,23 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     let require_integrity = sconf # integrity = `Required in
 
     let rpc_gss_cred_t =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_cred_t in
 
     let rpc_gss_init_arg =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_arg in
 
     let rpc_gss_init_res =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_res in
 
     let rpc_gss_integ_data =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_integ_data in
 
     let rpc_gss_priv_data =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_priv_data in
 
 
@@ -437,7 +437,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             let (_, cred_data) = details # credential in
             let xdr_val =
               try
-                Xdr.unpack_xdr_value
+                Netxdr.unpack_xdr_value
                   ~fast:true
                   cred_data
                   rpc_gss_cred_t
@@ -516,7 +516,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             Rpc_packer.unpack_call_body_raw
               details#message details#frame_len in
           let xdr_val =
-            Xdr.unpack_xdr_value
+            Netxdr.unpack_xdr_value
               ~fast:true
               body_data
               rpc_gss_init_arg
@@ -602,7 +602,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         method private auth_init srv conn_id details cred1 =
           dlog "auth_init";
           let (verf_flav, verf_data) = details # verifier in
-          if details#procedure <> Rtypes.uint4_of_int 0 then
+          if details#procedure <> Netnumber.uint4_of_int 0 then
             failwith "For context initialization the RPC procedure must be 0";
           if cred1.handle <> "" then
             failwith "Context handle is not empty";
@@ -651,7 +651,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                                    | None ->
                                        maxseq
                                    | Some n -> 
-                                       Rtypes.uint4_of_int n
+                                       Netnumber.uint4_of_int n
                                );
               res_token = output_token
             } in
@@ -661,7 +661,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         method private auth_cont_init srv conn_id details cred1 =
           dlog "auth_cont_init";
           let (verf_flav, verf_data) = details # verifier in
-          if details#procedure <> Rtypes.uint4_of_int 0 then
+          if details#procedure <> Netnumber.uint4_of_int 0 then
             failwith "For context initialization the RPC procedure must be 0";
           if verf_flav <> "AUTH_NONE" then
             failwith "Bad verifier (1)";
@@ -699,7 +699,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                                    | None ->
                                        maxseq
                                    | Some n -> 
-                                       Rtypes.uint4_of_int n
+                                       Netnumber.uint4_of_int n
                                );
               res_token = output_token
             } in
@@ -710,19 +710,19 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           let xdr_val =
             Rpc_auth_gssapi_aux._of_rpc_gss_init_res reply in
           let m =
-            Xdr.pack_xdr_value_as_mstrings
+            Netxdr.pack_xdr_value_as_mstrings
               xdr_val rpc_gss_init_res [] in
           let (verf_flav, verf_data) =
             if ctx.ctx_continue  then
               ("AUTH_NONE", "")
             else
               let window_s =
-                Rtypes.uint4_as_string reply.res_seq_window in
+                Netnumber.BE.uint4_as_string reply.res_seq_window in
               let mic =
                 gss_api # get_mic
                   ~context:ctx.context
                   ~qop_req:0l
-                  ~message:[Xdr_mstring.string_to_mstring window_s]
+                  ~message:[Netxdr_mstring.string_to_mstring window_s]
                   ~out:(fun ~msg_token ~minor_status ~major_status () ->
                           A.check_status ~fn:"get_mic"
                                          ~minor_status major_status;
@@ -752,7 +752,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
           gss_api # verify_mic
             ~context:ctx.context
-            ~message:[Xdr_mstring.string_to_mstring s]
+            ~message:[Netxdr_mstring.string_to_mstring s]
             ~token:verf_data
             ~out:(fun ~qop_state ~minor_status ~major_status () ->
                     let (c_err, r_err, flags) = major_status in
@@ -773,7 +773,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
            *)
 
           (* Check sequence number *)
-          if Rtypes.gt_uint4 cred1.seq_num maxseq then
+          if Netnumber.gt_uint4 cred1.seq_num maxseq then
             raise(Rpc.Rpc_server Rpc.RPCSEC_GSS_ctxproblem);
 
           let drop =
@@ -821,12 +821,12 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         method private auth_data_result ctx seq enc_opt dec_opt =
           dlog "auth_data_result";
           let seq_s =
-            Rtypes.uint4_as_string seq in
+            Netnumber.BE.uint4_as_string seq in
           let mic =
             gss_api # get_mic
               ~context:ctx.context
               ~qop_req:0l
-              ~message:[Xdr_mstring.string_to_mstring seq_s]
+              ~message:[Netxdr_mstring.string_to_mstring seq_s]
               ~out:(fun ~msg_token ~minor_status ~major_status () ->
                       let (c_err, r_err, flags) = major_status in
                       if c_err <> `None || r_err <> `None then
@@ -841,7 +841,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
         method private auth_destroy srv conn_id details cred1 =
           dlog "auth_destroy";
-          if details#procedure <> Rtypes.uint4_of_int 0 then
+          if details#procedure <> Netnumber.uint4_of_int 0 then
             failwith "For context destruction the RPC procedure must be 0";
           let r =
             self # auth_data srv conn_id details cred1 in
@@ -892,15 +892,15 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     let integrity = cconf#integrity in
 
     let rpc_gss_cred_t =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_cred_t in
 
     let rpc_gss_integ_data =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_integ_data in
 
     let rpc_gss_priv_data =
-      Xdr.validate_xdr_type
+      Netxdr.validate_xdr_type
         Rpc_auth_gssapi_aux.xdrt_rpc_gss_priv_data in
 
     let session (m:Rpc_client.auth_method)
@@ -922,7 +922,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             dlogr
               (fun () ->
                  sprintf "next_credentials proc=%s xid=%Ld"
-                   proc (Rtypes.int64_of_uint4 xid)
+                   proc (Netnumber.int64_of_uint4 xid)
               );
 
             let cred1 =
@@ -933,7 +933,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               } in
             let cred1_xdr = _of_rpc_gss_cred_t (`_1 cred1) in
             let cred1_s =
-              Xdr.pack_xdr_value_as_string
+              Netxdr.pack_xdr_value_as_string
                 cred1_xdr rpc_gss_cred_t [] in
 
             let h_pv =
@@ -945,7 +945,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               gss_api # get_mic
                 ~context:ctx
                 ~qop_req:0l
-                ~message:[Xdr_mstring.string_to_mstring h]
+                ~message:[Netxdr_mstring.string_to_mstring h]
                 ~out:(fun ~msg_token ~minor_status ~major_status () ->
                         A.check_status ~fn:"get_mic" ~minor_status major_status;
                         msg_token
@@ -957,9 +957,9 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
             (* Increment cur_seq_num: *)
             cur_seq_num := 
-              Rtypes.uint4_of_int64(
+              Netnumber.uint4_of_int64(
                 Int64.logand
-                  (Int64.succ (Rtypes.int64_of_uint4 !cur_seq_num))
+                  (Int64.succ (Netnumber.int64_of_uint4 !cur_seq_num))
                   0xFFFF_FFFFL
               );
 
@@ -998,7 +998,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             dlogr
               (fun () ->
                  sprintf "server_rejects xid=%Ld"
-                   (Rtypes.int64_of_uint4 xid)
+                   (Netnumber.int64_of_uint4 xid)
               );
             Hashtbl.remove seq_num_of_xid xid;
             match code with
@@ -1013,7 +1013,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             dlogr
               (fun () ->
                  sprintf "server_accepts xid=%Ld"
-                   (Rtypes.int64_of_uint4 xid)
+                   (Netnumber.int64_of_uint4 xid)
               );
             if verf_flav <> "RPCSEC_GSS" then
               raise(Rpc.Rpc_server Rpc.Auth_invalid_resp);
@@ -1022,11 +1022,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               with Not_found -> 
                 raise(Rpc.Rpc_server Rpc.Auth_invalid_resp) in
             let seq_s =
-              Rtypes.uint4_as_string seq in
+              Netnumber.BE.uint4_as_string seq in
             Hashtbl.remove seq_num_of_xid xid;
             gss_api # verify_mic
               ~context:ctx
-              ~message:[Xdr_mstring.string_to_mstring seq_s]
+              ~message:[Netxdr_mstring.string_to_mstring seq_s]
               ~token:verf_data
               ~out:(fun ~qop_state ~minor_status ~major_status () ->
                       A.check_status 
@@ -1128,18 +1128,18 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             dlogr
               (fun () ->
                  sprintf "emit prog_nr=%Ld vers_nr=%Ld xid=%Ld"
-                   (Rtypes.int64_of_uint4 prog_nr)
-                   (Rtypes.int64_of_uint4 vers_nr)
-                   (Rtypes.int64_of_uint4 xid)
+                   (Netnumber.int64_of_uint4 prog_nr)
+                   (Netnumber.int64_of_uint4 vers_nr)
+                   (Netnumber.int64_of_uint4 xid)
               );
             if !init_prog = None then (
               let p =
                 Rpc_program.create
                   prog_nr
                   vers_nr
-                  (Xdr.validate_xdr_type_system [])
+                  (Netxdr.validate_xdr_type_system [])
                   [ "init", 
-                    (  (Rtypes.uint4_of_int 0), 
+                    (  (Netnumber.uint4_of_int 0), 
                        Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_arg,
                        Rpc_auth_gssapi_aux.xdrt_rpc_gss_init_res
                     );
@@ -1155,20 +1155,20 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               let cred1 =
                 `_1 { gss_proc = ( if !first then `rpcsec_gss_init
                                    else `rpcsec_gss_continue_init );
-                      seq_num = Rtypes.uint4_of_int 0;  (* FIXME *)
+                      seq_num = Netnumber.uint4_of_int 0;  (* FIXME *)
                       service = get_service();
                       handle = !handle
                     } in
               let cred1_xdr = _of_rpc_gss_cred_t cred1 in
               let cred1_s =
-                Xdr.pack_xdr_value_as_string
+                Netxdr.pack_xdr_value_as_string
                   cred1_xdr rpc_gss_cred_t [] in
               let pv =
                 Rpc_packer.pack_call
                   prog xid "init"
                   "RPCSEC_GSS" cred1_s
                   "AUTH_NONE" ""
-                  (Xdr.XV_struct_fast [| Xdr.XV_opaque !output_token |] ) in
+                  (Netxdr.XV_struct_fast [| Netxdr.XV_opaque !output_token |] ) in
               first := false;
               state := `Receive xid;
               dlog "emit returns normally";
@@ -1193,7 +1193,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               dlogr
                 (fun () ->
                    sprintf "receive xid=%Ld"
-                     (Rtypes.int64_of_uint4 xid)
+                     (Netnumber.int64_of_uint4 xid)
                 );
 
               let res = _to_rpc_gss_init_res result_xdr in
@@ -1203,7 +1203,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               if not cont_needed && res.res_major <> gss_s_complete then
                 failwith
                   (sprintf "Rpc_auth_gssapi: Got GSS-API error code %Ld"
-                     (Rtypes.int64_of_uint4 res.res_major));
+                     (Netnumber.int64_of_uint4 res.res_major));
 
               input_token := res.res_token;
               if !init_props = None then (
@@ -1226,10 +1226,10 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   failwith "Rpc_auth_gssapi: protocol finished but no complete \
                             context";
                 let window_s =
-                  Rtypes.uint4_as_string res.res_seq_window in
+                  Netnumber.BE.uint4_as_string res.res_seq_window in
                 gss_api # verify_mic
                   ~context:(get_context())
-                  ~message:[Xdr_mstring.string_to_mstring window_s]
+                  ~message:[Netxdr_mstring.string_to_mstring window_s]
                   ~token:flav_data
                   ~out:(fun ~qop_state ~minor_status ~major_status () ->
                           A.check_status ~fn:"verify_mic" 
@@ -1245,7 +1245,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
               else
                 let c = get_context () in
                 let service = get_service() in
-                let cs = ref (Rtypes.uint4_of_int 0) in
+                let cs = ref (Netnumber.uint4_of_int 0) in
                 let s = 
                   session 
                     m (self :> Rpc_client.auth_protocol) c service

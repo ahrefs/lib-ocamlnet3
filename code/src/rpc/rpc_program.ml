@@ -6,8 +6,8 @@
 (* The concept of RPC "programs" *)
 
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 
 
 module StringMap = Map.Make(String);;
@@ -25,7 +25,7 @@ type t =
     }
 
 let create prognr versnr ts procs =
-  let null = Rtypes.uint4_of_int 0 in
+  let null = Netnumber.uint4_of_int 0 in
   let null_proc =
     try Some(fst(List.find (fun (_, (nr,_,_)) -> nr = null) procs))
     with Not_found -> None in

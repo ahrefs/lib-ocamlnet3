@@ -272,7 +272,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           | `Neg_security
           | `Skip_empty ->
                ( try
-                   let input_message = [ Xdr_mstring.string_to_mstring msg ] in
+                   let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
                    let context = client_context cs in
                    let msg_unwrapped =
                      G.interface # unwrap
@@ -282,7 +282,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                                  ~minor_status ~major_status () ->
                                client_check_gssapi_status
                                  cs "unwrap" major_status minor_status;
-                               Xdr_mstring.concat_mstrings output_message
+                               Netxdr_mstring.concat_mstrings output_message
                             )
                        () in
                    if String.length msg_unwrapped <> 4 then
@@ -290,7 +290,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                    let out_msg =
                      "\001\000\000\000" ^ cs.cauthz in
                    let out_message =
-                     [ Xdr_mstring.string_to_mstring out_msg ] in
+                     [ Netxdr_mstring.string_to_mstring out_msg ] in
                    let out_msg_wrapped =
                      G.interface # wrap
                        ~context ~conf_req:false ~qop_req:0l
@@ -300,7 +300,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                                  ~minor_status ~major_status () ->
                                client_check_gssapi_status
                                  cs "wrap" major_status minor_status;
-                               Xdr_mstring.concat_mstrings output_message
+                               Netxdr_mstring.concat_mstrings output_message
                             )
                        () in
                    cs.ctoken <- out_msg_wrapped;
@@ -508,7 +508,7 @@ Netpop.authenticate
       let context = server_context ss in
       let out_msg = "\001\000\000\000" in
       let out_message =
-        [ Xdr_mstring.string_to_mstring out_msg ] in
+        [ Netxdr_mstring.string_to_mstring out_msg ] in
       let out_msg_wrapped =
         G.interface # wrap
           ~context ~conf_req:false ~qop_req:0l
@@ -518,7 +518,7 @@ Netpop.authenticate
                     ~minor_status ~major_status () ->
                   server_check_gssapi_status
                     ss "wrap" major_status minor_status;
-                  Xdr_mstring.concat_mstrings output_message
+                  Netxdr_mstring.concat_mstrings output_message
                )
           () in
       ss.stoken <- out_msg_wrapped
@@ -593,7 +593,7 @@ Netpop.authenticate
       ss.sstate <- `Emit
       
     let server_process_response_neg_security2 ss msg =
-      let input_message = [ Xdr_mstring.string_to_mstring msg ] in
+      let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
       let context = server_context ss in
       let msg_unwrapped =
         G.interface # unwrap
@@ -603,7 +603,7 @@ Netpop.authenticate
                     ~minor_status ~major_status () ->
                   server_check_gssapi_status
                     ss "unwrap" major_status minor_status;
-                  Xdr_mstring.concat_mstrings output_message
+                  Netxdr_mstring.concat_mstrings output_message
                )
           () in
       if String.length msg_unwrapped < 4 then

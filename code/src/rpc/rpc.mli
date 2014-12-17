@@ -5,7 +5,7 @@
 
 (** Common types and exceptions *)
 
-open Rtypes
+open Netnumber
 
 type protocol =
     Tcp          (** means: stream-oriented connection *)

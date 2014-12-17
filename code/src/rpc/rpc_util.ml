@@ -7,14 +7,14 @@ type verbosity =
 
 module StrMap = Map.Make(String)
 
-(* The map functions are like those in Xdr, but the type is a
+(* The map functions are like those in Netxdr, but the type is a
    xdr_type_term, not an xdr_type
  *)
 
 let rec get_enum t =
   match t with
-    | Xdr.X_enum enum -> enum
-    | Xdr.X_direct(t1,_,_,_) -> get_enum t1
+    | Netxdr.X_enum enum -> enum
+    | Netxdr.X_direct(t1,_,_,_) -> get_enum t1
     | _ -> failwith "Rpc_util.get_enum"
 
 let fail_map_xv_enum_fast () =
@@ -22,16 +22,16 @@ let fail_map_xv_enum_fast () =
 
 let map_xv_enum_fast t v =
   match t with
-    | Xdr.X_enum l ->
+    | Netxdr.X_enum l ->
 	let l = Array.of_list l in
 	let m = Array.length l in
 	( match v with
-	    | Xdr.XV_enum_fast k ->
+	    | Netxdr.XV_enum_fast k ->
 		if k >= 0 && k < m then
 		  snd(l.(k))
 		else
 		  fail_map_xv_enum_fast()
-	    | Xdr.XV_enum name ->
+	    | Netxdr.XV_enum name ->
 		let k = ref 0 in
 		while !k < m && (fst l.( !k ) <> name) do
 		  incr k
@@ -51,17 +51,17 @@ let fail_map_xv_struct_fast () =
 
 let map_xv_struct_fast t v =
   match t with
-    | Xdr.X_struct decl ->
+    | Netxdr.X_struct decl ->
 	let decl = Array.of_list decl in
 	let m = Array.length decl in
 	( match v with
-	    | Xdr.XV_struct_fast x ->
+	    | Netxdr.XV_struct_fast x ->
 		let k = Array.length x in
 		if k = m then
 		  x
 		else
 		  fail_map_xv_struct_fast()
-	    | Xdr.XV_struct l ->
+	    | Netxdr.XV_struct l ->
 		( try
 		    Array.map
 		      (fun (name,y) -> List.assoc name l)
@@ -81,18 +81,18 @@ let fail_map_xv_union_over_enum_fast () =
 
 let map_xv_union_over_enum_fast t v =
   match t with
-    | Xdr.X_union_over_enum(enum_t, u, u_dfl ) ->
+    | Netxdr.X_union_over_enum(enum_t, u, u_dfl ) ->
 	let e = Array.of_list (get_enum enum_t) in
 	let u = Array.of_list u in
 	let m = Array.length e in
 	assert( m = Array.length u );
 	( match v with
-	    | Xdr.XV_union_over_enum_fast(k, x) ->
+	    | Netxdr.XV_union_over_enum_fast(k, x) ->
 		if k >= 0 && k < m then
 		  (k, (snd e.(k)), x)
 		else
 		  fail_map_xv_union_over_enum_fast()
-	    | Xdr.XV_union_over_enum(name, x) ->
+	    | Netxdr.XV_union_over_enum(name, x) ->
 		let k = ref 0 in
 		while !k < m && fst(e.( !k )) <> name do
 		  incr k
@@ -118,7 +118,7 @@ let string_of_opaque s l =
 let string_of_struct print_elem t v =
   let tl = 
     match t with
-      | Xdr.X_struct tl -> Array.of_list tl
+      | Netxdr.X_struct tl -> Array.of_list tl
       | _ -> assert false in
   let vl = map_xv_struct_fast t v in
   "{" ^ 
@@ -137,13 +137,13 @@ let string_of_struct print_elem t v =
 let string_of_array print_elem t v =
   let elem_t =
     match t with 
-      | Xdr.X_array_fixed(u,_)
-      | Xdr.X_array(u,_) ->
+      | Netxdr.X_array_fixed(u,_)
+      | Netxdr.X_array(u,_) ->
 	  u
       | _ -> 
 	  assert false in
   let vl =
-    Xdr.dest_xv_array v in
+    Netxdr.dest_xv_array v in
   "[" ^ 
     String.concat ";"
     (Array.to_list
@@ -155,8 +155,8 @@ let string_of_array print_elem t v =
 let string_of_union print_elem t v =
   let elem_t, elem_v, case =
     match t with
-      | Xdr.X_union_over_int(l, default) ->
-	  let (n, elem_v) = Xdr.dest_xv_union_over_int v in
+      | Netxdr.X_union_over_int(l, default) ->
+	  let (n, elem_v) = Netxdr.dest_xv_union_over_int v in
 	  let elem_t =
 	    try List.assoc n l
 	    with Not_found ->
@@ -164,9 +164,9 @@ let string_of_union print_elem t v =
 		  | None -> assert false
 		  | Some d -> d
 	      ) in
-	  (elem_t, elem_v, sprintf "%ld" (Rtypes.int32_of_int4 n))
-      | Xdr.X_union_over_uint(l, default) ->
-	  let (n, elem_v) = Xdr.dest_xv_union_over_uint v in
+	  (elem_t, elem_v, sprintf "%ld" (Netnumber.int32_of_int4 n))
+      | Netxdr.X_union_over_uint(l, default) ->
+	  let (n, elem_v) = Netxdr.dest_xv_union_over_uint v in
 	  let elem_t =
 	    try List.assoc n l
 	    with Not_found ->
@@ -174,8 +174,8 @@ let string_of_union print_elem t v =
 		  | None -> assert false
 		  | Some d -> d
 	      ) in
-	  (elem_t, elem_v, sprintf "%lu" (Rtypes.logical_int32_of_uint4 n))
-      | Xdr.X_union_over_enum(enum_t, l, default) ->
+	  (elem_t, elem_v, sprintf "%lu" (Netnumber.logical_int32_of_uint4 n))
+      | Netxdr.X_union_over_enum(enum_t, l, default) ->
 	  let (k,_,elem_v) = map_xv_union_over_enum_fast t v in
 	  let enum = get_enum enum_t in
 	  let case, _ = List.nth enum k in
@@ -197,78 +197,78 @@ let string_of_union print_elem t v =
 
 let rec string_of_rec_arg recdefs t v =
   match t with
-    | Xdr.X_int ->
+    | Netxdr.X_int ->
 	sprintf "%ld" 
-	  (Rtypes.int32_of_int4 (Xdr.dest_xv_int v))
-    | Xdr.X_uint ->
+	  (Netnumber.int32_of_int4 (Netxdr.dest_xv_int v))
+    | Netxdr.X_uint ->
 	sprintf "%lu" 
-	  (Rtypes.logical_int32_of_uint4 (Xdr.dest_xv_uint v))
-    | Xdr.X_hyper ->
+	  (Netnumber.logical_int32_of_uint4 (Netxdr.dest_xv_uint v))
+    | Netxdr.X_hyper ->
 	sprintf "%Ld" 
-	  (Rtypes.int64_of_int8 (Xdr.dest_xv_hyper v))
-    | Xdr.X_uhyper ->
+	  (Netnumber.int64_of_int8 (Netxdr.dest_xv_hyper v))
+    | Netxdr.X_uhyper ->
 	sprintf "%Lu" 
-	  (Rtypes.logical_int64_of_uint8 (Xdr.dest_xv_uhyper v))
-    | Xdr.X_enum enum ->
+	  (Netnumber.logical_int64_of_uint8 (Netxdr.dest_xv_uhyper v))
+    | Netxdr.X_enum enum ->
 	( match v with
-	    | Xdr.XV_enum case ->
+	    | Netxdr.XV_enum case ->
 		case
-	    | Xdr.XV_enum_fast n ->
+	    | Netxdr.XV_enum_fast n ->
 		fst(List.nth enum n)
 	    | _ -> assert false
 	)
-    | Xdr.X_float ->
+    | Netxdr.X_float ->
 	string_of_float
-	  (Rtypes.float_of_fp4 (Xdr.dest_xv_float v))
-    | Xdr.X_double ->
+	  (Netnumber.float_of_fp4 (Netxdr.dest_xv_float v))
+    | Netxdr.X_double ->
 	string_of_float
-	  (Rtypes.float_of_fp8 (Xdr.dest_xv_double v))
-    | Xdr.X_opaque_fixed _
-    | Xdr.X_opaque _ ->
-	let s = Xdr.dest_xv_opaque v in
+	  (Netnumber.float_of_fp8 (Netxdr.dest_xv_double v))
+    | Netxdr.X_opaque_fixed _
+    | Netxdr.X_opaque _ ->
+	let s = Netxdr.dest_xv_opaque v in
 	string_of_opaque s (String.length s)
-    | Xdr.X_string _ ->
-	let s = Xdr.dest_xv_string v in
+    | Netxdr.X_string _ ->
+	let s = Netxdr.dest_xv_string v in
 	"\"" ^ String.escaped s ^ "\""
-    | Xdr.X_mstring(_, _) ->
-	let ms = Xdr.dest_xv_mstring v in
+    | Netxdr.X_mstring(_, _) ->
+	let ms = Netxdr.dest_xv_mstring v in
 	let (s,p) = ms#as_string in
 	"\"" ^ String.escaped (String.sub s p (ms#length-p)) ^ "\""
-    | Xdr.X_array_fixed _
-    | Xdr.X_array _ ->
+    | Netxdr.X_array_fixed _
+    | Netxdr.X_array _ ->
 	string_of_array
 	  (string_of_rec_arg recdefs)
 	  t
 	  v
-    | Xdr.X_struct _ ->
+    | Netxdr.X_struct _ ->
 	string_of_struct
 	  (string_of_rec_arg recdefs)
 	  t
 	  v
-    | Xdr.X_union_over_int _
-    | Xdr.X_union_over_uint _
-    | Xdr.X_union_over_enum _ ->
+    | Netxdr.X_union_over_int _
+    | Netxdr.X_union_over_uint _
+    | Netxdr.X_union_over_enum _ ->
 	string_of_union
 	  (string_of_rec_arg recdefs)
 	  t
 	  v
-    | Xdr.X_void ->
+    | Netxdr.X_void ->
 	"void"
-    | Xdr.X_rec (n, u) ->
+    | Netxdr.X_rec (n, u) ->
 	let recdefs' = StrMap.add n u recdefs in
 	string_of_rec_arg recdefs' t v
 
-    | Xdr.X_refer n ->
+    | Netxdr.X_refer n ->
 	let u =
 	  try StrMap.find n recdefs
 	  with Not_found -> assert false in
 	string_of_rec_arg recdefs u v
 
-    | Xdr.X_direct(t1, _, _, _) ->
+    | Netxdr.X_direct(t1, _, _, _) ->
 	string_of_rec_arg recdefs t1 v
 
-    | Xdr.X_type _
-    | Xdr.X_param _ ->
+    | Netxdr.X_type _
+    | Netxdr.X_param _ ->
 	assert false
 
 
@@ -278,80 +278,80 @@ let string_of_full_arg =
 
 let rec string_of_abbrev_arg t v =
   match t with
-    | Xdr.X_int
-    | Xdr.X_uint
-    | Xdr.X_hyper
-    | Xdr.X_uhyper
-    | Xdr.X_enum _
-    | Xdr.X_float
-    | Xdr.X_double
-    | Xdr.X_void ->
+    | Netxdr.X_int
+    | Netxdr.X_uint
+    | Netxdr.X_hyper
+    | Netxdr.X_uhyper
+    | Netxdr.X_enum _
+    | Netxdr.X_float
+    | Netxdr.X_double
+    | Netxdr.X_void ->
 	string_of_full_arg t v
 
-    | Xdr.X_opaque_fixed _
-    | Xdr.X_opaque _ ->
-	let s = Xdr.dest_xv_opaque v in
+    | Netxdr.X_opaque_fixed _
+    | Netxdr.X_opaque _ ->
+	let s = Netxdr.dest_xv_opaque v in
 	let l = min 16 (String.length s) in
 	let suffix = if l < String.length s then "..." else "" in
 	string_of_opaque s l ^ suffix
 
-    | Xdr.X_string _ ->
-	let s = Xdr.dest_xv_string v in
+    | Netxdr.X_string _ ->
+	let s = Netxdr.dest_xv_string v in
 	let l = min 16 (String.length s) in
 	let suffix = if l < String.length s then "..." else "" in
 	"\"" ^ (String.escaped (String.sub s 0 l)) ^ "\"" ^ suffix
 
-    | Xdr.X_mstring (_,_) ->
-	let ms = Xdr.dest_xv_mstring v in
+    | Netxdr.X_mstring (_,_) ->
+	let ms = Netxdr.dest_xv_mstring v in
 	let (s,p) = ms#as_string in
 	let l = min 16 ms#length in
 	let suffix = if l < ms#length then "..." else "" in
 	"\"" ^ (String.escaped (String.sub s p l)) ^ "\"" ^ suffix
 
-    | Xdr.X_array_fixed _
-    | Xdr.X_array _ ->
-	let a = Xdr.dest_xv_array v in
+    | Netxdr.X_array_fixed _
+    | Netxdr.X_array _ ->
+	let a = Netxdr.dest_xv_array v in
 	"array<" ^ string_of_int (Array.length a) ^ ">"
 
-    | Xdr.X_struct _ ->
+    | Netxdr.X_struct _ ->
 	"struct"
 
-    | Xdr.X_union_over_int(_,_) ->
-	let (n,_) = Xdr.dest_xv_union_over_int v in
-	sprintf "union<case=%ld>" (Rtypes.int32_of_int4 n)
+    | Netxdr.X_union_over_int(_,_) ->
+	let (n,_) = Netxdr.dest_xv_union_over_int v in
+	sprintf "union<case=%ld>" (Netnumber.int32_of_int4 n)
 
-    | Xdr.X_union_over_uint(_,_) ->
-	let (n,_) = Xdr.dest_xv_union_over_uint v in
-	sprintf "union<case=%lu>" (Rtypes.logical_int32_of_uint4 n)
+    | Netxdr.X_union_over_uint(_,_) ->
+	let (n,_) = Netxdr.dest_xv_union_over_uint v in
+	sprintf "union<case=%lu>" (Netnumber.logical_int32_of_uint4 n)
 
-    | Xdr.X_union_over_enum(enum_t,_,_) ->
+    | Netxdr.X_union_over_enum(enum_t,_,_) ->
 	let e = get_enum enum_t in
 	let (k,_,_) = map_xv_union_over_enum_fast t v in
 	let (n,_) = List.nth e k in
 	sprintf "union<case=%s>" n
 
-    | Xdr.X_direct(t1, _,_,_) ->
+    | Netxdr.X_direct(t1, _,_,_) ->
 	string_of_abbrev_arg t1 v
 
-    | Xdr.X_refer _
-    | Xdr.X_type _
-    | Xdr.X_param _ -> 
+    | Netxdr.X_refer _
+    | Netxdr.X_type _
+    | Netxdr.X_param _ -> 
 	assert false
 
-    | Xdr.X_rec(_,t') ->
+    | Netxdr.X_rec(_,t') ->
 	string_of_abbrev_arg t' v
 
 let rec string_of_abbrev_args t v =
   match t with
-    | Xdr.X_void ->
+    | Netxdr.X_void ->
 	""
-    | Xdr.X_struct _ ->
+    | Netxdr.X_struct _ ->
 	string_of_struct
 	  string_of_abbrev_arg
 	  t
 	  v
 
-    | Xdr.X_direct(t1,_,_,_) ->
+    | Netxdr.X_direct(t1,_,_,_) ->
 	string_of_abbrev_args t1 v
 
     | _ ->
@@ -360,15 +360,15 @@ let rec string_of_abbrev_args t v =
 
 let rec string_of_full_args t v =
   match t with
-    | Xdr.X_void ->
+    | Netxdr.X_void ->
 	""
-    | Xdr.X_struct _ ->
+    | Netxdr.X_struct _ ->
 	string_of_struct
 	  string_of_full_arg
 	  t
 	  v
 
-    | Xdr.X_direct(t1,_,_,_) ->
+    | Netxdr.X_direct(t1,_,_,_) ->
 	string_of_full_args t1 v
 
     | _ ->
@@ -381,7 +381,7 @@ let string_of_request v prog procname args =
     let prognr = Rpc_program.program_number prog in
     let versnr = Rpc_program.version_number prog in
     let (procnr, in_t, _) = Rpc_program.signature prog procname in
-    let in_t = Xdr.xdr_type_term in_t in
+    let in_t = Netxdr.xdr_type_term in_t in
     let s_args =
       match v with
 	| `Name_only -> ""
@@ -390,9 +390,9 @@ let string_of_request v prog procname args =
     sprintf
       "%s[0x%lx,0x%lx,0x%lx](%s)"
       procname
-      (Rtypes.logical_int32_of_uint4 prognr)
-      (Rtypes.logical_int32_of_uint4 versnr)
-      (Rtypes.logical_int32_of_uint4 procnr)
+      (Netnumber.logical_int32_of_uint4 prognr)
+      (Netnumber.logical_int32_of_uint4 versnr)
+      (Netnumber.logical_int32_of_uint4 procnr)
       s_args
   with
     | e ->
@@ -405,7 +405,7 @@ let string_of_response v prog procname rv =
     let prognr = Rpc_program.program_number prog in
     let versnr = Rpc_program.version_number prog in
     let (procnr, _, out_t) = Rpc_program.signature prog procname in
-    let out_t = Xdr.xdr_type_term out_t in
+    let out_t = Netxdr.xdr_type_term out_t in
     let s_rv =
       match v with
 	| `Name_only -> ""
@@ -414,9 +414,9 @@ let string_of_response v prog procname rv =
     sprintf
       "%s[0x%lx,0x%lx,0x%lx] returns %s"
       procname
-      (Rtypes.logical_int32_of_uint4 prognr)
-      (Rtypes.logical_int32_of_uint4 versnr)
-      (Rtypes.logical_int32_of_uint4 procnr)
+      (Netnumber.logical_int32_of_uint4 prognr)
+      (Netnumber.logical_int32_of_uint4 versnr)
+      (Netnumber.logical_int32_of_uint4 procnr)
       s_rv
   with
     | e ->

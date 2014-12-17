@@ -14,8 +14,8 @@ several steps, corresponding to several ways of representing the values:
 
 - Binary level: The message is represented as byte string. In O'Caml,
   these byte strings are always [string] values.
-- Term level: The XDR type is given as {!Xdr.xdr_type_term}.
-  The message is represented as structured {!Xdr.xdr_value}
+- Term level: The XDR type is given as {!Netxdr.xdr_type_term}.
+  The message is represented as structured {!Netxdr.xdr_value}
   term. For example, an XDR [struct] with two components [a] and [b]
   with integer values 1 and 2 is represented as
   {[XV_struct [ "a", XV_int r1; "b" XV_int r2 ]]} where
@@ -38,12 +38,12 @@ several definitions:
 
 - The definition of the O'Caml type corresponding to {i t} on the
   fully-mapped level.
-- The dynamic representation of the XDR type as {!Xdr.xdr_type_term}.
+- The dynamic representation of the XDR type as {!Netxdr.xdr_type_term}.
   This definition is named [xdrt_]{i t}. The type term is required to
   convert a binary message to a value on term level. The conversion
-  functions to do so are available in the {!Xdr} module.
+  functions to do so are available in the {!Netxdr} module.
 - The conversion function [_of_]{i t} that turns a fully-mapped
-  value into a term value represented as {!Xdr.xdr_value}.
+  value into a term value represented as {!Netxdr.xdr_value}.
 - The conversion function [_to_]{i t} that turns a term value
   to a fully-mapped value.
 
@@ -69,153 +69,153 @@ The following table shows:
 {trend t1}
 {tr t1}
 {td t1}[void]{tdend t1}
-{td t1}{!Xdr.X_void}{tdend t1}
+{td t1}{!Netxdr.X_void}{tdend t1}
 {td t1}[unit] (in some contexts omitted){tdend t1}
 {td t1}-{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[int x]{tdend t1}
-{td t1}{!Xdr.X_int}{tdend t1}
+{td t1}{!Netxdr.X_int}{tdend t1}
 {td t1}{!Netnumber.int4}, [int32], [int64], or [int] \[1\]{tdend t1}
 {td t1}32 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_abstract int x]{tdend t1}
-{td t1}{!Xdr.X_int}{tdend t1}
+{td t1}{!Netxdr.X_int}{tdend t1}
 {td t1}{!Netnumber.int4} \[6\]{tdend t1}
 {td t1}32 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_int32 int x]{tdend t1}
-{td t1}{!Xdr.X_int}{tdend t1}
+{td t1}{!Netxdr.X_int}{tdend t1}
 {td t1}[int32]{tdend t1}
 {td t1}32 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_int64 int x]{tdend t1}
-{td t1}{!Xdr.X_int}{tdend t1}
+{td t1}{!Netxdr.X_int}{tdend t1}
 {td t1}[int64]{tdend t1}
 {td t1}32 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_unboxed int x]{tdend t1}
-{td t1}{!Xdr.X_int}{tdend t1}
+{td t1}{!Netxdr.X_int}{tdend t1}
 {td t1}[int] \[2\]{tdend t1}
 {td t1}32 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned int x]{tdend t1}
-{td t1}{!Xdr.X_uint}{tdend t1}
+{td t1}{!Netxdr.X_uint}{tdend t1}
 {td t1}{!Netnumber.uint4}, [int32], [int64], or [int] \[1\]{tdend t1}
 {td t1}32 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _abstract int x]{tdend t1}
-{td t1}{!Xdr.X_uint}{tdend t1}
+{td t1}{!Netxdr.X_uint}{tdend t1}
 {td t1}{!Netnumber.uint4} \[6\]{tdend t1}
 {td t1}32 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _int32 int x]{tdend t1}
-{td t1}{!Xdr.X_uint}{tdend t1}
+{td t1}{!Netxdr.X_uint}{tdend t1}
 {td t1}[int32] \[4\]{tdend t1}
 {td t1}32 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _int64 int x]{tdend t1}
-{td t1}{!Xdr.X_uint}{tdend t1}
+{td t1}{!Netxdr.X_uint}{tdend t1}
 {td t1}[int64]{tdend t1}
 {td t1}32 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _unboxed int x]{tdend t1}
-{td t1}{!Xdr.X_uint}{tdend t1}
+{td t1}{!Netxdr.X_uint}{tdend t1}
 {td t1}[int] \[2\]{tdend t1}
 {td t1}32 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[hyper x]{tdend t1}
-{td t1}{!Xdr.X_hyper}{tdend t1}
+{td t1}{!Netxdr.X_hyper}{tdend t1}
 {td t1}{!Netnumber.int8}, [int64], or [int] \[1\]{tdend t1}
 {td t1}64 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_abstract hyper x]{tdend t1}
-{td t1}{!Xdr.X_hyper}{tdend t1}
+{td t1}{!Netxdr.X_hyper}{tdend t1}
 {td t1}{!Netnumber.int8} \[6\]{tdend t1}
 {td t1}64 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_int64 hyper x]{tdend t1}
-{td t1}{!Xdr.X_hyper}{tdend t1}
+{td t1}{!Netxdr.X_hyper}{tdend t1}
 {td t1}[int64]{tdend t1}
 {td t1}64 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_unboxed hyper x]{tdend t1}
-{td t1}{!Xdr.X_hyper}{tdend t1}
+{td t1}{!Netxdr.X_hyper}{tdend t1}
 {td t1}[int] \[3\]{tdend t1}
 {td t1}64 bit signed integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned hyper x]{tdend t1}
-{td t1}{!Xdr.X_uhyper}{tdend t1}
+{td t1}{!Netxdr.X_uhyper}{tdend t1}
 {td t1}{!Netnumber.int8}, [int64], or [int] \[1\]{tdend t1}
 {td t1}64 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _abstract hyper x]{tdend t1}
-{td t1}{!Xdr.X_uhyper}{tdend t1}
+{td t1}{!Netxdr.X_uhyper}{tdend t1}
 {td t1}{!Netnumber.uint8} \[6\]{tdend t1}
 {td t1}64 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _int64 hyper x]{tdend t1}
-{td t1}{!Xdr.X_uhyper}{tdend t1}
+{td t1}{!Netxdr.X_uhyper}{tdend t1}
 {td t1}[int64] \[4\]{tdend t1}
 {td t1}64 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[unsigned _unboxed hyper x]{tdend t1}
-{td t1}{!Xdr.X_uhyper}{tdend t1}
+{td t1}{!Netxdr.X_uhyper}{tdend t1}
 {td t1}[int] \[3\]{tdend t1}
 {td t1}64 bit unsigned integer{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[bool x]{tdend t1}
-{td t1}{!Xdr.x_bool}
+{td t1}{!Netxdr.x_bool}
 {td t1}[bool]{tdend t1}
 {td t1}Boolean type{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[float x]{tdend t1}
-{td t1}{!Xdr.X_float}{tdend t1}
+{td t1}{!Netxdr.X_float}{tdend t1}
 {td t1}[float] \[5\]{tdend t1}
 {td t1}32 bit IEEE float{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[double x]{tdend t1}
-{td t1}{!Xdr.X_double}{tdend t1}
+{td t1}{!Netxdr.X_double}{tdend t1}
 {td t1}[float] \[5\]{tdend t1}
 {td t1}64 bit IEEE float{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[opaque x[n]]{tdend t1}
-{td t1}{!Xdr.X_opaque_fixed}{tdend t1}
+{td t1}{!Netxdr.X_opaque_fixed}{tdend t1}
 {td t1}[string]{tdend t1}
 {td t1}Opaque data with exactly [n] bytes.
 The length [n] is dynamically checked{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[opaque x<n>]{tdend t1}
-{td t1}{!Xdr.X_opaque}{tdend t1}
+{td t1}{!Netxdr.X_opaque}{tdend t1}
 {td t1}[string]{tdend t1}
 {td t1}Opaque data with up to [n] bytes.
 The length [n] is dynamically checked{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[string x<n>]{tdend t1}
-{td t1}{!Xdr.X_string}{tdend t1}
+{td t1}{!Netxdr.X_string}{tdend t1}
 {td t1}[string]{tdend t1}
 {td t1}String consisting of up to [n] bytes.
 The length [n] is dynamically checked{tdend t1}
@@ -223,9 +223,9 @@ The length [n] is dynamically checked{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[_managed string x<n>]{tdend t1}
-{td t1}{!Xdr.X_mstring}{tdend t1}
-{td t1}{!Xdr_mstring.mstring}{tdend t1}
-{td t1}Alternative runtime representation. See {!Xdr_mstring}.{tdend t1}
+{td t1}{!Netxdr.X_mstring}{tdend t1}
+{td t1}{!Netxdr_mstring.mstring}{tdend t1}
+{td t1}Alternative runtime representation. See {!Netxdr_mstring}.{tdend t1}
 {trend t1}
 {tableend t1}
 
@@ -244,8 +244,8 @@ Footnotes:
     are mapped to negative OCaml numbers.
  +  The OCaml [float] type is a 64 bit IEEE floating point number.
  +  The module {!Netnumber} is an extended version of the older
-    {!Rtypes} definition, and contains wrapper types for all XDR
-    number types.
+    (and now removed) [Rtypes] definition, and contains wrapper types for all
+    XDR number types.
 
 {2 XDR: Options}
 
@@ -255,8 +255,8 @@ cases that an argument is missing or present. Option types are
 written {[t *varname]} in .x files.
 
 On term level, the missing argument value is represented as 
-{!Xdr.xv_none}. The present argument value is represented as
-{!Xdr.xv_some} [v] when [v] is the mapped argument value. Actually,
+{!Netxdr.xv_none}. The present argument value is represented as
+{!Netxdr.xv_some} [v] when [v] is the mapped argument value. Actually,
 [xv_none] and [xv_some] construct XDR terms that are unions over
 the boolean enumeration as discriminator.
 
@@ -280,19 +280,19 @@ representation, the number is actually limited to 2 ^ 32 - 1.
 {trend t1}
 {tr t1}
 {td t1}[t x[n]]{tdend t1}
-{td t1}{!Xdr.X_array}{tdend t1}
+{td t1}{!Netxdr.X_array}{tdend t1}
 {td t1}[t' array]{tdend t1}
 {td t1}Arrays with exactly [n] elements{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[t x<n>]{tdend t1}
-{td t1}{!Xdr.X_array}{tdend t1}
+{td t1}{!Netxdr.X_array}{tdend t1}
 {td t1}[t' array]{tdend t1}
 {td t1}Arrays with up to [n] elements{tdend t1}
 {trend t1}
 {tr t1}
 {td t1}[t x<>]{tdend t1}
-{td t1}{!Xdr.X_array}{tdend t1}
+{td t1}{!Netxdr.X_array}{tdend t1}
 {td t1}[t' array]{tdend t1}
 {td t1}Arrays with any number of elements{tdend t1}
 {trend t1}
@@ -322,18 +322,18 @@ components. At position 0 we find "a", and at position 1 we find "b".
 Of course, this type is different from [ struct { hyper b; int a } ]
 because the order of the components is essential.
 
-On term level, there are two ways of representing structs {!Xdr.X_struct}: one
+On term level, there are two ways of representing structs {!Netxdr.X_struct}: one
 identifies components by name, one by position. The latter is also
 called the "fast" representation (and the one used by [ocamlrpcgen]).
 
 In the "by name" case, the struct value is represented as
-{!Xdr.XV_struct} [components] where [components] is an association
+{!Netxdr.XV_struct} [components] where [components] is an association
 list [[(c0_name, c0_val); (c1_name, c1_val); ...]] where
 [cK_name] are the names of the components and [cK_val] their
 actual values as terms. The order of the components can be arbitrary.
 
 In the "by position" case, the struct value is represented as
-{!Xdr.XV_struct_fast} [components] where [components] is an 
+{!Netxdr.XV_struct_fast} [components] where [components] is an 
 array of terms such that [components.(k)] is the term value of
 the [k]-th component.
 
@@ -408,10 +408,10 @@ names to identify one of the enumerated values, and the other
 uses a positional method.
 
 In the "by name" case, the value named [NameK] is represented as
-[Xdr.XV_enum "NameK"], i.e. the name is the argument of [XV_enum].
+[Netxdr.XV_enum "NameK"], i.e. the name is the argument of [XV_enum].
 
 In the "by position" case, the value named [NameK] is represented as
-[Xdr.XV_enum_fast K], i.e. the position in the enum declaration is
+[Netxdr.XV_enum_fast K], i.e. the position in the enum declaration is
 the argument of [XV_enum].
 
 On the fully-mapped level, the enumerated value named [NameK] is
@@ -456,8 +456,8 @@ a number of arms and a default arm:
 
 Here, [d] is either [int] or [unsigned int].
 
-On term level, this is represented as [Xdr.XV_union_over_int(n,v)] for
-the [int] case or [Xdr.XV_union_over_uint(n,v)] for the [unsigned int] case.
+On term level, this is represented as [Netxdr.XV_union_over_int(n,v)] for
+the [int] case or [Netxdr.XV_union_over_uint(n,v)] for the [unsigned int] case.
 The number [n] is the selected arm of the union (it is not indicated 
 whether the arm is one of the declared arms or the default arm).
 The value [v] is the mapped value of the arm.
@@ -527,12 +527,12 @@ a union value, namely by referring to the arm symbolically or by
 position.
 
 In the first case, the value is represented as
-[Xdr.XV_union_over_enum(n,v)] where [n] is the string name of the
+[Netxdr.XV_union_over_enum(n,v)] where [n] is the string name of the
 value of the discriminator (i.e. ["NameK"]), and [v] is the mapped
 value of the selected arm.
 
 In the second case, the value is represented as
-[Xdr.XV_union_over_enum_fast(K,v)] where [K] is the position of
+[Netxdr.XV_union_over_enum_fast(K,v)] where [K] is the position of
 the value of the discriminator in the enumeration, and [v] is the mapped
 value of the selected arm.
 

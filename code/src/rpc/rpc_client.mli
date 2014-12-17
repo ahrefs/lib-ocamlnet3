@@ -51,8 +51,8 @@
  *)
 
 open Rpc
-open Xdr
-open Rtypes
+open Netxdr
+open Netnumber
 
 (* The following exceptions are delivered to the callback function: *)
 
@@ -375,7 +375,7 @@ val set_exception_handler : t -> (exn -> unit) -> unit
    * fall through.
    *)
 
-val set_mstring_factories : t -> Xdr_mstring.named_mstring_factories -> unit
+val set_mstring_factories : t -> Netxdr_mstring.named_mstring_factories -> unit
   (** Sets the mstring factory configuration that is used for decoding
       responses containing managed strings.
    *)
@@ -397,7 +397,7 @@ val get_peer_name : t -> Unix.sockaddr
 val get_sender_of_last_response : t -> Unix.sockaddr
   (** Return the address of the sender of the last received response. *)
 
-val get_xid_of_last_call : t -> Rtypes.uint4
+val get_xid_of_last_call : t -> Netnumber.uint4
   (** Returns the session identifier used in the just made call *)
 
 val get_protocol : t -> Rpc.protocol
@@ -409,7 +409,7 @@ val get_tls_session_props : t -> Nettls_support.tls_session_props option
 val get_gssapi_props : t -> Netsys_gssapi.client_props option
   (** Get the GSSAPI properties of the last call (so far available) *)
 
-val abandon_call : t -> Rtypes.uint4 -> unit
+val abandon_call : t -> Netnumber.uint4 -> unit
   (** To be used in conjunction with {!Rpc_client.Keep_call}: The call
       with this session identifier is no longer expected, and removed
       from the internal data structures.
@@ -523,8 +523,8 @@ object
                             string ->
                             uint4 ->
                             (string * string * string * string *
-			       Xdr.encoder option *
-			       Xdr.decoder option
+			       Netxdr.encoder option *
+			       Netxdr.decoder option
 			    )
          (** Called with [client prog proc xid].
 	     Returns [(cred_flavour, cred_data, verifier_flavor, verifier_data,

@@ -4,8 +4,8 @@
  *)
 
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 open Rpc_common
 open Rpc_packer
@@ -87,8 +87,8 @@ class type ['t] pre_auth_session =
 object
   method next_credentials :
      't -> Rpc_program.t -> string -> uint4 ->
-     (string * string * string * string * Xdr.encoder option * 
-	Xdr.decoder option)
+     (string * string * string * string * Netxdr.encoder option * 
+	Netxdr.decoder option)
   method server_rejects : 't -> uint4 -> server_error -> reject_code
   method server_accepts : 't -> uint4 -> string -> string -> unit
 (*
@@ -123,7 +123,7 @@ type regular_call =
       mutable proc : string;
       mutable param : xdr_value;       (* the argument of the call *)
       mutable get_result : (unit -> xdr_value) -> unit;
-      mutable decoder : Xdr.decoder option;
+      mutable decoder : Netxdr.decoder option;
       mutable call_user_name : string option;
     }
 
@@ -188,7 +188,7 @@ and t =
 	mutable next_batch_flag : bool;
 	mutable max_resp_length : int option;
 	mutable user_name : string option;
-	mutable mstring_factories : Xdr_mstring.named_mstring_factories;
+	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
 
 	(* authentication: *)
 	mutable all_auth_methods : t pre_auth_method list;
@@ -467,9 +467,9 @@ let find_or_make_auth_protocol cl user_opt =
 let rec next_xid cl =
   let xid = cl.next_xid in
   (* xid is uint4, so we increment as int64: *)
-  let xid64 = Rtypes.int64_of_uint4 xid in
+  let xid64 = Netnumber.int64_of_uint4 xid in
   let xid64' = Int64.logand (Int64.succ xid64) 0xffff_ffff_L in
-  cl.next_xid <- Rtypes.uint4_of_int64 xid64';
+  cl.next_xid <- Netnumber.uint4_of_int64 xid64';
   if SessionMap.mem xid cl.used_xids then
     next_xid cl
   else
@@ -690,7 +690,7 @@ let unbound_async_call_r cl prog procname param receiver authsess_opt =
       failwith ("Rpc_client.unbound_async_call: No such procedure: " ^
 		  procname) in
 
-  if cl.next_batch_flag && Xdr.xdr_type_term out_type <> X_void then
+  if cl.next_batch_flag && Netxdr.xdr_type_term out_type <> X_void then
     failwith ("Rpc_client.unbound_async_call: Cannot call in batch mode: " ^
 		procname);
 
@@ -867,7 +867,7 @@ let process_regular_incoming_message cl message peer sock call rc =
 		     "RPC <-- (sock=%s,peer=%s,xid=%Ld) Auth error %s - reaction: %s"
 		     (Rpc_transport.string_of_sockaddr sock)
 		     (Rpc_transport.string_of_sockaddr peer)
-		     (Rtypes.int64_of_uint4 call.xid)
+		     (Netnumber.int64_of_uint4 call.xid)
 		     (Rpc.string_of_server_error auth_problem)
 		     (string_of_reject_code code)
 		);
@@ -930,7 +930,7 @@ let process_regular_incoming_message cl message peer sock call rc =
 		   "RPC <-- (sock=%s,peer=%s,xid=%Ld) %s"
 		   (Rpc_transport.string_of_sockaddr sock)
 		   (Rpc_transport.string_of_sockaddr peer)
-		   (Rtypes.int64_of_uint4 call.xid)
+		   (Netnumber.int64_of_uint4 call.xid)
 		   (Rpc_util.string_of_response
 		      !Debug.ptrace_verbosity
 		      rc.prog
@@ -955,7 +955,7 @@ let process_regular_incoming_message cl message peer sock call rc =
 		   "RPC <-- (sock=%s,peer=%s,xid=%Ld) Error %s"
 		   (Rpc_transport.string_of_sockaddr sock)
 		   (Rpc_transport.string_of_sockaddr peer)
-		   (Rtypes.int64_of_uint4 call.xid)
+		   (Netnumber.int64_of_uint4 call.xid)
 		   (Netexn.to_string error)
 	      );
 	    let f = (fun () -> raise error) in
@@ -1221,7 +1221,7 @@ and next_outgoing_message' cl trans =
 			 "RPC --> (sock=%s,peer=%s,xid=%Ld) %s"
 			 (Rpc_transport.string_of_sockaddr trans#getsockname)
 			 (Rpc_transport.string_of_sockaddr dest)
-			 (Rtypes.int64_of_uint4 call.xid)
+			 (Netnumber.int64_of_uint4 call.xid)
 			 (match call.detail with
 			    | `Regular rc ->
 				Rpc_util.string_of_request
@@ -1408,7 +1408,7 @@ class unbound_async_call cl prog name v =
   let emit = ref (fun _ -> assert false) in
   let call = unbound_async_call_r cl prog name v (fun gr -> !emit gr) None in
 object(self)
-  inherit [ Xdr.xdr_value ] Uq_engines.engine_mixin (`Working 0) cl.esys
+  inherit [ Netxdr.xdr_value ] Uq_engines.engine_mixin (`Working 0) cl.esys
 
   initializer
     emit := (fun get_result -> 
@@ -1471,7 +1471,7 @@ let rec internal_create initial_xid
       | Some prog ->
 	  id_s_0 ^ " for program " ^ 
 	    (Int32.to_string 
-	       (Rtypes.logical_int32_of_uint4
+	       (Netnumber.logical_int32_of_uint4
 		  (Rpc_program.program_number prog))) in
 
   let non_blocking_connect =
@@ -1512,7 +1512,7 @@ let rec internal_create initial_xid
       nolog = false;
     }
   in
-  Hashtbl.add cl.mstring_factories "*" Xdr_mstring.string_based_mstrings;
+  Hashtbl.add cl.mstring_factories "*" Netxdr_mstring.string_based_mstrings;
   
 
   let portmapper_engine prot host prog esys = 
@@ -1521,11 +1521,11 @@ let rec internal_create initial_xid
      * impossible because of a dependency cycle.
      *)
     dlog cl "starting portmapper query";
-    let pm_port = Rtypes.int_of_uint4 Rpc_portmapper_aux.pmap_port in
+    let pm_port = Netnumber.int_of_uint4 Rpc_portmapper_aux.pmap_port in
     let pm_prog = Rpc_portmapper_aux.program_PMAP'V2 in
     let pm_client = 
       internal_create
-	(Rtypes.uint4_of_int 0)
+	(Netnumber.uint4_of_int 0)
 	shutdown_connector
 	(Some pm_prog)
 	(`Socket(Rpc.Udp, Inet(host, pm_port), default_socket_config))
@@ -1539,7 +1539,7 @@ let rec internal_create initial_xid
 		     | Tcp -> Rpc_portmapper_aux.ipproto_tcp
 		     | Udp -> Rpc_portmapper_aux.ipproto_udp
 		 );
-	  port = Rtypes.uint4_of_int 0;
+	  port = Netnumber.uint4_of_int 0;
 	} in
     let close_deferred() =
       Unixqueue.once esys (Unixqueue.new_group esys) 0.0 
@@ -1557,7 +1557,7 @@ let rec internal_create initial_xid
 			   ) in
 		   let port =
 		     Rpc_portmapper_aux._to_PMAP'V2'pmapproc_getport'res r in
-		   let port = Rtypes.int_of_uint4 port in
+		   let port = Netnumber.int_of_uint4 port in
 		   close_deferred();
 		   if port = 0 then
 		     `Error (Failure "Program not bound in Portmapper")
@@ -1757,12 +1757,12 @@ let create2 ?program_number ?version_number ?(initial_xid=0)
   let prog = Rpc_program.update ?program_number ?version_number prog0 in
   let cl = 
     internal_create
-      (Rtypes.uint4_of_int initial_xid) shutdown (Some prog) mode esys in
+      (Netnumber.uint4_of_int initial_xid) shutdown (Some prog) mode esys in
   cl
 
 let unbound_create ?(initial_xid=0) ?(shutdown = shutdown_connector) 
                    mode esys =
-  internal_create (Rtypes.uint4_of_int initial_xid) shutdown None mode esys
+  internal_create (Netnumber.uint4_of_int initial_xid) shutdown None mode esys
 
 
 let bind cl prog =

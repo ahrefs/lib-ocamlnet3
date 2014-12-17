@@ -2012,47 +2012,47 @@ let gssapi_method ~config ~required
                ()
         | Some n -> n in
     let wrap_s msg =
-      let input_message = [ Xdr_mstring.string_to_mstring msg ] in
+      let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
       G.interface # wrap
         ~context ~conf_req ~qop_req:0l ~input_message
         ~output_message_preferred_type:`String
         ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
                 A1.check_status ~fn:"wrap" ~minor_status major_status;
-                Xdr_mstring.concat_mstrings output_message
+                Netxdr_mstring.concat_mstrings output_message
              )
         () in
     let wrap_m msg buf =
-      let input_message = [ Xdr_mstring.memory_to_mstring msg ] in
+      let input_message = [ Netxdr_mstring.memory_to_mstring msg ] in
       G.interface # wrap
         ~context ~conf_req ~qop_req:0l ~input_message
         ~output_message_preferred_type:`Memory
         ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
                 A1.check_status ~fn:"wrap" ~minor_status major_status;
-                Xdr_mstring.blit_mstrings_to_memory output_message buf;
-                Xdr_mstring.length_mstrings output_message
+                Netxdr_mstring.blit_mstrings_to_memory output_message buf;
+                Netxdr_mstring.length_mstrings output_message
              )
         () in
     let unwrap_s msg =
-      let input_message = [ Xdr_mstring.string_to_mstring msg ] in
+      let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
       G.interface # unwrap
         ~context ~input_message
         ~output_message_preferred_type:`String
         ~out:(fun ~output_message ~conf_state ~qop_state
                   ~minor_status ~major_status () ->
                 A1.check_status ~fn:"unwrap" ~minor_status major_status;
-                Xdr_mstring.concat_mstrings output_message
+                Netxdr_mstring.concat_mstrings output_message
              )
         () in
     let unwrap_m msg buf =
-      let input_message = [ Xdr_mstring.memory_to_mstring msg ] in
+      let input_message = [ Netxdr_mstring.memory_to_mstring msg ] in
       G.interface # unwrap
         ~context ~input_message
         ~output_message_preferred_type:`Memory
         ~out:(fun ~output_message ~conf_state ~qop_state
                   ~minor_status ~major_status () ->
                 A1.check_status ~fn:"unwrap" ~minor_status major_status;
-                Xdr_mstring.blit_mstrings_to_memory output_message buf;
-                Xdr_mstring.length_mstrings output_message
+                Netxdr_mstring.blit_mstrings_to_memory output_message buf;
+                Netxdr_mstring.length_mstrings output_message
              )
         () in
     let close() =

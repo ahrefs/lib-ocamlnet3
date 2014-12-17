@@ -20,9 +20,9 @@
  * service is actually listening.
  *)
 
-open Rtypes
+open Netnumber
 open Rpc
-open Xdr
+open Netxdr
 
 type t
   (** represents a client for the portmapper *)

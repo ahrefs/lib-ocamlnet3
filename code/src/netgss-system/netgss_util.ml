@@ -109,7 +109,7 @@ let _token_of_gss_buffer_t buf =
   release_buffer buf;
   s
 
-let _gss_buffer_t_of_message (ml : Xdr_mstring.mstring list) =
+let _gss_buffer_t_of_message (ml : Netxdr_mstring.mstring list) =
   match ml with
     | [] ->
          buffer_of_string "" 0 0
@@ -128,9 +128,9 @@ let _gss_buffer_t_of_message (ml : Xdr_mstring.mstring list) =
                   buffer_of_string str pos m#length
          )
     | _ ->
-         let len = Xdr_mstring.length_mstrings ml in
+         let len = Netxdr_mstring.length_mstrings ml in
          let mem = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
-         Xdr_mstring.blit_mstrings_to_memory ml mem;
+         Netxdr_mstring.blit_mstrings_to_memory ml mem;
          buffer_of_memory mem
 
                                              
@@ -138,7 +138,7 @@ let _message_of_gss_buffer_t pref_type buf =
   match pref_type with
     | `Memory ->
          let mem = memory_of_buffer buf in
-         [ Xdr_mstring.memory_to_mstring mem ]
+         [ Netxdr_mstring.memory_to_mstring mem ]
          (* It is ok not to copy here, i.e. mem and buf share the same data
             area. buf will not be used for anything else after this call.
             Also, memory_of_buffer ensures that buf cannot be collected before
@@ -147,7 +147,7 @@ let _message_of_gss_buffer_t pref_type buf =
     | `String ->
          let str = string_of_buffer buf in
          release_buffer buf;
-         [ Xdr_mstring.string_to_mstring str ]
+         [ Netxdr_mstring.string_to_mstring str ]
 
 
 let cb_typed_string =

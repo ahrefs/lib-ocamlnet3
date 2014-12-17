@@ -198,9 +198,8 @@ for other libraries.
    Netmech_krb5_sasl
    Netmech_gs2_sasl
    Netmech_spnego_http
-   Rtypes
-   Xdr
-   Xdr_mstring
+   Netxdr
+   Netxdr_mstring
 }
 
 {2:netstring_pcre The [netstring-pcre] library: additions for PCRE}

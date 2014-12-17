@@ -3,8 +3,8 @@
  *
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Unixqueue
 open Uq_engines
 open Rpc_common
@@ -54,11 +54,11 @@ type rule =
 
 type auth_result =
     Auth_positive of
-      (string * string * string * Xdr.encoder option * Xdr.decoder option *
+      (string * string * string * Netxdr.encoder option * Netxdr.decoder option *
          Netsys_gssapi.server_props option)
 
   | Auth_negative of Rpc.server_error
-  | Auth_reply of (Xdr_mstring.mstring list * string * string)
+  | Auth_reply of (Netxdr_mstring.mstring list * string * string)
   | Auth_drop
 
 
@@ -136,20 +136,20 @@ let uint4_min m =
   Uint4Map.fold
     (fun n _ acc ->
        let p =
-	 Rtypes.int64_of_uint4 n < Rtypes.int64_of_uint4 acc in
+	 Netnumber.int64_of_uint4 n < Netnumber.int64_of_uint4 acc in
        if p then n else acc)
     m
-    (Rtypes.uint4_of_int64 0xffffffffL) ;;
+    (Netnumber.uint4_of_int64 0xffffffffL) ;;
        
 
 let uint4_max m =
   Uint4Map.fold
     (fun n _ acc ->
        let p =
-	 Rtypes.int64_of_uint4 n > Rtypes.int64_of_uint4 acc in
+	 Netnumber.int64_of_uint4 n > Netnumber.int64_of_uint4 acc in
        if p then n else acc)
     m
-    (Rtypes.uint4_of_int 0) ;;
+    (Netnumber.uint4_of_int 0) ;;
        
 
 
@@ -173,7 +173,7 @@ type t =
 	mutable transport_timeout : float;
 	mutable nolog : bool;
 	mutable get_last_proc : unit->string;
-	mutable mstring_factories : Xdr_mstring.named_mstring_factories;
+	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
       }
 
 and connection =
@@ -227,7 +227,7 @@ and session =
 	auth_user : string;
 	auth_ret_flav : string;
 	auth_ret_data : string;
-	encoder : Xdr.encoder option;
+	encoder : Netxdr.encoder option;
         tls_session_props : Nettls_support.tls_session_props option;
         gssapi_props : Netsys_gssapi.server_props option;
       }
@@ -391,7 +391,7 @@ let mplexoptname mplex_opt =
 
 
 let xidname xid =
-  Int32.to_string (Rtypes.int32_of_uint4 xid)
+  Int32.to_string (Netnumber.int32_of_uint4 xid)
 
 let errname =
   function
@@ -515,8 +515,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		   (fun () -> "Error " ^ errname condition) in
 	       schedule_answer answer
 	    )
-      | (Xdr.Xdr_format _
-	| Xdr.Xdr_format_message_too_long _ as e
+      | (Netxdr.Xdr_format _
+	| Netxdr.Xdr_format_message_too_long _ as e
 	) ->
           (* Convert to Garbage *)
 	   protect_protect
@@ -577,10 +577,10 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		    "Request (sock=%s,peer=%s,xid=%lu) for [0x%lx,0x%lx,0x%lx]"
 		    (Rpc_transport.string_of_sockaddr sockaddr)
 		    (Rpc_transport.string_of_sockaddr peeraddr)
-		    (Rtypes.logical_int32_of_uint4 xid)
-		    (Rtypes.logical_int32_of_uint4 prog_nr)
-		    (Rtypes.logical_int32_of_uint4 vers_nr)
-		    (Rtypes.logical_int32_of_uint4 proc_nr)
+		    (Netnumber.logical_int32_of_uint4 xid)
+		    (Netnumber.logical_int32_of_uint4 prog_nr)
+		    (Netnumber.logical_int32_of_uint4 vers_nr)
+		    (Netnumber.logical_int32_of_uint4 proc_nr)
 	       );
 	     
 	     let sess_conn_id =
@@ -690,7 +690,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 			      "Invoke (sock=%s,peer=%s,xid=%lu): %s"
 			      (Rpc_transport.string_of_sockaddr sockaddr)
 			      (Rpc_transport.string_of_sockaddr peeraddr)
-			      (Rtypes.logical_int32_of_uint4 xid)
+			      (Netnumber.logical_int32_of_uint4 xid)
 			      (Rpc_util.string_of_request
 				 !Debug.ptrace_verbosity
 				 prog
@@ -1030,7 +1030,7 @@ and next_outgoing_message' srv conn trans =
 	       (Rpc_transport.string_of_sockaddr sockaddr)
 	       (Rpc_transport.string_of_sockaddr reply.peeraddr)
 	       reply.call_id
-	       (Rtypes.logical_int32_of_uint4 reply.client_id)
+	       (Netnumber.logical_int32_of_uint4 reply.client_id)
 	       reply.ptrace_result
 	  );
 
@@ -1078,7 +1078,7 @@ let create2_srv prot esys =
   Hashtbl.add none "AUTH_NONE" auth_none;
 
   let mf = Hashtbl.create 1 in
-  Hashtbl.add mf "*" Xdr_mstring.string_based_mstrings;
+  Hashtbl.add mf "*" Netxdr_mstring.string_based_mstrings;
   
   { main_socket_name = `Implied;
     dummy = false;
@@ -1519,7 +1519,7 @@ let bind ?program_number ?version_number prog0 procs srv =
                  | Tcp -> Rpc_portmapper_aux.ipproto_tcp
                  | Udp -> Rpc_portmapper_aux.ipproto_udp
              );
-      port = Rtypes.uint4_of_int port;
+      port = Netnumber.uint4_of_int port;
     } in
 
   let pm_error pm error =
@@ -1531,7 +1531,7 @@ let bind ?program_number ?version_number prog0 procs srv =
       (fun get_result ->
 	 try
 	   let old_port = get_result() in
-	   f (Rtypes.int_of_uint4 old_port)
+	   f (Netnumber.int_of_uint4 old_port)
 	 with
 	   | error -> pm_error pm error
       ) in
@@ -1584,7 +1584,7 @@ let bind ?program_number ?version_number prog0 procs srv =
 
     | Some port ->
 	let pmap_port =
-	  Rtypes.int_of_uint4
+	  Netnumber.int_of_uint4
 	    Rpc_portmapper_aux.pmap_port in
 	let pm =
           (* HACK to allow connections on recent Linux boxes *)
@@ -1646,7 +1646,7 @@ let unbind' ?(followup = fun () -> ())
                  | Tcp -> Rpc_portmapper_aux.ipproto_tcp
                  | Udp -> Rpc_portmapper_aux.ipproto_udp
              );
-      port = Rtypes.uint4_of_int port;
+      port = Netnumber.uint4_of_int port;
     } in
 
   let pm_error pm error =
@@ -1682,7 +1682,7 @@ let unbind' ?(followup = fun () -> ())
 
 	if exists then (
 	  let pmap_port =
-	    Rtypes.int_of_uint4
+	    Netnumber.int_of_uint4
 	      Rpc_portmapper_aux.pmap_port in
 	  let pm =
             (* HACK to allow connections on recent Linux boxes *)
@@ -1863,7 +1863,7 @@ let reply a_session result_value =
   dlogr srv
     (fun () ->
        sprintf "reply xid=%Ld have_encoder=%B"
-	 (Rtypes.int64_of_uint4 a_session.client_id)
+	 (Netnumber.int64_of_uint4 a_session.client_id)
 	 (a_session.encoder <> None)
     );
   
