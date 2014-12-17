@@ -1,7 +1,7 @@
 OCAMLNET 4 RELEASE:
  - CHECK AGAIN UNIT TESTS - DONE
  - CHECK EXAMPLES
- - renames: xdr, xdr_mstring, mimestring
+ - renames: xdr, xdr_mstring, mimestring - DONE
  - Netconversion refactoring
  - module refactoring so far needed (smaller executables)
  - RPCBIND
@@ -36,9 +36,9 @@ GSSAPI:
 
 Netmime:
  - remove email-specific header methods from class type. Provide them
-   as additional functions (Netmime.Header)
- - move Netmime channel functions to Netmime_channels
- - Mimestring -> Netmime_string
+   as additional functions (Netmime.Header) - DONE
+ - move Netmime channel functions to Netmime_channels - DONE
+ - Mimestring -> Netmime_string - DONE
 
 getrandom()
  - Linux 3.17
@@ -49,12 +49,9 @@ Nethttpd + auth:
    only HTTP_MECHANISM; no basic auth
  - service abstraction: parse config file; push authentication
 
-Consistent prefixes:
- - e.g. Http_client -> Nethttp_client
-
 Netmulticore2: see list of ideas on trac
 
-Nethm on MacOS: do not use record locking on shared memory fd.
+Netshm on MacOS: do not use record locking on shared memory fd.
  - use second file in /tmp
  - put the name of the file into the shared memory segment
 Extend Netshm for multi-threading
