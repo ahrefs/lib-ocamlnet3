@@ -252,7 +252,7 @@ object(self)
     self # input_header_field ~default:"" "CONTENT-TYPE"
 
   method input_content_type() =
-    Mimestring.scan_mime_type_ep (self # input_header_field "CONTENT-TYPE") []
+    Netmime_string.scan_mime_type_ep (self # input_header_field "CONTENT-TYPE") []
 
 (*
   method output_header =

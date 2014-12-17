@@ -55,7 +55,7 @@ object
   method store : [`Memory | `File of string]
     (** Tells whether the argument is stored in memory (as a string)
         or as a file (the argument of [`File] being the filename). *)
-  method content_type : unit -> string * (string * Mimestring.s_param) list
+  method content_type : unit -> string * (string * Netmime_string.s_param) list
     (** Returns the content type of the header and its parameters as a
 	couple [(hdr, params)].  When the header is missing, the
 	result is [("text/plain", [])].  Below you will find access
@@ -466,10 +466,10 @@ object
     (** Returns the ["Content-type"] request header field as a plain
         string or [""] if it is not set. *)
   method input_content_type :
-    unit -> string * (string * Mimestring.s_param) list
+    unit -> string * (string * Netmime_string.s_param) list
     (** Returns the parsed ["Content-type"] request header field.
         @raise Not_found if it is not set.
-        See also {!Mimestring.scan_mime_type_ep}. *)
+        See also {!Netmime_string.scan_mime_type_ep}. *)
 
 
   (** {3 Response header} *)

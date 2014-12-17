@@ -261,7 +261,7 @@ object
   method value : string
   method open_value_rd : unit -> Netchannels.in_obj_channel
   method store : store
-  method content_type : unit -> string * (string * Mimestring.s_param) list
+  method content_type : unit -> string * (string * Netmime_string.s_param) list
     (* [content_type] changed from the previous version to be uniform
        with Netmime. *)
   method charset : string
@@ -282,13 +282,15 @@ end
    [true].  This is because the standard arguments are read-only. *)
 class simple_arg ?(ro=true) (name0:string) value =
 object(self)
-  inherit Netmime.memory_mime_body ~ro value
+  inherit Netmime.memory_mime_body value
+
+  method! ro = ro
 
   val name = name0
 
   method name = name
   method content_type () = ("text/plain",
-			    ([] : (string * Mimestring.s_param) list))
+			    ([] : (string * Netmime_string.s_param) list))
   method charset = ""
   method filename = (None: string option)
   method representation = (`Simple(self :> Netmime.mime_body): representation)
@@ -307,7 +309,7 @@ end
 class mime_arg ?(work_around_backslash_bug=true) ?(name: string option)
   ((hdr0, `Body body0) : Netmime.mime_message) =
   let options =
-    if work_around_backslash_bug then [ Mimestring.No_backslash_escaping ]
+    if work_around_backslash_bug then [ Netmime_string.No_backslash_escaping ]
     else [] in
   let name0 = match name with
     | Some n -> n
@@ -316,8 +318,8 @@ class mime_arg ?(work_around_backslash_bug=true) ?(name: string option)
 	   parameter of the "Content-Disposition" field.  *)
 	try
 	  let s = hdr0#field "content-disposition" in
-	  let _, params = Mimestring.scan_value_with_parameters_ep s options in
-	  Mimestring.param_value(List.assoc "name" params)
+	  let _, params = Netmime_string.scan_value_with_parameters_ep s options in
+	  Netmime_string.param_value(List.assoc "name" params)
 	with Not_found -> "" in
 object(self)
   val hdr = hdr0
@@ -330,18 +332,18 @@ object(self)
   method store = body#store
 
   method content_type () =
-    try hdr#content_type() with Not_found -> ("text/plain", [])
+    try Netmime_header.get_content_type hdr with Not_found -> ("text/plain", [])
 
   method charset =
     let _, params = self#content_type() in
-    try Mimestring.param_value(List.assoc "charset" params)
+    try Netmime_string.param_value(List.assoc "charset" params)
     with Not_found -> ""
 
   method filename =
     try
       let s = hdr#field "content-disposition" in
-      let _, params = Mimestring.scan_value_with_parameters_ep s options in
-      Some(Mimestring.param_value(List.assoc "filename" params))
+      let _, params = Netmime_string.scan_value_with_parameters_ep s options in
+      Some(Netmime_string.param_value(List.assoc "filename" params))
     with Not_found ->
       None
 
@@ -480,7 +482,9 @@ object(self)
   val config = config
   val properties_list = properties
   val properties = (Hashtbl.create 20 : (string,string) Hashtbl.t)
-  val input_header = new Netmime.basic_mime_header ~ro:true input_header
+  val input_header = 
+    Netmime.wrap_mime_header_ro
+      (Netmime.basic_mime_header input_header)
   val output_header =
     (* The user is supposed to call [cgi#set_header] and that will set
        the Content-Type.  Thus one can set a default one in case he
@@ -505,7 +509,7 @@ object(self)
        this parsing can raise exceptions (which we do not want at the
        creation of this object), thus we do it only on demand. *)
     input_content_type <- lazy(
-      Mimestring.scan_mime_type_ep (self#input_header_field "content-type") []
+      Netmime_string.scan_mime_type_ep (self#input_header_field "content-type") []
     );
     (* Cache the extracted cookies *)
     cookies <- lazy(Nethttp.Header.get_cookie_ct self#input_header)
@@ -639,7 +643,7 @@ object(self)
     if header_not_sent then (
       (* Note: ~soft_eol:"" because linear whitespace is illegal in CGI
 	 responses.  *)
-      Mimestring.write_header ~soft_eol:"" ~eol:"\r\n"
+      Netmime_string.write_header ~soft_eol:"" ~eol:"\r\n"
 	out_obj self#output_header#fields;
       header_not_sent <- false (* One output header per request *)
     )
@@ -982,7 +986,7 @@ let temp_file_fun config =
 
 (* Remove all [None] from the list and "flatten" the [Some], keeping
    the order of arguments.  We could avoid this if
-   [Mimestring.read_multipart_body] had a "fold" form. *)
+   [Netmime_string.read_multipart_body] had a "fold" form. *)
 let rec remove_discarded_args = function
   | [] -> []
   | None :: tl -> remove_discarded_args tl
@@ -991,7 +995,7 @@ let rec remove_discarded_args = function
 
 
 let mime_header_string_arg =
-  (new Netmime.basic_mime_header ~ro:true ["content-type", "text/plain"]
+  (new Netmime.basic_mime_header ["content-type", "text/plain"]
    :> Netmime.mime_header_ro)
 
 (* Given a query string like [qs], return [None] is the argument is
@@ -1035,10 +1039,10 @@ let arg_body_of_stream  env (arg_store:arg_store) name hdr ~has_filename
 	  (if has_filename then `File(temp_file()) else `Memory), infinity
       | `Automatic_max size ->
 	  (if has_filename then `File(temp_file()) else `Memory), size  in
-    let body, body_ch = Netmime.storage ~ro:true ~fin:true store in
+    let body, body_ch = Netmime_channels.storage ~fin:true store in
     try
       Netchannels.with_out_obj_channel
-        (Netmime.decode_mime_body hdr body_ch)
+        (Netmime_channels.decode_mime_body hdr body_ch)
         (fun body_ch' ->
 	   body_ch'#output_channel(stream :> Netchannels.in_obj_channel));
       (* check size *)
@@ -1053,6 +1057,7 @@ let arg_body_of_stream  env (arg_store:arg_store) name hdr ~has_filename
         Some(new oversized_arg name :> cgi_argument)
       )
       else
+        let body = Netmime.wrap_mime_body_ro body in
         Some(new mime_arg ~work_around_backslash_bug ~name (hdr, `Body body)
              :> cgi_argument)
     with
@@ -1077,18 +1082,18 @@ let arg_body_of_stream  env (arg_store:arg_store) name hdr ~has_filename
 
 (* Returns [Some arg] created by reading the [stream], or [None] if
    [arg_store] decides that the argument must be discarded.  It is
-   made to be called by {!Mimestring.read_multipart_body} on each
+   made to be called by {!Netmime_string.read_multipart_body} on each
    part.  *)
 let arg_of_stream env (arg_store:arg_store) temp_file
     ~work_around_backslash_bug (stream:Netstream.in_obj_stream) =
-  let hdr = Netmime.read_mime_header ~ro:true stream in
+  let hdr = Netmime_channels.read_mime_header ~ro:true stream in
   (* FIXME: Unfortunately raising the exceptions below can leave the
      files of the previous arguments on the disk.  The easier would be
-     to have [Mimestring.fold_multipart_body] wich would give access
+     to have [Netmime_string.fold_multipart_body] wich would give access
      to the previous args.  (Incidentally, it would also remove the
      need for [remove_discarded_args].) *)
   let disposition, disp_params =
-    try hdr#content_disposition()
+    try Netmime_header.get_content_disposition hdr
     with
     | Not_found ->
 	raise(HTTP(`Bad_request,
@@ -1101,7 +1106,7 @@ let arg_of_stream env (arg_store:arg_store) temp_file
     raise(HTTP(`Bad_request, "Unknown Content-disposition " ^ disposition
 		 ^ " in POST request body"));
   let name =
-    try Mimestring.param_value(List.assoc "name" disp_params)
+    try Netmime_string.param_value(List.assoc "name" disp_params)
     with Not_found ->
       raise(HTTP(`Bad_request,
 		 "\"name\" parameter mandatory in Content-Disposition field"))
@@ -1224,7 +1229,7 @@ seeing the result."))
 
 	   | "multipart/form-data", params ->
 	       let boundary =
-		 try Mimestring.param_value(List.assoc "boundary" params)
+		 try Netmime_string.param_value(List.assoc "boundary" params)
 		 with Not_found ->
 		   raise(HTTP(`Bad_request,
 			      "Content-Type multipart/form-data needs to \
@@ -1240,7 +1245,7 @@ seeing the result."))
 	       let mk_arg stream = (arg_of_stream env arg_store temp_file
                                       ~work_around_backslash_bug stream) in
 	       let args = remove_discarded_args
-		 (Mimestring.read_multipart_body mk_arg boundary in_stream)
+		 (Netmime_string.read_multipart_body mk_arg boundary in_stream)
 	       in
 	       new_cgi env op `POST args
 

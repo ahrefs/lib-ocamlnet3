@@ -743,13 +743,13 @@ end
 
 module Header = struct
   open Netmime
-  open Mimestring
+  open Netmime_string
 
   type param_value = [ `V of string | `Q of string ]
   type auth_challenge = string * (string * param_value) list
   type auth_credentials = string * (string * param_value) list
 
-  (* As scanner we use the scanner for mail header fields from Mimestring. It
+  (* As scanner we use the scanner for mail header fields from Netmime_string. It
    * is very configurable.
    *)
 
@@ -1028,11 +1028,11 @@ module Header = struct
 
   let best_media_type mh supp =
     let match_mime a b =
-      let (main_type, sub_type) = Mimestring.split_mime_type b
+      let (main_type, sub_type) = Netmime_string.split_mime_type b
       in
         sub_type = "*" (*Ignore non-wildcard types*) &&
         (main_type = "*" ||
-        main_type = (fst (Mimestring.split_mime_type a)))
+        main_type = (fst (Netmime_string.split_mime_type a)))
     in
     let filter p l =
       List.fold_right

@@ -238,7 +238,7 @@ object(self)
 		  let b = Netbuffer.create 256 in 
 		     (* Expect a short/empty header in most cases *)
 		  let ch = new Netchannels.output_netbuffer b in
-		  Mimestring.write_header ch info_header#fields;
+		  Netmime_string.write_header ch info_header#fields;
 		  Queue.push 
 		    (`Resp_wire_data (Netbuffer.unsafe_buffer b, 0, Netbuffer.length b))
 		    queue;
@@ -326,7 +326,7 @@ object(self)
 	  (* Convert the header to a data chunk: *)
 	  let b = Netbuffer.create 4096 in
 	  let ch = new Netchannels.output_netbuffer b in
-	  Mimestring.write_header ch resp_header#fields;
+	  Netmime_string.write_header ch resp_header#fields;
 	  Queue.push 
 	    (`Resp_wire_data (Netbuffer.unsafe_buffer b, 0, Netbuffer.length b)) queue;
 	  (* What is accepted next: *)
@@ -610,12 +610,12 @@ end
 
 
 let http_find_line_start s pos len =
-  try Mimestring.find_line_start s pos len
+  try Netmime_string.find_line_start s pos len
   with Not_found -> raise Buffer_exceeded
 
 
 let http_find_double_line_start s pos len =
-  try Mimestring.find_double_line_start s pos len
+  try Netmime_string.find_double_line_start s pos len
   with Not_found -> raise Buffer_exceeded
 
 
@@ -687,7 +687,7 @@ let parse_chunk_header s pos len =
   let c1 = s.[p1] in
   if c1=';' then (
     let p2 =
-      Mimestring.find_line_start s p1 (e - p1) in
+      Netmime_string.find_line_start s p1 (e - p1) in
     if p2 <> e then raise Not_found
   )
   else (
@@ -1086,7 +1086,7 @@ object(self)
     waiting_for_next_message <- true;
     let l = Netbuffer.length recv_buf in
     let s = Netbuffer.unsafe_buffer recv_buf in
-    let block_start = Mimestring.skip_line_ends s pos (l - pos) in  (* (1) *)
+    let block_start = Netmime_string.skip_line_ends s pos (l - pos) in  (* (1) *)
     try
       (* (2) *)
       if block_start = l || (block_start+1 = l && s.[block_start] = '\013') then (
@@ -1161,7 +1161,7 @@ object(self)
        * in this case where we only read from a constant string.
        *)
       let req_h = 
-	try Netmime.read_mime_header str 
+	try Netmime_channels.read_mime_header str 
 	with Failure _ -> 
 	  #ifdef Testing
              self # case "accept_header/5";
@@ -1551,7 +1551,7 @@ object(self)
 		     ~pos:pos ~len:(trailer_end - pos) s in
 	  let str = new Netstream.input_stream ch in
 	  let req_tr =
-	    try Netmime.read_mime_header str 
+	    try Netmime_channels.read_mime_header str 
 	    with Failure _ -> 
 	      #ifdef Testing
                 self # case "accept_body_chunked_end/bad_tr";

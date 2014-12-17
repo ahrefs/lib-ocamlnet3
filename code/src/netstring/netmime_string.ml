@@ -195,7 +195,7 @@ let parse_header_line include_eol skip_ws s p0 p1 p2 is_last =
 let fold_header ?(downcase=false) ?(unfold=false) ?(strip=false) 
                 f acc0 s pos len =
   let err k =
-    failwith ("Mimestring.fold_header [" ^ string_of_int k ^ "]") in
+    failwith ("Netmime_string.fold_header [" ^ string_of_int k ^ "]") in
   let postprocess cur =
     match cur with
       | None -> 
@@ -290,7 +290,7 @@ let scan_header ?(downcase=true)
     (values, real_end_pos)
   with
     | Not_found | Failure _ ->
-	failwith "Mimestring.scan_header"
+	failwith "Netmime_string.scan_header"
 
 
 let read_header ?(downcase=true) ?(unfold=true) ?(strip=false)
@@ -302,7 +302,7 @@ let read_header ?(downcase=true) ?(unfold=true) ?(strip=false)
     with
       | Not_found ->
 	  if s#window_at_eof then (
-	    failwith "Mimestring.read_header";
+	    failwith "Netmime_string.read_header";
 	  );
 	  s#want_another_block();
 	  search() in
@@ -314,11 +314,6 @@ let read_header ?(downcase=true) ?(unfold=true) ?(strip=false)
   l
 ;;
 
-
-(*let write_re =
-  S.regexp "[ \t\r]*(\n|\\z)([ \t\r]*)" ;;
-(* Note: \z matches the end of the buffer (PCRE) *)
- *)
 
 let write1_re =
   S.regexp "[ \t\r]*\\(\n\\)[ \t\r]*" ;;
@@ -959,7 +954,7 @@ let split_mime_type ct_type =
       [ Atom main_type; Special '/'; Atom sub_type ] ->
 	(String.lowercase main_type, String.lowercase sub_type)
     | _ ->
-	failwith "Mimestring.split_mime_type"
+	failwith "Netmime_string.split_mime_type"
 ;;
 
 
@@ -1061,7 +1056,7 @@ let decode_rfc2231_params ?(decode = true) params =
 	   if n <= 0 then begin
 	     match S.string_match encoding_re rawvalue 0 with
 		 None ->
-		   failwith "Mimestring.decode_rfc2231_params"
+		   failwith "Netmime_string.decode_rfc2231_params"
 	       | Some r ->
 		   let charset = S.matched_group r 1 rawvalue in
 		   let lang = S.matched_group r 2 rawvalue in
@@ -1089,7 +1084,7 @@ let decode_rfc2231_params ?(decode = true) params =
 		 pair
 	 in
 	 mx := max !mx n;
-	 if Hashtbl.mem map n then failwith "Mimestring.decode_rfc2231_params";
+	 if Hashtbl.mem map n then failwith "Netmime_string.decode_rfc2231_params";
 	 Hashtbl.add map n value
        end
     )
@@ -1101,7 +1096,7 @@ let decode_rfc2231_params ?(decode = true) params =
        for i = 1 to !mx do
 	 let v =
 	   try Hashtbl.find map i 
-	   with Not_found -> failwith "Mimestring.decode_rfc2231_params"
+	   with Not_found -> failwith "Netmime_string.decode_rfc2231_params"
 	 in
 	 match v with
 	     P s -> vl := s :: !vl
@@ -1109,7 +1104,7 @@ let decode_rfc2231_params ?(decode = true) params =
        done;
        match 
 	 ( try Hashtbl.find map 0 
-	   with Not_found -> failwith "Mimestring.decode_rfc2231_params"
+	   with Not_found -> failwith "Netmime_string.decode_rfc2231_params"
 	 )
        with
 	   P_encoded(charset,lang,v0) ->
@@ -1141,14 +1136,14 @@ let scan_value_with_parameters_ep_int ?decode s options =
       | Special '=' :: QString v :: tl' ->
 	  parse_rest tl'
       | _ ->
-	  failwith "Mimestring.scan_value_with_parameters"
+	  failwith "Netmime_string.scan_value_with_parameters"
   and parse_rest tl =
     match tl with
 	[] -> []
       | Special ';' :: tl' ->
 	  parse_params tl'
       | _ ->
-	  failwith "Mimestring.scan_value_with_parameters"
+	  failwith "Netmime_string.scan_value_with_parameters"
   in
 
   (* Note: Even if not used here, the comma is a very common separator
@@ -1165,7 +1160,7 @@ let scan_value_with_parameters_ep_int ?decode s options =
       | QString n :: Special ';' :: tl' ->
 	  n, parse_params tl'
       | _ ->
-	  failwith "Mimestring.scan_value_with_parameters"
+	  failwith "Netmime_string.scan_value_with_parameters"
   in
   (v, decode_rfc2231_params ?decode pl)
 ;;
@@ -1222,7 +1217,7 @@ let generate_encoded_words cs lang enc_tok text len1 len =
     ( match enc_tok with
 	  "Q"|"q" -> "?Q?"
 	| "B"|"b" -> "?B?"
-	| _ -> failwith "Mimestring.write_value: Unknown encoding"
+	| _ -> failwith "Netmime_string.write_value: Unknown encoding"
     ) in
   let suffix = "?=" in
   let prefix_len = String.length prefix in
@@ -1769,7 +1764,7 @@ let read_multipart_body f boundary s =
       S.match_end (search_window lf_re k)
     with
 	Not_found ->
-	    failwith "Mimestring.read_multipart_body: MIME boundary without line end";
+	    failwith "Netmime_string.read_multipart_body: MIME boundary without line end";
   in
 
   let search_first_boundary() =
@@ -1868,7 +1863,7 @@ let scan_multipart_body s ~start_pos ~end_pos ~boundary =
 
   let l_s = String.length s in
   if start_pos < 0 || end_pos < 0 || start_pos > l_s || end_pos >l_s then
-    invalid_arg "Mimestring.scan_multipart_body";
+    invalid_arg "Netmime_string.scan_multipart_body";
   (* Set up a netstream beginning at ~start_pos and ending at ~end_pos: *)
   let len = end_pos - start_pos in
   let stream =
@@ -1905,7 +1900,7 @@ let scan_multipart_body_and_decode s ~start_pos:i0 ~end_pos:i1 ~boundary =
 	       Netencoding.QuotedPrintable.decode
 		 value 
 	   | _ ->
-	       failwith "Mimestring.scan_multipart_body_and_decode: Unknown content-transfer-encoding"
+	       failwith "Netmime_string.scan_multipart_body_and_decode: Unknown content-transfer-encoding"
        in
        (params, value')
     )

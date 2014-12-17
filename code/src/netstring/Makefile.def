@@ -2,11 +2,12 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netaux.cmo netchannels.cmo netchannels_crypto.cmo netsockaddr.cmo \
 	   netdb.cmo netmappings.cmo netconversion.cmo netulex.cmo \
            netencoding.cmo netstream.cmo netdate.cmo \
-	   mimestring.cmo \
+	   netmime_string.cmo \
            nethtml_scanner.cmo nethtml.cmo \
 	   neturl.cmo \
 	   netaddress.cmo netcompression.cmo \
-	   netmime.cmo netsendmail.cmo nethttp.cmo \
+	   netmime.cmo netmime_header.cmo netmime_channels.cmo \
+	   netsendmail.cmo nethttp.cmo \
 	   netpagebuffer.cmo netfs.cmo netglob_lex.cmo netglob.cmo \
 	   netauth.cmo netnumber.cmo netxdr_mstring.cmo netxdr.cmo \
 	   netasn1.cmo netoid.cmo netdn.cmo netx509.cmo \
@@ -58,8 +59,9 @@ INSTALL_EXTRA = $(INSTALL_EXTRA_CMO:=.cmo) \
 		netdb-packlist \
 		dllnetaccel_c.*
 
-DOBJECTS = netconversion.mli netchannels.mli netstream.mli mimestring.mli \
+DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netmime.mli netsendmail.mli neturl.mli netaddress.mli netbuffer.mli \
+	netmime_header.mli netmime_channels.mli \
 	netdate.mli netencoding.mli netulex.mli netaccel.mli \
 	netaccel_link.mli nethtml.mli netstring_str.mli \
 	netmappings.mli netaux.mli nethttp.mli netpagebuffer.mli \

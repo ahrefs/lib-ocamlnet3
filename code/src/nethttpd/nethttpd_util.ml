@@ -98,7 +98,7 @@ let std_debug_access_log_string p =
   Printf.bprintf b "%s\n" (std_access_log_string p);
   Printf.bprintf b "Request header:\n";
   ( try
-      Mimestring.write_header ~soft_eol:"\n" ~eol:"\n" b_ch p#input_header#fields
+      Netmime_string.write_header ~soft_eol:"\n" ~eol:"\n" b_ch p#input_header#fields
     with Not_found ->
       Printf.bprintf b "(missing)\n";
   );
@@ -110,11 +110,11 @@ let std_debug_access_log_string p =
   Printf.bprintf b "Request body rejected: %b\n\n" p#request_body_rejected;
   Printf.bprintf b "CGI properties:\n";
   ( try
-      Mimestring.write_header ~soft_eol:"\n" ~eol:"\n" b_ch p#cgi_properties
+      Netmime_string.write_header ~soft_eol:"\n" ~eol:"\n" b_ch p#cgi_properties
     with Not_found ->
        Printf.bprintf b "(missing)\n";
   );
   Printf.bprintf b "Response header (code %d):\n" p#response_status_code;
-  Mimestring.write_header ~soft_eol:"\n" ~eol:"\n" b_ch p#output_header#fields;
+  Netmime_string.write_header ~soft_eol:"\n" ~eol:"\n" b_ch p#output_header#fields;
   Printf.bprintf b "Response body size: %Ld\n" p#output_body_size;
   Buffer.contents b

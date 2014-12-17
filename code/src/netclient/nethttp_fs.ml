@@ -778,9 +778,10 @@ object(self)
 	  (* Get the MIME type and the charset of the result: *)
 	  let (cont_type, charset) =
 	    try
-	      let (cont_type, params) = call#response_header#content_type() in
+	      let (cont_type, params) =
+                Netmime_header.get_content_type call#response_header in
 	      let charset = 
-		try Mimestring.param_value(List.assoc "charset" params)
+		try Netmime_string.param_value(List.assoc "charset" params)
 		with Not_found -> "US-ASCII" in
 	      (* FIXME: We could also look into the doc *)
 	      (cont_type, charset)

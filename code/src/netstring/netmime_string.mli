@@ -5,18 +5,18 @@
 
 (** Low-level functions to parse and print mail and MIME messages 
  *
- * [Mimestring] contains a lot of functions to scan and print strings
+ * [Netmime_string] contains a lot of functions to scan and print strings
  * formatted as MIME messages. For a higher-level view on this topic,
  * see the [Netmime] module.
  *
  * {b Contents}
- * - {!Mimestring.lines}
- * - {!Mimestring.headers}
- * - {!Mimestring.structured_values}
- * - {!Mimestring.parsers_for_structured_values}
- * - {!Mimestring.printers_for_structured_values}
- * - {!Mimestring.scanning_mime}
- * - {!Mimestring.helpers_mime}
+ * - {!Netmime_string.lines}
+ * - {!Netmime_string.headers}
+ * - {!Netmime_string.structured_values}
+ * - {!Netmime_string.parsers_for_structured_values}
+ * - {!Netmime_string.printers_for_structured_values}
+ * - {!Netmime_string.scanning_mime}
+ * - {!Netmime_string.helpers_mime}
  * 
  *)
 

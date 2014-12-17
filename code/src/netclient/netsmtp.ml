@@ -401,7 +401,7 @@ let sendmail client msg =
 
   let buf = Netbuffer.create 1000 in
   let ch1 = new Netchannels.output_netbuffer buf in
-  Netmime.write_mime_message ch1 msg;
+  Netmime_channels.write_mime_message ch1 msg;
   let ch2, set_eof = Netchannels.create_input_netbuffer buf in
   set_eof();
 

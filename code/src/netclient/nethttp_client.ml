@@ -2854,7 +2854,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
       and parse_header_e code call hdr_str =
 	let header_l, real_end_pos =
 	  try
-	    Mimestring.scan_header
+	    Netmime_string.scan_header
 	      ~downcase:false ~unfold:true ~strip:true hdr_str
 	      ~start_pos:0 ~end_pos:(String.length hdr_str)
 	  with
@@ -3048,7 +3048,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
       and parse_trailer_e code header out_dev call trl_str =
 	let trailer_l, real_end_pos =
 	  try
-	    Mimestring.scan_header
+	    Netmime_string.scan_header
 	      ~downcase:false ~unfold:true ~strip:true trl_str
 	      ~start_pos:0 ~end_pos:(String.length trl_str)
 	  with
@@ -3152,7 +3152,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 	
 	B.add_string buf "\r\n";
 	let ch = new Netchannels.output_netbuffer buf in
-	Mimestring.write_header ch hdr#fields;
+	Netmime_string.write_header ch hdr#fields;
 	ch # close_out();
 	      
 	if !options.verbose_request_header then

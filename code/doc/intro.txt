@@ -158,8 +158,10 @@ for other libraries.
    Netchannels
    Netchannels_crypto
    Netstream
-   Mimestring
    Netmime
+   Netmime_header
+   Netmime_channels
+   Netmime_string
    Netsendmail
    Neturl
    Netsockaddr
