@@ -965,6 +965,7 @@ object(self)
   val mutable tls_session_props = None
   val mutable tls_session = None
   val mutable fatal_exn = None
+  val mutable will_update = false
 
   val aux_buf_lz = lazy(Netsys_mem.pool_alloc_memory Netsys_mem.default_pool)
 
@@ -1074,7 +1075,7 @@ object(self)
 
   method private really_cancel_reading() =
     reading <- `None;
-    self # update();
+    self # update_soon();
     dlogr (fun () ->
 	   sprintf
 	     "cancel_reading tls_multiplex_controller mplex=%d"
@@ -1154,7 +1155,7 @@ object(self)
   method private really_cancel_writing() =
     writing <- `None;
     writing_eof <- None;
-    self # update();
+    self # update_soon();
     dlogr (fun () ->
 	   sprintf
 	     "cancel_writing tls_multiplex_controller mplex=%d"
@@ -1190,7 +1191,7 @@ object(self)
 
   method private really_cancel_shutting_down () =
     shutting_down <- None;
-    self # update();
+    self # update_soon();
     dlogr (fun () ->
 	   sprintf
 	     "cancel_shutting_down \
@@ -1218,11 +1219,14 @@ object(self)
         self # update_soon()
 
   method private update_soon() =
-    let g = Unixqueue.new_group esys in
-    Unixqueue.once esys g 0.0
-      (fun () -> 
-         notify (self # update())
-      )
+    if not will_update then (
+      will_update <- true;
+      Unixqueue.once esys g 0.0
+        (fun () -> 
+           will_update <- false;
+           notify (self # update())
+        )
+    )
 
   method private update() =
     (* any conditions have changed. Return the notification callback *)
@@ -1540,6 +1544,7 @@ object(self)
   method inactivate() =
     dlog "tls_multiplex_controller: inactivate";
     alive <- false;
+    Unixqueue.clear esys g;
     mplex # inactivate()
 
   method event_system = esys
