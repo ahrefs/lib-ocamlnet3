@@ -27,7 +27,7 @@ the same kind of values throughout the whole library to make this
 easier.  Examples:
 
 - {!Netmime} defines mail messages, but as this data format is also
-  used in HTTP, {!Http_client} represents requests and responses 
+  used in HTTP, {!Nethttp_client} represents requests and responses 
   with the same classes
 - {!Netchannels} defines object-oriented I/O channels. These are
   used almost everywhere in Ocamlnet.

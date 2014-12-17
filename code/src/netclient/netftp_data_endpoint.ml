@@ -1221,7 +1221,7 @@ class ftp_data_receiver ?tls ?protector ~esys ~mode ~local_receiver ~descr
    *)
   let () =
     if tls <> None && protector <> None then
-      failwith "Ftp_data_endpoint.ftp_data_receiver: Only one security layer \
+      failwith "Netftp_data_endpoint.ftp_data_receiver: Only one security layer \
                 can be enabled" in
   let e = 
     new ftp_data_receiver_impl
@@ -1268,7 +1268,7 @@ class ftp_data_sender
         () =
   let () =
     if tls <> None && protector <> None then
-      failwith "Ftp_data_endpoint.ftp_data_sender: Only one security layer \
+      failwith "Netftp_data_endpoint.ftp_data_sender: Only one security layer \
                 can be enabled" in
   let descr_state = ref (`Transfer_in_progress : descr_state) in
   let src =

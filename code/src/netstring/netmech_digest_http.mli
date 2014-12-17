@@ -10,16 +10,16 @@ module Digest :  Nethttp.HTTP_MECHANISM
 
       There is no support for the "auth-int" level of protection.
 
-      How to use with {!Http_client}: You need the adapter
-      {!Http_client.generic_auth_handler}, e.g.
+      How to use with {!Nethttp_client}: You need the adapter
+      {!Nethttp_client.generic_auth_handler}, e.g.
 
       {[
   let m = ( module Netmech_digest_http.Digest )
-  let h = new Http_client.generic_auth_handler key_ring [ m ]
+  let h = new Nethttp_client.generic_auth_handler key_ring [ m ]
   http_pipeline # add_auth_handler h
       ]}
 
-      Get [key_ring] by instantiating {!Http_client.key_ring}.
+      Get [key_ring] by instantiating {!Nethttp_client.key_ring}.
 
       Note that the key ring must use UTF-8 encoding (although the
       Digest protocol might need to recode to ISO-8859-1 - note that

@@ -101,18 +101,18 @@ In the above code, the variable [gssapi] is already such a module.
 At the time of writing this text, these interpreters support the GSSAPI:
  - RPC clients: {!Rpc_client}
  - RPC servers: {!Rpc_server}
- - HTTP clients: {!Http_client} with the help of {!Netmech_spnego_http}
- - FTP clients: {!Ftp_client} and {!Ftp_fs}
+ - HTTP clients: {!Nethttp_client} with the help of {!Netmech_spnego_http}
+ - FTP clients: {!Netftp_client} and {!Netftp_fs}
  - POP clients (via SASL bridging): {!Netpop}
  - SMTP clients (via SASL bridging): {!Netsmtp}
 
 Sometimes, the [gssapi] variable can be directly passed to the
 protocol interpreter, but even in this case some extra configuration
-is sometimes needed.  An example of this is {!Ftp_fs}:
+is sometimes needed.  An example of this is {!Netftp_fs}:
 
 {[
 let fs =
-  Ftp_fs.ftp_fs
+  Netftp_fs.ftp_fs
     ...
     ~gssapi_provider:gssapi
     ...
@@ -130,7 +130,7 @@ However, even in this case there are a few things that may need tuning:
  - whether other options are enabled, e.g. delegation
 
 Most protocol interpreters can be configured to use non-default values.
-For {!Ftp_fs} and some other interpreters you can also pass a
+For {!Netftp_fs} and some other interpreters you can also pass a
 [gssap_config] argument, which is an instance of {!Netsys_gssapi.client_config}.
 For example, to enforce encryption, you'd do:
 
@@ -141,7 +141,7 @@ let gssapi_config =
     ()
 
 let fs =
-  Ftp_fs.ftp_fs
+  Netftp_fs.ftp_fs
     ...
     ~gssapi_provider:gssapi
     ~gssapi_config

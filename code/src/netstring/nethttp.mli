@@ -1061,7 +1061,7 @@ end
 (** {2 HTTP transport registry} *)
 
 type transport_layer_id = int
-  (** see {!Http_client.transport_layer_id} *)
+  (** see {!Nethttp_client.transport_layer_id} *)
 
 val new_trans_id : unit -> transport_layer_id
   (** Allocates and returns a new ID *)
@@ -1195,7 +1195,7 @@ module type HTTP_MECHANISM =
           Available parameters:
            - "realm"
            - "id" (if [client_match] returns a session ID)
-           - "trans_id": the {!Http_client.transport_layer_id} of the
+           - "trans_id": the {!Nethttp_client.transport_layer_id} of the
              current HTTP request
            - "conn_id": an identifier for the TCP connection
            - "https": is set to "true" if the current connection is TLS-secured

@@ -121,7 +121,7 @@ module type TLS_CONFIG =
 Because of this, it is sufficient to pass a [TLS_CONFIG] module to a
 protocol implementation to tell it about the combination of a provider
 and a configuration (e.g. look at the [tls_config] argument of
-{!Ftp_fs.ftp_fs}). The reason for this kind of wrapping is that the
+{!Netftp_fs.ftp_fs}). The reason for this kind of wrapping is that the
 type of the configuration is defined by the provider, and hence the
 configuration cannot exist without provider (the OCaml type checker
 enforces this).
@@ -153,30 +153,30 @@ An "endpoint" denotes here the TLS state for a single connection.
 
 {2 Using TLS in clients}
 
-{b HTTP:} In {!Http_client}, TLS is now automatically available once a
+{b HTTP:} In {!Nethttp_client}, TLS is now automatically available once a
 TLS provider is initialized. Just submit "https" URLs, and that's it.
 There is no [Https_client] module anymore (as in earlier versions of
 Ocamlnet).
 
 If you need to change the TLS configuration (or want to enable a different
-provider), you can set the {!Http_client.http_options.tls} option, e.g.
+provider), you can set the {!Nethttp_client.http_options.tls} option, e.g.
 
 {[
 let http_config = pipeline # get_options
 let new_config =
   { http_config with
-      Http_client.tls = Some tls_config
+      Nethttp_client.tls = Some tls_config
   }
 pipeline # set_options new_options
 ]}
 
-{!Http_fs} inherits the automatic configuration from {!Http_client}.
+{!Nethttp_fs} inherits the automatic configuration from {!Nethttp_client}.
 
 {b FTP:} After starting an FTP session, you need to enable TLS explicitly
-using {!Ftp_client.tls_method}. For instance:
+using {!Netftp_client.tls_method}. For instance:
 
 {[
-let client = new Ftp_client.ftp_client() ;;
+let client = new Netftp_client.ftp_client() ;;
 client # exec (connect_method ~host ());
 client # exec (tls_method ~config ~required ());
 client # exec (login_method ~user ~get_password ~get_account ());
@@ -186,11 +186,11 @@ Here, [config] is the TLS configuration. Set [required] if TLS
 is mandatory, and the file transfer will fail for servers not
 supporting TLS.
 
-For {!Ftp_fs}, things are a bit simpler: Just pass [tls_enabled:true]
+For {!Netftp_fs}, things are a bit simpler: Just pass [tls_enabled:true]
 when creating the fs object:
 
 {[
-let fs = Ftp_fs.ftp_fs ~tls_enabled:true "ftp://user@host/path"
+let fs = Netftp_fs.ftp_fs ~tls_enabled:true "ftp://user@host/path"
 ]}
 
 Again, you can set whether TLS is required: [tls_required]. There is
@@ -236,7 +236,7 @@ SNI is a protocol extension that allows it clients to announce early in
 the feature negotiation to which domain they want to talk. SNI is
 not available on all servers, though.
 
-So far, only {!Http_client} supports the caching of TLS sessions
+So far, only {!Nethttp_client} supports the caching of TLS sessions
 between TCP connects, but it needs to be explicitly configured
 (method [set_tls_cache]). (A "TLS session" is an established security
 context where both parties know the secret credentials, and can exchange

@@ -21,11 +21,11 @@ module Debug = struct
   let enable = ref false
 end
 
-let dlog = Netlog.Debug.mk_dlog "Ftp_client" Debug.enable
-let dlogr = Netlog.Debug.mk_dlogr "Ftp_client" Debug.enable
+let dlog = Netlog.Debug.mk_dlog "Nettelnet_client" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Nettelnet_client" Debug.enable
 
 let () =
-  Netlog.Debug.register_module "Ftp_client" Debug.enable
+  Netlog.Debug.register_module "Nettelnet_client" Debug.enable
 
 
 open Printf

@@ -150,7 +150,7 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
             d
           else
             [ "/" ]  (* whole server *)
-       (* NB. the uri's are passed through Http_client.normalize_domain,
+       (* NB. the uri's are passed through Nethttp_client.normalize_domain,
           so server-relative paths can be interpreted
         *)
 

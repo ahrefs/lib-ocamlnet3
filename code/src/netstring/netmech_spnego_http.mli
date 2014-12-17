@@ -46,16 +46,16 @@
 
     Technically, the route of the HTTP request depends on the [transport_layer]
     ID.  As long as the HTTP request has an ID of
-    {!Http_client.https_trans_id}, it will go over the normal transports.
-    If the ID changes to {!Http_client.spnego_trans_id}, the separate
+    {!Nethttp_client.https_trans_id}, it will go over the normal transports.
+    If the ID changes to {!Nethttp_client.spnego_trans_id}, the separate
     transports for SPNEGO are used.
 
     If it is already known that the HTTP request needs to be authenticated
     with SPNEGO, the authentication protocol can be abbreviated by directly
-    switching to {!Http_client.spnego_trans_id}:
+    switching to {!Nethttp_client.spnego_trans_id}:
 
     {[
-c # set_transport_layer Http_client.spnego_trans_id
+c # set_transport_layer Nethttp_client.spnego_trans_id
     ]}
     
     The effect is that only one request/response cycle is needed to process
@@ -71,16 +71,16 @@ c # set_transport_layer Http_client.spnego_trans_id
 module A =
   Netmech_spnego_http.SPNEGO(Netmech_spnego_http.Default)(Netgss.System)
 
-let keys = new Http_client.key_ring ()
+let keys = new Nethttp_client.key_ring ()
 let () =
   keys # add_key (key ~user:"" ~password:"" ~realm:"SPNEGO" ~domain:[])
 let a = 
-  new Http_client.generic_auth_handler
+  new Nethttp_client.generic_auth_handler
         keys [ (module A : Nethttp.HTTP_MECHANISM) ]
-let p = new Http_client.pipeline
+let p = new Nethttp_client.pipeline
 let () =
   p # add_auth_handler a
-let c = new Http_client.get "https://gps.dynxs.de/krb/"
+let c = new Nethttp_client.get "https://gps.dynxs.de/krb/"
 let () =
   p # add c;
   p # run()

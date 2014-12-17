@@ -14,7 +14,7 @@
     - Type changes:
        * client_match may return a new tag for re-routing to a different
          trans_id: `Reroute.
-    - Changes in Http_client:
+    - Changes in Nethttp_client:
        * pass trans_id as part of client_match call
        * what to do for `Reroute: we always follow this. Check whether
          a connection with the new trans_id exists. If yes, use it. If not,
@@ -412,7 +412,7 @@ module D =
 
 module A = Netmech_spnego_http.SPNEGO(D)(Netgss.System);;
 
-open Http_client;;
+open Nethttp_client;;
 Debug.enable := true;;
 let keys = new key_ring ~no_invalidation:true ();;
 keys # add_key (key ~user:"krb" ~password:"" ~realm:"SPNEGO" ~domain:[]);;
@@ -429,7 +429,7 @@ p # run();;
 p # add_with_callback c1 (fun _ -> p # add c2);;
 p # run();;
 
-c2 # set_transport_layer Http_client.spnego_trans_id;;
+c2 # set_transport_layer Nethttp_client.spnego_trans_id;;
 p # add_with_callback c1 (fun _ -> p # add c2);;
 p # run();;
 

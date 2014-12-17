@@ -9,7 +9,7 @@
 
 type ftp_data_prot =
   [ `C | `S | `E | `P ]
-  (** See {!Ftp_client.ftp_data_prot} *)
+  (** See {!Netftp_client.ftp_data_prot} *)
 
 type ftp_protector =
     { ftp_wrap_limit : unit -> int;

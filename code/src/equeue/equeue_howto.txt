@@ -93,14 +93,14 @@ with it. This is available in the {!Unixqueue} module. Normally, however,
 you don't use this module directly, because it is {i very low-level}.
 
 So, let's look directly at high-level interfaces. For example, the
-{!Http_client} uses event systems internally, and one can also control
-this aspect of it. When creating an {!Http_client.pipeline} object,
+{!Nethttp_client} uses event systems internally, and one can also control
+this aspect of it. When creating an {!Nethttp_client.pipeline} object,
 just set the event system to the one you want to use. This attaches
 the whole HTTP protocol interpreter implemented by this object to the
 event system:
 
 {[
-let pipeline = new Http_client.pipeline
+let pipeline = new Nethttp_client.pipeline
 let () = pipeline # set_event_system esys
 ]}
 
@@ -113,7 +113,7 @@ can happen, you need to program it, i.e. add tasks to do. For example:
 
 {[
 pipeline # add_with_callback
-  (new Http_client.get "http://caml.inria.fr/")
+  (new Nethttp_client.get "http://caml.inria.fr/")
   (fun get -> ...)
 ]}
 
@@ -151,10 +151,10 @@ done:
 
 {[
 pipeline # add_with_callback
-  (new Http_client.get "http://caml.inria.fr/")
+  (new Nethttp_client.get "http://caml.inria.fr/")
   (fun get1 -> 
     pipeline # add_with_callback
-      (new Http_client.get "http://www.camlcity.org/")
+      (new Nethttp_client.get "http://www.camlcity.org/")
       (fun get2 -> ...)
   )
 ]}
@@ -167,14 +167,14 @@ running action currently is:
 
 {[
 pipeline # add_with_callback
-  (new Http_client.get "http://caml.inria.fr/")
+  (new Nethttp_client.get "http://caml.inria.fr/")
   (fun get1 -> ...);
 
 let g = Unixqueue.new_group esys
 Unixqueue.once esys g time
   (fun () ->
     pipeline # add_with_callback
-      (new Http_client.get "http://www.camlcity.org/")
+      (new Nethttp_client.get "http://www.camlcity.org/")
       (fun get2 -> ...)
   )
 ]}
@@ -202,7 +202,7 @@ let count = ref 0
 List.iter
   (fun url ->
     pipeline # add_with_callback
-      (new Http_client.get url)
+      (new Nethttp_client.get url)
       (fun get ->
         decr count;
         if !count = 0 then ... (* do some followup action here *)
@@ -235,7 +235,7 @@ let rec maybe_next() =
     | [] -> ()
     | url :: list' ->
         pipeline # add_with_callback
-          (new Http_client.get url)
+          (new Nethttp_client.get url)
           (fun get ->
              decr count;
              maybe_next();
@@ -284,7 +284,7 @@ Continuing the HTTP example, there is also an engine-based version of
 adding a request to the pipeline:
 
 {[
-let e = pipeline # add_e (new Http_client.get url)
+let e = pipeline # add_e (new Nethttp_client.get url)
 ]}
 
 This is the same as [add_with_callback] only that the delivery mechanism
@@ -360,10 +360,10 @@ other, looks like:
 {[
 let e =
   pipeline # add_e
-    (new Http_client.get "http://caml.inria.fr/")
+    (new Nethttp_client.get "http://caml.inria.fr/")
   ++ (fun get1 -> 
         pipeline # add_e
-          (new Http_client.get "http://www.camlcity.org/")
+          (new Nethttp_client.get "http://www.camlcity.org/")
         ++ (fun get2 ->
               ...;
               eps_e (`Done()) pipeline#event_system
@@ -394,10 +394,10 @@ could also just return what you have got, as in
 {[
 let e =
   pipeline # add_e
-    (new Http_client.get "http://caml.inria.fr/")
+    (new Nethttp_client.get "http://caml.inria.fr/")
   ++ (fun get1 -> 
         pipeline # add_e
-          (new Http_client.get "http://www.camlcity.org/")
+          (new Nethttp_client.get "http://www.camlcity.org/")
         ++ (fun get2 ->
               eps_e (`Done(get1, get2)) pipeline#event_system
            )
@@ -472,7 +472,7 @@ let download_e list =
     | [] -> eps_e (`Done ()) esys
     | url :: list' ->
         list := list';
-        pipeline # add_e (new Http_client.get url)
+        pipeline # add_e (new Nethttp_client.get url)
         ++ (fun get ->
               download_thread_e()
            ) in
@@ -583,10 +583,10 @@ The definition of devices is extensible.
 
  - RPC clients: {!Rpc_client}
  - RPC servers: {!Rpc_server}
- - HTTP clients: {!Http_client}
+ - HTTP clients: {!Nethttp_client}
  - HTTP servers: {!Nethttpd_engine}
- - FTP clients: {!Ftp_client}
- - Telnet clients: {!Telnet_client}
+ - FTP clients: {!Netftp_client}
+ - Telnet clients: {!Nettelnet_client}
 
 {b Definition hierarchy}
 
