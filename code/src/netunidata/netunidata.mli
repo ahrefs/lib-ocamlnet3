@@ -16,7 +16,6 @@
     findlib packages:
 
      - netunidata.iso: Links in the whole ISO-8859 series
-     - netunidata.asn1: Links in some ASN1-specific character sets
      - netunidata.jp: Links in Japanese character sets (JIS-X-0201 and
        EUC-JP)
      - netunidata.kr: Links in Korean character sets (EUC-KR)

@@ -3,6 +3,7 @@ OCAMLNET 4 RELEASE:
  - CHECK EXAMPLES
  - renames: xdr, xdr_mstring, mimestring - DONE
  - Netconversion refactoring - DONE
+    * asn1: what is actually needed? built-in?
  - module refactoring so far needed (smaller executables)
  - RPCBIND
  - mod_apache build errors

@@ -6,8 +6,7 @@ PKGNAME = netunidata
 MAPPINGS = netmappings_iso.ml \
 	   netmappings_other.ml \
 	   netmappings_jp.ml \
-	   netmappings_kr.ml \
-	   netmappings_asn1.ml
+	   netmappings_kr.ml
 GENERATE = $(MAPPINGS) netunichecksums.ml netuniconfig.ml netdb_done META
 PMAP = $(MAPPINGS:.ml=.pmap)
 
@@ -15,7 +14,6 @@ include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += $(GENERATE)
 
-ASN1_MAPPINGS  = mappings/asn1_*.unimap
 ISO_MAPPINGS   = mappings/iso*.unimap
 JP_MAPPINGS    = mappings/jis*.*map
 KR_MAPPINGS    = mappings/ks*.*map
@@ -24,6 +22,8 @@ OTHER_MAPPINGS = mappings/cp*.unimap \
                  mappings/koi*.unimap \
                  mappings/mac*.unimap \
                  mappings/windows*.unimap
+
+# ASN1: these tables are built-in, see netstring
 
 unimap_to_ocaml = $(TOP_DIR)/tools/unimap_to_ocaml/unimap_to_ocaml
 
@@ -37,14 +37,6 @@ netmappings_iso.pmap:
 netmappings_iso.ml: netmappings_iso.pmap
 	$(unimap_to_ocaml) \
 		-o netmappings_iso.ml netmappings_iso.pmap
-
-netmappings_asn1.pmap:
-	$(unimap_to_ocaml) \
-	        -o netmappings_asn1.pmap -pmap $(ASN1_MAPPINGS)
-
-netmappings_asn1.ml: netmappings_asn1.pmap
-	$(unimap_to_ocaml) \
-		-o netmappings_asn1.ml netmappings_asn1.pmap
 
 netmappings_jp.pmap:
 	$(unimap_to_ocaml) \

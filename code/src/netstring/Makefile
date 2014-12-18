@@ -2,8 +2,8 @@ TOP_DIR=../..
 
 OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netaux.cmo netchannels.cmo netchannels_crypto.cmo netsockaddr.cmo \
-	   netdb.cmo netmappings.cmo netconversion.cmo netulex.cmo \
-           netencoding.cmo netstream.cmo netdate.cmo \
+	   netdb.cmo netmappings_asn1.cmo netmappings.cmo netconversion.cmo \
+           netulex.cmo netencoding.cmo netstream.cmo netdate.cmo \
 	   netmime_string.cmo \
            nethtml_scanner.cmo nethtml.cmo \
 	   neturl.cmo \

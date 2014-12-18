@@ -74,7 +74,9 @@ d src/netstring
 f src/netstring/META.in
 f src/netstring/Makefile
 f src/netstring/Makefile.pre
+f src/netstring/netmappings_asn1.pmap
 # Include all .ml, .mli files, but not the modules currently being developed
+x src/netstring/netmappings_asn1.ml
 x src/netstring/nethtml_scanner.ml
 x src/netstring/netmessage.mli
 x src/netstring/netiso2022.ml
@@ -98,12 +100,10 @@ f src/netunidata/Makefile
 f src/netunidata/Makefile.pre
 # Make sure these exist:
 f src/netunidata/netmappings_iso.pmap
-f src/netunidata/netmappings_asn1.pmap
 f src/netunidata/netmappings_jp.pmap
 f src/netunidata/netmappings_kr.pmap
 f src/netunidata/netmappings_other.pmap
 x src/netunidata/netmappings_iso.ml
-x src/netunidata/netmappings_asn1.ml
 x src/netunidata/netmappings_jp.ml
 x src/netunidata/netmappings_kr.ml
 x src/netunidata/netmappings_other.ml

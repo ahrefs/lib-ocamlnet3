@@ -2,8 +2,13 @@ TOP_DIR=../..
 
 PRE = 1
 GENERATE = netconst.ml netglob_lex.ml \
-           netunichar.ml META
+           netunichar.ml netmappings_asn1.ml META
 CLEAN_LIST += $(GENERATE)
+
+NETNUMBER_DEFS = -D WORDSIZE_$(WORD_SIZE) -D HOST_IS_$(ENDIANESS) \
+                 -D USE_NETSYS_XDR
+
+PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
 
 netconst.ml: netconst.mlp
 	sed -e 's/@VERSION@/$(VERSION)/' netconst.mlp >netconst.ml
@@ -14,5 +19,20 @@ unicode_charinfo.txt:
 netunichar.ml: unicode_charinfo.txt
 	ocaml ../../tools/unicode_charinfo.ml unicode_charinfo.txt \
 		> netunichar.ml
+
+ASN1_MAPPINGS  = ../netunidata/mappings/asn1_*.unimap
+unimap_to_ocaml = $(TOP_DIR)/tools/unimap_to_ocaml/unimap_to_ocaml
+
+# The .pmap files are the distributed files. The .unimap files cannot be
+# distributed because of license conditions.
+
+netmappings_asn1.pmap:
+	$(unimap_to_ocaml) \
+	        -o netmappings_asn1.pmap -pmap $(ASN1_MAPPINGS)
+
+netmappings_asn1.ml: netmappings_asn1.pmap
+	$(unimap_to_ocaml) \
+		-o netmappings_asn1.ml netmappings_asn1.pmap
+
 
 include $(TOP_DIR)/Makefile.rules

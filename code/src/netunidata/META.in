@@ -11,12 +11,6 @@ package "iso" (
   archive(native) = "netmappings_iso.cmx"
 )
 
-package "asn1" (
-  requires = "netunidata"
-  archive(byte) = "netmappings_asn1.cmo"
-  archive(native) = "netmappings_asn1.cmx"
-)
-
 package "jp" (
   requires = "netunidata"
   archive(byte) = "netmappings_jp.cmo"
