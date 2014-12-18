@@ -176,7 +176,22 @@ let print_bijection f name m_to_unicode m_from_unicode =
 ;;
 
 
-let print_ocaml_file ?(no_disable_netdb=false) out unimaps =
+let print_bijection_cksum f name m_to_unicode m_from_unicode =
+  (* Prints on file f this O'Caml code:
+   * let <name>_to_unicode = ...
+   * let <name>_from_unicode = ...
+   *)
+  fprintf f "let %s_to_unicode = \"%s\";;\n" 
+    name 
+    (String.escaped (Digest.string (to_unimap_as_string m_to_unicode)));
+
+  fprintf f "let %s_from_unicode = \"%s\";;\n"
+    name
+    (String.escaped (Digest.string (from_unimap_as_string m_from_unicode)));
+;;
+
+
+let print_ocaml_file out unimaps =
   (* Compute all bijections: *)
   let bijections =
     List.map
@@ -207,10 +222,42 @@ let print_ocaml_file ?(no_disable_netdb=false) out unimaps =
 	           mapname mapname;
     )
     (List.rev bijections);
-  if not no_disable_netdb then 
-    fprintf out "Netdb.disable_file_db();;\n"
-  else
-    fprintf out "();;\n";
+  fprintf out "();;\n";
+  fprintf out "let init() = ();;\n"
+;;
+
+
+let print_checksum_file out unimaps =
+  (* Compute all bijections: *)
+  let bijections =
+    List.map
+      (fun (mapname, unimap) ->
+	 let to_unicode, from_unicode = make_bijection unimap in
+	 mapname, to_unicode, from_unicode
+      )
+      unimaps
+  in
+
+  (* Output all results: *)
+  output_string out "(* WARNING! This is a generated file! *)\n";
+
+  List.iter
+    (fun (mapname, to_unicode, from_unicode) ->
+       print_bijection_cksum out mapname to_unicode from_unicode)
+    bijections;
+  List.iter
+    (fun (mapname, _, _) ->
+       fprintf out "Netdb.set_db_checksum \"cmapf.%s\" %s_to_unicode;\n" 
+	           mapname mapname;
+       fprintf out "Netdb.set_db_checksum \"cmapr.%s\" %s_from_unicode;\n" 
+	           mapname mapname;
+       fprintf out "Netdb.set_db_loader \"cmapf.%s\" Netunidata.load_file;\n"
+                   mapname;
+       fprintf out "Netdb.set_db_loader \"cmapr.%s\" Netunidata.load_file;\n"
+                   mapname;
+    )
+    (List.rev bijections);
+  fprintf out "();;\n";
   fprintf out "let init() = ();;\n"
 ;;
 
@@ -289,17 +336,17 @@ let main() =
   let files = ref [] in
   let outch = ref (lazy stdout) in
   let pmap = ref false in
+  let cksum = ref false in
   let netdb = ref false in
-  let no_disable_netdb = ref false in
   Arg.parse
       [ "-o", Arg.String (fun s -> outch := lazy (open_out s)),
            " <file>   Redirect stdout to this file";
 	"-pmap", Arg.Set pmap,
 	      "       Write in pmap format (portable maps)";
+        "-cksum", Arg.Set cksum,
+               "      Write checksum file (ml)";
 	"-netdb", Arg.Set netdb,
 	       "      Write netdb files (non-portable maps)";
-        "-no-disable-netdb", Arg.Set no_disable_netdb,
-        "  Do not generate 'Netdb.disable_file_db' call";
       ]
       (fun s -> files := !files @ [s])
       "usage: unimap_to_ocaml file.unimap ... file.pmap ...";
@@ -365,8 +412,11 @@ let main() =
   else if !pmap then begin
     write_portable_file out unimaps
   end
+  else if !cksum then begin
+    print_checksum_file out unimaps
+  end
   else begin
-    print_ocaml_file ~no_disable_netdb:!no_disable_netdb out unimaps
+    print_ocaml_file out unimaps
   end;
 
   close_out out

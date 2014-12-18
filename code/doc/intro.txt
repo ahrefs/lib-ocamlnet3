@@ -76,6 +76,7 @@ Related external articles:
   {- {!Intro.ch_base}
      {ul
        {- {!Intro.netstring}}
+       {- {!Intro.netunidata}}
        {- {!Intro.netzip}}
        {- {!Intro.equeue}}
        {- {!Intro.netplex}}
@@ -208,6 +209,12 @@ for other libraries.
 
 {!modules:
    Netstring_pcre
+}
+
+{2:netunidata The [netunidata] library: Unicode tables}
+
+{!modules:
+   Netunidata
 }
 
 {2:netzip The [netzip] library: compression for object channels}

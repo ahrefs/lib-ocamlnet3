@@ -1,7 +1,7 @@
 TOP_DIR=../..
 
 PRE = 1
-GENERATE = netdb.ml netconst.ml netglob_lex.ml \
-           netunichar.ml netdb-packlist META
+GENERATE = netconst.ml netglob_lex.ml \
+           netunichar.ml META
 
 include Makefile.def

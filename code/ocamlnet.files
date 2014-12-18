@@ -65,6 +65,11 @@ f tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.ml
 f tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.mli
 f tools/cppo-0.9.4/ocamlbuild_plugin/_tags
 
+d tools/unimap_to_ocaml
+f tools/unimap_to_ocaml/Makefile
+f tools/unimap_to_ocaml/unimap_to_ocaml.ml
+
+
 d src/netstring
 f src/netstring/META.in
 f src/netstring/Makefile
@@ -74,22 +79,9 @@ f src/netstring/Makefile.def
 x src/netstring/nethtml_scanner.ml
 x src/netstring/netmessage.mli
 x src/netstring/netiso2022.ml
-# Make sure these exist:
-f src/netstring/netmappings_iso.pmap
-f src/netstring/netmappings_asn1.pmap
-f src/netstring/netmappings_jp.pmap
-f src/netstring/netmappings_kr.pmap
-f src/netstring/netmappings_other.pmap
-x src/netstring/netmappings_iso.ml
-x src/netstring/netmappings_jp.ml
-x src/netstring/netmappings_kr.ml
-x src/netstring/netmappings_other.ml
-f src/netstring/netmappings_min.ml
 x src/netstring/netconst.ml
 f src/netstring/netconst.mlp
 f src/netstring/nethtml_scanner.mll
-f src/netstring/netdb.mlp
-x src/netstring/netdb.ml
 f src/netstring/netaccel_c.c
 x src/netstring/netglob_lex.ml
 f src/netstring/netglob_lex.mll
@@ -101,14 +93,26 @@ p src/netstring/.*\.ml
 p src/netstring/.*\.mli
 p src/netstring/.*\.txt
 
-# src/netstring/mappings: not necessary
-# src/netstring/tests: not necessary
+d src/netunidata
+f src/netunidata/META.in
+f src/netunidata/Makefile
+f src/netunidata/Makefile.pre
+# Make sure these exist:
+f src/netunidata/netmappings_iso.pmap
+f src/netunidata/netmappings_asn1.pmap
+f src/netunidata/netmappings_jp.pmap
+f src/netunidata/netmappings_kr.pmap
+f src/netunidata/netmappings_other.pmap
+x src/netunidata/netmappings_iso.ml
+x src/netunidata/netmappings_asn1.ml
+x src/netunidata/netmappings_jp.ml
+x src/netunidata/netmappings_kr.ml
+x src/netunidata/netmappings_other.ml
+x src/netunidata/netuniconfig.ml
+p src/netunidata/.*\.ml
+p src/netunidata/.*\.mli
 
-d src/netstring/tools
-f src/netstring/tools/Makefile
-d src/netstring/tools/unimap_to_ocaml
-f src/netstring/tools/unimap_to_ocaml/Makefile
-f src/netstring/tools/unimap_to_ocaml/unimap_to_ocaml.ml
+# src/netunidata/mappings: not necessary
 
 d src/netstring-pcre
 f src/netstring-pcre/Makefile

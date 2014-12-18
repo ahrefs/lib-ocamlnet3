@@ -7,9 +7,11 @@ OCAMLNET 4 RELEASE:
  - RPCBIND
  - mod_apache build errors
  - gnutls build warnings
+ - integrate nethttpd-for-netcgi2
  - DOC UPDATE
     * remove all the ocamlnet 3 links
     * OCamlnet 4 intro
+       - also: build changes, other changes
  - BUILD update
     * oasis
  - IF TIME:
@@ -21,6 +23,19 @@ OCAMLNET 4 RELEASE:
 User's wishes/fixes:
  - mode of netplex socket can be set in config file (T. Calderon)
  - setgid does not work (lookup wrong) (T. Calderon)
+
+
+Netconversion:
+ - findlib:
+     netunidata
+     netunidata.<charset>  e.g. netunidata.iso88592
+     netunidata.<collection>  e.g. netunidata.all
+ - Netunidata.load "<charset>"  or "<collection>"
+             .lazy_load
+             .disable
+             .override
+   (ex: Netdb)
+ - checksums are always in-core
 
 GSSAPI:
  - check when to delete contexts. Fix protocol interpreters  - DONE

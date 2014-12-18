@@ -15,8 +15,7 @@ TOP_DIR=.
 PKGLIST ?= netstring cgi
 
 .PHONY: all
-all:
-	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) all )
+all: tools
 	for pkg in $(PKGLIST); do \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
@@ -24,8 +23,7 @@ all:
 	done
 
 .PHONY: opt
-opt:
-	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) opt )
+opt: tools
 	for pkg in $(PKGLIST); do \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
@@ -43,6 +41,11 @@ doc:
 		}; \
 	done
 	cd doc; $(MAKE) doc
+
+.PHONY: tools
+tools:
+	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) all )
+	( cd tools/unimap_to_ocaml && $(MAKE) all )
 
 
 # The following PHONY rule is important for Cygwin:
@@ -67,6 +70,7 @@ clean:
 	done
 	if test -f doc/Makefile; then cd doc && $(MAKE) clean; fi
 	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) clean )
+	( cd tools/unimap_to_ocaml && $(MAKE) clean )
 
 .PHONY: clean-doc
 clean-doc:

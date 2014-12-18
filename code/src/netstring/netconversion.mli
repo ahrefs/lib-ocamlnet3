@@ -218,7 +218,7 @@
  *
  * The lookup tables for the other encodings are usually loaded at
  * runtime, but it is also possible to embed them in the generated
- * binary executable. See the file [INSTALL] for details. The functions
+ * binary executable. See {!Netunidata} for details. The functions
  * [available_input_encodings] and [available_output_encodings] can
  * be invoked to find out which encodings can be loaded, or are available
  * otherwise.
@@ -1445,3 +1445,5 @@ val read_utf8_ref :
   * They are overriden by Netaccel (if linked)
   *)
 
+val internal_name : charset -> string
+  (* map charset to the key used in the lookup table *)
