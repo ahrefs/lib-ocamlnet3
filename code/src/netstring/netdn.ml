@@ -18,6 +18,10 @@ module type DN_string = sig
 end
 
 
+let () =
+  Netmappings_asn1.init()
+    (* ensure that asn1 tables are linked in *)
+
 let directory_string_from_ASN1 value =
   let fail_enc() =
     failwith "Netx509.directory_string_from_ASN1: bad input encoding" in
