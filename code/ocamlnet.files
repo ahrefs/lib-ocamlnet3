@@ -74,7 +74,6 @@ d src/netstring
 f src/netstring/META.in
 f src/netstring/Makefile
 f src/netstring/Makefile.pre
-f src/netstring/Makefile.def
 # Include all .ml, .mli files, but not the modules currently being developed
 x src/netstring/nethtml_scanner.ml
 x src/netstring/netmessage.mli

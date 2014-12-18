@@ -3,5 +3,16 @@ TOP_DIR=../..
 PRE = 1
 GENERATE = netconst.ml netglob_lex.ml \
            netunichar.ml META
+CLEAN_LIST += $(GENERATE)
 
-include Makefile.def
+netconst.ml: netconst.mlp
+	sed -e 's/@VERSION@/$(VERSION)/' netconst.mlp >netconst.ml
+
+unicode_charinfo.txt:
+	ocaml ../../tools/unicode_extract.ml > unicode_charinfo.txt
+
+netunichar.ml: unicode_charinfo.txt
+	ocaml ../../tools/unicode_charinfo.ml unicode_charinfo.txt \
+		> netunichar.ml
+
+include $(TOP_DIR)/Makefile.rules
