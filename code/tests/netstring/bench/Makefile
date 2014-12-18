@@ -16,8 +16,8 @@ test:
 	./test_recode
 
 test_recode: test_recode.ml
-	ocamlfind ocamlc -o test_recode -package netstring,threads -linkpkg \
-		-thread test_recode.ml
+	ocamlfind ocamlc -o test_recode -package netstring,threads,netunidata \
+		-linkpkg -thread test_recode.ml
 
 speed_conv: speed_conv.ml
 	ocamlfind ocamlopt -o speed_conv -package unix,str,pcre -linkpkg \
