@@ -54,15 +54,22 @@ type connector =
 	 * given port number. A number of 0 means that the port is
 	 * chosen by the operating system.
 	 * Note: The service is only locally reachable.
+         *
+         * IPv6: if the socket can be bound to ::1, this is preferred.
 	 *)
   | Portmapped
         (** The service is installed on every network interface; the port is
 	 * chosen by the operating system; the program is registered with the
-	 * portmapper
+	 * portmapper (or rpcbind).
+         *
+         * IPv6: if the socket can be bound to ::, this is preferred. Also,
+         * if {!Netsys.is_ipv6_system} returns true, the IPv6 capability is
+         * registered with rpcbind.
 	 *)
   | Internet of (Unix.inet_addr * int)
         (** The service is installed on the passed interface/port combination.
-	 * Use Unix.inet_addr_any to listen on all network interfaces.
+	 * Use [Unix.inet_addr_any] to listen on all network interfaces (IPv4),
+         * or [Unix.inet6_addr_any] for IPv6 and IPv4.
 	 * Use port 0 to automatically choose the port number.
 	 *)
   | Unix of string
@@ -219,6 +226,7 @@ val create2 :
 val bind :
       ?program_number:uint4 ->  (* Override program number *)
       ?version_number:uint4 ->  (* Override version number *)
+      ?pm_continue:bool ->
       Rpc_program.t ->
       binding list ->
       t -> 
@@ -227,6 +235,11 @@ val bind :
     * must be informed, this action is started (and continued in the
     * background). One can bind several programs in several versions to the
     * same server.
+    *
+    * [pm_continue]: you need to set this to [true] for all follow-up binds
+    * after the first one. If [pm_continue] is [false], the portmapper entry
+    * is completely removed before a new registration is done. If it is [true],
+    * the new registration is appended to the existing one.
    *)
 
 val unbind :

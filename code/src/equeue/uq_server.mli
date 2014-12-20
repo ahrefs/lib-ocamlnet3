@@ -58,6 +58,40 @@ and listen_options = Uq_engines.listen_options =
 val default_listen_options : listen_options;;
   (** Returns the default options *)
 
+val listen_on_inet_socket : Unix.inet_addr -> int -> Unix.socket_type -> 
+                            listen_options -> Unix.file_descr
+  (** [listen_on_inet_socket addr port stype opts]: Creates a TCP or UDP 
+      server socket
+      for IPv4 or IPv6, depending on the type of address. The socket is
+      listening.
+
+      As special cases, the addresses "::1" and "::" are always understood 
+      even if IPv6 is not avaiable, and treated as the corresponding IPv4
+      addresses (127.0.0.1 and 0.0.0.0, resp.) instead.
+   *)
+
+val listen_on_unix_socket : string -> Unix.socket_type -> 
+                            listen_options -> Unix.file_descr
+  (** [listen_on_unix_socket path stype opts]: Creates a Unix Domain server
+      socket for the given [path]. The socket is listening.
+
+      On Win32, Unix Domain sockets are emulated by opening an Internet
+      socket on the loopback interface, and by writing the port number
+      to [path].
+   *)
+
+
+val listen_on_w32_pipe : Netsys_win32.pipe_mode -> string -> listen_options ->
+                         Unix.file_descr
+  (** [listen_on_w32_pipe mode path opts]: Creates a Win32 pipe server and
+      returns the proxy descriptor.
+   *)
+
+
+val listen_on : listen_address -> Unix.file_descr
+  (** [listen_on addr]: Creates a server endpoint for [addr] *)
+
+
 (** This class type is for service providers that listen for connections.
  * By calling [accept], one gets an engine that waits for the next
  * connection, and establishes it.

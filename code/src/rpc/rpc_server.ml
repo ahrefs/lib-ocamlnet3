@@ -159,7 +159,7 @@ type t =
 	mutable service : (Rpc_program.t * binding Uint4Map.t) 
 	                    Uint4Map.t Uint4Map.t;
 	        (* Program nr/version nr/procedure nr *)
-	mutable portmapped : int option;  (* port number *)
+	mutable portmapped : (Unix.inet_addr * int) option;  (* port number *)
 	mutable esys : event_system;
 	mutable prot : protocol;
 	mutable exception_handler : exn -> unit;
@@ -1254,6 +1254,16 @@ let create2_socket_server ?(config = default_socket_config)
 		          ?override_listen_backlog
 		          prot conn esys =
   let srv = create2_srv prot esys in
+  let stype = 
+    if prot = Tcp then Unix.SOCK_STREAM else Unix.SOCK_DGRAM in
+  let backlog =
+    match override_listen_backlog with
+      | Some n -> n
+      | None -> config#listen_options.lstn_backlog in
+  let opts =
+    { config#listen_options with
+      lstn_backlog = backlog
+    } in
 
   let create_multiplexer_eng ?(close_inactive_descr = true) fd prot =
     disable_nagle fd;
@@ -1294,95 +1304,55 @@ let create2_socket_server ?(config = default_socket_config)
       ~is_error:(fun exn ->
 		   srv.exception_handler exn
 		)
-      eng
-  in
+      eng in
 
-  let bind_to_internet addr port =
-    let dom = Netsys.domain_of_inet_addr addr in
+  let get_port s =
+    match Unix.getsockname s with
+      | Unix.ADDR_INET(addr,port) -> addr, port
+      | _ -> assert false in
 
-    let s =
-      Unix.socket
-	dom
-	(if prot = Tcp then Unix.SOCK_STREAM else Unix.SOCK_DGRAM)
-	0
-    in
-    try
-      Unix.setsockopt s Unix.SO_REUSEADDR 
-	(config#listen_options.lstn_reuseaddr || port <> 0);
-      Unix.setsockopt s Unix.SO_KEEPALIVE true;
-      Unix.bind
-	s
-	(Unix.ADDR_INET (addr, port));
-      s
-    with
-	any -> 
-	  Unix.close s; raise any
-  in
-
-  let bind_to_localhost port =
-    bind_to_internet (Unix.inet_addr_of_string "127.0.0.1") port
-  in
-
-  let bind_to_w32_pipe name mode =
-    let psrv = Netsys_win32.create_local_pipe_server name mode max_int in
-    let s = Netsys_win32.pipe_server_descr psrv in
-    s
-  in
-
+  let dlog_anon_port port =
+    dlogr srv
+	  (fun () ->
+	     sprintf "Using anonymous port %d" port) in
+    
   let get_descriptor() =
     let (fd, close_inactive_descr) =
       match conn with
 	| Localhost port ->
-	    let s = bind_to_localhost port in
+	    let s = 
+              Uq_server.listen_on_inet_socket
+                Unix.inet6_addr_loopback port stype opts in
 	    (s, true)
 	| Internet (addr,port) ->
-	    let s = bind_to_internet addr port in
+	    let s = 
+              Uq_server.listen_on_inet_socket
+                addr port stype opts in
+            if port = 0 then (
+	      let _, p = get_port s in
+              dlog_anon_port p;
+            );
 	    (s, true)
 	| Portmapped ->
-	    let s = bind_to_internet Unix.inet_addr_any 0 in
+            let s = 
+              Uq_server.listen_on_inet_socket
+                Unix.inet6_addr_any 0 stype opts in
 	    ( try
-		let port =
-		  match Unix.getsockname s with
-		    | Unix.ADDR_INET(_,port) -> port
-		    | _ -> assert false in
-		dlogr srv
-		  (fun () ->
-		     sprintf "Using anonymous port %d" port);
-		srv.portmapped <- Some port;
+		let addr, port = get_port s in
+                dlog_anon_port port;
+		srv.portmapped <- Some(addr,port);
 		(s, true)
 	      with
 		  any -> Unix.close s; raise any
 	    )
 	| Unix path ->
-	    ( match Sys.os_type with
-		| "Win32" ->
-		    let s =
-		      Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-		    Unix.bind s (Unix.ADDR_INET(Unix.inet_addr_loopback, 0));
-		    ( match Unix.getsockname s with
-			| Unix.ADDR_INET(_, port) ->
-			    let f = open_out path in
-			    output_string f (string_of_int port ^ "\n");
-			    close_out f
-			| _ -> ()
-		    );
-		    (s, true)
-		| _ ->
-		    let s =
-      		      Unix.socket
-			Unix.PF_UNIX
-			(if prot = Tcp then Unix.SOCK_STREAM else Unix.SOCK_DGRAM)
-			0
-		    in
-		    begin try
-		      Unix.bind s (Unix.ADDR_UNIX path);
-		      (s, true)
-		    with
-			any -> Unix.close s; raise any
-		    end
-	    )
+            let s =
+              Uq_server.listen_on_unix_socket path stype opts in
+	    (s, true)
 	| W32_pipe path ->
-	    let s = bind_to_w32_pipe path Netsys_win32.Pipe_duplex in
+            let s =
+              Uq_server.listen_on_w32_pipe
+                Netsys_win32.Pipe_duplex path opts in 
 	    (s, true)
 	| Descriptor s -> 
 	    (s, false)
@@ -1435,17 +1405,6 @@ let create2_socket_server ?(config = default_socket_config)
 	  (fun () ->
 	     sprintf "(sock=%s): Listening"
 	       (portname fd));
-	let backlog =
-	  match override_listen_backlog with
-	    | Some n -> n
-	    | None -> config#listen_options.lstn_backlog in
-	( match conn with
-	    | W32_pipe _ ->
-		let psrv = Netsys_win32.lookup_pipe_server fd in
-		Netsys_win32.pipe_listen psrv backlog
-	    | _ ->
-		Unix.listen fd backlog
-	);
 	if close_inactive_descr then track_server fd;	  
 	let acc = 
 	  new Uq_server.direct_acceptor 
@@ -1479,7 +1438,7 @@ let create2 mode esys =
 let is_dummy srv = srv.dummy
 
 
-let bind ?program_number ?version_number prog0 procs srv =
+let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
   let prog = Rpc_program.update ?program_number ?version_number prog0 in
   let prog_nr = Rpc_program.program_number prog in
   let vers_nr = Rpc_program.version_number prog in
@@ -1512,35 +1471,16 @@ let bind ?program_number ?version_number prog0 procs srv =
 	  srv.service 
       ) in
 
-  let pm_mapping port =
-    { Rpc_portmapper_aux.prog = prog_nr;
-      vers = vers_nr;
-      prot = ( match srv.prot with
-                 | Tcp -> Rpc_portmapper_aux.ipproto_tcp
-                 | Udp -> Rpc_portmapper_aux.ipproto_udp
-             );
-      port = Netnumber.uint4_of_int port;
-    } in
-
   let pm_error pm error =
-    Rpc_client.shut_down pm;
+    Rpc_portmapper.shut_down pm;
     (try srv.exception_handler error with _ -> ()) in
 
-  let pm_get_old_port pm f =
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_getport'async pm (pm_mapping 0)
-      (fun get_result ->
-	 try
-	   let old_port = get_result() in
-	   f (Netnumber.int_of_uint4 old_port)
-	 with
-	   | error -> pm_error pm error
-      ) in
-
-  let pm_unset_old_port pm old_port f =
+  let pm_unset pm f =
     dlogr srv
       (fun () ->
-	 sprintf "unregistering port: %d" old_port);
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset'async pm (pm_mapping old_port)
+	 sprintf "unregistering old port");
+    Rpc_portmapper.unset_rpcbind'async
+      pm prog_nr vers_nr "" "" ""
       (fun get_result ->
 	 try
 	   let success = get_result() in
@@ -1555,11 +1495,15 @@ let bind ?program_number ?version_number prog0 procs srv =
 	   | error -> pm_error pm error
       ) in
 
-  let pm_set_new_port pm new_port f =
+  let pm_set_new_port_1 pm addr port f =
+    let netid = Rpc.netid_of_inet_addr addr srv.prot in
+    let uaddr = Rpc.create_inet_uaddr addr port in
+    let owner = string_of_int (Unix.getuid()) in
     dlogr srv
       (fun () ->
-	 sprintf "registering port: %d" new_port);
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_set'async pm (pm_mapping new_port)
+	 sprintf "registering netid=%s uaddr=%s owner=%s" netid uaddr owner);
+    Rpc_portmapper.set_rpcbind'async
+      pm prog_nr vers_nr netid uaddr owner
       (fun get_result ->
 	 try
 	   let success = get_result() in
@@ -1573,45 +1517,42 @@ let bind ?program_number ?version_number prog0 procs srv =
 	 with
 	   | error -> pm_error pm error
       ) in
+  let pm_set_new_port pm addr port f =
+    let addrl =
+      if Netsys.is_ipv6_inet_addr addr then (
+        if addr = Unix.inet6_addr_any then
+          [ addr; Unix.inet_addr_any ]
+        else if addr = Unix.inet6_addr_loopback then
+          [ addr; Unix.inet_addr_loopback ]
+        else
+          [addr]
+      )
+      else [addr] in
+    let rec recurse l () =
+      match l with
+        | [] -> f()
+        | a :: l' -> pm_set_new_port_1 pm a port (recurse l') in
+    recurse addrl () in
 
   let pm_update_service pm () =
     update_service();
-    Rpc_client.shut_down pm in
+    Rpc_portmapper.shut_down pm in
 
   match srv.portmapped with
     | None ->
 	update_service()
 
-    | Some port ->
-	let pmap_port =
-	  Netnumber.int_of_uint4
-	    Rpc_portmapper_aux.pmap_port in
+    | Some(addr, port) ->
 	let pm =
-          (* HACK to allow connections on recent Linux boxes *)
-          if Sys.file_exists "/run/rpcbind.sock" then
-	    Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	      ~esys:srv.esys 
-	      (`Socket(Rpc.Tcp, 
-		       Rpc_client.Unix "/run/rpcbind.sock",
-		       Rpc_client.default_socket_config))
-          else
-	    Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	      ~esys:srv.esys 
-	      (`Socket(Rpc.Udp, 
-		       Rpc_client.Inet("127.0.0.1", pmap_port), 
-		       Rpc_client.default_socket_config)) in
-	pm_get_old_port 
-	  pm
-	  (fun old_port ->
-	     if old_port > 0 then (
-	       pm_unset_old_port pm old_port
-		 (fun () ->
-		    pm_set_new_port pm port (pm_update_service pm)
-		 )
-	     )
-	     else
-	       pm_set_new_port pm port (pm_update_service pm)
-	  )
+          Rpc_portmapper.create_local ~esys:srv.esys () in
+        if pm_continue then
+          pm_set_new_port pm addr port (pm_update_service pm)
+        else
+	  pm_unset
+            pm
+            (fun () ->
+	       pm_set_new_port pm addr port (pm_update_service pm)
+	    )
 ;;
 
 
@@ -1639,25 +1580,16 @@ let unbind' ?(followup = fun () -> ())
     exists
   in
 
-  let pm_mapping port =
-    { Rpc_portmapper_aux.prog = prog_nr;
-      vers = vers_nr;
-      prot = ( match srv.prot with
-                 | Tcp -> Rpc_portmapper_aux.ipproto_tcp
-                 | Udp -> Rpc_portmapper_aux.ipproto_udp
-             );
-      port = Netnumber.uint4_of_int port;
-    } in
-
   let pm_error pm error =
-    Rpc_client.shut_down pm;
+    Rpc_portmapper.shut_down pm;
     (try srv.exception_handler error with _ -> ()) in
 
-  let pm_unset_port pm port f =
+  let pm_unset pm f =
     dlogr srv
       (fun () ->
-	 sprintf "unregistering port: %d" port);
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset'async pm (pm_mapping port)
+	 sprintf "unregistering port");
+    Rpc_portmapper.unset_rpcbind'async
+      pm prog_nr vers_nr "" "" ""
       (fun get_result ->
 	 try
 	   let success = get_result() in
@@ -1666,7 +1598,7 @@ let unbind' ?(followup = fun () -> ())
 		sprintf "portmapper reports %s"
 		  (if success then "success" else "failure"));
 	   if not success then
-	     failwith "Rpc_server.unbind: Cannot unregister port";
+	     failwith "Rpc_server.bind: Cannot unregister old port";
 	   f ()
 	 with
 	   | error -> pm_error pm error
@@ -1677,30 +1609,15 @@ let unbind' ?(followup = fun () -> ())
 	ignore(update_service());
 	followup()
 
-    | Some port ->
+    | Some _ ->
 	let exists = update_service() in
 
 	if exists then (
-	  let pmap_port =
-	    Netnumber.int_of_uint4
-	      Rpc_portmapper_aux.pmap_port in
-	  let pm =
-            (* HACK to allow connections on recent Linux boxes *)
-            if Sys.file_exists "/run/rpcbind.sock" then
-	      Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	        ~esys:srv.esys 
-	        (`Socket(Rpc.Tcp, 
-		         Rpc_client.Unix "/run/rpcbind.sock",
-		         Rpc_client.default_socket_config))
-            else
-	      Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	        ~esys:srv.esys 
-	        (`Socket(Rpc.Udp, 
-		         Rpc_client.Inet("127.0.0.1", pmap_port), 
-		         Rpc_client.default_socket_config)) 
-	  in
-	  pm_unset_port pm port (fun () -> Rpc_client.shut_down pm)
+	  let pm = Rpc_portmapper.create_local ~esys:srv.esys () in
+	  pm_unset pm (fun () -> Rpc_portmapper.shut_down pm; followup())
 	)
+        else
+          followup()
 ;;
 
 

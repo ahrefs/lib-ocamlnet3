@@ -1535,11 +1535,12 @@ let rec internal_create initial_xid
       Rpc_portmapper_aux._of_PMAP'V2'pmapproc_getport'arg
 	{ Rpc_portmapper_aux.prog = Rpc_program.program_number prog;
 	  vers = Rpc_program.version_number prog;
-	  prot = ( match prot with
+	  prot = Netnumber.int_of_uint4
+                   ( match prot with
 		     | Tcp -> Rpc_portmapper_aux.ipproto_tcp
 		     | Udp -> Rpc_portmapper_aux.ipproto_udp
 		 );
-	  port = Netnumber.uint4_of_int 0;
+	  port = 0;
 	} in
     let close_deferred() =
       Unixqueue.once esys (Unixqueue.new_group esys) 0.0 
@@ -1557,7 +1558,6 @@ let rec internal_create initial_xid
 			   ) in
 		   let port =
 		     Rpc_portmapper_aux._to_PMAP'V2'pmapproc_getport'res r in
-		   let port = Netnumber.int_of_uint4 port in
 		   close_deferred();
 		   if port = 0 then
 		     `Error (Failure "Program not bound in Portmapper")

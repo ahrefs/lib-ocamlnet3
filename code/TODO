@@ -4,7 +4,20 @@ OCAMLNET 4 RELEASE:
  - renames: xdr, xdr_mstring, mimestring - DONE
  - Netconversion refactoring - DONE
  - module refactoring so far needed (smaller executables)
- - RPCBIND
+ - IPv6:
+    * Netsys_resolver: pluggable synchronous resolvers
+    * Netsys_resolver.Current.get_host_by_name
+    * Netsys_resolver: current_localhost, current_any
+    * Netsys_resolver.enable_ipv6
+    * use that everywhere
+    * Uq_resolver: when resolver is set, also change Netsys_resolver
+    * Rpc_server:
+        - Localhost: bind to current_localhost
+        - Portmapped: bind to current_any
+        - use RPCBIND to register if possible
+    * Rpc_client:
+        - if possible use RPCBIND to get detailed info
+        - prefer IPv6 only if IPv6 is enabled
  - mod_apache build errors
  - gnutls build warnings
  - integrate nethttpd-for-netcgi2

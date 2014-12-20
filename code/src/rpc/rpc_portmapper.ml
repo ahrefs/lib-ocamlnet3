@@ -3,183 +3,306 @@
  *
  *)
 
-(* Call the portmapper version 2. Note that version 2 is an older version
- * (version 3 and 4 are called 'rpcbind'), but it is normally available.
- *)
-
 open Netnumber
 open Netxdr
 open Rpc
+open Rpc_portmapper_aux
+open Printf
 
 type t =
-    { client : Rpc_simple_client.t
+    { esys : Unixqueue.event_system;
+      client : Rpc_client.t
     }
 ;;
 
 
-let pm2_ts =
-  [ "mapping",        X_struct [ "prog", X_uint;
-                                 "vers", X_uint;
-                                 "prot", X_uint;
-                                 "port", X_uint
-                               ];
-    "pmaplist",       X_rec("pmaplist",
-                        (x_optional
-                           (X_struct [ "map",  X_type "mapping";
-                                       "next", X_refer "pmaplist"
-                                     ])));
-    "call_args",      X_struct [ "prog", X_uint;
-                                 "vers", X_uint;
-                                 "proc", X_uint;
-                                 "args", x_opaque_max
-                               ];
-    "call_results",   X_struct [ "port", X_uint;
-                                 "res",  x_opaque_max
-                               ]
-  ]
-;;
-
-
-let pm2_spec() =
-    begin
-      Rpc_program.create
-	(uint4_of_int 100000)
-	(uint4_of_int 2)
-	(validate_xdr_type_system pm2_ts)
-	[ "NULL",    ((uint4_of_int 0), X_void,           X_void);
-	  "SET",     ((uint4_of_int 1), X_type "mapping", x_bool);
-	  "UNSET",   ((uint4_of_int 2), X_type "mapping", x_bool);
-	  "GETPORT", ((uint4_of_int 3), X_type "mapping", X_uint);
-	  "DUMP",    ((uint4_of_int 4), X_void, X_type "pmaplist");
-	  "CALLIT",  ((uint4_of_int 5), X_type "call_args", X_type "call_results")
-	]
-    end
-;;
-
-
 let mk_mapping prog vers prot port =
-  XV_struct_fast
-    [| (* prog *) XV_uint prog;
-       (* vers *) XV_uint vers;
-       (* prot *) XV_uint (if prot = Tcp then uint4_of_int 6 else uint4_of_int 17);
-       (* port *) XV_uint (uint4_of_int port)
-    |]
+  let proc_num =
+    if prot = Tcp then 6 else 17 in
+  { prog; vers; prot = proc_num; port }
+;;
+
+let mk_rpcb r_prog r_vers r_netid r_addr r_owner =
+  { r_prog; r_vers; r_netid; r_addr; r_owner }
+;;
+
+let mk_mapping_from_rpcb rpcb =
+  { prog = rpcb.r_prog;
+    vers = rpcb.r_vers;
+    prot = ( match rpcb.r_netid with
+               | "tcp" -> 6
+               | "udp" -> 17
+               | _ -> raise Not_found
+           );
+    port = if rpcb.r_addr = "" then 0 else 
+             snd(Rpc.parse_inet_uaddr rpcb.r_addr);
+  }
+;;
+
+let try_mapping_from_rpcb rpcb =
+  try
+    mk_mapping_from_rpcb rpcb, true
+  with
+    | Failure _
+    | Not_found -> 
+        (* good enough for unsetting: *)
+        { prog = rpcb.r_prog;
+          vers = rpcb.r_vers; 
+          prot = 0;
+          port = 0
+        }, false
 ;;
 
 
 let rec dest_pmaplist l =
-  try
-    begin match l with
-      XV_union_over_enum_fast (1, s) ->
-        begin match s with
-          XV_struct_fast [| (* map *) XV_struct_fast
-	                                [| (* prog *) XV_uint prog;
-                                           (* vers *) XV_uint vers;
-                                           (* prot *) XV_uint prot;
-                                           (* port *) XV_uint port
-					|];
-                            (* next *) l'
-                         |]
-          ->
-	    let prot' =
-	      match int_of_uint4 prot with
-		6 -> Tcp
-	      |	17 -> Udp
-	      |	_  -> failwith "illegal protocol specifier found"
-	    in
-            (prog, vers, prot', int_of_uint4 port) :: dest_pmaplist l'
-        end
-    | XV_union_over_enum_fast (0, _) ->
+  match l with
+    | None -> 
         []
-    end
-  with
-    Match_failure _ -> failwith "dest_pmaplist"
+    | Some e ->
+        let prot =
+          match e.map.prot with
+	    | 6 -> Tcp
+	    | 17 -> Udp
+	    | _  -> failwith "illegal protocol specifier found" in
+        (e.map.prog, e.map.vers, prot, e.map.port) :: dest_pmaplist e.next
 ;;
 
 
-let create connector =
-  let spec = pm2_spec() in
-  let client = Rpc_simple_client.create connector Tcp spec in
-  { client = client }
+let create ?(esys = Unixqueue.create_unix_event_system()) conn =
+  let cf = Rpc_client.default_socket_config in
+  let client = Rpc_client.unbound_create (`Socket(Rpc.Tcp,conn,cf)) esys in
+  Rpc_client.bind client Rpc_portmapper_clnt.PMAP.V2._program;
+  Rpc_client.bind client Rpc_portmapper_clnt.PMAP.V3._program;
+  Rpc_client.bind client Rpc_portmapper_clnt.PMAP.V4._program;
+  { esys; client }
 ;;
 
 
-let create_inet s =
-  create (Rpc_client.Inet(s,111))
+let create_inet ?esys s =
+  create ?esys (Rpc_client.Inet(s,111))
+;;
+
+
+let create_local ?esys () =
+  if Sys.file_exists "/run/rpcbind.sock" then
+    create ?esys (Rpc_client.Unix "/run/rpcbind.sock")
+  else if Sys.file_exists "/var/run/rpcbind.sock" then
+    create ?esys (Rpc_client.Unix "/var/run/rpcbind.sock")
+  else
+    create_inet ?esys "localhost"
 ;;
 
 
 let shut_down pm =
-  Rpc_simple_client.shut_down pm.client
+  Rpc_client.shut_down pm.client
 ;;
 
 
 let null pm =
-  ignore(Rpc_simple_client.call pm.client "NULL" XV_void)
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_null pm.client ()
+;;
+
+let null'async pm callback =
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_null'async pm.client () callback
 ;;
 
 
 let set pm prog vers prot port =
-  let reply =
-    Rpc_simple_client.call pm.client "SET" (mk_mapping prog vers prot port) in
-  reply = xv_true
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_set
+    pm.client
+    (mk_mapping prog vers prot port)
+;;
+
+let set'async pm prog vers prot port callback =
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_set'async
+    pm.client
+    (mk_mapping prog vers prot port)
+    callback
+;;
+
+
+let set_rpcbind'async pm prog vers netid uaddr owner callback =
+  let b = mk_rpcb prog vers netid uaddr owner in
+  let m, m_ok = try_mapping_from_rpcb b in
+  Rpc_portmapper_clnt.PMAP.V3.rpcbproc_set'async
+    pm.client b
+    (fun getresult ->
+       try
+         let ok = getresult() in
+         callback (fun () -> ok)
+       with
+         | Rpc.Rpc_server (Rpc.Unavailable_version _) when m_ok ->
+             Rpc_portmapper_clnt.PMAP.V2.pmapproc_set'async
+               pm.client m callback
+         | error ->
+             callback (fun () -> raise error)
+    )
+;;
+
+
+let set_rpcbind pm prog vers netid uaddr owner =
+  Rpc_client.synchronize
+    pm.esys
+    (set_rpcbind'async pm prog vers netid uaddr)
+    owner
 ;;
 
 
 let unset pm prog vers prot port =
-  let reply =
-    Rpc_simple_client.call pm.client "UNSET" (mk_mapping prog vers prot port) in
-  reply = xv_true
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset
+    pm.client
+    (mk_mapping prog vers prot port)
+;;
+
+let unset'async pm prog vers prot port callback =
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset'async
+    pm.client
+    (mk_mapping prog vers prot port)
+    callback
+;;
+
+
+let unset_rpcbind'async pm prog vers netid uaddr owner callback =
+  let b = mk_rpcb prog vers netid uaddr owner in
+  let m, _ = try_mapping_from_rpcb b in
+  eprintf "CALLING\n%!";
+  Rpc_portmapper_clnt.PMAP.V3.rpcbproc_unset'async
+    pm.client b
+    (fun getresult ->
+       eprintf "CALLBACK\n%!";
+       try
+         let ok = getresult() in
+         callback (fun () -> ok)
+       with
+         | Rpc.Rpc_server (Rpc.Unavailable_version _) ->
+             Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset'async
+               pm.client m callback
+         | error ->
+             callback (fun () -> raise error)
+    )
+;;
+
+
+let unset_rpcbind pm prog vers netid uaddr owner =
+  Rpc_client.synchronize
+    pm.esys
+    (unset_rpcbind'async pm prog vers netid uaddr)
+    owner
 ;;
 
 
 let getport pm prog vers prot =
-  let reply =
-    Rpc_simple_client.call pm.client "GETPORT" (mk_mapping prog vers prot 0) in
-  match reply with
-    XV_uint n -> int_of_uint4 n
-  | _         -> failwith "Rpc_portmapper.getport"
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_getport
+    pm.client
+    (mk_mapping prog vers prot 0)
+;;
+
+let getport'async pm prog vers prot callback =
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_getport'async
+    pm.client
+    (mk_mapping prog vers prot 0)
+    callback
+;;
+
+
+(*
+let uaddr_of_netid =
+  function
+    | "tcp"
+    | "udp" -> "0.0.0.0.0.0"
+    | "tcp6"
+    | "udp6" -> "::.0.0"
+    | "unix"
+    | "local" -> "/"
+    | _ -> ""
+ *)
+
+
+let getaddr_rpcbind'async pm prog vers netid caller_uaddr callback =
+  let b = mk_rpcb prog vers netid caller_uaddr "" in
+  let m, m_ok = try_mapping_from_rpcb b in
+  Rpc_portmapper_clnt.PMAP.V3.rpcbproc_getaddr'async
+    pm.client b
+    (fun getresult ->
+       try
+         let uaddr = getresult() in
+         callback (fun () -> if uaddr = "" then None else Some uaddr)
+       with
+         | Rpc.Rpc_server (Rpc.Unavailable_version _) when m_ok ->
+             Rpc_portmapper_clnt.PMAP.V2.pmapproc_getport'async
+               pm.client m
+               (fun getresult ->
+                  try
+                    let port = getresult() in
+                    let uaddr = Rpc.create_inet_uaddr Unix.inet_addr_any port in
+                    callback (fun () -> if port=0 then None else Some uaddr)
+                  with
+                    | error ->
+                        callback (fun () -> raise error)
+               )
+         | error ->
+             callback (fun () -> raise error)
+    )
+;;
+
+
+let getaddr_rpcbind pm prog vers netid caller_uaddr =
+  Rpc_client.synchronize
+    pm.esys
+    (getaddr_rpcbind'async pm prog vers netid)
+    caller_uaddr
 ;;
 
 
 let dump pm =
-  let reply =
-    Rpc_simple_client.call pm.client "DUMP" XV_void in
-  dest_pmaplist reply
+  dest_pmaplist
+    (Rpc_portmapper_clnt.PMAP.V2.pmapproc_dump pm.client ())
 ;;
 
-
-let callit pm spec proc arg =
-  let (proc_nr, in_t, out_t) = Rpc_program.signature spec proc in
-  let prog_nr = Rpc_program.program_number spec in
-  let vers_nr = Rpc_program.version_number spec in
-  let arg_value = Netxdr.pack_xdr_value_as_string arg in_t [] in
-  let reply =
-    Rpc_simple_client.call
-      pm.client
-      "CALLIT"
-      (XV_struct_fast [| (* prog *) XV_uint prog_nr;
-	                 (* vers *) XV_uint vers_nr;
-		         (* proc *) XV_uint proc_nr;
-		         (* args *) XV_opaque arg_value
-                       |] ) in
-  let
-      XV_struct_fast [| (* port *) XV_uint port;
-	                (* res *)  XV_opaque result
-                      |] = reply in
-
-  int_of_uint4 port,
-  unpack_xdr_value result out_t []
+let dump'async pm callback =
+  Rpc_portmapper_clnt.PMAP.V2.pmapproc_dump'async pm.client ()
+    (fun getresult -> 
+       callback (fun () -> dest_pmaplist(getresult()))
+    )
 ;;
 
 
 let port_of_program program serverhost prot =
   let pm = create_inet serverhost in
-  let p = getport pm (Rpc_program.program_number program)
-                     (Rpc_program.version_number program)
-                     prot in
-  shut_down pm;
-  if p = 0 then failwith "portmapper does not know the program";
-  p
+  try
+    let p = getport pm (Rpc_program.program_number program)
+                    (Rpc_program.version_number program)
+                    prot in
+    if p = 0 then failwith "portmapper does not know the program";
+    shut_down pm;
+    p
+  with
+    | error ->
+        shut_down pm; raise error
 ;;
 
+
+let sockaddr_of_program_rpcbind program serverhost netid =
+  let pm = create_inet serverhost in
+  ( try
+      let uaddr_opt = 
+        getaddr_rpcbind 
+          pm
+          (Rpc_program.program_number program)
+          (Rpc_program.version_number program)
+          netid "" in
+      shut_down pm;
+      ( match uaddr_opt with
+          | None ->
+              failwith "rpcbind does not know the program"
+          | Some uaddr -> 
+              match Rpc.sockaddr_of_uaddr netid uaddr with
+                | Some(sockaddr,prot) -> (sockaddr,prot)
+                | None -> failwith ("unknown netid: " ^ netid)
+      )
+    with
+      | error ->
+          shut_down pm; raise error
+  )
+
+                        

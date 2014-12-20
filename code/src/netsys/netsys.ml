@@ -77,6 +77,103 @@ let getpeername fd =
 	raise(Unix.Unix_error(Unix.ENOTCONN,a1,a2))
 
 
+let domain_of_inet_addr addr =
+  Unix.domain_of_sockaddr(Unix.ADDR_INET(addr,0))
+
+let protostring_of_inet_addr ip = (Obj.magic ip)
+
+let inet_addr_of_protostring s =
+  let l = String.length s in
+  if l = 4 || l = 16 then (Obj.magic s) else
+    invalid_arg "Netsys.inet_addr_of_protostring"
+
+external _exit : int -> unit = "netsys__exit";;
+(* same external also in netsys_signal.ml *)
+
+let binop_inet_addr f (ip1 : Unix.inet_addr) (ip2 : Unix.inet_addr) =
+  let s1 = (Obj.magic ip1 : string) in
+  let s2 = (Obj.magic ip2 : string) in
+  let l = String.length s1 in
+  if l <> String.length s2 then
+    failwith "logand_inet_addr";
+  let s3 = String.create l in
+  for k = 0 to l-1 do
+    s3.[k] <- Char.chr(f (Char.code s1.[k]) (Char.code s2.[k]));
+  done;
+  (Obj.magic s3 : Unix.inet_addr)
+
+let logand_inet_addr =
+  binop_inet_addr ( land )
+
+let logor_inet_addr =
+  binop_inet_addr ( lor )
+
+let logxor_inet_addr =
+  binop_inet_addr ( lxor )
+
+let lognot_inet_addr ip =
+  binop_inet_addr
+    (fun p1 p2 -> lnot p1)
+    ip
+    ip
+
+let norm_inet_addr (ip : Unix.inet_addr) =
+  if String.length (Obj.magic ip) = 16 then
+    let ip1 =
+      logand_inet_addr
+        ip
+        (Unix.inet_addr_of_string "ffff:ffff:ffff:ffff:ffff:ffff::0") in
+    if (ip1 = (Unix.inet_addr_of_string "0000:0000:0000:0000:0000:ffff::0") ||
+        ip1 = (Unix.inet_addr_of_string "0000:0000:0000:0000:0000:0000::0")) &&
+       ip <> Unix.inet6_addr_any && ip <> Unix.inet6_addr_loopback
+    then
+      Obj.magic (String.sub (Obj.magic ip) 12 4)
+    else
+      ip
+  else
+    ip
+
+let ipv6_inet_addr (ip : Unix.inet_addr) =
+  if String.length (Obj.magic ip) = 4 then
+    Obj.magic (String.make 10 '\x00' ^ String.make 2 '\xff' ^ Obj.magic ip)
+  else
+    ip
+
+
+let is_ipv4_inet_addr (ip : Unix.inet_addr) =
+  String.length (Obj.magic (norm_inet_addr ip)) = 4
+
+let is_ipv6_inet_addr (ip : Unix.inet_addr) =
+  String.length (Obj.magic (norm_inet_addr ip)) = 16
+
+let is_multicast_inet_addr ip =
+  let ip1 = norm_inet_addr ip in
+  if String.length (Obj.magic ip1) = 4 then
+    logand_inet_addr
+      ip1
+      (Unix.inet_addr_of_string "240.0.0.0")
+    = (Unix.inet_addr_of_string "224.0.0.0")
+  else
+    if String.length (Obj.magic ip1) = 16 then
+      logand_inet_addr
+        ip1
+        (Unix.inet_addr_of_string "ffff::0")
+      = (Unix.inet_addr_of_string "ff00::0")
+    else
+      false
+
+
+external test_for_ip6_global_addr : unit -> bool
+  = "netsys_test_for_ip6_global_addr"
+
+let ipv6 = ref (test_for_ip6_global_addr())
+
+let is_ipv6_system() = !ipv6
+
+let set_ipv6_system b = ipv6 := b
+  
+
+
 type fd_style =
     [ `Read_write
     | `Recv_send of Unix.sockaddr * Unix.sockaddr
@@ -146,10 +243,12 @@ let get_fd_style fd =
 		("get_fd_style: Exception: " ^ Netexn.to_string e);
 	      assert false
 
-let string_of_sockaddr =
+let string_of_sockaddr ?(norm=false) =
   function
     | Unix.ADDR_INET(inet,port) as addr ->
-	( match Unix.domain_of_sockaddr addr with
+        let inet =
+          if norm then norm_inet_addr inet else inet in
+	( match domain_of_inet_addr inet with
 	    | Unix.PF_INET ->
 		Unix.string_of_inet_addr inet ^ ":" ^ string_of_int port
 	    | Unix.PF_INET6 ->
@@ -672,70 +771,6 @@ let connect_check fd =
 	  raise(Unix.Unix_error(unix_error_of_code e_code,
 				"connect_check", detail))
   )
-
-(* Misc *)
-
-let domain_of_inet_addr addr =
-  Unix.domain_of_sockaddr(Unix.ADDR_INET(addr,0))
-
-let protostring_of_inet_addr ip = (Obj.magic ip)
-
-let inet_addr_of_protostring s =
-  let l = String.length s in
-  if l = 4 || l = 16 then (Obj.magic s) else
-    invalid_arg "Netsys.inet_addr_of_protostring"
-
-external _exit : int -> unit = "netsys__exit";;
-(* same external also in netsys_signal.ml *)
-
-let binop_inet_addr f (ip1 : Unix.inet_addr) (ip2 : Unix.inet_addr) =
-  let s1 = (Obj.magic ip1 : string) in
-  let s2 = (Obj.magic ip2 : string) in
-  let l = String.length s1 in
-  if l <> String.length s2 then
-    failwith "logand_inet_addr";
-  let s3 = String.create l in
-  for k = 0 to l-1 do
-    s3.[k] <- Char.chr(f (Char.code s1.[k]) (Char.code s2.[k]));
-  done;
-  (Obj.magic s3 : Unix.inet_addr)
-
-let logand_inet_addr =
-  binop_inet_addr ( land )
-
-let logor_inet_addr =
-  binop_inet_addr ( lor )
-
-let logxor_inet_addr =
-  binop_inet_addr ( lxor )
-
-let lognot_inet_addr ip =
-  binop_inet_addr
-    (fun p1 p2 -> lnot p1)
-    ip
-    ip
-
-let is_ipv4_inet_addr (ip : Unix.inet_addr) =
-  String.length (Obj.magic ip) = 4
-
-let is_ipv6_inet_addr (ip : Unix.inet_addr) =
-  String.length (Obj.magic ip) = 16
-
-let is_multicast_inet_addr ip =
-  if is_ipv4_inet_addr ip then
-    logand_inet_addr
-      ip
-      (Unix.inet_addr_of_string "240.0.0.0")
-    = (Unix.inet_addr_of_string "224.0.0.0")
-  else
-    if is_ipv6_inet_addr ip then
-      logand_inet_addr
-        ip
-        (Unix.inet_addr_of_string "ffff::0")
-      = (Unix.inet_addr_of_string "ff00::0")
-    else
-      false
-
 
 external mcast_set_loop : Unix.file_descr -> bool -> unit 
   = "netsys_mcast_set_loop"

@@ -22,7 +22,7 @@ COBJECTS = netsys_c.o netsys_c_poll.o netsys_c_fadvise.o \
            netsys_c_spawn.o netsys_c_subprocess.o netsys_c_syslog.o \
 	   netsys_c_clock.o netsys_c_event.o \
            netsys_c_win32.o netsys_c_htab.o netsys_c_queue.o \
-           netsys_c_mem.o netsys_c_xdr.o
+           netsys_c_mem.o netsys_c_xdr.o netsys_c_ip6.o
 DOBJECTS = netsys.mli netsys_posix.mli netsys_pollset.mli netlog.mli \
            netexn.mli netsys_win32.mli netsys_pollset_posix.mli \
            netsys_pollset_win32.mli netsys_pollset_generic.mli \

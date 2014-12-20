@@ -44,7 +44,7 @@ let std_error_log_string p msg =
   Printf.sprintf "[%s] [%s] %s"
     ( match peeraddr_opt with
 	| Some addr ->
-	    Netsys.string_of_sockaddr addr
+	    Netsys.string_of_sockaddr ~norm:true addr
 	| None ->
 	    "-"
     )
@@ -62,7 +62,7 @@ let std_access_log_string p =
   let code =
     p # response_status_code in
   let peerstr =
-    try Netsys.string_of_sockaddr p#remote_socket_addr
+    try Netsys.string_of_sockaddr ~norm:true p#remote_socket_addr
     with Not_found -> "-" in
   let meth =
     try p#request_method

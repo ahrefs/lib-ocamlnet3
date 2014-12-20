@@ -3,7 +3,7 @@
  *
  *)
 
-open Rtypes
+open Netnumber
 open Rpc
 open Rpc_client
 open Printf

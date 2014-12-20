@@ -1,6 +1,7 @@
 (* $Id$ *)
 
 open Uq_engines
+open Printf
 
 type inetspec = Uq_engines.inetspec
 type sockspec = Uq_engines.sockspec

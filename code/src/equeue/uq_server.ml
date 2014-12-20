@@ -189,6 +189,92 @@ end
 ;;
 
 
+let listen_on_inet_socket_1 addr port stype opts =
+  let dom = Netsys.domain_of_inet_addr addr in
+  let s = Unix.socket dom stype 0 in
+  try
+    Unix.set_nonblock s;
+    if opts.lstn_reuseaddr then 
+      Unix.setsockopt s Unix.SO_REUSEADDR true;
+    Unix.bind s (Unix.ADDR_INET(addr,port));
+    if stype = Unix.SOCK_STREAM || stype = Unix.SOCK_SEQPACKET then
+      Unix.listen s opts.lstn_backlog;
+    s
+  with
+    | error -> Unix.close s; raise error
+
+
+let listen_on_inet_socket addr port stype opts =
+  (* NB. If IPv6 is not compiled in, inet6_addr_loopback defaults to
+     inet_addr_loopback (see unix.ml)
+   *)
+  let dom = Netsys.domain_of_inet_addr addr in
+  try
+    listen_on_inet_socket_1 addr port stype opts
+  with
+    | Unix.Unix_error(Unix.EAFNOSUPPORT,_,_) as e when dom = Unix.PF_INET6 ->
+        (* fallback to IPv4 if possible *)
+        if addr = Unix.inet6_addr_loopback then
+          listen_on_inet_socket_1 Unix.inet_addr_loopback port stype opts
+        else if addr = Unix.inet6_addr_any then
+          listen_on_inet_socket_1 Unix.inet_addr_any port stype opts
+        else
+          raise e
+
+
+let listen_on_unix_socket path stype opts =
+  if Sys.os_type = "Win32" then (
+    (* emulation *)
+    let s = listen_on_inet_socket_1 Unix.inet_addr_loopback 0 stype opts in
+    ( match Unix.getsockname s with
+	| Unix.ADDR_INET(_, port) ->
+	    let f = open_out path in
+	    output_string f (string_of_int port ^ "\n");
+	    close_out f
+	| _ -> ()
+    );
+    s
+  )
+  else
+    let s = Unix.socket Unix.PF_UNIX stype 0 in
+    try
+      Unix.set_nonblock s;
+      if opts.lstn_reuseaddr then 
+        Unix.setsockopt s Unix.SO_REUSEADDR true;
+      Unix.bind s (Unix.ADDR_UNIX path);
+      if stype = Unix.SOCK_STREAM || stype = Unix.SOCK_SEQPACKET then
+        Unix.listen s opts.lstn_backlog;
+      s
+    with
+      | error -> Unix.close s; raise error
+
+
+let listen_on_w32_pipe mode name opts =
+  let backlog = opts.lstn_backlog in
+  let psrv = Netsys_win32.create_local_pipe_server name mode max_int in
+  Netsys_win32.pipe_listen psrv backlog;
+  Netsys_win32.pipe_server_descr psrv
+
+
+let listen_on lstnaddr =
+  match lstnaddr with
+      | `Socket (sockspec, opts) ->
+	  ( match sockspec with
+		`Sock_unix(stype, path) ->
+                  listen_on_unix_socket path stype opts
+	      | `Sock_inet(stype, addr, port) ->
+                  listen_on_inet_socket addr port stype opts 
+	      | `Sock_inet_byname(stype, name, port) ->
+		  let addr = addr_of_name name in
+                  listen_on_inet_socket addr port stype opts
+	  )
+      | `W32_pipe (mode, name, opts) ->
+          listen_on_w32_pipe mode name opts
+      | _ ->
+	  raise Addressing_method_not_supported
+
+
+
 class direct_listener () : server_endpoint_listener =
 object(self)
   method listen lstnaddr ues =
@@ -199,48 +285,9 @@ object(self)
 	~is_aborted:(fun () -> acc # shut_down())
 	~is_error:(fun _ -> acc # shut_down())
 	eng;
-      eng
-    in
-
-    match lstnaddr with
-	`Socket (sockspec, opts) ->
-	  ( match sockspec with
-		`Sock_unix(stype, path) ->
-		  let s = Unix.socket Unix.PF_UNIX stype 0 in
-		  Unix.set_nonblock s;
-		  if opts.lstn_reuseaddr then 
-		    Unix.setsockopt s Unix.SO_REUSEADDR true;
-		  Unix.bind s (Unix.ADDR_UNIX path);
-		  Unix.listen s opts.lstn_backlog;
-		  accept s
-	      | `Sock_inet(stype, addr, port) ->
-		  let dom = Netsys.domain_of_inet_addr addr in
-		  let s = Unix.socket dom stype 0 in
-		  Unix.set_nonblock s;
-		  if opts.lstn_reuseaddr then 
-		    Unix.setsockopt s Unix.SO_REUSEADDR true;
-		  Unix.bind s (Unix.ADDR_INET(addr,port));
-		  Unix.listen s opts.lstn_backlog;
-		  accept s
-	      | `Sock_inet_byname(stype, name, port) ->
-		  let addr = addr_of_name name in
-		  let dom = Netsys.domain_of_inet_addr addr in
-		  let s = Unix.socket dom stype 0 in
-		  Unix.set_nonblock s;
-		  if opts.lstn_reuseaddr then 
-		    Unix.setsockopt s Unix.SO_REUSEADDR true;
-		  Unix.bind s (Unix.ADDR_INET(addr,port));
-		  Unix.listen s opts.lstn_backlog;
-		  accept s
-	  )
-      | `W32_pipe (mode, name, opts) ->
-	  let backlog = opts.lstn_backlog in
-	  let psrv = Netsys_win32.create_local_pipe_server name mode max_int in
-	  Netsys_win32.pipe_listen psrv backlog;
-	  let fd = Netsys_win32.pipe_server_descr psrv in
-	  accept fd
-      | _ ->
-	  raise Addressing_method_not_supported
+      eng  in
+    let fd = listen_on lstnaddr in
+    accept fd
 end
 ;;
 

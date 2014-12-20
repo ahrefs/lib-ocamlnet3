@@ -389,9 +389,11 @@ val int64_of_file_descr : Unix.file_descr -> int64
 val string_of_fd : Unix.file_descr -> string
   (** Return a string describing the descriptor (for debugging) *)
 
-val string_of_sockaddr : Unix.sockaddr -> string
+val string_of_sockaddr : ?norm:bool -> Unix.sockaddr -> string
   (** Returns a human-readable string describing the address
-      (for debug messages)
+      (for debug messages). If [norm], IPv4 addresses mapped to the IPv6
+      address space are returned in the normal dotted quad format (i.e.
+      x.y.z.u instead of ::ffff:x.y.z.u).
 
       Note that the reverse (parsing such a string) can be
       accomplished with {!Netsockaddr.socksymbol_of_string} and
@@ -415,6 +417,18 @@ external _exit : int -> unit = "netsys__exit"
    * The argument is the exit code, just as for [exit].
    *)
 
+(** {1 IPv6} *)
+
+val is_ipv6_system : unit -> bool
+  (** Whether IPv6 is available and usable. At the moment this tests for
+      the presence of a global IPv6 address on any interface. The test
+      also requires that the getifaddrs() call is available. The test
+      can be overridden with [set_ipv6_system].
+   *)
+
+val set_ipv6_system : bool -> unit
+  (** Sets whether IPv6 is usable *)
+
 
 (** {1 IP addresses} *)
 
@@ -430,11 +444,26 @@ val logxor_inet_addr : Unix.inet_addr -> Unix.inet_addr -> Unix.inet_addr
 val lognot_inet_addr : Unix.inet_addr -> Unix.inet_addr
   (** Returns the bitwise NOT of the argument address *)
 
+val norm_inet_addr : Unix.inet_addr -> Unix.inet_addr
+  (** Normalization: If the input address is an IPv4 address mapped into the
+      IPv6 address space, the IPv4 address is extracted. Otherwise, the input
+      address is returned unchanged.
+   *)
+
+val ipv6_inet_addr : Unix.inet_addr -> Unix.inet_addr
+  (** IPv6-ification: If the input address is for IPv4, it is mapped to the
+      IPv6 address space (so an IPv6 socket can be bound)
+   *)
+
 val is_ipv4_inet_addr : Unix.inet_addr -> bool
-  (** Whether the address is an IPv4 address *)
+  (** Whether the address is an IPv4 address (including IPv4 addresses mapped
+      into the IPv6 adress space)
+   *)
 
 val is_ipv6_inet_addr : Unix.inet_addr -> bool
-  (** Whether the address is an IPv6 address *)
+  (** Whether the address is an IPv6 address (excluding IPv4 addresses mapped
+      into the IPv6 adress space)
+   *)
 
 val is_multicast_inet_addr : Unix.inet_addr -> bool
   (** Whether the address is a multicast address (either IPv4 or IPv6) *)

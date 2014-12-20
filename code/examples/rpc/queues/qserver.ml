@@ -18,8 +18,8 @@ let max_chunksize = Int32.of_string "1048576" ;;   (* 1 MB *)
 
 
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 open Rpc_server
 
@@ -135,8 +135,8 @@ let directory_list name =
 ;;
 
 
-let t_queue = Xdr.validate_xdr_type A.xdrt_queue;;
-let t_entry = Xdr.validate_xdr_type A.xdrt_entry;;
+let t_queue = Netxdr.validate_xdr_type A.xdrt_queue;;
+let t_entry = Netxdr.validate_xdr_type A.xdrt_entry;;
 
 
 type managed_entry =
@@ -242,7 +242,7 @@ let load_managed_queue qid =
 	 let l = in_channel_length f in
 	 let buf = String.create l in
 	 really_input f buf 0 l;
-	 A._to_queue (Xdr.unpack_xdr_value ~fast:true buf t_queue [])
+	 A._to_queue (Netxdr.unpack_xdr_value ~fast:true buf t_queue [])
       )
   in
   let eid_list =
@@ -276,7 +276,7 @@ let load_managed_queue qid =
 	     )
 	 in
 	 let e =
-	   A._to_entry (Xdr.unpack_xdr_value ~fast:true v t_entry []) in
+	   A._to_entry (Netxdr.unpack_xdr_value ~fast:true v t_entry []) in
 	 { qentry = e;
 	   is_picked = false;
 	   pick_connection = None;
@@ -312,7 +312,7 @@ let store_managed_queue qid mq =
   with_out_file (open_out_bin infofile)
     (fun f ->
        let v = A._of_queue mq.qinfo in
-       Xdr.pack_xdr_value v t_queue [] (output_string f);
+       Netxdr.pack_xdr_value v t_queue [] (output_string f);
     );
   with_out_file (open_out listfile)
     (fun f ->
@@ -399,7 +399,7 @@ let proc_create_queue session queuename =
        with_out_file (open_out_bin infofile)
 	 (fun f ->
 	    let v = A._of_queue qinfo in
-	    Xdr.pack_xdr_value v t_queue [] (output_string f);
+	    Netxdr.pack_xdr_value v t_queue [] (output_string f);
 	 );
        reply `successful
     )
@@ -815,7 +815,7 @@ let proc_download_entry session (qid,eid,chunksize) =
        let n = !next_dhandle in
        incr next_dhandle;
        let dhandle =
-	 instance_prefix ^ Rtypes.int4_as_string (Rtypes.int4_of_int n) in
+	 instance_prefix ^ Netnumber.BE.int4_as_string (int4_of_int n) in
        (* Create new download record *)
        let queuedir = Filename.concat spooldir qid in
        let qdata_file = Filename.concat queuedir ("d" ^ eid) in
@@ -923,7 +923,7 @@ let start_upload session mq props reply0 timed_out =
 	 let n = !next_uhandle in
 	 incr next_uhandle;
 	 let uhandle =
-	   instance_prefix ^ Rtypes.int4_as_string (Rtypes.int4_of_int n) in
+	   instance_prefix ^ Netnumber.BE.int4_as_string (int4_of_int n) in
 	 (* Create new entry record in memory: *)
 	 let eid = string_of_int (mq.next_eid) in
 	 mq.next_eid <- mq.next_eid + 1;
@@ -1035,7 +1035,7 @@ let proc_upload_chunk session (uhandle,chunk) =
 	 with_out_file (open_out_bin qentry_file)
 	   (fun file ->
 	      let v = A._of_entry entry.qentry in
-	      Xdr.pack_xdr_value v t_entry [] (output_string file);
+	      Netxdr.pack_xdr_value v t_entry [] (output_string file);
 	   );
 	 (* Deallocate uhandle: *)
 	 Hashtbl.remove uhandles uhandle;
@@ -1144,6 +1144,13 @@ let main() =
   let (auth_name, srv_mode, f_srv_config) = !pluggable_auth_module in
   prerr_endline ("Starting queues server with auth module: " ^ auth_name);
 
+(*
+  Rpc_client.verbose true;
+  Rpc_server.verbose true;
+
+  Rpc_client.Debug.enable_ptrace := true;
+ *)
+
   let server = Rpc_server.create2 srv_mode esys in
 
   S1.bind_async
@@ -1190,11 +1197,6 @@ let main() =
   Sys.set_signal
     Sys.sigpipe
     Sys.Signal_ignore;
-
-(*
-  Rpc_client.verbose true;
-  Rpc_server.verbose true;
- *)
 
   let rec auto_restart f arg =
     try f arg

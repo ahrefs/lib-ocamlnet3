@@ -46,3 +46,16 @@ exception Rpc_server of server_error;;
 exception Rpc_cannot_unpack of string;;
   (** RPC protocol error (bad data) *)
 
+val create_inet_uaddr : Unix.inet_addr -> int -> string
+  (** Create an universal address from an internet addr and a port *)
+
+val parse_inet_uaddr : string -> (Unix.inet_addr * int)
+  (** Parses an universal address and returns internet addr and port.
+      Failure if not parsable.
+   *)
+
+val netid_of_inet_addr : Unix.inet_addr -> protocol -> string
+  (** Get the netid for an Internet address *)
+
+val sockaddr_of_uaddr : string -> string -> (Unix.sockaddr * protocol) option
+  (** [sockaddr_of_uaddr netid uaddr]. Returns None for unknown netid *)

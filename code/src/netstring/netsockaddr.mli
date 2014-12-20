@@ -31,3 +31,32 @@ val socksymbol_of_string : string -> socksymbol
 
 val string_of_socksymbol : socksymbol -> string
   (** The reverse function *)
+
+val norm_socksymbol : socksymbol -> socksymbol
+  (** Normalizes numeric IP addresses: if the address is an IPv4 address mapped
+      to the IPv6 address space, the real IPv4 address is returned. This also
+      works for numeric addresses in string form, whose writing is also
+      normalized.
+
+      E.g.
+       - [norm_socksymbol (`Inet_by_name("::ffff:127.0.0.1", 80))] returns
+         [`Inet_by_name("127.0.0.1",80)]
+       - [norm_socksymbol (`Inet_by_name("0::1",80))] returns
+         [`Inet_by_name("::1", 80)]
+
+   *)
+
+val ipv6_socksymbol : socksymbol -> socksymbol
+  (** IPv6-ification of numeric IP addresses: IPv4 addresses are mapped to
+      the IPv6 address space. This also
+      works for numeric addresses in string form, whose writing is also
+      normalized.
+
+      E.g.
+       - [norm_socksymbol (`Inet_by_name("127.0.0.1", 80))] returns
+         [`Inet_by_name("::ffff:127.0.0.1",80)]
+       - [norm_socksymbol (`Inet_by_name("0::1",80))] returns
+         [`Inet_by_name("::1", 80)]
+
+   *)
+
