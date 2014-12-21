@@ -195,87 +195,6 @@ let string_of_union print_elem t v =
     (print_elem elem_t elem_v)
 
 
-let rec string_of_rec_arg recdefs t v =
-  match t with
-    | Netxdr.X_int ->
-	sprintf "%ld" 
-	  (Netnumber.int32_of_int4 (Netxdr.dest_xv_int v))
-    | Netxdr.X_uint ->
-	sprintf "%lu" 
-	  (Netnumber.logical_int32_of_uint4 (Netxdr.dest_xv_uint v))
-    | Netxdr.X_hyper ->
-	sprintf "%Ld" 
-	  (Netnumber.int64_of_int8 (Netxdr.dest_xv_hyper v))
-    | Netxdr.X_uhyper ->
-	sprintf "%Lu" 
-	  (Netnumber.logical_int64_of_uint8 (Netxdr.dest_xv_uhyper v))
-    | Netxdr.X_enum enum ->
-	( match v with
-	    | Netxdr.XV_enum case ->
-		case
-	    | Netxdr.XV_enum_fast n ->
-		fst(List.nth enum n)
-	    | _ -> assert false
-	)
-    | Netxdr.X_float ->
-	string_of_float
-	  (Netnumber.float_of_fp4 (Netxdr.dest_xv_float v))
-    | Netxdr.X_double ->
-	string_of_float
-	  (Netnumber.float_of_fp8 (Netxdr.dest_xv_double v))
-    | Netxdr.X_opaque_fixed _
-    | Netxdr.X_opaque _ ->
-	let s = Netxdr.dest_xv_opaque v in
-	string_of_opaque s (String.length s)
-    | Netxdr.X_string _ ->
-	let s = Netxdr.dest_xv_string v in
-	"\"" ^ String.escaped s ^ "\""
-    | Netxdr.X_mstring(_, _) ->
-	let ms = Netxdr.dest_xv_mstring v in
-	let (s,p) = ms#as_string in
-	"\"" ^ String.escaped (String.sub s p (ms#length-p)) ^ "\""
-    | Netxdr.X_array_fixed _
-    | Netxdr.X_array _ ->
-	string_of_array
-	  (string_of_rec_arg recdefs)
-	  t
-	  v
-    | Netxdr.X_struct _ ->
-	string_of_struct
-	  (string_of_rec_arg recdefs)
-	  t
-	  v
-    | Netxdr.X_union_over_int _
-    | Netxdr.X_union_over_uint _
-    | Netxdr.X_union_over_enum _ ->
-	string_of_union
-	  (string_of_rec_arg recdefs)
-	  t
-	  v
-    | Netxdr.X_void ->
-	"void"
-    | Netxdr.X_rec (n, u) ->
-	let recdefs' = StrMap.add n u recdefs in
-	string_of_rec_arg recdefs' t v
-
-    | Netxdr.X_refer n ->
-	let u =
-	  try StrMap.find n recdefs
-	  with Not_found -> assert false in
-	string_of_rec_arg recdefs u v
-
-    | Netxdr.X_direct(t1, _, _, _) ->
-	string_of_rec_arg recdefs t1 v
-
-    | Netxdr.X_type _
-    | Netxdr.X_param _ ->
-	assert false
-
-
-let string_of_full_arg =
-  string_of_rec_arg StrMap.empty
-
-
 let rec string_of_abbrev_arg t v =
   match t with
     | Netxdr.X_int
@@ -340,6 +259,88 @@ let rec string_of_abbrev_arg t v =
 
     | Netxdr.X_rec(_,t') ->
 	string_of_abbrev_arg t' v
+
+
+and string_of_rec_arg recdefs t v =
+  match t with
+    | Netxdr.X_int ->
+	sprintf "%ld" 
+	  (Netnumber.int32_of_int4 (Netxdr.dest_xv_int v))
+    | Netxdr.X_uint ->
+	sprintf "%lu" 
+	  (Netnumber.logical_int32_of_uint4 (Netxdr.dest_xv_uint v))
+    | Netxdr.X_hyper ->
+	sprintf "%Ld" 
+	  (Netnumber.int64_of_int8 (Netxdr.dest_xv_hyper v))
+    | Netxdr.X_uhyper ->
+	sprintf "%Lu" 
+	  (Netnumber.logical_int64_of_uint8 (Netxdr.dest_xv_uhyper v))
+    | Netxdr.X_enum enum ->
+	( match v with
+	    | Netxdr.XV_enum case ->
+		case
+	    | Netxdr.XV_enum_fast n ->
+		fst(List.nth enum n)
+	    | _ -> assert false
+	)
+    | Netxdr.X_float ->
+	string_of_float
+	  (Netnumber.float_of_fp4 (Netxdr.dest_xv_float v))
+    | Netxdr.X_double ->
+	string_of_float
+	  (Netnumber.float_of_fp8 (Netxdr.dest_xv_double v))
+    | Netxdr.X_opaque_fixed _
+    | Netxdr.X_opaque _ ->
+	let s = Netxdr.dest_xv_opaque v in
+	string_of_opaque s (String.length s)
+    | Netxdr.X_string _ ->
+	let s = Netxdr.dest_xv_string v in
+	"\"" ^ String.escaped s ^ "\""
+    | Netxdr.X_mstring(_, _) ->
+	let ms = Netxdr.dest_xv_mstring v in
+	let (s,p) = ms#as_string in
+	"\"" ^ String.escaped (String.sub s p (ms#length-p)) ^ "\""
+    | Netxdr.X_array_fixed _
+    | Netxdr.X_array _ ->
+	string_of_array
+	  (string_of_rec_arg recdefs)
+	  t
+	  v
+    | Netxdr.X_struct _ ->
+	string_of_struct
+	  (string_of_rec_arg recdefs)
+	  t
+	  v
+    | Netxdr.X_union_over_int _
+    | Netxdr.X_union_over_uint _
+    | Netxdr.X_union_over_enum _ ->
+	string_of_union
+	  (string_of_rec_arg recdefs)
+	  t
+	  v
+    | Netxdr.X_void ->
+	"void"
+    | Netxdr.X_rec (n, u) ->
+	let recdefs' = StrMap.add n u recdefs in
+	string_of_rec_arg recdefs' u v
+
+    | Netxdr.X_refer n ->
+	let u =
+	  try StrMap.find n recdefs
+	  with Not_found -> assert false in
+	string_of_rec_arg recdefs u v
+
+    | Netxdr.X_direct(t1, _, _, _) ->
+	string_of_rec_arg recdefs t1 v
+
+    | Netxdr.X_type _
+    | Netxdr.X_param _ ->
+	assert false
+
+
+and string_of_full_arg t v =
+  string_of_rec_arg StrMap.empty t v
+
 
 let rec string_of_abbrev_args t v =
   match t with

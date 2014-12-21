@@ -88,11 +88,16 @@ let main() =
   let want_aux = ref false in
   let want_clnt = ref false in
   let want_srv = ref None in
+  let clnt_only_functor = ref false in
   let cpp = ref (Some Config.cpp) in
   let cpp_options = ref [] in
   Arg.parse
       [ "-aux",    (Arg.Set want_aux),  " Create file_aux.ml";
 	"-clnt",   (Arg.Set want_clnt), " Create file_clnt.ml";
+        "-clnt-only-functor", (Arg.Unit (fun () -> 
+                                           want_clnt := true;
+                                           clnt_only_functor := true)),
+        " Create file_clnt.ml but only the functors";
 	"-srv",    (Arg.Unit (fun () -> want_srv := Some `Create)),  
 	" Create file_srv.ml";
 	"-srv2",   (Arg.Unit (fun () -> want_srv := Some `Create2)),  
@@ -214,7 +219,8 @@ let main() =
 	   let clntmlifmt = Format.formatter_of_out_channel clntmlifile in
 	   warning clntfmt target;
 	   warning clntmlifmt target;
-	   Generate.output_client clntmlifmt clntfmt xdr_def auxmodule;
+	   Generate.output_client clntmlifmt clntfmt xdr_def
+                                  !clnt_only_functor auxmodule;
 	   close_out clntfile;
 	   close_out clntmlifile;
 	 end;

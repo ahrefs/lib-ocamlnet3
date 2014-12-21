@@ -3,8 +3,9 @@ TOP_DIR=../..
 PKGNAME  = rpc
 OBJECTS  = rpc.cmo rpc_common.cmo \
            rpc_program.cmo rpc_util.cmo rpc_portmapper_aux.cmo \
-           rpc_packer.cmo rpc_transport.cmo rpc_client.cmo \
-           rpc_simple_client.cmo rpc_portmapper_clnt.cmo rpc_portmapper.cmo \
+           rpc_packer.cmo rpc_transport.cmo rpc_client_pre.cmo \
+	   rpc_portmapper_clnt.cmo rpc_portmapper_impl.cmo \
+           rpc_simple_client.cmo rpc_client.cmo rpc_portmapper.cmo \
            rpc_server.cmo rpc_auth_sys.cmo \
 	   rpc_auth_gssapi_aux.cmo rpc_auth_gssapi.cmo \
 	   rpc_proxy.cmo

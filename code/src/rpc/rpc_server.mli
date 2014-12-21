@@ -381,11 +381,13 @@ val reply : session -> xdr_value -> unit
 val reply_error : session -> Rpc.server_error -> unit
   (** Like [reply], but an error condition is sent back to the caller. *)
 
-val set_exception_handler : t -> (exn -> unit) -> unit
+val set_exception_handler : t -> (exn -> string -> unit) -> unit
   (** Sets the exception handler for the server.
    * The exception handler gets most exceptions raised by the functions that
    * are bound to procedures. The exception handler does not get Abort
    * exceptions and any exceptions resulting from I/O problems.
+   *
+   * The string is the backtrace if present, or "" otherwise.
    *
    * NOTES ABOUT EXCEPTIONS:
    * - The default exception handler logs a [`Crit] message using {!Netlog}.

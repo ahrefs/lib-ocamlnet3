@@ -17,7 +17,7 @@ rpc_portmapper_aux.ml: rpc_portmapper.x
 	$(RPCGEN) -aux rpc_portmapper.x
 
 rpc_portmapper_clnt.ml: rpc_portmapper.x
-	$(RPCGEN) -clnt rpc_portmapper.x
+	$(RPCGEN) -clnt-only-functor rpc_portmapper.x
 
 rpc_auth_gssapi_aux.ml: rpc_auth_gssapi.x
 	$(RPCGEN) -aux rpc_auth_gssapi.x

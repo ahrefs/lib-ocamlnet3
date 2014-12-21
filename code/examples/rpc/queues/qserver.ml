@@ -458,6 +458,7 @@ let proc_delete_queue session queuename =
 
 
 let proc_list_queues session () =
+  Printf.eprintf "LIST_QUEUES\n%!";
   catch_error
     (fun reply ->
        (* Get all files in the spooldir: *)
@@ -1139,6 +1140,7 @@ let pluggable_auth_module =
 
 
 let main() =
+  Printexc.record_backtrace true;
   let esys = Unixqueue.create_unix_event_system() in
 
   let (auth_name, srv_mode, f_srv_config) = !pluggable_auth_module in

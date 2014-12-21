@@ -62,7 +62,7 @@ type user_name_format =
       *   group IDs and the hostname.
      *)
 
-val server_auth_method : ?lookup_hostname:bool ->          (* default: true *)
+val server_auth_method : ?lookup_hostname:bool ->          (* default: false *)
                          ?require_privileged_port:bool ->  (* default: true *)
                          ?user_name_as:user_name_format -> (* default: `Full *)
 			 unit ->

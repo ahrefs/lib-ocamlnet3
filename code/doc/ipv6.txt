@@ -1,9 +1,30 @@
 {1 IPv6 Support}
 
-Ocamlnet supports IPv6 if the Ocaml runtime detects that IPv6 is
-available on the OS. For Win32 the Ocaml runtime has no IPv6 support.
+We need to distinguish between:
+
+ - IPv6 is compiled into OCamlnet
+ - IPv6 is enabled
+
+If the Ocaml runtime detects that IPv6 is available on the OS, IPv6
+will also be compiled into OCamlnet. The does not mean, however, that
+IPv6 is enabled at runtime, which should only be done if IPv6 traffic
+can be routed.
+
+{2 How to enable}
+
+For Linux and BSD systems IPv6 is automatically enabled when a network
+interface is detected with a global IPv6 address. This check is done
+by {!Netsys.is_ipv6_system}.
+
+You can override what this function returns by calling
+{!Netsys.set_ipv6_system}. This is needed on other OS where the
+automatic check does not work, and of course also when IPv6 needs to
+be turned off.
 
 {2 String-processing functions}
+
+Recognize IPv4 and IPv6 addresses with {!Netsys.is_ipv4_inet_addr} and
+{!Netsys.is_ipv6_inet_addr}, respectively.
 
 The {!Neturl} module can parse URLs containing IPv6 addresses, e.g.
 [http://[fe80::224:7eff:fedf:59ff]/path]. The address must be included
@@ -20,6 +41,16 @@ has been added, {!Netsockaddr}. With
 addresses are supported. Again, these addresses need to be enclosed in
 square brackets.
 
+Note that it is possible to map IPv4 addresses into the IPv6 address space.
+Such addresses have the form [::ffff:XXXX:XXXX] where [XXXX:XXXX] is the
+IPv4 address. Such addresses are normally written [::ffff:x.y.z.u] so
+that the IPv4 address is denoted as the well-known dotted quadruple.
+You get such addresses when a server socket is bound to [::] and receives
+IPv4 traffic. The consequence is that the same IPv4 address exists in
+two forms, namely as native IPv4 address and as IPv4-mapped-to-IPv6 address.
+Use {!Netsys.norm_inet_addr} to normalize an address and 
+{!Netsys.ipv6_inet_addr} to enforce the mapping form.
+
 {2 Protocols}
 
 The protocol interpreters for HTTP, FTP, and SOCKS have been carefully
@@ -28,9 +59,15 @@ reviewed, and the necessary changes have been done.
 The implementations for SMTP, POP, and the web connectors do not
 contain IP addresses (or are uncritical).
 
+Regarding SunRPC, the Portmapper protocol does not support IPv6.
+To cope with that, some support for RPCBIND, the successor of Portmapper,
+has been added. First the required RPCBIND requests are tried, and if
+it is detected that RPCBIND is unavailable, the old Portmapper requests
+are done instead. Note that in the latter case IPv6 is not possible.
+
 {2 Name service}
 
-The central name service module is now {!Uq_resolver}. The name resolver
+The central name service module is {!Uq_resolver}. The name resolver
 is now pluggable, and there are two versions:
 
  - {!Uq_resolver.default_resolver} bases on [gethostbyname], and is
@@ -40,16 +77,6 @@ is now pluggable, and there are two versions:
    [getaddrinfo] may not be available on all platforms, but it always
    available for platforms supporting IPv6.
 
-So, one has to change the default resolver to [gai_resolver] in order
-to enable IPv6 name lookups:
-
-{[
-Uq_resolver.set_current_resolver (Uq_resolver.gai_resolver())
-]}
-
-It is OS-depended what else needs to be done to enable IPv6. For
-example, on Linux one needs
-
-- a kernel with IPv6 support, and
-- at least one network interface with a global IPv6 address
-  (i.e. other than the fe80:* addresses)
+If {!Netsys.is_ipv6_system} returns [true], the standard resolver is
+automatically changed to {!Uq_resolver.gai_resolver} in order to allow
+IPv6 name lookups.

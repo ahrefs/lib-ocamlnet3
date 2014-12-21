@@ -767,6 +767,10 @@ let start() =
 
 
 let main() =
+  Printexc.record_backtrace true;
+  Rpc_client.Debug.enable := true;
+  Rpc_client.Debug.enable_ptrace := true;
+  Rpc_client.Debug.ptrace_verbosity := `Name_full_args; 
   try
     start();
     exit 0

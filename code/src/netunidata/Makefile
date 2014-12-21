@@ -12,8 +12,7 @@ PACKLIST = netdb-packlist
 MAPPINGS = netmappings_iso.ml \
 	   netmappings_other.ml \
 	   netmappings_jp.ml \
-	   netmappings_kr.ml \
-	   netmappings_asn1.ml
+	   netmappings_kr.ml
 
 ALL_EXTRA = $(MAPPINGS:.ml=.cmo) netuniinit.cmo
 OPT_EXTRA = $(MAPPINGS:.ml=.cmx) netuniinit.cmx

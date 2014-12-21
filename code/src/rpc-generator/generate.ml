@@ -2876,18 +2876,20 @@ let output_progdefs (mli:formatter) (f:formatter) (dl:xdr_def list) =
 (* Output clients                                                     *)
 (**********************************************************************)
 
-let output_client (mli:formatter) (f:formatter) (dl:xdr_def list) auxname =
+let output_client (mli:formatter) (f:formatter) (dl:xdr_def list) 
+                  only_functor
+                  auxname =
 
   let rec check_program prog =
     (* Make functor: *)
     
     (* MLI: *)
     fprintf mli "@[<v>";
-    fprintf mli "@[<v 2>module Make'%s(U'C:Rpc_client.USE_CLIENT) : sig@ "
+    fprintf mli "@[<v 2>module Make'%s(U'C:Rpc_client_pre.USE_CLIENT) : sig@ "
       prog.prog_symbol.ocaml_name;
     (* ML: *)
     fprintf f "@[<v>";
-    fprintf f "@[<v 2>module Make'%s(U'C:Rpc_client.USE_CLIENT) = struct@ " 
+    fprintf f "@[<v 2>module Make'%s(U'C:Rpc_client_pre.USE_CLIENT) = struct@ " 
       prog.prog_symbol.ocaml_name;
     (* Both: *)
     List.iter (check_version `Make prog) prog.prog_def;
@@ -2902,24 +2904,26 @@ let output_client (mli:formatter) (f:formatter) (dl:xdr_def list) auxname =
 
     (* Mapping with U'C=Rpc_client: *)
 
-    (* MLI: *)
-    fprintf mli "@[<v>";
-    fprintf mli "@[<v 2>module %s : sig@ "
-      prog.prog_symbol.ocaml_name;
-    (* ML: *)
-    fprintf f "@[<v>";
-    fprintf f "@[<v 2>module %s = struct@ " 
-      prog.prog_symbol.ocaml_name;
-    (* Both: *)
-    List.iter (check_version `Client prog) prog.prog_def;
-    (* MLI: *)
-    fprintf mli "@]@ ";
-    fprintf mli "end@ ";
-    fprintf mli "@]@\n";
-    (* ML: *)
-    fprintf f "@]@ ";
-    fprintf f "end@ ";
-    fprintf f "@]@\n";
+    if not only_functor then (
+      (* MLI: *)
+      fprintf mli "@[<v>";
+      fprintf mli "@[<v 2>module %s : sig@ "
+        prog.prog_symbol.ocaml_name;
+      (* ML: *)
+      fprintf f "@[<v>";
+      fprintf f "@[<v 2>module %s = struct@ " 
+        prog.prog_symbol.ocaml_name;
+      (* Both: *)
+      List.iter (check_version `Client prog) prog.prog_def;
+      (* MLI: *)
+      fprintf mli "@]@ ";
+      fprintf mli "end@ ";
+      fprintf mli "@]@\n";
+      (* ML: *)
+      fprintf f "@]@ ";
+      fprintf f "end@ ";
+      fprintf f "@]@\n";
+    )
     
 
   and check_version inst prog vers =

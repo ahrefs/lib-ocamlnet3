@@ -343,6 +343,7 @@ Major future directions:
   * async fastcgi client
   * RPC: support RPCBIND versions 3 and 4 (for IPv6 needed)
   * NFSv4 client as Netfs
+  * Webfinger (RFC 7033)
 
 - Security
   * Access GnuTLS crypto routines via Cryptokit-like API
@@ -357,6 +358,14 @@ Major future directions:
   * Password files, e.g. LDIF-compatible
   * Protect RPC better against DoS attacks
   * Netcgi2/Nethttpd w/ authentication
+  * OAUTH
+    * OAUTH 1.0a (RFC 5849)
+    * OAUTH 2 (RFC 6749, 6750)
+    * OAUTH+SASL (being defined)
+  - UPDATES
+    * GSSAPI v3
+    * RPSEC_GSS version 2 (RFC 5403) and 3 (being defined)
+
 
 - Performance
   * epoll - DONE

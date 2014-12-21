@@ -146,7 +146,7 @@ type user_name_format =
 
 
 class server_auth_method
-        ?(lookup_hostname = true)
+        ?(lookup_hostname = false)
         ?(require_privileged_port = true)
         ?(user_name_as = (`Full : user_name_format))
 	()
@@ -179,7 +179,7 @@ object
 		    let entry = Uq_resolver.get_host_by_name hostname in
 		    let l = Array.to_list entry.Unix.h_addr_list in
 		    if not(List.mem a l) then
-		      raise Not_found
+		      raise(Rpc_server Auth_bad_cred)
 		  with
 		      Uq_resolver.Host_not_found _ ->
 			raise(Rpc_server Auth_bad_cred)

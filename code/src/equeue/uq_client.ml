@@ -392,7 +392,6 @@ end
 	    raise Addressing_method_not_supported
   end ;;
 
-
 (* TODO: Close u, v on abort/error *)
 (* TODO: port to Win32 *)
 class command_connector () : client_endpoint_connector =

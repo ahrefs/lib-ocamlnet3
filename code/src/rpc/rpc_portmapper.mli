@@ -32,7 +32,7 @@ type t
 val create : ?esys:Unixqueue.event_system -> Rpc_client.connector -> t
   (** Connects to the portmapper service listening on the given connector. *)
 
-val create_inet : ?esys:Unixqueue.event_system -> string -> t
+val create_inet : ?esys:Unixqueue.event_system -> string -> Rpc.protocol -> t
   (** Connects to a portmapper listening on an Internet port. The argument
    * is the hostname where the portmapper is running or its internet
    * address. This function connects always to the port 111 on the given

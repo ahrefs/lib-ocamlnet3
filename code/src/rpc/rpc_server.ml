@@ -159,10 +159,11 @@ type t =
 	mutable service : (Rpc_program.t * binding Uint4Map.t) 
 	                    Uint4Map.t Uint4Map.t;
 	        (* Program nr/version nr/procedure nr *)
-	mutable portmapped : (Unix.inet_addr * int) option;  (* port number *)
+	mutable portmapped : 
+                  (Unix.inet_addr * int * Rpc_portmapper.t option * int) option;
 	mutable esys : event_system;
 	mutable prot : protocol;
-	mutable exception_handler : exn -> unit;
+	mutable exception_handler : exn -> string -> unit;
 	mutable unmap_port : (unit -> unit);
 	mutable onclose : (connection_id -> unit) list;
 	mutable filter : (Rpc_transport.sockaddr -> connection_id -> rule);
@@ -429,7 +430,6 @@ type reaction =
   | Reject_procedure of server_error
 
 let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
-
   let sockaddr_opt =
     try Some(Lazy.force sockaddr_lz) with _ -> None in
 
@@ -495,7 +495,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
       f()
     with
 	any ->
-	  (try srv.exception_handler any with _ -> ());
+          let bt = Printexc.get_backtrace() in
+	  (try srv.exception_handler any bt with _ -> ());
   in
 
   let protect ?(ret_flav="AUTH_NONE") ?(ret_data="") f =
@@ -549,7 +550,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  raise x
       | any ->
 	  (* Reply "System_err": *)
-	  (try srv.exception_handler any with _ -> ());
+          let bt = Printexc.get_backtrace() in
+	  (try srv.exception_handler any bt with _ -> ());
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
@@ -811,7 +813,8 @@ let terminate_any srv conn =
 		 action conn.conn_id
 	       with
 		 | any ->
-		     (try srv.exception_handler any with _ -> ())
+                     let bt = Printexc.get_backtrace() in
+		     (try srv.exception_handler any bt with _ -> ())
 	    )
 	    srv.onclose
 	)
@@ -1068,10 +1071,12 @@ type mode2 =
 
 
 let create2_srv prot esys =
-  let default_exception_handler ex =
+  let default_exception_handler ex bt =
     Netlog.log
       `Crit
-      ("Rpc_server exception handler: Exception " ^ Netexn.to_string ex)
+      ("Rpc_server exception handler: Exception " ^ Netexn.to_string ex);
+    dlog0
+      ("Rpc_server exception handler: Backtrace: " ^ bt);
   in
 
   let none = Hashtbl.create 3 in
@@ -1297,12 +1302,12 @@ let create2_socket_server ?(config = default_socket_config)
 				accept_connections acc
 			     )
 		    ~is_error:(fun exn ->
-				 srv.exception_handler exn
+				 srv.exception_handler exn ""
 			      )
 		    mplex_eng
 	       )
       ~is_error:(fun exn ->
-		   srv.exception_handler exn
+		   srv.exception_handler exn ""
 		)
       eng in
 
@@ -1340,7 +1345,7 @@ let create2_socket_server ?(config = default_socket_config)
 	    ( try
 		let addr, port = get_port s in
                 dlog_anon_port port;
-		srv.portmapped <- Some(addr,port);
+		srv.portmapped <- Some(addr,port,None,0);
 		(s, true)
 	      with
 		  any -> Unix.close s; raise any
@@ -1393,7 +1398,7 @@ let create2_socket_server ?(config = default_socket_config)
 		      next_incoming_message srv conn;
 		   )
 	  ~is_error:(fun exn ->
-		       srv.exception_handler exn
+		       srv.exception_handler exn ""
 		    )
 	  mplex_eng;
 	srv
@@ -1438,6 +1443,35 @@ let create2 mode esys =
 let is_dummy srv = srv.dummy
 
 
+let get_pm srv =
+  match srv.portmapped with
+    | None -> assert false
+    | Some(addr, port, pm_opt, pm_count) ->
+         ( match pm_opt with
+             | None ->
+                  let pm =
+                    Rpc_portmapper.create_local ~esys:srv.esys () in
+                  srv.portmapped <- Some(addr, port, Some pm, 1);
+                  pm
+             | Some pm ->
+                  srv.portmapped <- Some(addr, port, Some pm, pm_count+1);
+                  pm
+         )
+
+let close_pm srv =
+  match srv.portmapped with
+    | None -> assert false
+    | Some(addr, port, pm_opt, pm_count) ->
+         ( match pm_opt with
+             | None -> ()
+             | Some pm ->
+                  srv.portmapped <- Some(addr, port, 
+                                         (if pm_count=1 then None else pm_opt),
+                                         pm_count-1);
+                  if pm_count = 1 then
+                    Rpc_portmapper.shut_down pm
+         )
+
 let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
   let prog = Rpc_program.update ?program_number ?version_number prog0 in
   let prog_nr = Rpc_program.program_number prog in
@@ -1471,9 +1505,9 @@ let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
 	  srv.service 
       ) in
 
-  let pm_error pm error =
-    Rpc_portmapper.shut_down pm;
-    (try srv.exception_handler error with _ -> ()) in
+  let pm_error error =
+    close_pm srv;
+    (try srv.exception_handler error "" with _ -> ()) in
 
   let pm_unset pm f =
     dlogr srv
@@ -1492,7 +1526,7 @@ let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
 	     failwith "Rpc_server.bind: Cannot unregister old port";
 	   f ()
 	 with
-	   | error -> pm_error pm error
+	   | error -> pm_error error
       ) in
 
   let pm_set_new_port_1 pm addr port f =
@@ -1515,7 +1549,7 @@ let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
 	     failwith "Rpc_server.bind: Cannot register port";
 	   f ()
 	 with
-	   | error -> pm_error pm error
+	   | error -> pm_error error
       ) in
   let pm_set_new_port pm addr port f =
     let addrl =
@@ -1542,9 +1576,8 @@ let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
     | None ->
 	update_service()
 
-    | Some(addr, port) ->
-	let pm =
-          Rpc_portmapper.create_local ~esys:srv.esys () in
+    | Some(addr, port, _, _) ->
+	let pm = get_pm srv in
         if pm_continue then
           pm_set_new_port pm addr port (pm_update_service pm)
         else
@@ -1580,9 +1613,9 @@ let unbind' ?(followup = fun () -> ())
     exists
   in
 
-  let pm_error pm error =
-    Rpc_portmapper.shut_down pm;
-    (try srv.exception_handler error with _ -> ()) in
+  let pm_error error =
+    close_pm srv;
+    (try srv.exception_handler error "" with _ -> ()) in
 
   let pm_unset pm f =
     dlogr srv
@@ -1601,7 +1634,7 @@ let unbind' ?(followup = fun () -> ())
 	     failwith "Rpc_server.bind: Cannot unregister old port";
 	   f ()
 	 with
-	   | error -> pm_error pm error
+	   | error -> pm_error error
       ) in
 
   match srv.portmapped with
@@ -1613,8 +1646,8 @@ let unbind' ?(followup = fun () -> ())
 	let exists = update_service() in
 
 	if exists then (
-	  let pm = Rpc_portmapper.create_local ~esys:srv.esys () in
-	  pm_unset pm (fun () -> Rpc_portmapper.shut_down pm; followup())
+	  let pm = get_pm srv in
+	  pm_unset pm (fun () -> close_pm srv; followup())
 	)
         else
           followup()
