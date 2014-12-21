@@ -12,6 +12,8 @@
 
 #include <errno.h>
 
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 typedef int error_code;
 typedef unsigned int gnutls_init_flags;
 typedef unsigned int key_usage;

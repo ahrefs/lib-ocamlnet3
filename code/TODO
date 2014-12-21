@@ -6,12 +6,10 @@ OCAMLNET 4 RELEASE:
  - module refactoring so far needed (smaller executables)
  - IPv6:
     * Rpc_server - DONE
-    * Rpc_client:
-        - if possible use RPCBIND to get detailed info
-        - prefer IPv6 only if IPv6 is enabled
+    * Rpc_client: - DONE
  - mod_apache build errors
- - gnutls build warnings
- - integrate nethttpd-for-netcgi2
+ - gnutls build warnings - DONE
+ - integrate nethttpd-for-netcgi2 - WONT
  - DOC UPDATE
     * remove all the ocamlnet 3 links
     * OCamlnet 4 intro

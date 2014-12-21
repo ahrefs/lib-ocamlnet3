@@ -11,6 +11,8 @@
 #include <nettle/gcm.h>
 #endif
 
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 typedef struct nettle_cipher *net_nettle_cipher_t;
 typedef void *net_nettle_cipher_ctx_t;
 typedef void *net_nettle_gcm_aes_ctx_t;

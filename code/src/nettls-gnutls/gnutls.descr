@@ -1443,7 +1443,7 @@ let functions =
     standard
       "error_code gnutls_x509_crt_get_basic_constraints \
            (gnutls_x509_crt_t cert, \
-            OUT ubool critical, OUT ubool ca, OUT int pathlen)";
+            OUT ubool critical, OUT bool ca, OUT int pathlen)";
     standard
       "error_code gnutls_x509_crt_get_key_usage \
            (gnutls_x509_crt_t cert, \
@@ -1466,7 +1466,7 @@ let functions =
       "error_code gnutls_x509_crt_get_extension_info \
            (gnutls_x509_crt_t cert, int indx, \
             1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
-            OUT ubool critical)";
+            OUT bool critical)";
     standard
       ~ask_for_size:true
       "error_code gnutls_x509_crt_get_extension_data \
