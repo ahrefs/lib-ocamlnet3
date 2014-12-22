@@ -428,12 +428,17 @@ object(self)
       if not !Debug.enable then
 	Rpc_server.Debug.disable_for_server rpc;
       Rpc_server.set_exception_handler rpc
-	(fun err ->
+	(fun err bt ->
 	   controller # logger # log
 	     ~component:sockserv#name
 	     ~level:`Crit
 	     ~message:("Control server caught exception: " ^ 
-			 Netexn.to_string err));
+			 Netexn.to_string err);
+           if bt <> "" then
+	     controller # logger # log
+                ~component:sockserv#name
+                ~level:`Crit
+   	        ~message:("Backtrace: " ^ bt));
       dlogr
 	(fun () -> sprintf "Service %s: creating system server" name);
       let sys_rpc =
@@ -443,12 +448,17 @@ object(self)
       if not !Debug.enable then
 	Rpc_server.Debug.disable_for_server sys_rpc;
       Rpc_server.set_exception_handler sys_rpc
-	(fun err ->
+	(fun err bt ->
 	   controller # logger # log
 	     ~component:sockserv#name
 	     ~level:`Crit
 	     ~message:("System server caught exception: " ^ 
-			 Netexn.to_string err));
+			 Netexn.to_string err);
+           if bt <> "" then
+	     controller # logger # log
+                ~component:sockserv#name
+                ~level:`Crit
+   	        ~message:("Backtrace: " ^ bt));
       let c =
 	{ container = (container :> container_id);
 	  cont_state = `Starting (Unix.gettimeofday());
@@ -1207,12 +1217,17 @@ object(self)
     let rpc =
       Rpc_server.create2 (`Socket_endpoint(Rpc.Tcp, fd)) cont#event_system in
     Rpc_server.set_exception_handler rpc
-      (fun err ->
+      (fun err bt ->
 	 controller # logger # log
 	   ~component:"netplex.controller"
 	   ~level:`Crit
 	   ~message:("Admin server caught exception: " ^ 
-		       Netexn.to_string err));
+		       Netexn.to_string err);
+         if bt <> "" then
+	     controller # logger # log
+                ~component:"netplex.controller"
+                ~level:`Crit
+   	        ~message:("Backtrace: " ^ bt));
     Netplex_ctrl_srv.Admin.V2.bind
       ~proc_ping:(fun () -> ())
       ~proc_list:(fun () ->

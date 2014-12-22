@@ -3,23 +3,22 @@
  *
  *)
 
-(** Portmapper version 2, and limited support for version 3 *)
+(** Portmapper/RPCBIND interface *)
 
-(** Call the portmapper version 2. Note that version 2 is an older version
- * (version 3 and 4 are called 'rpcbind'), but it is normally available.
- * There are also some rpcbind functions, but its presence is not required.
- * For IPv6 support, you need to call the rpcbind functions.
- *
- * The task of the portmapper is to map program numbers to port numbers.
- * A RPC service that should be available in the whole network should:
- * - on startup: call the [set] procedure to establish a mapping of the
- *   own program number to the port that has been allocated previously
- * - on shutdown: call the [unset] procedure to remove the mapping
- *   (this is NEVER done automatically!)
- *
- * To call an RPC service which is only known by its program number one should
- * contact the portmapper using [getport] to find out the port where the
- * service is actually listening.
+(** RPC programs are usually registered with a daemon that is known under
+    two names: Portmapper or RPCBIND. The name Portmapper normally refers
+    to version 2 of the registry, whereas RPCBIND refers to versions 3 and
+    4. Version 2 is limited to IPv4 whereas the newer versions also support
+    IPv6 and Unix Domain sockets.
+
+    Recent Linux and BSD distributions deploy a version of RPCBIND that
+    is a port of Sun's original RPCBIND software. Older distributions only
+    support Portmapper.
+
+    Most of the following calls invoke Portmapper procedures only. The
+    calls with the suffix [_rpcbind] first invoked RPCBIND procedures,
+    and if there is no support for RPCBIND, these calls fall back to
+    Portmapper (and limited functionality).
  *)
 
 open Netnumber
@@ -27,25 +26,27 @@ open Rpc
 open Netxdr
 
 type t
-  (** represents a client for the portmapper *)
+  (** represents a client for the Portmapper/RPCBIND daemon *)
 
 val create : ?esys:Unixqueue.event_system -> Rpc_client.connector -> t
-  (** Connects to the portmapper service listening on the given connector. *)
+  (** Connects to the Portmapper/RPCBIND service listening on the given
+      connector. *)
 
 val create_inet : ?esys:Unixqueue.event_system -> string -> Rpc.protocol -> t
-  (** Connects to a portmapper listening on an Internet port. The argument
-   * is the hostname where the portmapper is running or its internet
-   * address. This function connects always to the port 111 on the given
-   * host; this is the standard for portmapper daemons.
+  (** Connects to a Portmapper/RPCBIND listening on an Internet port. The 
+     argument
+     is the hostname where the portmapper is running or its internet
+     address. This function connects always to the port 111 on the given
+     host; this is the standard for portmapper daemons.
    *)
 
 val create_local : ?esys:Unixqueue.event_system -> unit -> t
-  (** Connects to the local portmapper/rpcbind daemon. Such a client must
+  (** Connects to the local Portmapper/RPCBIND daemon. Such a client must
       only be used for setting and unsetting entries.
    *)
 
 val shut_down : t -> unit
-  (** Shuts down the connection to the portmapper. *)
+  (** Shuts down the connection*)
 
 val null : t -> unit
   (** Calls the 'NULL' procedure of the portmapper. This procedure has no
@@ -57,7 +58,7 @@ val null'async : t -> ((unit -> unit) -> unit) -> unit
 
 val set : t -> uint4 -> uint4 -> protocol -> int -> bool
   (** [set pm_client program_nr version_nr protocol port_nr]:
-   * Extends the mapping managed by the portmapper: The triple
+   * Extends the mapping managed by the Portmapper: The triple
    * [(program_nr, version_nr, protocol)] is mapped to the given
    * [port_nr].
    * It is not allowed to overwrite an existing mapping.
@@ -73,19 +74,20 @@ val set'async : t -> uint4 -> uint4 -> protocol -> int ->
 val set_rpcbind : t -> uint4 -> uint4 -> string -> string -> string -> bool
   (** [set_rpcbind pm_client program_nr version_nr netid uaddr owner]:
 
+      Sets an RPCBIND mapping, and if RPCBIND is not supported, the
+      corresponding Portmapper mapping so far possible (when netid is
+      "tcp" or "udp").
+
       The triple [(program_nr, version_nr, netid)] is mapped to
       [(uaddr,owner)]. Netids can be:
-       - tcp
-       - tcp6
-       - udp
-       - udp6
-       - local
+       - "tcp" (only IPv4)
+       - "tcp6"
+       - "udp" (only IPv4)
+       - "udp6"
+       - "local"
       
-      For uaddr see RFC 5665.
-
-      If rpcbind version 3 isn't available, this call falls back to
-      version 2. This works, however, only for the netids "tcp" and
-      "udp".
+      For uaddr see RFC 5665 and {!Rpc.create_inet_uaddr}, 
+      {!Rpc.parse_inet_uaddr}.
    *)
 
 val set_rpcbind'async : t -> uint4 -> uint4 -> string -> string -> string ->
@@ -104,7 +106,19 @@ val unset'async : t -> uint4 -> uint4 -> protocol -> int ->
                 ((unit -> bool) -> unit) -> unit
 
 val unset_rpcbind : t -> uint4 -> uint4 -> string -> string -> string -> bool
-  (** [set_rpcbind pm_client program_nr version_nr netid uaddr owner] *)
+  (** [set_rpcbind pm_client program_nr version_nr netid uaddr owner].
+
+      Unsets an RPCBIND mapping, and if RPCBIND is not supported, the
+      corresponding Portmapper mapping so far possible (when netid is
+      "tcp" or "udp").
+
+      Note that it is unspecified what to do with [uaddr] and [owner].
+      These arguments appear in the formal specification but are not
+      described in the RFC. It is probably best to pass empty strings.
+
+      You can call this function with [netid=""] to remove all entries
+      for the pair [(program_nr,version_nr)].
+   *)
 
 val unset_rpcbind'async : t -> uint4 -> uint4 -> string -> string -> string ->
                           ((unit -> bool) -> unit) -> unit
@@ -120,11 +134,22 @@ val getport'async : t -> uint4 -> uint4 -> protocol ->
 
 val getaddr_rpcbind : t -> uint4 -> uint4 -> string -> string -> string option
   (** [getaddr_rpcbind pm_client program_nr version_nr netid caller_uaddr]:
-      returns the universal address (None on error).
 
-      Normally you can set [netid=""] and [caller_uaddr=""].
+      Gets the uaddr for the triple [(program_nr,version_nr,netid)] (or ""
+      if not found). You can pass [netid=""] to get the uaddr for the
+      netid of the transport on which RPCBIND is invoked (e.g. if you call
+      RPCBIND on TCP/IPv6 you get the uaddr for netid="tcp6").
 
-      Falls back to portmapper version 2 if rpcbind isn't available.
+      Experimentation shows that the RPCBIND daemon on Linux does not
+      correctly respond when netid is not the empty string. Because of this
+      it is recommended to set netid always to the empty string.
+
+      You can pass the uaddr of the caller as [caller_uaddr] to get a more
+      precise response. Normally set [caller_uaddr=""], though.
+
+      Falls back to Portmapper version 2 if RPCBIND isn't available. In
+      this case you cannot retrieve IPv6 entries even if you contact
+      Portmapper via IPv6.
    *)
 
 val getaddr_rpcbind'async : t -> uint4 -> uint4 -> string -> string ->
