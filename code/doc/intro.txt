@@ -6,50 +6,97 @@ other programs running on the same machine. You can also view Ocamlnet
 as an extension of the system interface as provided by the [Unix]
 module of the standard library.
 
-So, which kind of applications can profit from Ocamlnet?
 
-- {b Web applications} can use the [netcgi2] library which provides
-  all core functionality like connecting to web servers, decomposing
-  web requests, and emitting web data. With the [nethttpd] library
-  Ocamlnet even includes a little web server of its own, so
-  stand-alone Ocaml programs can respond to HTTP requests. This is
-  especially interesting for providing high-speed HTTP-based APIs
-  like REST interfaces.
-- {b Client/server architectures} can be built with the included SunRPC
-  support. This is a very robust and mature implementation of this
-  binary RPC protocol, both on the client and the server side. It
-  is wire-compatible with C implementations of SunRPC. There is a
-  generator for transforming SunRPC IDL files into Ocaml
-  modules. Authentication and encryption are also supported (using
-  GSS-API, or the non-standard SSL extension).
-- {b Compute jobs} profit from Ocamlnet because the [netmulticore]
-  library allows it to run compute tasks on as many cores of the
-  machine as needed. The tasks can communicate with message passing
-  and exchange data via shared memory. Of course, [netmulticore] is 
-  strictly typed.
-- {b Any kind of application} can cherry-pick the parts of Ocamlnet
-  that are considered useful. Especially, Ocamlnet includes a number
-  of network clients (for HTTP, FTP, Telnet, SMTP, POP), and a large
-  number of network-related string processing functions (e.g. for
-  URL's, Base64, UTF-8, mail headers). For interacting with the system
-  there are functions to invoke subcommands ([shell] library),
-  and also for globbing, sending email, and logging. Local and remote
-  filesystems can be accessed with the {!Netfs} framework. The
-  [netsys] library wraps lots of additional system calls that are
-  missing in the Ocaml standard library.
 
-A number of ideas and concepts are used throughout the libraries:
 
-- {!Netchannels} are a way to abstract sequential I/O channels
-- The event queues provided by {!Equeue} and {!Unixqueue} make
-  asynchronous protocol interpreters possible
-- The [netplex] library manages worker subprocesses, e.g. for
-  accepting network connections or for doing computations.
+{table intro}
+{tr intro}
+{td intro}Domain{tdend intro}
+{td intro}Task{tdend intro}
+{td intro}Protocol/mechanism{tdend intro}
+{td intro}Frameworks{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}Web applications{tdend intro}
+{td intro}Dynamic web content,{br x}
+          Connect with web server,{br x}
+          Standalone web servers{tdend intro}
+{td intro}Web server connectors: CGI, FastCGI, SCGI, AJP.{br x}
+          HTTP server{tdend intro}
+{td intro}Netcgi{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}Network applications{br x}(classic client/server){tdend intro}
+{td intro}SunRPC clients,{br x}
+          SunRPC servers{tdend intro}
+{td intro}SunRPC binary protocol,{br x}
+          SunRPC stub generator,{br x}
+          Portmapper/RPCBIND,{br x}
+          RPCSEC_GSS{tdend intro}
+{td intro}[ ]{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}Network applications{br x}(modern client/server){tdend intro}
+{td intro}Call HTTP interfaces,{br x}
+          Provide HTTP interfaces{tdend intro}
+{td intro}HTTP client,{br x}
+          HTTP server,{br x}
+          HTTP authentication{tdend intro}
+{td intro}[ ]{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}Email applications{tdend intro}
+{td intro}Create emails with attachments,{br x}
+          Send emails,{br x}
+          Parse emails,{br x}
+          Interact with email server{tdend intro}
+{td intro}SMTP client,{br x}
+          POP client,{br x}
+          SASL authentication{tdend intro}
+{td intro}[ ]{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}Network utilities{tdend intro}
+{td intro}Data download and upload,{br x}
+          Encode and decode,{br x}
+          Character sets,{br x}
+          Structured formats,{br x}
+          URLs,{br x}
+          IPv6{tdend intro}
+{td intro}HTTP client,{br x}
+          FTP client{tdend intro}
+{td intro}Netfs{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}System utiltities{tdend intro}
+{td intro}Invoke commands,{br x}
+          Daemonize,{br x}
+          Shared memory,{br x}
+          Logging,{br x}
+          Locales,{br x}
+          Timers{tdend intro}
+{td intro}[ ]{tdend intro}
+{td intro}Netplex{tdend intro}
+{trend intro}
+{tr intro}
+{td intro}Authentication and security{tdend intro}
+{td intro}Network authentication,{br x}
+          Integrity protection,{br x}
+          Privacy{tdend intro}
+{td intro}TLS (via GnuTLS),{br x}
+          SASL,{br x}
+          GSSAPI (Kerberos){tdend intro}
+{td intro}Pluggable security providers{br x} for TLS, SASL, GSSAPI,{br x}
+          Digests,{br x}
+          Symmetric ciphers{tdend intro}
+{trend intro}
+{tableend intro}
 
 {2 Introductory chapters}
 {div guide}
 {3 Guides}
 
+- {!Ocamlnet4}: Changes in OCamlnet-4
 - {!Foreword}: How Ocamlnet is organized
 - {!Platform}: Which functions are available on which platform
   (POSIX/Win32). Also hints for portable programming.
@@ -62,13 +109,6 @@ A number of ideas and concepts are used throughout the libraries:
 - {!Regexp}: Regular expression backends
 
 {divend guide}
-
-Related external articles:
-
-- {{:http://blog.camlcity.org/blog/ocamlnet3_release.html} Ocamlnet 3
-  finally released}
-- {{:http://blog.camlcity.org/blog/ocamlnet3_win32.html} Stranger in
-  a strange land}, by Gerd Stolpmann. The Win32 port in Ocamlnet 3.
 
 {2 Contents by library}
 
@@ -139,14 +179,6 @@ Related external articles:
 {divend guide}
 
 {3:equeue_blog External articles}
-
-- {{:http://ambassadortothecomputers.blogspot.com/2009/02/equeue-compared-to-lwt.html} Equeue compared to Lwt}, by Jake Donham.
-- {{:http://blog.camlcity.org/blog/parallelmm.html} Parallelizing with
-  Ocamlnet}, by Gerd Stolpmann. Demonstrates how to parallelize
-  matrix multiplications with Netplex-controlled worker processes.
-- {{:http://blog.camlcity.org/blog/ocamlnet3_mp.html} 
-  Mastering Multi-processing}, by Gerd Stolpmann. About the new
-  synchronization primitives in Ocamlnet 3
 
 {2:netstring The [netstring] library: string processing functions}
 
@@ -448,9 +480,6 @@ For a full web server, you'll also need [netplex].
 
 {3:ch_cs_blog External articles}
 
-- {{:http://blog.camlcity.org/blog/ocamlnet3_ha.html} The next server,
-  please!}, by Gerd Stolpmann. About highly-available RPC.
-
 {2:rpc The [rpc] library: SunRPC}
 
 This library implements OncRPC (alias SunRPC).
@@ -553,7 +582,7 @@ processes, and sending messages between them.
 
 {divend guide}
 
-{2:netclient The [netclient] library: HTTP, FTP, Telnet}
+{2:netclient The [netclient] library: HTTP, FTP, Telnet, POP, SMTP}
 
 This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
 

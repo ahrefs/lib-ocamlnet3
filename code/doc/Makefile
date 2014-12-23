@@ -22,6 +22,7 @@ html-doc:
 		-intro intro.txt intro.txt \
 		platform.txt foreword.txt ipv6.txt regexp.txt tls.txt \
 		crypto.txt authentication.txt credentials.txt gssapi.txt \
+		ocamlnet4.txt \
                `cat loadopts.tmp`
 	cp style.css html-main
 	cp html-main/index.html html-main/Intro.html

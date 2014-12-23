@@ -1,0 +1,87 @@
+{1 What's new in OCamlnet 4}
+
+{2 Security}
+
+The main focus of this major version is the addition of strong
+authentication and security. In particular, {b TLS} is now available
+for all protocols. In order to achieve this, and to provide better
+service functions, we switched from OpenSSL to GnuTLS. However, as it
+is uncertain which TLS library will be the best in the future, the
+core TLS interface has been factored out, and is now defined as module
+type. So, if e.g. LibreSSL will make it in the future, it is relatively
+easy to switch. The TLS provider is now a first-class module, and
+plugging in an alternate provider just means to pass a different
+provider module to the protocol interpreter. Read more about TLS:
+{!Tls}.
+
+There are also a lot of utility functions for TLS. In particular,
+there is a parser for X.509 certificates, and there are helpers for
+dealing with distinguished names. {!Netx509}, {!Netdn}.
+
+From GnuTLS (and in particular from its crypto toolkit Nettle) we also
+get access to basic cryptographic functions, including {b hash functions}
+and {b symmetric ciphers}. The latter are sometimes even accelerated on
+modern hardware (in particular AES). {!Netsys_digests}, 
+{!Netsys_ciphers}.
+
+While TLS is good for establishing private channels, TLS client
+authentication is not that popular. Many protocols prefer {b SASL}, which
+is now also defined as pluggable module: {!Netsys_sasl_types},
+{!Netsys_sasl}. There are a number of mechanisms: PLAIN, CRAM-MD5,
+DIGEST-MD5, SCRAM-SHA1, GSSAPI, GS2-KRB5,
+
+Many organizations use {b Kerberos} as network login method. Access to
+Kerberos authentication is possible via the {b GSSAPI}, a system
+interface for authentication and security modules. The GSSAPI is
+available directly or via SASL. Support for GSSAPI has been added to
+all protocols for which it is defined (HTTP clients, FTP clients, RPC
+clients and servers, and other protocols via SASL). Read more:
+{!Gssapi}.
+
+{2 Completed IPv6 support}
+
+IPv6 functionality is now automatically enabled for a number of popular
+OS when it is obvious that IPv6 is configured (i.e. that there is an
+network interface with a global IPv6 address). Read more: {!Ipv6}
+
+For most protocols IPv6 was already available in OCamlnet-3. There was
+one exception, though: The RPC Portmapper protocol isn't capable of
+IPv6. There is the newer RPCBIND protocol, though, amd we support it
+now.
+
+{2 Reorganization}
+
+There are a couple of renamings. The most important ones:
+
+ - [Http_client]: now {!Nethttp_client}
+ - [Ftp_client]: now {!Netftp_client}
+ - [Xdr]: now {!Netxdr}
+
+This means almost all OCamlnet modules use now the prefixes [Net],
+[Uq_], [Rpc_] or [Shell_] (the only exceptions are [Unixqueue] and [Equeue]).
+
+The Unicode tables have been factored out of [netstring] and are now
+provided as [netunidata] library. Note that this means that the table
+are inaccessible unless [netunidata] is linked in. Get more information
+here: {!Netunidata}.
+
+A few other notable updates:
+
+ - The [pop] and [smtp] libraries have been added to [netclient]
+ - [equeue-ssl] does not exist anymore. See {!Tls} about how to get
+   TLS support nevertheless.
+ - [netcgi1] has been deleted. Use [netcgi2] instead.
+ - [rpc-auth-dh] has been deleted. Use the GSSAPI-based authentication
+   for RPC instead.
+
+{2 Not yet}
+
+A few things would have been good to have in OCamlnet-4, but they were
+not available in time:
+
+ - Support for the new [Bytes] type
+ - HTTP authentication on the server side
+ - Advanced HTTP authentication frameworks such as OAUTH
+ - Support for reading passwords from files
+ - Stringprep routines, in particular for SASL methods
+ - Non-blocking name lookups

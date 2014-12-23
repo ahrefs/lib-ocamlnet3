@@ -49,7 +49,7 @@ You get such addresses when a server socket is bound to [::] and receives
 IPv4 traffic. The consequence is that the same IPv4 address exists in
 two forms, namely as native IPv4 address and as IPv4-mapped-to-IPv6 address.
 Use {!Netsys.norm_inet_addr} to normalize an address and 
-{!Netsys.ipv6_inet_addr} to enforce the mapping form.
+{!Netsys.ipv6_inet_addr} to enforce the mapped form.
 
 {2 Protocols}
 
