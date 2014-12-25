@@ -1087,6 +1087,8 @@ if [ $with_gssapi -gt 0 ]; then
     cat src/netgss-system/config.mk >>Makefile.conf
 fi
 
+rm -f src/netcgi2-apache/config.h
+
 ######################################################################
 # Finish
 

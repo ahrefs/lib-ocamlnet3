@@ -1,3 +1,12 @@
+IETF docs:
+ - HTTP auth: https://tools.ietf.org/wg/httpauth/
+ - OAUTH: https://tools.ietf.org/wg/oauth/
+ - Kitten: https://tools.ietf.org/wg/kitten/
+ - jose: https://tools.ietf.org/wg/jose/
+ - TLS: https://tools.ietf.org/wg/tls/
+ - HTTP2: https://tools.ietf.org/wg/httpbis/
+ - NFS (and SunRPC): https://tools.ietf.org/wg/nfsv4/
+
 OCAMLNET 4 RELEASE:
  - CHECK AGAIN UNIT TESTS - DONE
  - CHECK EXAMPLES
@@ -7,13 +16,13 @@ OCAMLNET 4 RELEASE:
  - IPv6:
     * Rpc_server - DONE
     * Rpc_client: - DONE
- - mod_apache build errors
+ - mod_apache build errors - DONE
  - gnutls build warnings - DONE
  - integrate nethttpd-for-netcgi2 - WONT
  - DOC UPDATE
-    * remove all the ocamlnet 3 links
+    * remove all the ocamlnet 3 links - DONE
     * OCamlnet 4 intro
-       - also: build changes, other changes
+       - also: build changes, other changes - DONE
  - BUILD update
     * oasis
  - IF TIME:
