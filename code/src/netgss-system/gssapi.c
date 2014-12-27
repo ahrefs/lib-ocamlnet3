@@ -1,9 +1,13 @@
 /* This file is included into netgss_bindings_stubs.c */
 
+#ifdef __APPLE__
+#include <GSS/gssapi.h>
+#else
 #ifdef NETGSS_VARIANT_INCLUDE_GSS
 #include <gss.h>
 #else
 #include <gssapi.h>
+#endif
 #endif
 
 /* In the following tag=0 means that the value was allocated by the GSSAPI

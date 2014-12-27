@@ -69,6 +69,7 @@ fun=gnutls_global_init
 echo "# FUN $fun" >> $log
 
 cat <<EOF >testdir/main.ml
+external test : unit -> unit = "do_test"
 let () = ()
 EOF
 
@@ -76,7 +77,8 @@ cat <<EOF >testdir/test.c
 #include <gnutls/gnutls.h>
 #include <gnutls/openpgp.h>
 #include <gnutls/x509.h>
-int main (int argc, char *argv[], char *envp[]) {
+#include "caml/mlvalues.h"
+value do_test(value dummy) {
   (void) & $fun;
   return 0;
 }
@@ -88,6 +90,7 @@ if call_ocamlc -o test test.c main.ml; then
 else
     echo "not found"
     have_gnutls=0
+    exit 1
 fi
 
 

@@ -52,12 +52,20 @@ check_gssapi() {
     echo "# FUN $fun" >> $log
 
     cat <<EOF >testdir/main.ml
-let () = ()
+external test : unit -> unit = "do_test"
+let () = test()
 EOF
 
     cat <<EOF >testdir/test.c
+#ifdef __APPLE__
+#include <GSS/gssapi.h>
+#else
 #include <gssapi.h>
-int main (int argc, char *argv[], char *envp[]) {
+#endif
+
+#include "caml/mlvalues.h"
+
+value do_test (value dummy) {
   (void) & $fun;
   return 0;
 }
@@ -105,10 +113,10 @@ if [ -n "$GSSAPI_LIBS" -o -n "$GSSAPI_CFLAGS" ]; then
         check_shishi
     fi
 else
-    case `uname -s`in
+    case `uname -s` in
         Darwin)
-            GSSAPI_CFLAGS="-F GSS"
-            GSSAPI_LIBS=""
+            GSSAPI_LIBS="-framework GSS"
+            GSSAPI_CFLAGS=""
             check_gssapi
             ;;
 
