@@ -99,21 +99,30 @@ EOF
 
 printf "Checking for GSSAPI/Kerberos... "
 
-if [ -n "$GSSAPI_LIBS" ]; then
+if [ -n "$GSSAPI_LIBS" -o -n "$GSSAPI_CFLAGS" ]; then
     check_gssapi
     if [ $have_gssapi -eq 0 ]; then
         check_shishi
     fi
 else
-    for lib in -lgssglue -lgssapi_krb5 -lgssapi; do
-        GSSAPI_LIBS="$lib"
-        check_gssapi
-        if [ $have_gssapi -gt 0 ]; then break; fi
-    done
-    if [ $have_gssapi -eq 0 ]; then
-        GSSAPI_LIBS="-lgss"
-        check_shishi
-    fi
+    case `uname -s`in
+        Darwin)
+            GSSAPI_CFLAGS="-F GSS"
+            GSSAPI_LIBS=""
+            check_gssapi
+            ;;
+
+        *)
+            for lib in -lgssglue -lgssapi_krb5 -lgssapi; do
+                GSSAPI_LIBS="$lib"
+                check_gssapi
+                if [ $have_gssapi -gt 0 ]; then break; fi
+            done
+            if [ $have_gssapi -eq 0 ]; then
+                GSSAPI_LIBS="-lgss"
+                check_shishi
+            fi
+    esac
 fi
 
 
