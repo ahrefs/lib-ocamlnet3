@@ -259,7 +259,7 @@ echo "Welcome to Ocamlnet version $version" >&2
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		-enable-*|--enable-*)
-			opt=`echo "$1" | sed -e 's/--\?enable-//' -e 's/-/_/g'`
+			opt=`echo "$1" | sed -e 's/--\{0,1\}enable-//' -e 's/-/_/g'`
 			check_eopt "$opt"
 			eval "enable_$opt=2"
 			shift
@@ -270,19 +270,19 @@ while [ "$#" -gt 0 ]; do
 			shift
 			;;
 		-disable-*|--disable-*)
-			opt=`echo "$1" | sed -e 's/--\?disable-//' -e 's/-/_/g'`
+			opt=`echo "$1" | sed -e 's/--\{0,1\}disable-//' -e 's/-/_/g'`
 			check_eopt "$opt"
 			eval "enable_$opt=-1"
 			shift
 			;;
 		-with-*|--with*)
-			opt=`echo "$1" | sed -e 's/--\?with-//' -e 's/-/_/g'`
+			opt=`echo "$1" | sed -e 's/--\{0,1\}with-//' -e 's/-/_/g'`
 			check_wopt "$opt"
 			eval "enable_$opt=2"
 			shift
 			;;
 		-without-*|--without*)
-			opt=`echo "$1" | sed -e 's/--\?without-//' -e 's/-/_/g'`
+			opt=`echo "$1" | sed -e 's/--\{0,1\}without-//' -e 's/-/_/g'`
 			check_wopt "$opt"
 			eval "enable_$opt=-1"
 			shift

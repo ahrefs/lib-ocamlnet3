@@ -24,7 +24,8 @@ type shm_name =
       (** The right name refers to a POSIX shared memory object. The name
         * must start with a slash, and must not contain further slashes,
         * e.g. ["/my_shm"]. The left name points to a file in the usual
-        * file tree.
+        * file tree. {b Note that [`POSIX] does not work correctly on
+        * OS X because it is not possible to resize memory objects.}
        *)
   | `File of string
       (** This is the name of an arbitrary file used to store the
