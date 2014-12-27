@@ -5,6 +5,10 @@ parts. Usually, it is not necessary to install all of ocamlnet,
 and there are configuration options allowing you to select what
 you want.
 
+There is now an oasis wrapper for the (custom) configure system.
+So "ocaml setup.ml -configure; ocaml setup.ml -build" should also
+work.
+
 The following table gives a rough overview. The libraries you
 must build at minimum are tagged as CORE. For the other libraries
 the configuration option is shown that will select them for build:
@@ -38,15 +42,7 @@ shell		CORE		Sophisticated version of Sys.command
 ----------------------------------------------------------------------
 (*) If the operation system supports it
 
-You should know that before ocamlnet-2.2 these libraries were distributed
-as several software packages (called ocamlnet, equeue, rpc, netclient).
-If you want to upgrade, you must upgrade all libraries at once and
-replace them with the versions coming with ocamlnet-2.2.
-
-For your convenience, the configuration options allow you to select
-libraries by prerequisites, e.g. -enable-ssl installs all libraries that
-need SSL. The following matrix shows which prerequisites are needed
-for which libraries:
+List of prerequisites:
 
 Option		Prerequisite	Version/Where to get/What it is
 ----------------------------------------------------------------------
@@ -66,10 +62,8 @@ CORE		findlib		>= 1.0
 -enanle-gnutls  gnutls          2.8 or better
                                 http://www.gnutls.org
 
--enable-gtk	lablgtk		>= 1.2 (*)
-				http://wwwfun.kurims.kyoto-u.ac.jp/soft/
-				  olabl/lablgtk.html
-				Bindings for gtk GUIs
+-enable-gssapi  gssapi          Any standard-compliant GSSAPI version should
+                                do, e.g. MIT Kerberos or Heimdal
 
 -enable-gtk2	lablgtk2	probably any (*)
 				http://wwwfun.kurims.kyoto-u.ac.jp/soft/
@@ -84,18 +78,11 @@ CORE		findlib		>= 1.0
 				http://pauillac.inria.fr/~xleroy/software.html
 	                        Bindings for zlib
 
--enable-crypto  cryptokit	probably any
-		                Xavier Leroy's crypto package
-
 -with-nethttpd	none		none
 
    Note: nethttpd must be explicitly selected because it is distributed
    under different license conditions than the other libraries. See
    the file LICENSE for more.
-
--with-auth-dh	cryptgps	probably any
-				http://www.ocaml-programming.de/packages
-				Cryptographic library
 
    Note: At runtime, -with-auth-dh needs further prerequisites,
    namely the so-called keyserv daemon.
@@ -141,18 +128,6 @@ Option			What it changes
 			tcl library is found. E.g.
 			-equeue-tcl-libs -ltcl8.4
 
--auth-dh-style <style>	Only if you have -with-rpc-auth-dh:
-			Overrides the auto-selected style to
-			connect to the keyserv daemon.
-			Possible styles are:
-			- keyenvoy: run the keyenvoy program
-			- unixdomain: contact using Unix Domain socket
-			- tirpc: contact using XTI transport
-			  (this is also known as TI-RPC)
-
--prefer-netcgi2		Only if you have -with-nethttpd:
-			Builds nethttpd against netcgi2 instead
-			of netcgi1
 ----------------------------------------------------------------------
 
 The directory where the library archives are installed can be
@@ -207,11 +182,10 @@ in binary form:
 
 - ocamlnet		CORE only
 - ocamlnet-gnutls       Add-on libraries needing gnutls
-- ocamlnet-gtk		Add-on libraries needing gtk
+- ocamlnet-gssapi       Add-on libraries needing GSSAPI
 - ocamlnet-gtk2		Add-on libraries needing gtk2
 - ocamlnet-tcl		Add-on libraries needing tcl
 - ocamlnet-zip          Add-on libraries needing camlzip
-- ocamlnet-crypto	Add-on libraries needing cryptokit
 - ocamlnet-pcre         Add-on libraries needing pcre
 - ocamlnet-nethttpd	nethttpd (optional, if it makes the different
 			licensing conditions clearer)
@@ -227,7 +201,6 @@ extra variables:
    INC_NETSYS="-package netsys"
    INC_NETSTRING="-package netstring"
    INC_EQUEUE="-package equeue"
-   INC_EQUEUE_SSL="-package equeue-ssl"
    INC_NETCGI2="-package netcgi2"
    INC_NETCGI2_APACHE="-package netcgi2-apache"
    INC_NETPLEX="-package netplex"

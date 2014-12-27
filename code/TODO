@@ -18,13 +18,12 @@ OCAMLNET 4 RELEASE:
     * Rpc_client: - DONE
  - mod_apache build errors - DONE
  - gnutls build warnings - DONE
- - integrate nethttpd-for-netcgi2 - WONT
  - DOC UPDATE
     * remove all the ocamlnet 3 links - DONE
     * OCamlnet 4 intro
        - also: build changes, other changes - DONE
  - BUILD update
-    * oasis
+    * oasis - DONE
  - IF TIME:
     * Netshm for Mac
     * SASLprep light
