@@ -121,6 +121,7 @@ if [ $have_gssapi -gt 0 ]; then
     echo "found ($GSSAPI_LIBS)"
 else
     echo "not found"
+    exit 1
 fi
 
 if [ $have_gssapi -gt 0 ]; then
