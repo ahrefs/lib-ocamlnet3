@@ -53,8 +53,7 @@ set_defaults () {
     enable_pcre=0
     enable_full_pcre=0
     compat_pcre=0
-    with_nethttpd=0
-    with_rpc_auth_dh=0
+    enable_nethttpd=0
     bindir=`dirname "$ocamlc"`
     tcl_defs=""
     tcl_libs=""
@@ -68,6 +67,7 @@ set_defaults () {
     gnutls_system_trust_file=""
     gssapi_cflags=""
     gssapi_libs=""
+    destdir=""
 }
 
 ocamlc=`get_path ocamlc`
@@ -92,9 +92,8 @@ ehelp_full_pcre="Enable/disable the build against pcre-ocaml (no Str)"
 whelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 whelp_rpc_auth_dh="Enable/disable support for SecureRPC (Diffie-Hellman auth)"
 
-# Which options exist? eoptions for enable/disable, woptions for with/without:
-eoptions="pcre full_pcre gtk gtk2 tcl gnutls gssapi zip apache"
-woptions="nethttpd rpc_auth_dh"
+# Which options exist? eoptions for enable/disable
+eoptions="pcre full_pcre gtk gtk2 tcl gnutls gssapi zip apache nethttpd"
 
 # Packages to include anyway:
 requires="unix"
@@ -134,16 +133,6 @@ print_options () {
 			echo "    -enable-$uopt"
 		else
 			echo "    -disable-$uopt"
-		fi
-	done
-	for opt in $woptions; do
-		e="o=\$with_$opt"
-		eval "$e"
-		uopt=`echo $opt | sed -e 's/_/-/g'`
-		if [ $o -gt 0 ]; then
-			echo "    -with-$uopt"
-		else
-			echo "    -without-$uopt"
 		fi
 	done
 	echo "    -bindir $bindir"
@@ -189,14 +178,6 @@ _EOF_
 		uopt=`echo $opt | sed -e 's/_/-/g'`
 		echo "-enable-$uopt:" >&2
 		echo "-disable-$uopt:" >&2
-		echo "        $help" >&2
-	done
-	for opt in $woptions; do
-		e="help=\$whelp_$opt"
-		eval "$e"
-		uopt=`echo $opt | sed -e 's/_/-/g'`
-		echo "-with-$uopt:" >&2
-		echo "-without-$uopt:" >&2
 		echo "        $help" >&2
 	done
 	cat <<_EOF_ >&2
@@ -277,105 +258,164 @@ echo "Welcome to Ocamlnet version $version" >&2
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
-		-enable-*)
-			opt=`echo "$1" | sed -e 's/-enable-//' -e 's/-/_/g'`
+		-enable-*|--enable-*)
+			opt=`echo "$1" | sed -e 's/--\?enable-//' -e 's/-/_/g'`
 			check_eopt "$opt"
 			eval "enable_$opt=2"
 			shift
 			;;
-	        -disable-core)
+	        -disable-core|--disable-core)
 		        # Intentionally undocumented.
 		        disable_core=1
 			shift
 			;;
-		-disable-*)
-			opt=`echo "$1" | sed -e 's/-disable-//' -e 's/-/_/g'`
+		-disable-*|--disable-*)
+			opt=`echo "$1" | sed -e 's/--\?disable-//' -e 's/-/_/g'`
 			check_eopt "$opt"
 			eval "enable_$opt=-1"
 			shift
 			;;
-		-with-*)
-			opt=`echo "$1" | sed -e 's/-with-//' -e 's/-/_/g'`
+		-with-*|--with*)
+			opt=`echo "$1" | sed -e 's/--\?with-//' -e 's/-/_/g'`
 			check_wopt "$opt"
-			eval "with_$opt=2"
+			eval "enable_$opt=2"
 			shift
 			;;
-		-without-*)
-			opt=`echo "$1" | sed -e 's/-without-//' -e 's/-/_/g'`
+		-without-*|--without*)
+			opt=`echo "$1" | sed -e 's/--\?without-//' -e 's/-/_/g'`
 			check_wopt "$opt"
-			eval "with_$opt=-1"
+			eval "enable_$opt=-1"
 			shift
 			;;
-                -bindir)
+                -prefix|--prefix)
+                        bindir="$2/bin"; shift 2 ;;
+                --prefix=*)
+                        p=`echo "$1" | set -e 's/--prefix=//'`
+                        bindir="$p/bin"; shift ;;
+                -bindir|--bindir)
                         bindir="$2"
                         shift
                         shift
                         ;;
-	        -datadir)
+                --bindir=*)
+                        bindir=`echo "$1" | set -e 's/--bindir=//'`
+                        shift
+                        ;;
+	        -datadir|--datadir)
 		        net_db_dir="$2"
 			net_db_dir_set=1
 			shift; shift
 			;;
-                -equeue-tcl-defs)
+	        --datadir=*)
+		        net_db_dir=`echo "$1" | set -e 's/--datadir=//'`
+			net_db_dir_set=1
+			shift
+			;;
+                -equeue-tcl-defs|--equeue-tcl-defs)
                         tcl_defs="$tcl_defs $2"
                         shift
                         shift
                         ;;
-                -equeue-tcl-libs)
+                --equeue-tcl-defs=*)
+                        tcl_defs=`echo "$1" | set -e 's/--equeue-tcl-defs=//'`" $2"
+                        shift
+                        ;;
+                -equeue-tcl-libs|--equeue-tcl-libs)
                         tcl_libs="$tcl_libs $2"
                         shift
                         shift
                         ;;
-                -apxs)
+                --equeue-tcl-libs=*)
+                        tcl_libs=`echo "$1" | set -e 's/--equeue-tcl-libs=//'`" $2"
+                        shift
+                        ;;
+                -apxs|--apxs)
                         apxs="$2"
                         shift
                         shift
                         ;;
-                -apache)
+                --apxs=*)
+                        apxs=`echo "$1" | set -e 's/--apxs=//'`
+                        shift
+                        ;;
+                -apache|--apache)
                         apache="$2"
                         shift
                         shift
                         ;;
-                -gnutls-cflags)
+                --apache=*)
+                        apache=`echo "$1" | set -e 's/--apache=//'`
+                        shift
+                        ;;
+                -gnutls-cflags|--gnutls-cflags)
                         gnutls_cflags="$2"
                         shift
                         shift
                         ;;
-                -gnutls-libs)
+                --gnutls-cflags=*)
+                        gnutls_cflags=`echo "$1" | set -e 's/--gnutls-cflags=//'`
+                        shift
+                        ;;
+                -gnutls-libs|--gnutls-libs)
                         gnutls_libs="$2"
                         shift
                         shift
                         ;;
-                -gnutls-system-trust-file)
+                --gnutls-libs=*)
+                        gnutls_libs=`echo "$1" | set -e 's/--gnutls-libs=//'`
+                        shift
+                        ;;
+                -gnutls-system-trust-file|--gnutls-system-trust-file)
                         gnutls_system_trust_file="$2"
                         shift 2
                         ;;
-                -gssapi-cflags)
+                --gnutls-system-trust-file=*)
+                        gnutls_system_trust_file=`echo "$1" | set -e 's/--gnutls-system-trust-file=//'`
+                        shift
+                        ;;
+                -gssapi-cflags|--gssapi-cflags)
                         gssapi_cflags="$2"
                         shift
                         shift
                         ;;
-                -gssapi-libs)
+                --gssapi-cflags=*)
+                        gssapi_cflags=`echo "$1" | set -e 's/--gssapi-cflags=//'`
+                        shift
+                        ;;
+                -gssapi-libs|--gssapi-libs)
                         gssapi_libs="$2"
                         shift
                         shift
                         ;;
-	        -prefer-netcgi2)
+                --gssapi-libs=*)
+                        gssapi_libs=`echo "$1" | set -e 's/--gssapi-libs=//'`
+                        shift
+                        ;;
+	        -prefer-netcgi2|--prefer-netcgi2)
 		        # ignore!
 			shift ;;
-                -cpp)
+                -cpp|--cpp)
                         cpp="$2"
                         cpp_set=1
                         shift
                         shift
                         ;;
-		-version)
+                --cpp=*)
+                        cpp=`echo "$1" | set -e 's/--cpp=//'`
+                        cpp_set=1
+                        shift
+                        ;;
+		-version|--version)
 			echo "$version"
 			exit 0
 			;;
-                -compat-pcre)
+                -compat-pcre|--compat-pcre)
                         compat_pcre=1
                         shift ;;
+                -destdir|--destdir)
+                        destdir="$2"; shift 2;;
+                --destdir=*)
+                        destdir=`echo "$1" | set -e 's/--destdir=//'`; shift;;
 		*)
 			usage
 	esac
@@ -923,7 +963,7 @@ echo
 
 pkglist="netsys netshm netstring netunidata equeue shell rpc-generator rpc rpc-auth-local netclient netcgi2 netplex netcgi2-plex"
 
-full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 nethttpd nethttpd-for-netcgi2 netzip netcgi2-apache nettls-gnutls netgss-system"
+full_pkglist="$pkglist netstring-pcre rpc-auth-local rpc-xti equeue-tcl equeue-gtk1 equeue-gtk2 nethttpd netzip netcgi2-apache nettls-gnutls netgss-system"
 
 if [ $enable_camlbox -gt 0 ]; then
     pkglist="$pkglist netcamlbox"
@@ -963,13 +1003,6 @@ fi
 if [ $enable_gssapi -gt 0 ]; then
     pkglist="$pkglist netgss-system"
 fi
-
-if [ $with_nethttpd -gt 0 ]; then
-    # Fixup: nethttpd is already added by the for loop, but we need also
-    # nethttpd-for-netcgi2
-    pkglist="$pkglist nethttpd-for-netcgi2"
-fi
-
 
 ######################################################################
 # Write Makefile.conf
@@ -1087,7 +1120,16 @@ if [ $with_gssapi -gt 0 ]; then
     cat src/netgss-system/config.mk >>Makefile.conf
 fi
 
+if [ -n "$destdir" ]; then
+    echo "DESTDIR = $destdir" >>Makefile.conf
+fi
+
 rm -f src/netcgi2-apache/config.h
+
+######################################################################
+# make oasis happy
+
+touch setup.data
 
 ######################################################################
 # Finish

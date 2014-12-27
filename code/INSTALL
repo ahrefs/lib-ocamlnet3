@@ -11,19 +11,16 @@ the configuration option is shown that will select them for build:
 
 Library 	Option		What it provides
 ----------------------------------------------------------------------
-cgi		CORE		This is an alias for netcgi1
 equeue		CORE		Event queues
-equeue-gtk1	-enable-gtk	Event queues - integration into lablgtk
 equeue-gtk2	-enable-gtk2	Event queues - integration into lablgtk2
 equeue-tcl	-enable-tcl	Event queues - integration into labltk
 netcamlbox	CORE		Multiprocessing
 netcgi2		CORE		Web applications (revised lib)
 netcgi2-apache  -enable-apache  Web applications as Apache module
 netcgi2-plex	CORE		Web applications - support for netplex
-netclient	CORE		Clients for HTTP, FTP, Telnet
+netclient	CORE		Clients for HTTP, FTP, Telnet, POP, SMTP
+netgss-system   -enable-gssapi  GSSAPI bindings
 nethttpd	-with-nethttpd	Web server
-nethttpd-for-netcgi2 (same as nethttpd)
-netmech-scram   -enable-crypto  SCRAM authentication mechanism
 netmulticore    CORE 	        Multiprocessing
 netplex		CORE		Generic server framework
 netshm		CORE		Shared memory for IPC
@@ -31,15 +28,13 @@ netstring	CORE		String routines (e.g. URLs, HTML, Mail)
 netstring-pcre  -enable[-full]-pcre   PCRE layer
 netsys		CORE		System interfaces missing in Unix
 nettls-gnutls   -enable-gnutls  TLS library
+netunidata      CORE            Unicode tables
 netzip	        -enable-zip     read/write gzip data using object channels
-pop		CORE		POP3 client
 rpc		CORE		Sophisticated SunRPC/ONCRPC implementation
-rpc-auth-dh	-with-rpc-auth-dh SunRPC/ONCRPC - Add-on for Diffie-Hellman auth
 rpc-auth-local	CORE (*)	SunRPC/ONCRPC - Add-on for local auth
 rpc-generator	CORE		SunRPC/ONCRPC - Stub generator
 rpc-xti		CORE (*)	SunRPC/ONCRPC - Add-on for XTI-only transports
 shell		CORE		Sophisticated version of Sys.command
-smtp		CORE		SMTP client
 ----------------------------------------------------------------------
 (*) If the operation system supports it
 

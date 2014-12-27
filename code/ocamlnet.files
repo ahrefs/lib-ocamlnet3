@@ -34,6 +34,8 @@ f Makefile.rules
 f Makefile.xrules
 f configure
 f ChangeLog
+f _oasis
+f setup.ml
 
 d src
 

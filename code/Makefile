@@ -14,6 +14,10 @@ TOP_DIR=.
 # default value if no Makefile.conf exists.
 PKGLIST ?= netstring cgi
 
+.PHONY: build
+build: all
+	if ocamlopt 2>/dev/null; then $(MAKE) opt; fi
+
 .PHONY: all
 all: tools
 	for pkg in $(PKGLIST); do \
@@ -91,3 +95,11 @@ distclean:
 		test ! -f $$pkg/Makefile || \
 			( cd $$pkg && $(MAKE) -f Makefile.pre distclean); \
 	done
+
+# That one is for oasis
+
+.PHONY: postconf
+postconf:
+	echo 'pkg_version="$(VERSION)"' >>setup.data
+	echo 'bindir="$(BINDIR)"' >>setup.data
+	echo 'datadir="$(NET_DB_DIR)"' >>setup.data
