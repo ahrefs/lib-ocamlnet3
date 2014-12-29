@@ -25,7 +25,7 @@ OCAMLNET 4 RELEASE:
  - BUILD update
     * oasis - DONE
  - IF TIME:
-    * Netshm for Mac
+    * Netshm for Mac - DONE (so far possible)
     * SASLprep light
     * Netplex: user-specific socket dirs
     * password files

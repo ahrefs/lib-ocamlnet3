@@ -34,5 +34,19 @@ netmappings_asn1.ml: netmappings_asn1.pmap
 	$(unimap_to_ocaml) \
 		-o netmappings_asn1.ml netmappings_asn1.pmap
 
+netsaslprep_data.ml: tmp/CompositionExclusions-3.2.0.txt \
+                     tmp/UnicodeData-3.2.0.txt
+	ocaml str.cma ../../tools/saslprep-extract-from-unicode.ml \
+		> netsaslprep_data.ml
+
+tmp/CompositionExclusions-3.2.0.txt:
+	mkdir -p tmp
+	cd tmp && \
+		wget 'http://www.unicode.org/Public/3.2-Update/CompositionExclusions-3.2.0.txt'
+
+tmp/UnicodeData-3.2.0.txt:
+	mkdir -p tmp
+	cd tmp && \
+		wget 'http://www.unicode.org/Public/3.2-Update/UnicodeData-3.2.0.txt'
 
 include $(TOP_DIR)/Makefile.rules

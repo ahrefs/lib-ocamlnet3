@@ -233,6 +233,7 @@ for other libraries.
    Netmech_krb5_sasl
    Netmech_gs2_sasl
    Netmech_spnego_http
+   Netsaslprep
    Netxdr
    Netxdr_mstring
 }

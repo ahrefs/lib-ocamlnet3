@@ -6,7 +6,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
            netulex.cmo netencoding.cmo netstream.cmo netdate.cmo \
 	   netmime_string.cmo \
            nethtml_scanner.cmo nethtml.cmo \
-	   neturl.cmo \
+	   neturl.cmo netsaslprep_data.cmo netsaslprep.cmo \
 	   netaddress.cmo netcompression.cmo \
 	   netmime.cmo netmime_header.cmo netmime_channels.cmo \
 	   netsendmail.cmo nethttp.cmo \
@@ -50,6 +50,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netdn.mli netx509.mli netascii_armor.mli nettls_support.mli \
 	netmech_scram.mli netmech_scram_gssapi.mli netmech_scram_sasl.mli \
 	netgssapi_support.mli netgssapi_auth.mli netchannels_crypto.mli \
+	netsaslprep.mli \
 	netmech_plain_sasl.mli netmech_crammd5_sasl.mli \
 	netmech_digest_sasl.mli netmech_digest_http.mli \
 	netmech_krb5_sasl.mli netmech_gs2_sasl.mli netmech_spnego_http.mli \
