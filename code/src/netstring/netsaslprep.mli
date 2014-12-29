@@ -7,6 +7,8 @@
 
     Note that SASLprep is SLOOOOOOW, and should really only be used on short
     strings like passwords.
+
+    This version of SASLprep doesn't check for unassigned codepoints.
  *)
 
 exception SASLprepError
