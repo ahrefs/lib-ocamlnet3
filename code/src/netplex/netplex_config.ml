@@ -527,6 +527,30 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
   let ctrl_cfg = Netplex_controller.extract_config c_logger_cfg cf in
   let socket_dir = ctrl_cfg # socket_directory in
 
+  let parse_owner prefix s =
+    try
+      let p = 
+        try String.index s ':'
+        with Not_found -> failwith "missing ':'" in
+      let u_str = String.sub s 0 p in
+      let g_str = String.sub s (p+1) (String.length s - p - 1) in
+      let u =
+        try int_of_string u_str
+        with Failure _ ->
+          try (Unix.getpwnam u_str).Unix.pw_uid
+          with Not_found ->
+            failwith ("unknown user: " ^ u_str) in
+      let g =
+        try int_of_string g_str
+        with Failure _ ->
+          try (Unix.getgrnam g_str).Unix.gr_gid
+          with Not_found ->
+            failwith ("unknown group: " ^ g_str) in
+      (u,g)
+    with
+      | Failure msg ->
+           failwith (prefix ^ msg) in
+
   let services =
     List.map
       (fun addr ->
@@ -610,7 +634,9 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 						    "lstn_backlog";
 						    "lstn_reuseaddr";
 						    "so_keepalive";
-						    "tcp_nodelay"
+						    "tcp_nodelay";
+                                                    "local_chmod";
+                                                    "local_chown";
 						  ];
 
 		let prot_name =
@@ -639,6 +665,25 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		    cf # bool_param (cf # resolve_parameter protaddr "tcp_nodelay") 
 		  with
 		    | Not_found -> false in
+                let local_chmod =
+                  try
+                    Some(cf # int_param (cf # resolve_parameter protaddr "local_chmod"))
+                  with
+                    | Not_found -> None
+                    | Config_error _ ->
+                         (* so that octal numbers work *)
+                         Some(int_of_string
+                                (cf # string_param
+                                   (cf # resolve_parameter protaddr "local_chmod"))) in
+                let local_chown =
+                  try
+                    Some(parse_owner
+                           (cf#print protaddr ^ ".local_chown: ")
+                           (cf # string_param
+                              (cf # resolve_parameter protaddr "local_chown")))
+                  with
+                    | Not_found -> None in
+
 		let addresses =
 		  List.flatten
 		    (List.map
@@ -652,6 +697,8 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		    method lstn_reuseaddr = lstn_reuseaddr
 		    method so_keepalive = so_keepalive
 		    method tcp_nodelay = tcp_nodelay
+                    method local_chmod = local_chmod
+                    method local_chown = local_chown
 		    method configure_slave_socket _ = ()
 		  end
 		)

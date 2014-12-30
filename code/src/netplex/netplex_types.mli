@@ -381,6 +381,10 @@ object
     (** Whether to set the keep-alive socket option *)
   method tcp_nodelay : bool
     (** Whether to set the TCP_NODELAY option *)
+  method local_chmod : int option
+    (** Whether to chmod Unix Domain sockets *)
+  method local_chown : (int * int) option
+    (** Whether to chown (user,group) Unix Domain sockets *)
   method configure_slave_socket : Unix.file_descr -> unit
     (** A user-supplied function to configure slave sockets (after [accept]).
       * The function is called from the process/thread of the container.

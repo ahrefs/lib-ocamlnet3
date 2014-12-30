@@ -31,8 +31,8 @@ OCAMLNET 4 RELEASE:
     * password files
 
 User's wishes/fixes:
- - mode of netplex socket can be set in config file (T. Calderon)
- - setgid does not work (lookup wrong) (T. Calderon)
+ - mode of netplex socket can be set in config file (T. Calderon) - DONE
+ - setgid does not work (lookup wrong) (T. Calderon) - DONE
 
 
 Netconversion:

@@ -25,7 +25,7 @@ netplex {
 
 {2:controller Configuration: The [controller] section}
 
-gThis section configures the controller component. The task of the
+This section configures the controller component. The task of the
 controller is to start the containers for the workload, and logging.
 
 {[
@@ -377,6 +377,8 @@ netplex {
       lstn_reuseaddr = <bool>;   (* optional *)
       so_keepalive = <bool>;     (* optional *)
       tcp_nodelay = <bool>;      (* optional *)
+      local_chmod = "...";       (* optional *)
+      local_chown = "...";       (* optional *)
       address { <settings> };    (* at least one *)
       ...
       address { <settings> };    (* at least one *)
@@ -411,6 +413,11 @@ Settings:
   the same packet. Especially on local networks it is often not important
   how many packets are really sent out, and by enabling this option
   latencies can be, sometimes drastically, reduced. Defaults to [false].
+- [local_chmod]: For Unix Domain sockets, this sets the file permission
+  bits. E.g. [local_chmod = "0o700"]
+- [local_chown]: For Unix Domain sockets, this sets the owner and group
+  of the socket. E.g. [local_chown = "owner:group"]. Both settings can also
+  be given numerically.
 
 Specifying socket addresses:
 - [address { type="internet"; bind="<ip>:<port>" }]: An IPv4 or IPv6

@@ -1374,6 +1374,8 @@ class controller_sockserv setup controller : socket_service =
 	      method lstn_reuseaddr = true
 	      method so_keepalive = true
 	      method tcp_nodelay = false
+              method local_chmod = None
+              method local_chown = None
 	      method configure_slave_socket _ = ()
 	    end
 	  ]

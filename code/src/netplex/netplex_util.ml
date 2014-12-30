@@ -125,6 +125,18 @@ let create_server_socket srvname proto addr =
 	 Unix.bind s addr;
 	 Unix.set_nonblock s;
 	 Netsys.set_close_on_exec s;
+         ( match addr with
+             | Unix.ADDR_UNIX path ->
+                  ( match proto#local_chmod with
+                      | None -> ()
+                      | Some m -> Unix.chmod path m
+                  );
+                  ( match proto#local_chown with
+                      | None -> ()
+                      | Some(u,g) -> Unix.chown path u g
+                  )
+             | _ -> ()
+         );
 	 Unix.listen s proto#lstn_backlog;
 	 s
       )
