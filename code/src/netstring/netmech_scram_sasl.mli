@@ -5,6 +5,10 @@
     {b This module needs the SHA-1 hash function. In order to use it,
     initialize crypto support, e.g. by including the [nettls-gnutls]
     packages and calling {!Nettls_gnutls.init}.}
+
+    As for all SASL mechanisms in OCamlnet, SASLprep is not automatically
+    called. Users of SCRAM should pass user names and passwords through
+    {!Netsaslprep.saslprep}.
  *)
 
 

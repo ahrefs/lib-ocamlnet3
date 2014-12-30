@@ -162,19 +162,16 @@ let mechanism_name p =
   "SCRAM-" ^ uc
 
 
-let saslprep s =
-  (* We do not want to implement SASLprep here. It's brainf*ck, because the
-     ambiguities it resolves do not occur in practice (people are not as
-     dumb as the Unicode guys think). The RFC says we have to limit the
-     strings then to US-ASCII.
+let saslprep s = 
+  (* We don't call SASLprep here, but leave this to the users. Only check
+     for valid UTF-8.
    *)
-  for k = 0 to String.length s - 1 do
-    let c = s.[k] in
-    if c < '\x20' || c >= '\x7f' then
-      raise(Invalid_encoding("Netmech_scram.saslprep: restricted to US-ASCII",
-			     s));
-  done;
-  s
+  try 
+    Netconversion.verify `Enc_utf8 s;
+    s
+  with
+    | _ ->
+         raise(Invalid_encoding("Invalid UTF-8", s))
 
 
 let username_saslprep s =

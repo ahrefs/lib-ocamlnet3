@@ -277,13 +277,13 @@ while [ "$#" -gt 0 ]; do
 			;;
 		-with-*|--with*)
 			opt=`echo "$1" | sed -e 's/--\{0,1\}with-//' -e 's/-/_/g'`
-			check_wopt "$opt"
+			check_eopt "$opt"
 			eval "enable_$opt=2"
 			shift
 			;;
 		-without-*|--without*)
 			opt=`echo "$1" | sed -e 's/--\{0,1\}without-//' -e 's/-/_/g'`
-			check_wopt "$opt"
+			check_eopt "$opt"
 			eval "enable_$opt=-1"
 			shift
 			;;

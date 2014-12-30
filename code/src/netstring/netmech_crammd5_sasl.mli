@@ -26,6 +26,11 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM
          fails immediately, as mutual authentication cannot be supported.
        - The boolean parameter "secure" is ignored (i.e. we regard this
          mechanism as secure)
+
+
+    As for all SASL mechanisms in OCamlnet, SASLprep is not automatically
+    called. Users of CRAM-MD5 should pass user names and passwords through
+    {!Netsaslprep.saslprep}.
    *)
 
 

@@ -7,7 +7,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM
       be used otherwise.
 
       Key facts:
-       - The password is not send in the clear
+       - The password is not sent in the clear
        - Not only authenticates the client to the server, but the client can
          also find out whether the server knew the password, i.e. the server
          is also authenticated.
@@ -37,5 +37,9 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM
        - The parameters [mutual] and [secure] are understood but ignored
          (there is mutual authentication anyway, and DIGEST is considered as
          secure method)
+
+    As for all SASL mechanisms in OCamlnet, SASLprep is not automatically
+    called. Users of DIGEST-MD5 should pass user names and passwords through
+    {!Netsaslprep.saslprep}.
 
    *)

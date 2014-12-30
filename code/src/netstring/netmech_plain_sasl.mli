@@ -17,4 +17,9 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM
        - The same is true for the boolean parameter "secure", because
          PLAIN is insecure.
 
+
+    As for all SASL mechanisms in OCamlnet, SASLprep is not automatically
+    called. Users of PLAIN should pass user names and passwords through
+    {!Netsaslprep.saslprep}.
+
    *)

@@ -2,14 +2,16 @@
 
 (** SCRAM mechanism for authentication (RFC 5802) *)
 
-(** This implements SCRAM for GSSAPI. Other profiles may be added later.
-
-    As we do not implement SASLprep, usernames and passwords are restricted
-    to US-ASCII.
+(** This implements SCRAM for SASL and GSSAPI.
 
     {b This module needs the SHA-1 hash function. In order to use it,
     initialize crypto support, e.g. by including the [nettls-gnutls]
     packages and calling {!Nettls_gnutls.init}.}
+
+    As for all SASL mechanisms in OCamlnet, SASLprep is not automatically
+    called. Users of SCRAM should pass user names and passwords through
+    {!Netsaslprep.saslprep}.
+
  *)
 
 type ptype = [ `GSSAPI | `SASL | `HTTP ]

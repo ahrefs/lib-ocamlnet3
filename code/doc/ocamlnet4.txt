@@ -46,7 +46,7 @@ network interface with a global IPv6 address). Read more: {!Ipv6}
 
 For most protocols IPv6 was already available in OCamlnet-3. There was
 one exception, though: The RPC Portmapper protocol isn't capable of
-IPv6. There is the newer RPCBIND protocol, though, amd we support it
+IPv6. There is the newer RPCBIND protocol, though, and we support it
 now.
 
 {2 Reorganization}
@@ -83,5 +83,4 @@ not available in time:
  - HTTP authentication on the server side
  - Advanced HTTP authentication frameworks such as OAUTH
  - Support for reading passwords from files
- - Stringprep routines, in particular for SASL methods
  - Non-blocking name lookups

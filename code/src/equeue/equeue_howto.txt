@@ -522,8 +522,6 @@ plus a number of combinators for engines:
  - Delays: {!Uq_engines.delay_engine} suspends the execution n seconds
  - Timeouts: {!Uq_engines.timeout_engine} gives an engine a maximum time
    for computations, and if the time is exceeded the engine is aborted.
- - Watchdog: {!Uq_engine.watchdog} monitors whether an engine makes
-   progress, and if it is idle for too long, it is aborted.
  - Automatic serialization:
    {!Uq_engines.serializer} forces that an engine function
    is serialized - the next engine can first start when the previous is
@@ -538,23 +536,16 @@ Also, the module defines basic I/O engines:
    file descriptor is ready for an I/O operation
  - Input and output: {!Uq_engines.input_engine} and {!Uq_engines.output_engine}
    can be used to define I/O engines by wrapping [read] and [write]
- - Copying data: {!Uq_engines.copier} copies data between file descriptors
-   without looking at the data
 
-The module also defines the abstraction of asynchronous I/O channels.
-Although sometimes useful, these abstractions were a historic error,
-and should not be used anymore.
+{b In {!Uq_client}:}
 
-For sockets, we find:
-
- - Connect a client: {!Uq_engines.connector} creates a new socket and
+ - Connect a client: {!Uq_client.connect_e} creates a new socket and
    connects it to a server
- - Define a server: {!Uq_engines.listener} creates a server socket
-   and allows it to process the accepted connections with engines.
 
-Additionally, you find there the definition of so-called multiplex
-controllers. These are, more or less, user-space objects that provide
-socket-like operations.
+{b In {!Uq_server}:}
+
+ - Define a server: {!Uq_server.listener} creates a server socket
+   and allows it to process the accepted connections with engines.
 
 {b In {!Uq_io}:}
 
@@ -572,6 +563,12 @@ This module contains functions for buffered I/O:
 A "device" is a file descriptor, a multiplex controller (see
 {!Uq_engines.multiplex_controller}), or an asynchronous channel.
 The definition of devices is extensible.
+
+{b In {!Uq_transfer}:}
+
+ - Copying data: {!Uq_transfer.copier} copies data between file descriptors
+   without looking at the data
+
 
 {b Other basics:}
 

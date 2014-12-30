@@ -1505,6 +1505,8 @@ let generate ?c_file ?ml_file ?mli_file
         [Open_wronly;Open_append;Open_creat;Open_text] 0o666 cfg_name in
     to_close := (fun () -> close_out_noerr cfg) :: !to_close;
 
+    fprintf mli "(** Bindings of a C library *)";
+
     List.iter
       (fun h ->
          fprintf c "#define H_%s %d\n" h (Btype.hash_variant h)

@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+(** GnuTLS *)
+
 module type GNUTLS_PROVIDER =
   sig
     include Netsys_crypto_types.TLS_PROVIDER

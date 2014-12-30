@@ -410,7 +410,8 @@ val local_fs : ?encoding:Netconversion.encoding -> ?root:string ->
       commands. This works locally and via ssh.
 
     There are even some implementations outside Ocamlnet:
-    - {{:http://oss.wink.com/webdav/} Webdav} provides an extension of
+    - {{:http://projects.camlcity.org/projects/webdav.html} Webdav}
+      provides an extension of
       {!Nethttp_fs} for the full WebDAV set of filesystem operations
 
  *)

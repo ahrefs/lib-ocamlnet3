@@ -1,4 +1,4 @@
-Ocamlnet is an enhanced system platform library for Ocaml. As the name
+OCamlnet is an enhanced system platform library for Ocaml. As the name
 suggests, large parts of it have to do with network programming, but
 it is actually not restricted to this. Other parts deal with the
 management of multiple worker processes, and the interaction with
@@ -6,7 +6,7 @@ other programs running on the same machine. You can also view Ocamlnet
 as an extension of the system interface as provided by the [Unix]
 module of the standard library.
 
-
+Overview: What you can do with OCamlnet:
 
 
 {table intro}
@@ -23,7 +23,7 @@ module of the standard library.
           Standalone web servers{tdend intro}
 {td intro}Web server connectors: CGI, FastCGI, SCGI, AJP.{br x}
           HTTP server{tdend intro}
-{td intro}Netcgi{tdend intro}
+{td intro}Netcgi (connector framework){tdend intro}
 {trend intro}
 {tr intro}
 {td intro}Network applications{br x}(classic client/server){tdend intro}
@@ -65,7 +65,7 @@ module of the standard library.
           IPv6{tdend intro}
 {td intro}HTTP client,{br x}
           FTP client{tdend intro}
-{td intro}Netfs{tdend intro}
+{td intro}Netfs (filesystem framework){tdend intro}
 {trend intro}
 {tr intro}
 {td intro}System utiltities{tdend intro}
@@ -76,7 +76,7 @@ module of the standard library.
           Locales,{br x}
           Timers{tdend intro}
 {td intro}[ ]{tdend intro}
-{td intro}Netplex{tdend intro}
+{td intro}Netplex (multi-process daemons){tdend intro}
 {trend intro}
 {tr intro}
 {td intro}Authentication and security{tdend intro}
@@ -186,54 +186,54 @@ module of the standard library.
 for other libraries.
 
 {!modules: 
-   Netconversion
-   Netunichar
-   Netchannels
-   Netchannels_crypto
-   Netstream
-   Netmime
-   Netmime_header
-   Netmime_channels
-   Netmime_string
-   Netsendmail
-   Neturl
-   Netsockaddr
-   Netaddress
-   Netbuffer
-   Netpagebuffer
-   Netdate
-   Netencoding
-   Netulex
    Netaccel
    Netaccel_link
-   Nethtml
-   Nethttp
+   Netaddress
+   Netasn1
+   Netauth
+   Netaux
+   Netbuffer
+   Netchannels
+   Netchannels_crypto
+   Netcompression
+   Netconversion
+   Netdate
+   Netdn
+   Netencoding
    Netfs
    Netglob
-   Netauth
-   Netcompression
-   Netstring_str
-   Netmappings
-   Netaux
-   Netnumber
-   Nettls_support
-   Netoid
-   Netx509
-   Netdn
-   Netasn1
-   Netgssapi_support
    Netgssapi_auth
-   Netmech_scram
-   Netmech_scram_sasl
-   Netmech_scram_gssapi
-   Netmech_digest_sasl
-   Netmech_digest_http
+   Netgssapi_support
+   Nethtml
+   Nethttp
+   Netmappings
    Netmech_crammd5_sasl
-   Netmech_plain_sasl
-   Netmech_krb5_sasl
+   Netmech_digest_http
+   Netmech_digest_sasl
    Netmech_gs2_sasl
+   Netmech_krb5_sasl
+   Netmech_plain_sasl
+   Netmech_scram
+   Netmech_scram_gssapi
+   Netmech_scram_sasl
    Netmech_spnego_http
+   Netmime
+   Netmime_channels
+   Netmime_header
+   Netmime_string
+   Netnumber
+   Netoid
+   Netpagebuffer
    Netsaslprep
+   Netsendmail
+   Netsockaddr
+   Netstream
+   Netstring_str
+   Nettls_support
+   Netulex
+   Netunichar
+   Neturl
+   Netx509
    Netxdr
    Netxdr_mstring
 }
