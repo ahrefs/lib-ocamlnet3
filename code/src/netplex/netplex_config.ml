@@ -564,7 +564,7 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		   with Not_found ->
 		     failwith ("Unknown user: " ^ cf#print addr ^ ".user") in
 		 let group_ent =
-		   try Unix.getgrnam user
+		   try Unix.getgrnam group
 		   with Not_found ->
 		     failwith ("Unknown group: " ^ cf#print addr ^ ".group") in
 		 Some(user_ent.Unix.pw_uid, group_ent.Unix.gr_gid)
