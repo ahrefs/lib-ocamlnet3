@@ -324,6 +324,16 @@ val getpeername : Unix.file_descr -> Unix.sockaddr
 val is_absolute : string -> bool
   (** Whether this file path is absolute. Works for Unix and Win32. *)
 
+val abspath : string -> string
+  (** Return an absolute path for this file. When {!Netsys_posix.realpath}
+      is available, this function is called, and the canonical path is
+      returned. On Win32, first an arbitrary absolute path is created,
+      and then the path is tried to be simplified by resolving "." and "..".
+      If neither method works, the function raises [Invalid_argument].
+
+      Note that the file needs to exist in general.
+   *)
+
 val restart : ('a -> 'b) -> 'a -> 'b
   (** [restart f arg] calls [f arg], and restarts this call if the
     * exception [Unix_error(EINTR,_,_)] is caught.

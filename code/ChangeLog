@@ -1,3 +1,28 @@
+2014-12-30  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netplex: the Netplex socket directory has a different default
+	  if not specified in the config file.
+
+	* Netshm: the POSIX specifier has now two args
+
+	* IPv6: automatically enabled if there is a global IPv6 address
+
+        * Unicode tables: Moved them to a separate netunidata library.
+	  This library needs to be linked in for getting access to the
+	  tables (this is no longer the default).
+
+	* Renamings: Http_client, Ftp_client etc. => Nethttp_client,
+	  Netftp_client
+          Mimestring => Netmime_string
+	  Xdr => Netxdr
+
+	* Netmime: moved functions to Netmime_header and Netmime_channels
+
+        * Netmech_scram: Removed the check that passwords only consist of
+	  ASCII chars. The user can now call Netsaslprep.saslprep.
+
+        * Removed: rpc-auth-dh, nethttpd-for-netcgi2
+
 2014-09-28  Gerd Stolpmann  <gerd@zotac>
 
 	* Http_client: the authentication mechanisms are now encapsulated
@@ -37,11 +62,13 @@
 
 Ocamlnet-4 adds:
 
+	- new library netgss-system
 	- new library nettls-gnutls
 	- removed equeue-ssl and rpc-ssl
 	- X.500 modules Netasn1, Netdn, Netx509
 	- Crypto definitions Netsys_crypto_types, Netsys_crypto
 	- TLS modules Netsys_tls, Nettls_support
+	- Support for SASL and GSSAPI
 	- Moved many functions from Uq_engines to new modules in
 	  the equeue library (Uq_client, Uq_server, Uq_multiplex,
 	  Uq_transfer)

@@ -45,7 +45,8 @@ Settings:
 - [socket_directory]: The Netplex framework needs a directory where to
   create Unix domain sockets. These sockets are needed for communication
   between the started containers. If omitted, the directory defaults to
-  [/tmp/.netplex]. It is not allowed that several running Netplex instances
+  [/tmp/netplex-<id>] (where the id part is derived from the file location of
+  the configuration). It is not allowed that several running Netplex instances
   share these directories, and hence it is strongly recommended to change
   this default. If the path is not absolute, it is made absolute by
   prepending the path of the working directory at the time Netplex
@@ -591,6 +592,7 @@ be used to administer a {b running} Netplex program.
 $ netplex-admin -help
 Usage: netplex-admin [ options ] [ admin_cmd arg ... ]
   -sockdir <dir>  Set the socket directory of the Netplex to administer
+  -conf <file>  Get the socket directory from this config file
   -list   List available Netplex services
   -containers   List available Netplex services with container details
   -enable <name>  Enable service <name>
@@ -603,9 +605,9 @@ Usage: netplex-admin [ options ] [ admin_cmd arg ... ]
   -receiver <pat>  Restrict receivers of admin messages to services matching <pat>
 ]}
 
-The [-sockdir] argument should always be given, and the path is
-the [socket_directory] of the config file. If omitted, the socket
-directory defaults to [/tmp/.netplex].
+The utility talks to the running program, and needs the socket directory
+for this. Either specify it directly with the [-sockdir] argument, or
+indirectly via the config file ([-conf]).
 
 The [-list] and [-containers] switches allow it to get some introspection
 into the running conglomerate of processes or threads. For [-list]

@@ -47,6 +47,29 @@ let is_absolute path =
   else
     path <> "" && path.[0] = '/'
 
+let abspath_w32 path =
+  (* full path: resolves relative paths, and eliminates . and ..
+     long path: gets away with 8.3 paths, and converts file name case
+   *)
+  Netsys_win32.get_long_path_name
+    (Netsys_win32.get_full_path_name path)
+
+
+let abspath path =
+  if is_win32 then
+    abspath_w32 path
+  else
+    try
+      Netsys_posix.realpath path
+    with
+      | Invalid_argument _ ->
+           (* this is sub-standard, let's hope we never run into this *)
+           if is_absolute path then
+             path
+           else
+             Filename.concat
+               (Unix.getcwd())
+               path
 
 let restart = Netsys_impl_util.restart
 let restart_tmo = Netsys_impl_util.restart_tmo

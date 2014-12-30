@@ -3,6 +3,13 @@
 open Printf
 open Netplex_types
 
+
+let default_socket_dir config_filename =
+  let p = Netsys.abspath config_filename in
+  let hex = Digest.to_hex (Digest.string p) in
+  "/tmp/netplex-" ^ String.sub hex 0 8
+
+
 let path_of_container_socket socket_dir sname pname sys_id =
   let dir' = Filename.concat socket_dir sname in
   let thread_name =

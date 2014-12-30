@@ -1766,8 +1766,6 @@ let create_controller par config =
   create_controller_for_esys esys par config
 
 
-let default_socket_directory = "/tmp/.netplex"
-
 let default_create_logger _ = Netplex_log.channel_logger stderr
 
 let extract_logger ctrl loggers cf logaddr =
@@ -1808,13 +1806,16 @@ let compound_logger (llist:logger list) cur_max_level : logger =
 
 
 let extract_config (loggers : logger_factory list) (cf : config_file) =
+  let default_socket_dir = 
+    lazy ( Netplex_util.default_socket_dir cf#filename ) in
   match cf # resolve_section cf#root_addr "controller" with
     | [] ->
 	(* Create a default configuration: *)
 	let cur_max_level = ref `Info in
+        let socket_directory = Lazy.force default_socket_dir in
 	( object
 	    method socket_directory = 
-	      default_socket_directory
+              socket_directory
 	    method create_logger ctrl = 
 	      compound_logger 
 		[ default_create_logger ctrl ] 
@@ -1831,12 +1832,12 @@ let extract_config (loggers : logger_factory list) (cf : config_file) =
 	    cf # string_param 
 	      (cf # resolve_parameter ctrladdr "socket_directory")
 	  with
-	    | Not_found -> default_socket_directory in
+	    | Not_found -> Lazy.force default_socket_dir in
 	let socket_directory =
-	  if Netsys.is_absolute socket_directory0 then
-	    socket_directory0
-	  else
-	    Filename.concat (Unix.getcwd()) socket_directory0 in
+          if Netsys.is_absolute socket_directory0 then
+            socket_directory0
+          else
+            Filename.concat (Unix.getcwd()) socket_directory0 in
 	let create_logger cur_max_level ctrl =
 	  ( match cf # resolve_section ctrladdr "logging" with
 	      | [] ->

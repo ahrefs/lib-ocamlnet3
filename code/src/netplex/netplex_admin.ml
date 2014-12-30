@@ -3,15 +3,39 @@
 open Printf
 open Netplex_ctrl_aux
 
+let sockdir_from_conf file =
+  let cf =
+    Netplex_config.read_config_file file in
+  (* Similar to Netplex_controller.extract_config *)
+  match cf # resolve_section cf#root_addr "controller" with
+    | [] ->
+         Netplex_util.default_socket_dir cf#filename
+    | [ctrladdr] ->
+         ( try
+             cf # string_param 
+               (cf # resolve_parameter ctrladdr "socket_directory")
+           with
+             | Not_found ->
+                  Netplex_util.default_socket_dir cf#filename
+         )
+    | _ ->
+	failwith "More than one 'controller' section"
+
+
+
 let main() =
-  let sockdir = ref "/tmp/.netplex" in
+  let sockdir = ref None in
   let cmds = ref [] in
   let admin_cmd = ref [] in
   let admin_target = ref "*" in
   Arg.parse
     [ "-sockdir",
-      Arg.String (fun s -> sockdir := s),
+      Arg.String (fun s -> sockdir := Some s),
       "<dir>  Set the socket directory of the Netplex to administer";
+
+      "-conf",
+      Arg.String (fun s -> sockdir := Some(sockdir_from_conf s)),
+      "<file>  Get the socket directory from this config file";
 
       "-list",
       Arg.Unit (fun () -> cmds := `List :: !cmds),
@@ -57,8 +81,15 @@ let main() =
        admin_cmd := arg :: !admin_cmd)
     "Usage: netplex-admin [ options ] [ admin_cmd arg ... ]";
 
+  let sockdir = 
+    match !sockdir with
+      | None ->
+           failwith "You need to either specify -sockdir or -conf!"
+      | Some d ->
+           d in
+
   let socket =
-    Filename.concat !sockdir "netplex.controller/admin" in
+    Filename.concat sockdir "netplex.controller/admin" in
 
   let conn =
     Netplex_sockserv.any_file_client_connector socket in
@@ -217,7 +248,7 @@ let main() =
 		  Netplex_ctrl_clnt.Admin.V2.reopen_logfiles (get_client()) () in
 		check_code code)
        | `Unlink ->
-           let path = Filename.concat !sockdir "netplex.pmanage" in
+           let path = Filename.concat sockdir "netplex.pmanage" in
            let pm = Netsys_pmanage.pmanage path in
            pm # unlink()
     )
