@@ -144,10 +144,22 @@ let t_nfkc_4() =
   b1 && b2 && b3 && b4 && b5
 
 
+let t_nfkc_5() =
+  (* Hangul *)
+  let b1 =
+    (* a full LVT syllable is mapped to itself *)
+    saslprep_a [| 44033 |] = [| 44033 |] in
+  let b2 =
+    (* combine an LV syllable with a T *)
+    saslprep_a [| 44032; 4520 |] = [| 44033 |] in
+  b1 && b2
+
+
 let () =
   test t_rfc4013 "t_rfc4013";
   test t_nfkc_1 "t_nfkc_1";
   test t_nfkc_2 "t_nfkc_2";
   test t_nfkc_3 "t_nfkc_3";
-  test t_nfkc_4 "t_nfkc_4"
+  test t_nfkc_4 "t_nfkc_4";
+  test t_nfkc_5 "t_nfkc_5"
 

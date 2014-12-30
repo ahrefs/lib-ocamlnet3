@@ -89,6 +89,12 @@ let get_cano_tab() =
   cano_tab
 
 
+let cano_tab =
+  (* this table is pretty small *)
+  get_cano_tab()
+
+
+
 (* Hangul *)
 let h_SBase = 0xAC00
 let h_LBase = 0x1100
@@ -100,20 +106,41 @@ let h_TCount = 28
 let h_NCount = h_VCount * h_TCount
 let h_SCount = h_LCount * h_NCount
 
-let hangul add =
-  for si = 0 to h_SCount-1 do
-    let code = h_SBase + si in
-    let ti = si mod h_TCount in
-    if (ti <> 0) then ( (*  triple *)
-      let first = code - ti in
-      let second = h_TBase + ti in
-      add code first second
-    ) else (
-      let first = h_LBase + si/h_NCount in
-      let second = h_VBase + (si mod h_NCount)/h_TCount in
-      add code first second
-    )
-  done
+
+let decompose_hangul code =
+  if code < h_SBase || code >= h_SBase + h_SCount then raise Not_found;
+  let si = code - h_SBase in
+  let l = h_LBase + si/h_NCount in
+  let v = h_VBase + (si mod h_NCount) / h_TCount in
+  let t = h_TBase + si mod h_TCount in
+  if t = h_TBase then
+    [ l; v ]
+  else
+    [ l; v; t ]
+
+
+let compose_hangul first second =
+  (* check for L and V *)
+  if first >= h_LBase && 
+       first < h_LBase + h_LCount &&
+         second >= h_VBase &&
+           second < h_VBase + h_VCount
+  then
+    (* create LV syllable *)
+    let l = first - h_LBase in
+    let v = second - h_VBase in
+    h_SBase  +  (l*h_VCount + v) * h_TCount
+  else
+    (* check for LV and T *)
+    let si = first - h_SBase in
+    if first >= h_SBase && 
+         first < h_SBase + h_SCount && 
+           si mod h_TCount = 0
+    then
+      let ti = second - h_TBase in
+      first + ti
+    else
+      raise Not_found
 
 
 let decompose (u : int array) =
@@ -130,17 +157,16 @@ let decompose (u : int array) =
          !last := p :: ! !last
     )
     decompositions;
-  hangul 
-    (fun code first second ->
-       Hashtbl.add decomp_tab code (ref [second;first])
-    );
   let rec get_recursive_decomp ch =
     try
       let chars = List.rev (! (Hashtbl.find decomp_tab ch)) in
       List.flatten (List.map get_recursive_decomp chars)
     with
-      | Not_found -> [ch] in
-  let cano_tab = get_cano_tab() in
+      | Not_found ->
+           try
+             decompose_hangul ch
+           with
+             | Not_found -> [ch] in
   let get_cc ch = try Hashtbl.find cano_tab ch with Not_found -> 0 in
   let target = create_buffer() in
   for i = 0 to Array.length u - 1 do
@@ -186,7 +212,10 @@ let compose_1 (u : int array) =
                | [ c0 ] ->
                     ()
                | [ c1; c0 ] ->
-                    Hashtbl.add comp_tab ((c0 lsl 16) lor c1) q
+                    (* NB. We can at most support 15 bits *)
+                    assert(c0 < 16384);
+                    assert(c1 < 16384);
+                    Hashtbl.add comp_tab ((c0 lsl 14) lor c1) q
                | _ ->
                     assert false
            )
@@ -198,11 +227,6 @@ let compose_1 (u : int array) =
          last := p :: !last
     )
     decompositions;
-  hangul 
-    (fun code first second ->
-       Hashtbl.add comp_tab ((first lsl 16) lor second) code
-    );
-  let cano_tab = get_cano_tab() in
   let get_cc ch = try Hashtbl.find cano_tab ch with Not_found -> 0 in
   let target = create_buffer() in
   let starter_pos = ref 0 in
@@ -215,7 +239,13 @@ let compose_1 (u : int array) =
     let ch = u.(i) in
     let cc = get_cc ch in
     try
-      let composite = Hashtbl.find comp_tab ((!starter_ch lsl 16) lor ch) in
+      let composite =
+        try
+          if !starter_ch >= 16384 || ch >= 16384 then raise Not_found;
+          Hashtbl.find comp_tab ((!starter_ch lsl 14) lor ch)
+        with
+          | Not_found ->
+               compose_hangul !starter_ch ch in
       if !last_class >= cc && !last_class <> 0 then raise Not_found;
       set_buffer_at target !starter_pos composite;
       starter_ch := composite
@@ -235,9 +265,42 @@ let compose u =
   if u = [| |] then [| |] else compose_1 u
 
 
+let exists f a =
+  try
+    Array.iter (fun p -> if f p then raise Exit) a;
+    false
+  with Exit -> true
+
+
+let norm_needed u =
+  (* If the string uses only certain characters we don't need to normalize.
+     These are practically all Latin, Greek and Cyrillic characters.
+   *)
+  let quick_need_norm c =
+    not
+      ((c >= 0x20 && c <= 0x7e) ||
+         (c >= 0xc0 && c <= 0x131) ||
+           (c >= 0x134 && c <= 0x13e) ||
+             (c >= 0x141 && c <= 0x148) ||
+               (c >= 0x14a && c <= 0x17e) ||
+                 (c >= 0x180 && c <= 0x1c3) ||
+                   (c >= 0x1cd && c <= 0x1f0) ||
+                     (c >= 0x1f4 && c <= 0x2ad) ||
+                       (c >= 0x374 && c <= 0x375) ||
+                         (c = 0x37e) ||
+                           (c >= 0x385 && c <= 0x3ce) ||
+                             (c >= 0x400 && c <= 0x482) ||
+                               (c >= 0x48a && c <= 0x50f)
+      ) in
+  exists quick_need_norm u
+
+
 let normalize u =
   (* normalization form KC (NFKC) *)
-  compose (decompose u)
+  if norm_needed u then
+    compose (decompose u)
+  else
+    u
 
 
 let prohibited u =
@@ -251,13 +314,6 @@ let prohibited u =
     )
     u;
   u
-
-
-let exists f a =
-  try
-    Array.iter (fun p -> if f p then raise Exit) a;
-    false
-  with Exit -> true
 
 
 let is_randalcat c =
@@ -287,8 +343,14 @@ let bidicheck u =
   u
 
 
+let basecheck u =
+  if exists (fun p -> p < 0 || p > 0x10ffff) u then raise SASLprepError;
+  ()
+
+
 let saslprep_a u =
-  bidicheck (prohibited (normalize (map u)))
+  basecheck u;
+  bidicheck ( prohibited (normalize (map u)))
 
 
 let saslprep s =
