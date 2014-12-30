@@ -1,9 +1,5 @@
 (* $Id$ *)
 
-(* TODO:
-   - add bidi checks
- *)
-
 exception SASLprepError
 
 open Netsaslprep_data
