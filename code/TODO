@@ -10,6 +10,9 @@ IETF docs:
 OCAMLNET 4 RELEASE:
  - CHECK AGAIN UNIT TESTS - DONE
  - CHECK EXAMPLES
+    * pop + SASL auth (pointer!)
+    * queues + GSSAPI (pointer!)
+    * simple tls client/server with netchannels
  - renames: xdr, xdr_mstring, mimestring - DONE
  - Netconversion refactoring - DONE
  - module refactoring so far needed (smaller executables)

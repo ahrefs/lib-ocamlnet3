@@ -6,6 +6,9 @@ open Printf
 
 module U = Unix
 
+let () =
+  Nettls_gnutls.init()
+
 let bracket
     (before : 'a -> 'b)
     (after : 'b -> unit)
@@ -64,25 +67,56 @@ let pop3_session =
       sess#quit ())
 
 let main () =
-  let user = prompt "User: " in
+  let user = Netsaslprep.saslprep (prompt "User: ") in
   let server = prompt "Hostname: " in
-  let passwd = prompt ~echo:false "Password: " in
+  let passwd = Netsaslprep.saslprep (prompt ~echo:false "Password: ") in
+  let tls_config = 
+    Netsys_tls.create_x509_config
+      ~system_trust:true
+      ~peer_auth:`Required    (* try `None if TLS does not work *)
+      (Netsys_crypto.current_tls()) in
   try
     make_connection server Netpop.tcp_port (pop3_session
       (fun sess ->
-	printf "Attempting authentication...\n"; flush stdout;      
-	begin
-	  try
-	    sess#apop user passwd;
-	  with _ ->
-	    printf "APOP failed, trying plaintext password.\n"; flush stdout;
-	    sess#user user; 
-	    sess#pass passwd;
-	end;
-	printf "Successfully opened mailbox!\n"; flush stdout;      
+        printf "Trying to start TLS...\n%!";
+        Netpop.authenticate
+          ~tls_config
+          ~tls_peer:server
+          sess;
+        if sess#tls_endpoint <> None then
+          printf "TLS succeeded\n%!"
+        else
+          printf "No TLS\n%!";
+	printf "Attempting authentication...\n%!";
+        ( try
+            Netpop.authenticate
+              ~sasl_mechs:[ (module Netmech_scram_sasl.SCRAM_SHA1);
+                            (module Netmech_digest_sasl.DIGEST_MD5);
+                            (module Netmech_crammd5_sasl.CRAM_MD5);
+                            (module Netmech_plain_sasl.PLAIN);
+                          ]
+              ~user
+              ~creds:[ "password", passwd, [] ]
+              ~sasl_params:[ "secure", 
+                             string_of_bool (sess#tls_endpoint = None),
+                             true ]
+              (* i.e. if there is no TLS, disallow insecure SASL mechs *)
+              sess;
+          with
+            | Netpop.Authentication_error ->
+                 printf "SASL failed, trying APOP\n%!";
+                 ( try
+	           sess#apop user passwd;
+	           with _ when sess#tls_endpoint <> None ->
+	             printf "APOP failed, trying plaintext password.\n%!";
+	             sess#user user; 
+	             sess#pass passwd;
+                 )
+        );
+	printf "Successfully opened mailbox!\n%!";
 	
 	let count,_,_ = sess#stat () in
-	printf "Mailbox has %d messages\n" count;
+	printf "Mailbox has %d messages\n%!" count;
 	
 	for i = 1 to count do
 	  printf "message %d\n" i;
@@ -100,7 +134,13 @@ let main () =
 	flush stdout;
       )
     )
-  with Not_found ->
-    printf "Error finding host %s\n" server
+  with
+    | Not_found ->
+         printf "Error finding host %s\n%!" server
+    | Netpop.Authentication_error ->
+         printf "Cannot authenticate\n%!"
 ;;
+
+(* Netpop.Debug.enable := true;; *)
+
 U.handle_unix_error main ()
