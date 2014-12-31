@@ -59,7 +59,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 
 PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
 
-ALL_EXTRA = netaccel.cma
+ALL_EXTRA = netaccel.cma netaccel_link.cmo
 
 netaccel.cma: netaccel_c.o netaccel.cmo
 	$(OCAMLMKLIB) -o netaccel -oc netaccel_c netaccel_c.o netaccel.cmo
