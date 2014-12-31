@@ -1,6 +1,7 @@
 TOP_DIR=../..
 
 PRE = 1
+PKGNAME = netstring
 GENERATE = netconst.ml netglob_lex.ml \
            netunichar.ml netmappings_asn1.ml META
 CLEAN_LIST += $(GENERATE)
