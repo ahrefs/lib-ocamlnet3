@@ -187,12 +187,6 @@ p src/nethttpd/.*\.ml
 p src/nethttpd/.*\.mli
 p src/nethttpd/.*\.txt
 
-d src/nethttpd-for-netcgi2
-f src/nethttpd-for-netcgi2/META.in
-f src/nethttpd-for-netcgi2/Makefile
-f src/nethttpd-for-netcgi2/Makefile.pre
-f src/nethttpd-for-netcgi2/LICENSE
-
 d src/equeue
 f src/equeue/META.in
 f src/equeue/Makefile
@@ -201,6 +195,7 @@ p src/equeue/.*\.ml
 p src/equeue/.*\.mli
 p src/equeue/.*\.txt
 
+# needs to be distributed although it is not installed anymore
 d src/equeue-gtk1
 f src/equeue-gtk1/META.in
 f src/equeue-gtk1/Makefile
@@ -277,27 +272,10 @@ f src/rpc-generator/Makefile.pre
 x src/rpc-generator/lexer.ml
 x src/rpc-generator/parser.ml
 x src/rpc-generator/parser.mli
-x src/rpc-generator/rtypes.ml
-x src/rpc-generator/rtypes.mli
 p src/rpc-generator/.*\.ml
 p src/rpc-generator/.*\.mli
 p src/rpc-generator/.*\.mll
 p src/rpc-generator/.*\.mly
-
-d src/rpc-auth-dh
-f src/rpc-auth-dh/META.in
-f src/rpc-auth-dh/Makefile
-f src/rpc-auth-dh/Makefile.pre
-f src/rpc-auth-dh/rpc_key.x
-x src/rpc-auth-dh/rpc_key_aux.ml
-x src/rpc-auth-dh/rpc_key_aux.mli
-x src/rpc-auth-dh/rpc_key_clnt.ml
-x src/rpc-auth-dh/rpc_key_clnt.mli
-f src/rpc-auth-dh/rpc_key_service.mlp
-x src/rpc-auth-dh/rpc_key_service.ml
-f src/rpc-auth-dh/rpc_auth_dh.x
-p src/rpc-auth-dh/.*\.ml
-p src/rpc-auth-dh/.*\.mli
 
 d src/rpc-auth-local
 f src/rpc-auth-local/META.in
@@ -426,17 +404,17 @@ d examples/rpc
 d examples/rpc/queues
 f examples/rpc/queues/Makefile
 f examples/rpc/queues/Makefile.code
-f examples/rpc/queues/Makefile.auth_dh
+f examples/rpc/queues/Makefile.auth_gssapi
 f examples/rpc/queues/Makefile.auth_sys
 f examples/rpc/queues/Makefile.auth_ssl
 f examples/rpc/queues/README
 f examples/rpc/queues/qclient.ml
-f examples/rpc/queues/qclient_auth_dh.ml
+f examples/rpc/queues/qclient_auth_gssapi.ml
 f examples/rpc/queues/qclient_auth_ssl.ml
 f examples/rpc/queues/qclient_auth_sys.ml
 f examples/rpc/queues/qclient_main.ml
 f examples/rpc/queues/qserver.ml
-f examples/rpc/queues/qserver_auth_dh.ml
+f examples/rpc/queues/qserver_auth_gssapi.ml
 f examples/rpc/queues/qserver_auth_ssl.ml
 f examples/rpc/queues/qserver_auth_sys.ml
 f examples/rpc/queues/qserver_main.ml
