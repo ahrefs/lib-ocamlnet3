@@ -89,8 +89,7 @@ ehelp_zip="Enable/disable parts that depend on camlzip"
 ehelp_apache="Enable/disable Apache mod connector (EXPERIMENTAL)"
 ehelp_pcre="Enable/disable the build against pcre-ocaml"
 ehelp_full_pcre="Enable/disable the build against pcre-ocaml (no Str)"
-whelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
-whelp_rpc_auth_dh="Enable/disable support for SecureRPC (Diffie-Hellman auth)"
+ehelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 
 # Which options exist? eoptions for enable/disable
 eoptions="pcre full_pcre gtk gtk2 tcl gnutls gssapi zip apache nethttpd"
@@ -234,17 +233,6 @@ _EOF_
 
 check_eopt () {
 	for x in $eoptions; do
-		if [ "$x" = "$1" ]; then
-			return 0
-		fi
-	done
-	echo "Unknown option: $1" >&2
-	exit 1
-}
-
-
-check_wopt () {
-	for x in $woptions; do
 		if [ "$x" = "$1" ]; then
 			return 0
 		fi
@@ -971,6 +959,10 @@ fi
 
 if [ $enable_multicore -gt 0 ]; then
     pkglist="$pkglist netmulticore"
+fi
+
+if [ $enable_nethttpd -gt 0 ]; then
+    pkglist="$pkglist nethttpd"
 fi
 
 if [ $disable_core -gt 0 ]; then
