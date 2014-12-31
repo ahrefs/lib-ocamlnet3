@@ -155,7 +155,6 @@ p src/netcgi2/.*\.txt
 
 d src/netcgi2-apache
 f src/netcgi2-apache/Makefile
-f src/netcgi2-apache/Makefile.def
 f src/netcgi2-apache/Makefile.pre
 f src/netcgi2-apache/META.in
 f src/netcgi2-apache/config.h.in

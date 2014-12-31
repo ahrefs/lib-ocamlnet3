@@ -7,8 +7,7 @@ MAPPINGS = netmappings_iso.ml \
 	   netmappings_other.ml \
 	   netmappings_jp.ml \
 	   netmappings_kr.ml
-GENERATE = $(MAPPINGS) netunichecksums.ml netuniconfig.ml netdb_done META \
-           netdb_packlist
+GENERATE = $(MAPPINGS) netunichecksums.ml netuniconfig.ml netdb_done META
 PMAP = $(MAPPINGS:.ml=.pmap)
 
 CLEAN_LIST += $(GENERATE)
