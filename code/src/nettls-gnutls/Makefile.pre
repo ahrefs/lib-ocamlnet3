@@ -1,7 +1,7 @@
 TOP_DIR=../..
 
 PRE = 1
-PKGNAME = nettls_gnutls
+PKGNAME = nettls-gnutls
 GENERATE = META nettls_gnutls_bindings.ml nettls_gnutls_bindings.mli \
            nettls_gnutls_bindings_stubs.c done_reconfigure
 

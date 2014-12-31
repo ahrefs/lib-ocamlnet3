@@ -479,7 +479,7 @@ printf "%s" "Checking for findlib... "
 if ocamlfind query stdlib >/dev/null 2>/dev/null; then
     echo "found"
     if [ "$net_db_dir_set" -eq 0 ]; then
-	net_db_dir=`ocamlfind printconf destdir | tr -d '\\r'`/netstring
+	net_db_dir=`ocamlfind printconf destdir | tr -d '\\r'`/netunidata
 	net_db_dir_set=1
     fi
 else

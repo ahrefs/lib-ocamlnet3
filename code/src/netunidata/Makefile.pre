@@ -7,10 +7,9 @@ MAPPINGS = netmappings_iso.ml \
 	   netmappings_other.ml \
 	   netmappings_jp.ml \
 	   netmappings_kr.ml
-GENERATE = $(MAPPINGS) netunichecksums.ml netuniconfig.ml netdb_done META
+GENERATE = $(MAPPINGS) netunichecksums.ml netuniconfig.ml netdb_done META \
+           netdb_packlist
 PMAP = $(MAPPINGS:.ml=.pmap)
-
-include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += $(GENERATE)
 
@@ -22,6 +21,25 @@ OTHER_MAPPINGS = mappings/cp*.unimap \
                  mappings/koi*.unimap \
                  mappings/mac*.unimap \
                  mappings/windows*.unimap
+
+INSTOTHER = install-netdb
+PACKLIST = netdb-packlist
+INSTALL_EXTRA = $(MAPPINGS:.ml=.cmo) $(MAPPINGS:.ml=.cmx) $(MAPPINGS:.ml=.o) \
+                netuniinit.cmo netuniinit.cmx netuniinit.o
+
+include $(TOP_DIR)/Makefile.rules
+
+netdb-packlist: netdb_done
+	test -d netdb
+	(cd netdb && ls *.netdb) | \
+	{ while read f; do echo "$(NET_DB_DIR)/$$f"; done; } >netdb-packlist
+
+.PHONY: install-netdb
+install-netdb:
+	mkdir -p "$(DESTDIR)$(NET_DB_DIR)"
+	cp netdb/*.netdb "$(DESTDIR)$(NET_DB_DIR)"
+	@echo "Installed .netdb files into $(DESTDIR)$(NET_DB_DIR)"
+
 
 # ASN1: these tables are built-in, see netstring
 

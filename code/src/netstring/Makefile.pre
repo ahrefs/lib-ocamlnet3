@@ -11,6 +11,8 @@ NETNUMBER_DEFS = -D WORDSIZE_$(WORD_SIZE) -D HOST_IS_$(ENDIANESS) \
 
 PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
 
+INSTALL_EXTRA = netstring_top.cmo netaccel_link.cmo
+
 netconst.ml: netconst.mlp
 	sed -e 's/@VERSION@/$(VERSION)/' netconst.mlp >netconst.ml
 
