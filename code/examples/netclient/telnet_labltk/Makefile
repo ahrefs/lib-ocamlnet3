@@ -11,7 +11,7 @@ REQUIRES = netclient, labltk, equeue-tcl
 
 all: $(ARCHIVE)
 	$(OCAMLC) -o telnet $(ARCHIVE) main.ml \
-		-linkpkg
+		-custom -linkpkg
 
 $(ARCHIVE): $(OBJECTS)
 	$(OCAMLC) -a -o $(ARCHIVE) $(OBJECTS)
@@ -34,8 +34,8 @@ OCAMLFIND = ocamlfind
 DEBUG  =
 # Invoke with: make DEBUG=-g
 
-depend: $(SOURCES) *.mli
-	$(OCAMLDEP) *.ml *.mli >depend
+depend: $(SOURCES) 
+	$(OCAMLDEP) *.ml >depend
 
 .PHONY: clean
 clean:

@@ -214,13 +214,13 @@ let auth_service =
 			env#input_header in
 		    if scheme <> "basic" then raise Not_found;
 		    let creds = List.assoc "credentials" params in
-		    if creds <> creds_exp then raise Not_found;
+		    if creds <> `V creds_exp then raise Not_found;
 		    raise Auth_ok
 		  with 
 		    | Not_found ->
 			let hdr = new Netmime.basic_mime_header [] in
 			Nethttp.Header.set_www_authenticate hdr
-			  [ "Basic", [ "realm", realm ] ];
+			  [ "Basic", [ "realm", `V realm ] ];
 			`Std_response
 			  (`Unauthorized,
 			   Some hdr,

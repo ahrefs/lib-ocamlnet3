@@ -5,7 +5,7 @@ APPS=mbox_list
 all: $(APPS)
 
 mbox_list: mbox_list.ml
-	ocamlfind ocamlc -g -o $@ -package unix -package netstring -package pop -linkpkg $<
+	ocamlfind ocamlc -custom -g -o $@ -package unix -package netstring -package netclient -linkpkg $<
 
 .PHONY: clean
 clean:

@@ -188,5 +188,5 @@ let make_window() =
   GMain.main();
 ;;
 
-
+GMain.init();;
 make_window();;

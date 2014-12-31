@@ -1,4 +1,5 @@
 open Html;;
+open Printf
 
 let db_filename = ref "db";;
   (* The name of the file storing the current knowledge *)
@@ -69,21 +70,24 @@ let norm_url s =
    * norm_url "http://localhost:8080/where/to/go"
    *   = "http://localhost:8080", "/where/to/go"
    *)
-  let user,password,host,port,path =
-    Nethttp_client_aux.match_http s in
-  "http://" ^
-  (match user with
-       None -> ""
-     | Some u -> u) ^
-  (match password with
-       None -> ""
-     | Some p -> ":" ^ p) ^
-  (match user with
-       None -> ""
-     | Some _ -> "@") ^
-  String.lowercase host ^ ":" ^
-  string_of_int port,
-  norm_path path
+  try
+    let u = Neturl.parse_url s in
+    let user = try Neturl.url_user u with Not_found -> "" in
+    let password = try ":" ^ Neturl.url_password u with Not_found -> "" in
+    let host = Neturl.url_host u in
+    let port = try Neturl.url_port u with Not_found -> 80 in
+    let path1 = Neturl.join_path (Neturl.url_path u) in
+    let path = if path1 = "" then "/" else path1 in
+    let query = try "?" ^ Neturl.url_query u with Not_found -> "" in
+    let p1 =
+      "http://" ^ user ^ password ^ (if user <> "" then "@" else "") ^
+        String.lowercase host ^ ":" ^ string_of_int port in
+    let p2 = norm_path (path ^ query) in
+    (p1,p2)
+  with
+    | Neturl.Malformed_URL ->
+         eprintf "Malformed: %s\n%!" s;
+         raise Not_found
 ;;
 
 
@@ -118,24 +122,30 @@ let parse_html db base s =
 	href 
     in
     (* Absolute or relative URL? - Not_found on bad URL *)
+    (* The following block is not completely correct *)
     try
       let href'' =
-	if String.length href' >= 7 & String.sub href' 0 7 = "http://" then begin
+	if String.length href' >= 7 && String.sub href' 0 7 = "http://" then (
 	  let host_part, path = norm_url href' in
 	  host_part ^ path
-	end 
-	else begin
-	  (* what's with ".", ".."? *)
-	  if String.length href' >= 1 & href'.[0] = '/' then
-	    base_host ^ href'
-	  else begin
-	    let d = 
-	      if base_path = "/" or base_path = "" 
-	      then "/" 
-	      else Filename.dirname base_path in
-	    base_host ^ norm_path(d ^ "/" ^ href')
-	  end
-	end
+        )
+        else
+          if String.length href' >= 2 && String.sub href' 0 2 = "//" then (
+	    let host_part, path = norm_url ("http:" ^ href') in
+	    host_part ^ path
+          )
+	  else (
+	    (* what's with ".", ".."? *)
+	    if String.length href' >= 1 && href'.[0] = '/' then
+	      base_host ^ href'
+	    else (
+	      let d = 
+	        if base_path = "/" or base_path = "" 
+	        then "/" 
+	        else Filename.dirname base_path in
+	      base_host ^ norm_path(d ^ "/" ^ href')
+            )
+          )
       in
       (* prerr_endline ("Found URL "  ^ href''); *)
       Database.add db href'';

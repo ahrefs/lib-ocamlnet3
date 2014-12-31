@@ -5,8 +5,8 @@ include $(TOP_DIR)/Makefile.rules
 
 INCLUDES += $(INC_NETSTRING) $(INC_NETSYS) $(INC_NETCGI2) $(INC_NETCGI2_APACHE)
 
-LIBS_CMA	= str.cma pcre.cma unix.cma netsys.cma netstring.cma \
-  netcgi.cma netcgi_apache.cma
+LIBS_CMA	= str.cma unix.cma bigarray.cma netsys.cma netstring.cma \
+  netcgi.cma netcgi2-apache.cma
 OCAMLC_FLAGS	= -dtypes $(INCLUDES)
 OCAMLOPT_FLAGS	= -dtypes $(INCLUDES)
 

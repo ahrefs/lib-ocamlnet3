@@ -89,7 +89,7 @@ let main () =
 	  let hdr = sess#top i () in
 	  let hdr = (string_of_in_obj_channel hdr) ^ "\n" in
 	  let fields, _ = 
-	    Mimestring.scan_header hdr 0 (String.length hdr)
+	    Netmime_string.scan_header hdr 0 (String.length hdr)
 	  in
 	  List.iter (fun (name,body) ->
 	    printf "%s: %s\n" name body;

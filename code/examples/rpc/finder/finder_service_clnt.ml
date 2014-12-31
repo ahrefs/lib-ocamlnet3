@@ -5,8 +5,53 @@
  * finder_service.x
  *
  ************************************************************)
+module Make'Finder(U'C:Rpc_client_pre.USE_CLIENT) = struct
+  module V1 = struct
+    open Finder_service_aux
+    let _program = program_Finder'V1
+    type t = U'C.t
+    
+    let ping client arg =
+      _to_Finder'V1'ping'res (U'C.unbound_sync_call client _program "ping" (_of_Finder'V1'ping'arg arg))
+    
+    let ping'async client arg pass_reply =
+      U'C.unbound_async_call client _program "ping" (_of_Finder'V1'ping'arg arg)
+        (fun g -> pass_reply (fun () -> _to_Finder'V1'ping'res (g())))
+      
+    
+    let find client arg =
+      _to_Finder'V1'find'res (U'C.unbound_sync_call client _program "find" (_of_Finder'V1'find'arg arg))
+    
+    let find'async client arg pass_reply =
+      U'C.unbound_async_call client _program "find" (_of_Finder'V1'find'arg arg)
+        (fun g -> pass_reply (fun () -> _to_Finder'V1'find'res (g())))
+      
+    
+    let lastquery client arg =
+      _to_Finder'V1'lastquery'res (U'C.unbound_sync_call client _program "lastquery" (_of_Finder'V1'lastquery'arg arg))
+    
+    let lastquery'async client arg pass_reply =
+      U'C.unbound_async_call client _program "lastquery" (_of_Finder'V1'lastquery'arg arg)
+        (fun g -> pass_reply (fun () -> _to_Finder'V1'lastquery'res (g())))
+      
+    
+    let shutdown client arg =
+      _to_Finder'V1'shutdown'res (U'C.unbound_sync_call client _program "shutdown" (_of_Finder'V1'shutdown'arg arg))
+    
+    let shutdown'async client arg pass_reply =
+      U'C.unbound_async_call client _program "shutdown" (_of_Finder'V1'shutdown'arg arg)
+        (fun g -> pass_reply (fun () -> _to_Finder'V1'shutdown'res (g())))
+      
+    
+    
+  end
+  
+end
+
 module Finder = struct
   module V1 = struct
+    module M'0 = Make'Finder(Rpc_client)
+    include M'0.V1
     open Finder_service_aux
     let _program = program_Finder'V1
     
@@ -27,39 +72,6 @@ module Finder = struct
       ?version_number
       mode2 =
         Rpc_client.create2 ?program_number ?version_number mode2 _program esys
-    
-    let ping client arg =
-      _to_Finder'V1'ping'res (Rpc_client.sync_call client "ping" (_of_Finder'V1'ping'arg arg))
-    
-    let ping'async client arg pass_reply =
-      Rpc_client.add_call client "ping" (_of_Finder'V1'ping'arg arg)
-        (fun g -> pass_reply (fun () -> _to_Finder'V1'ping'res (g())))
-      
-    
-    let find client arg =
-      _to_Finder'V1'find'res (Rpc_client.sync_call client "find" (_of_Finder'V1'find'arg arg))
-    
-    let find'async client arg pass_reply =
-      Rpc_client.add_call client "find" (_of_Finder'V1'find'arg arg)
-        (fun g -> pass_reply (fun () -> _to_Finder'V1'find'res (g())))
-      
-    
-    let lastquery client arg =
-      _to_Finder'V1'lastquery'res (Rpc_client.sync_call client "lastquery" (_of_Finder'V1'lastquery'arg arg))
-    
-    let lastquery'async client arg pass_reply =
-      Rpc_client.add_call client "lastquery" (_of_Finder'V1'lastquery'arg arg)
-        (fun g -> pass_reply (fun () -> _to_Finder'V1'lastquery'res (g())))
-      
-    
-    let shutdown client arg =
-      _to_Finder'V1'shutdown'res (Rpc_client.sync_call client "shutdown" (_of_Finder'V1'shutdown'arg arg))
-    
-    let shutdown'async client arg pass_reply =
-      Rpc_client.add_call client "shutdown" (_of_Finder'V1'shutdown'arg arg)
-        (fun g -> pass_reply (fun () -> _to_Finder'V1'shutdown'res (g())))
-      
-    
     
   end
   
