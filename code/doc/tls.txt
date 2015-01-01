@@ -162,9 +162,9 @@ If you need to change the TLS configuration (or want to enable a different
 provider), you can set the {!Nethttp_client.http_options.tls} option, e.g.
 
 {[
-let http_config = pipeline # get_options
-let new_config =
-  { http_config with
+let http_options = pipeline # get_options
+let new_options =
+  { http_options with
       Nethttp_client.tls = Some tls_config
   }
 pipeline # set_options new_options
