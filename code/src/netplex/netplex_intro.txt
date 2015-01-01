@@ -222,7 +222,8 @@ default name for the configuration file. Use [-conf] to pass the
 real name of the above file.
 
 Netplex creates a directory for its internal processing, and this is
-by default [/tmp/.netplex]. You can change this directory by 
+by default [/tmp/netplex-<id>] (where id is a hex sequence derived from
+the file location of the configuration). You can change this directory by 
 setting the [socket_directory] parameter in the [controller] section.
 In this directory, you can find:
 

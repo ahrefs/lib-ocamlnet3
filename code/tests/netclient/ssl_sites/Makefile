@@ -6,7 +6,7 @@ test:
 	./ssl_sites
 
 ssl_sites: ssl_sites.ml
-	ocamlfind ocamlc -o ssl_sites -g -package netclient,equeue-ssl -linkpkg ssl_sites.ml
+	ocamlfind ocamlc -custom -o ssl_sites -g -package netclient,nettls-gnutls -linkpkg ssl_sites.ml
 
 .PHONY: clean
 clean:

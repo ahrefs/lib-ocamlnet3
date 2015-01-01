@@ -130,13 +130,13 @@ let main() =
 		ignore(data);   (* don't collect until here *)
 		write_file data'
 	    | `Xdr_only ->
-		let xdrt1 = Xdr.validate_xdr_type xdrt_sortdata in
+		let xdrt1 = Netxdr.validate_xdr_type xdrt_sortdata in
 		let t0 = Unix.gettimeofday() in
 		let xdr1 = _of_sortdata data in
 		let t1 = Unix.gettimeofday() in
-		let s = Xdr.pack_xdr_value_as_string xdr1 xdrt1 [] in
+		let s = Netxdr.pack_xdr_value_as_string xdr1 xdrt1 [] in
 		let t2 = Unix.gettimeofday() in
-		let xdr2 = Xdr.unpack_xdr_value ~fast:true s xdrt1 [] in
+		let xdr2 = Netxdr.unpack_xdr_value ~fast:true s xdrt1 [] in
 		let t3 = Unix.gettimeofday() in
 		let _data' = _to_sortdata xdr2 in
 		let t4 = Unix.gettimeofday() in

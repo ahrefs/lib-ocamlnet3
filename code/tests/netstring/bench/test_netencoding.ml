@@ -15,12 +15,12 @@ open Netencoding;;
 
 let t001() =
   (* ENCODE. No line breaks. *)
-  Base64.encode "" = "" &
-  Base64.encode "a" = "YQ==" &
-  Base64.encode "ab" = "YWI=" &
-  Base64.encode "abc" = "YWJj" &
-  Base64.encode "abcd" = "YWJjZA==" &
-  Base64.encode "abcde" = "YWJjZGU=" &
+  Base64.encode "" = "" &&
+  Base64.encode "a" = "YQ==" &&
+  Base64.encode "ab" = "YWI=" &&
+  Base64.encode "abc" = "YWJj" &&
+  Base64.encode "abcd" = "YWJjZA==" &&
+  Base64.encode "abcde" = "YWJjZGU=" &&
   Base64.encode "abcdefghijklmnopqrstuvwxyz" =
                 "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo="
 ;;
@@ -30,12 +30,12 @@ let t002() =
   (* ENCODE. Lines with length of 4, separated by LF *)
   let abc = "abcdefghijklmnopqrstuvwxyz" in
   let enc = Base64.encode ~linelength:4 in
-  enc ~len:0 abc = "" &
-  enc ~len:1 abc = "YQ==\n" &
-  enc ~len:2 abc = "YWI=\n" &
-  enc ~len:3 abc = "YWJj\n" &
-  enc ~len:4 abc = "YWJj\nZA==\n" &
-  enc ~len:5 abc = "YWJj\nZGU=\n" &
+  enc ~len:0 abc = "" &&
+  enc ~len:1 abc = "YQ==\n" &&
+  enc ~len:2 abc = "YWI=\n" &&
+  enc ~len:3 abc = "YWJj\n" &&
+  enc ~len:4 abc = "YWJj\nZA==\n" &&
+  enc ~len:5 abc = "YWJj\nZGU=\n" &&
   enc abc = "YWJj\nZGVm\nZ2hp\namts\nbW5v\ncHFy\nc3R1\ndnd4\neXo=\n"
 ;;
 
@@ -44,12 +44,12 @@ let t003() =
   (* ENCODE. Lines with length of 5, separated by LF *)
   let abc = "abcdefghijklmnopqrstuvwxyz" in
   let enc = Base64.encode ~linelength:5 in
-  enc ~len:0 abc = "" &
-  enc ~len:1 abc = "YQ==\n" &
-  enc ~len:2 abc = "YWI=\n" &
-  enc ~len:3 abc = "YWJj\n" &
-  enc ~len:4 abc = "YWJj\nZA==\n" &
-  enc ~len:5 abc = "YWJj\nZGU=\n" &
+  enc ~len:0 abc = "" &&
+  enc ~len:1 abc = "YQ==\n" &&
+  enc ~len:2 abc = "YWI=\n" &&
+  enc ~len:3 abc = "YWJj\n" &&
+  enc ~len:4 abc = "YWJj\nZA==\n" &&
+  enc ~len:5 abc = "YWJj\nZGU=\n" &&
   enc abc = "YWJj\nZGVm\nZ2hp\namts\nbW5v\ncHFy\nc3R1\ndnd4\neXo=\n"
 ;;
 
@@ -58,12 +58,12 @@ let t004() =
   (* ENCODE. Lines with length of 7, separated by LF *)
   let abc = "abcdefghijklmnopqrstuvwxyz" in
   let enc = Base64.encode ~linelength:7 in
-  enc ~len:0 abc = "" &
-  enc ~len:1 abc = "YQ==\n" &
-  enc ~len:2 abc = "YWI=\n" &
-  enc ~len:3 abc = "YWJj\n" &
-  enc ~len:4 abc = "YWJj\nZA==\n" &
-  enc ~len:5 abc = "YWJj\nZGU=\n" &
+  enc ~len:0 abc = "" &&
+  enc ~len:1 abc = "YQ==\n" &&
+  enc ~len:2 abc = "YWI=\n" &&
+  enc ~len:3 abc = "YWJj\n" &&
+  enc ~len:4 abc = "YWJj\nZA==\n" &&
+  enc ~len:5 abc = "YWJj\nZGU=\n" &&
   enc abc = "YWJj\nZGVm\nZ2hp\namts\nbW5v\ncHFy\nc3R1\ndnd4\neXo=\n"
 ;;
 
@@ -72,12 +72,12 @@ let t005() =
   (* ENCODE. Lines with length of 8, separated by LF *)
   let abc = "abcdefghijklmnopqrstuvwxyz" in
   let enc = Base64.encode ~linelength:8 in
-  enc ~len:0 abc = "" &
-  enc ~len:1 abc = "YQ==\n" &
-  enc ~len:2 abc = "YWI=\n" &
-  enc ~len:3 abc = "YWJj\n" &
-  enc ~len:4 abc = "YWJjZA==\n" &
-  enc ~len:5 abc = "YWJjZGU=\n" &
+  enc ~len:0 abc = "" &&
+  enc ~len:1 abc = "YQ==\n" &&
+  enc ~len:2 abc = "YWI=\n" &&
+  enc ~len:3 abc = "YWJj\n" &&
+  enc ~len:4 abc = "YWJjZA==\n" &&
+  enc ~len:5 abc = "YWJjZGU=\n" &&
   enc abc = "YWJjZGVm\nZ2hpamts\nbW5vcHFy\nc3R1dnd4\neXo=\n"
 ;;
 
@@ -86,12 +86,12 @@ let t006() =
   (* ENCODE. Lines with length of 8, separated by CRLF *)
   let abc = "abcdefghijklmnopqrstuvwxyz" in
   let enc = Base64.encode ~linelength:8 ~crlf:true in
-  enc ~len:0 abc = "" &
-  enc ~len:1 abc = "YQ==\r\n" &
-  enc ~len:2 abc = "YWI=\r\n" &
-  enc ~len:3 abc = "YWJj\r\n" &
-  enc ~len:4 abc = "YWJjZA==\r\n" &
-  enc ~len:5 abc = "YWJjZGU=\r\n" &
+  enc ~len:0 abc = "" &&
+  enc ~len:1 abc = "YQ==\r\n" &&
+  enc ~len:2 abc = "YWI=\r\n" &&
+  enc ~len:3 abc = "YWJj\r\n" &&
+  enc ~len:4 abc = "YWJjZA==\r\n" &&
+  enc ~len:5 abc = "YWJjZGU=\r\n" &&
   enc abc = "YWJjZGVm\r\nZ2hpamts\r\nbW5vcHFy\r\nc3R1dnd4\r\neXo=\r\n"
 ;;
 
@@ -182,12 +182,12 @@ let t008() =
 let t020() =
   (* DECODE. First test without spaces *)
   let dec = Base64.decode ~url_variant:false in
-  dec "" = "" &
-  dec "YQ==" = "a" &
-  dec "YWI=" = "ab" &
-  dec "YWJj" = "abc" &
-  dec "YWJjZA==" = "abcd" &
-  dec "YWJjZGU=" = "abcde" &
+  dec "" = "" &&
+  dec "YQ==" = "a" &&
+  dec "YWI=" = "ab" &&
+  dec "YWJj" = "abc" &&
+  dec "YWJjZA==" = "abcd" &&
+  dec "YWJjZGU=" = "abcde" &&
   dec "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=" = "abcdefghijklmnopqrstuvwxyz"
 ;;
 
@@ -195,7 +195,7 @@ let t020() =
 let t021() =
   (* DECODE. With spaces *)
   let dec = Base64.decode ~url_variant:false ~accept_spaces:true in
-  dec " \r\n\t" = "" &
+  dec " \r\n\t" = "" &&
   dec " Y W J j\n Z G U = " = "abcde"
 ;;
  
@@ -203,7 +203,7 @@ let t021() =
 let t022() =
   (* DECODE. With URL characters and spaces *)
   let dec = Base64.decode ~url_variant:true ~accept_spaces:true in
-  dec " Y W J j\n Z G U = " = "abcde" &
+  dec " Y W J j\n Z G U = " = "abcde" &&
   dec " Y W J j\n Z G U . " = "abcde"
 ;;
 
@@ -260,21 +260,21 @@ let t024() =
 
 let t100() =
   (* ENCODE. *)
-  QuotedPrintable.encode "a %= 12345 &$[]\"" = "a %=3D 12345 &=24=5B=5D=22" &
-  QuotedPrintable.encode "\000\001\002" = "=00=01=02" &
-  QuotedPrintable.encode "abc\r\ndef\nghi" = "abc\r\ndef\r\nghi" &
-  QuotedPrintable.encode " abc\r\n def\n ghi" = " abc\r\n def\r\n ghi" &
+  QuotedPrintable.encode "a %= 12345 &$[]\"" = "a %=3D 12345 &=24=5B=5D=22" &&
+  QuotedPrintable.encode "\000\001\002" = "=00=01=02" &&
+  QuotedPrintable.encode "abc\r\ndef\nghi" = "abc\r\ndef\r\nghi" &&
+  QuotedPrintable.encode " abc\r\n def\n ghi" = " abc\r\n def\r\n ghi" &&
   QuotedPrintable.encode "abc \r\n def\nghi " = "abc=20\r\n def\r\nghi=20"
 ;;
 
 
 let t120() =
   (* DECODE. *)
-  QuotedPrintable.decode "a %=3D 12345 &=24=5B=5D=22" = "a %= 12345 &$[]\"" &
-  QuotedPrintable.decode "=00=01=02" = "\000\001\002" &
-  QuotedPrintable.decode "abc\r\ndef\nghi" = "abc\r\ndef\nghi" &
-  QuotedPrintable.decode " abc\r\n def\n ghi" = " abc\r\n def\n ghi" &
-  QuotedPrintable.decode "abc=20\r\n def\nghi=20" = "abc \r\n def\nghi " &
+  QuotedPrintable.decode "a %=3D 12345 &=24=5B=5D=22" = "a %= 12345 &$[]\"" &&
+  QuotedPrintable.decode "=00=01=02" = "\000\001\002" &&
+  QuotedPrintable.decode "abc\r\ndef\nghi" = "abc\r\ndef\nghi" &&
+  QuotedPrintable.decode " abc\r\n def\n ghi" = " abc\r\n def\n ghi" &&
+  QuotedPrintable.decode "abc=20\r\n def\nghi=20" = "abc \r\n def\nghi " &&
   QuotedPrintable.decode "abc=\r\n def\nghi=20" = "abc def\nghi "
 ;;
 
@@ -284,15 +284,15 @@ let t120() =
 
 let t200() =
   (* ENCODE. *)
-  Q.encode "a %= 12345 &$[]\"" = "a=20=25=3D=2012345=20=26=24=5B=5D=22" &
+  Q.encode "a %= 12345 &$[]\"" = "a=20=25=3D=2012345=20=26=24=5B=5D=22" &&
   Q.encode "\000\001\002\r\n" = "=00=01=02=0D=0A"
 ;;
 
 
 let t220() =
   (* DECODE. *)
-  Q.decode "a=20=25=3D=2012345=20=26=24=5B=5D=22" = "a %= 12345 &$[]\"" &
-  Q.decode "=00=01=02=0D=0A" = "\000\001\002\r\n" &
+  Q.decode "a=20=25=3D=2012345=20=26=24=5B=5D=22" = "a %= 12345 &$[]\"" &&
+  Q.decode "=00=01=02=0D=0A" = "\000\001\002\r\n" &&
   Q.decode "a=20=25=3d=2012345=20=26=24=5b=5d=22" = "a %= 12345 &$[]\"" 
 ;;
 
@@ -315,9 +315,9 @@ let t300() =
 let t320() =
   Html.decode_to_latin1 
     "&lt;&gt;&amp;&quot;abcdef&auml;&ouml;&Uuml;&nbsp;&#25;" =
-    "<>&\"abcdefäöÜ\160\025" &
-  Html.decode_to_latin1 "&apos;" = "'" &
-  Html.decode_to_latin1 "&nonsense;" = "&nonsense;" &
+    "<>&\"abcdefäöÜ\160\025" &&
+  Html.decode_to_latin1 "&apos;" = "'" &&
+  Html.decode_to_latin1 "&nonsense;" = "&nonsense;" &&
   Html.decode_to_latin1 "&#256;" = "&#256;"
 ;;
 

@@ -44,8 +44,8 @@ val compose :
       ?from_addr:(string * string) ->
       ?cc_addrs:(string * string) list ->
       ?bcc_addrs:(string * string) list ->
-      ?content_type:(string * (string * Mimestring.s_param) list) ->
-      ?container_type:(string * (string * Mimestring.s_param) list) ->
+      ?content_type:(string * (string * Netmime_string.s_param) list) ->
+      ?container_type:(string * (string * Netmime_string.s_param) list) ->
       ?attachments:Netmime.complex_mime_message list ->
       to_addrs:(string * string) list ->
       subject:string ->
@@ -80,7 +80,7 @@ val compose :
    * @param content_type The content type of the main text. The list is
    *    the list of parameters attached
    *    to the type, e.g. [("text/plain", ["charset", mk_param "ISO-8859-1"])]
-   *    (see {!Mimestring.mk_param}). When this argument is set,
+   *    (see {!Netmime_string.mk_param}). When this argument is set,
    *    the main text is no longer converted to [out_charset].
    *    By default, when this argument is missing, the main text is
    *    converted from [in_charset] to [out_charset], and the 
@@ -149,8 +149,8 @@ val wrap_attachment :
       ?content_id:string ->
       ?content_description:string ->
       ?content_location:string ->
-      ?content_disposition:(string * (string * Mimestring.s_param) list) ->
-      content_type:(string * (string * Mimestring.s_param) list) ->
+      ?content_disposition:(string * (string * Netmime_string.s_param) list) ->
+      content_type:(string * (string * Netmime_string.s_param) list) ->
       Netmime.mime_body ->
 	Netmime.complex_mime_message
   (** Generates a header for the [mime_body]. The returned value
@@ -176,13 +176,13 @@ val wrap_attachment :
    *    header. Default: [`Enc_iso88591].
    * @param content_type Specifies the content type with main
    *   type and list of parameters. Example:
-   *   [ ("text/plain", ["charset", Mimestring.mk_param "ISO-8859-1" ]) ]
-   *   (see {!Mimestring.mk_param})
+   *   [ ("text/plain", ["charset", Netmime_string.mk_param "ISO-8859-1" ]) ]
+   *   (see {!Netmime_string.mk_param})
    * @param content_disposition Optionally sets the [Content-disposition]
    *   header. Frequent values are
    *   - [ ("inline", []) ]: Indicates that the attachment is displayed
    *     together with the main text
-   *   - [ ("attachment", ["filename", Mimestring.mk_param fn]) ]: Indicates
+   *   - [ ("attachment", ["filename", Netmime_string.mk_param fn]) ]: Indicates
    *     that the attachment should be stored onto the disk. The
    *     parameter [fn] is the suggested file name. Note that [fn]
    *     should only consist of ASCII characters unless the [charset]
@@ -235,11 +235,11 @@ val wrap_mail :
 val wrap_parts :
       ?in_charset:Netconversion.encoding -> 
       ?out_charset:Netconversion.encoding ->
-      ?content_type:(string * (string * Mimestring.s_param) list) ->
+      ?content_type:(string * (string * Netmime_string.s_param) list) ->
       ?content_id:string ->
       ?content_description:string ->
       ?content_location:string ->
-      ?content_disposition:(string * (string * Mimestring.s_param) list) ->
+      ?content_disposition:(string * (string * Netmime_string.s_param) list) ->
       Netmime.complex_mime_message list ->
 	Netmime.complex_mime_message
   (** Generates an intermediate container for multipart attachments.
@@ -265,7 +265,7 @@ val create_address_list_tokens :
       ?in_charset:Netconversion.encoding -> 
       ?out_charset:Netconversion.encoding ->
       (string * string) list ->
-	Mimestring.s_token list
+	Netmime_string.s_token list
   (** Returns the list of [s_token]s representing email addresses as
    * structured value. The addresses are passed as list of pairs
    * [(human_readable, formal)] as in the [compose] function above.
@@ -293,7 +293,7 @@ val create_text_tokens :
       ?in_charset:Netconversion.encoding ->
       ?out_charset:Netconversion.encoding ->
       string ->
-	Mimestring.s_token list
+	Netmime_string.s_token list
   (** Returns the list of [s_token]s representing an informal text
    * as structured value. The text is passed as simple string.
    * The returned structured field value can be formatted and filled
@@ -314,7 +314,7 @@ val create_text_tokens :
    *   [`Enc_iso88591].
    *)
 
-val format_field_value : string -> Mimestring.s_token list -> string
+val format_field_value : string -> Netmime_string.s_token list -> string
   (** To put [sval], an [s_token list], into the header field [name],
    * call
    *
@@ -337,4 +337,6 @@ val sendmail : ?mailer:string -> ?crlf:bool -> Netmime.complex_mime_message -> u
    * With [crlf] one can determine the EOL convention for the message piped to
    * the mailer program: If [crlf], CR/LF is used, if [not crlf], only LF is
    * used. The default is [false] for Unix systems.
+   *
+   * See also {!Netsmtp.sendmail} for a way to send emails via SMTP.
    *)

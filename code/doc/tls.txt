@@ -1,0 +1,464 @@
+{1 TLS support}
+
+Since Ocamlnet-4, all implemented network protocols support now TLS.
+This document here explains how TLS is generally configured, and points
+to other pages for details.
+
+Before Ocamlnet-4, there was some incomplete TLS support for HTTP
+clients. At that time, the ocaml-ssl wrappers were used to link with
+openssl. This was mainly a quick solution to satisfy the demand, but
+we could never implement all the features we would like to have. Also,
+the development of ocaml-ssl seems to have stalled, and because of
+this, the migration to a new TLS library was started.
+
+
+{2 The TLS provider}
+
+Ocamlnet-4 uses first class modules to separate the definition of the
+TLS provider (the library implementing the TLS protocol) from the TLS
+user (the protocol interpreters in Ocamlnet). This mainly means that the
+TLS provider is not hard-coded into Ocamlnet, but that the same code
+can be linked with different providers. Even better, it is possible to
+plug in providers at runtime, and - believe it or not - to use several
+providers at the same time.
+
+The definition of the TLS provider is
+{!Netsys_crypto_types.TLS_PROVIDER}.  Any module implementing this
+module type can be plugged into the system.  There is the notion of a
+"current" provider ({!Netsys_crypto.current_tls}), so that if any TLS
+provider is linked into the executable, the code checks whether the
+current provider is set, and automatically uses it. The protocol
+interpreters, however, also allow it to set the TLS provider per
+client, or even per connection.
+
+The provider defines types and functions that implement the TLS
+security mechanisms. Using the provider directly is a bit tricky,
+because the types it defines must always be in scope when value of
+these types are manipulated (a consequence of using first-class
+modules). Because of this, the protocol interpreters normally use the
+provider only via a thin layer around it that deals with these issues,
+{!Netsys_tls}.
+
+
+{2 GnuTLS as TLS provider}
+
+Currently, there is only one provider, GnuTLS. The bindings for GnuTLS
+are already quite complete, and are available as [nettls-gnutls] library.
+So, enabling TLS in a program is quite easy:
+
+ - Add [nettls-gnutls] to the list of findlib packages
+ - Call [Nettls_gnutls.init()] (which mainly forces that the bindings are
+   really linked in). After [init], {!Netsys_crypto.current_tls} returns
+   the GnuTLS provider.
+
+At the moment, not all of the functionaliy of GnuTLS is available through
+the provider API. If necessary, you can access the bindings directly:
+
+ - {!Nettls_gnutls_bindings}: the functions so far available
+ - {!Nettls_gnutls.downcast}: get access to GnuTLS from a generic provider module
+
+{2 Configurations, and endpoints}
+
+Almost always TLS needs to be configured. For clients, there is a kind of
+secure default (by using the system-installed list of CA certificates as
+trusted list), but even then the configuration needs to be frequently
+adapted to the individual requirements.
+
+Note that we currently only support X.509 configurations (although
+GnuTLS also supports OpenPGP, SRP, and a few more).
+
+You get the secure default for clients by running:
+
+ {[
+let provider = Netsys_crypto.current_tls()
+
+let tls_config = 
+  Netsys_tls.create_x509_config
+     ~system_trust:true
+     ~peer_auth:`Required
+     provider
+ ]}
+
+You can add more certificates to the trust list by passing the [trust]
+option, e.g.
+
+ {[
+let tls_config = 
+  Netsys_tls.create_x509_config
+     ~system_trust:true
+     ~trust:[ `PEM_file:"/path/file/with/certs" ]
+     ~peer_auth:`Required
+     provider
+ ]}
+
+For servers, the configuration looks a bit different. You need a
+server certificate with a private key:
+
+ {[
+let tls_config = 
+  Netsys_tls.create_x509_config
+     ~keys:[ (`PEM_file "/path/to/cert", `PEM_file "/path/to/key", None) ]
+     ~peer_auth:`None
+     tp
+ ]}
+
+(replace [None] by [Some "password"] if the key is password-protected).
+This example does not authenticate the client ([peer_auth:`None]).
+If you need that, change [peer_auth] back to [`Required], and also pass
+[trust] so that the CA signing the client certificate is trusted.
+
+The value [tls_config] is actually also a first-class module, and includes the
+provider as sub-module:
+
+{[
+module type TLS_CONFIG =
+  sig
+    module TLS : TLS_PROVIDER
+    val config : TLS.config
+  end
+]}
+
+Because of this, it is sufficient to pass a [TLS_CONFIG] module to a
+protocol implementation to tell it about the combination of a provider
+and a configuration (e.g. look at the [tls_config] argument of
+{!Netftp_fs.ftp_fs}). The reason for this kind of wrapping is that the
+type of the configuration is defined by the provider, and hence the
+configuration cannot exist without provider (the OCaml type checker
+enforces this).
+
+There is also
+
+{[
+module type TLS_ENDPOINT =
+  sig
+    module TLS : TLS_PROVIDER
+    val endpoint : TLS.endpoint
+  end
+]}
+
+and even
+
+{[
+module type FILE_TLS_ENDPOINT =
+  sig
+    module TLS : TLS_PROVIDER
+    val endpoint : TLS.endpoint
+    val rd_file : Unix.file_descr
+    val wr_file : Unix.file_descr
+  end
+]}
+
+An "endpoint" denotes here the TLS state for a single connection.
+
+
+{2 Using TLS in clients}
+
+{b HTTP:} In {!Nethttp_client}, TLS is now automatically available once a
+TLS provider is initialized. Just submit "https" URLs, and that's it.
+There is no [Https_client] module anymore (as in earlier versions of
+Ocamlnet).
+
+If you need to change the TLS configuration (or want to enable a different
+provider), you can set the {!Nethttp_client.http_options.tls} option, e.g.
+
+{[
+let http_config = pipeline # get_options
+let new_config =
+  { http_config with
+      Nethttp_client.tls = Some tls_config
+  }
+pipeline # set_options new_options
+]}
+
+{!Nethttp_fs} inherits the automatic configuration from {!Nethttp_client}.
+
+{b FTP:} After starting an FTP session, you need to enable TLS explicitly
+using {!Netftp_client.tls_method}. For instance:
+
+{[
+let client = new Netftp_client.ftp_client() ;;
+client # exec (connect_method ~host ());
+client # exec (tls_method ~config ~required ());
+client # exec (login_method ~user ~get_password ~get_account ());
+]}
+
+Here, [config] is the TLS configuration. Set [required] if TLS
+is mandatory, and the file transfer will fail for servers not
+supporting TLS.
+
+For {!Netftp_fs}, things are a bit simpler: Just pass [tls_enabled:true]
+when creating the fs object:
+
+{[
+let fs = Netftp_fs.ftp_fs ~tls_enabled:true "ftp://user@host/path"
+]}
+
+Again, you can set whether TLS is required: [tls_required]. There is
+also the [tls_config] option to set an alternate TLS configuration.
+
+{b SMTP and POP:} These two clients have now additional methods
+[starttls] (SMTP) and [stls] (POP), respectively. These methods can
+be called when the right moment has come to switch to TLS. They
+take the TLS configuration and the domain name of the peer as arguments,
+e.g.
+
+{[
+smtp_client # starttls ~peer_name:(Some "smtp.google.com") config
+]}
+
+{b RPC:} You need to run the client in [`Socket] mode, and pass the special
+TLS socket configuration, e.g.
+
+{[
+let socket_config =
+  Rpc_client.tls_socket_config config
+
+let client =
+  Rpc_client.create2
+    (`Socket(Rpc.Tcp, connect_address, socket_config))
+    program
+    esys
+]}
+
+where [config] is still the TLS configuration.
+
+
+{2 Client features}
+
+Note that TLS security is bound to domain names, and not IP addresses.
+Because of this, you cannot create TLS sessions when the host name is
+only an IP address. (In some cases, Ocamlnet allows it to pass the
+domain name separately. This is the [peer_name] argument you can find
+here and there.)
+
+All clients support SNI, and thus can talk to name-based virtual servers.
+SNI is a protocol extension that allows it clients to announce early in
+the feature negotiation to which domain they want to talk. SNI is
+not available on all servers, though.
+
+So far, only {!Nethttp_client} supports the caching of TLS sessions
+between TCP connects, but it needs to be explicitly configured
+(method [set_tls_cache]). (A "TLS session" is an established security
+context where both parties know the secret credentials, and can exchange
+confidential messages. TLS sessions are independent of TCP connections,
+i.e. the next TCP connection can reuse the same TLS session if both parties
+allow it.)
+
+
+{2 Using TLS in servers}
+
+{b HTTP:} If you use the Netplex encapsulation of the server processes,
+TLS is normally available. Just add the required configuration to
+the configuration file: See {!Nethttpd_plex.tls} for details.
+
+If you use the more low-level modules {!Nethttpd_kernel},
+{!Nethttpd_reactor} and {!Nethttpd_engine}, things are a bit more
+complicated. The TLS configuration is hidden in the
+{!Nethttpd_kernel.http_protocol_config}, and you need here to set
+[config_tls].
+
+Note that these low-level modules do not provide TLS session caching
+automatically. You need to do this on your own by getting an
+{!Nethttpd_kernel.http_protocol_hooks} object, and calling [tls_set_cache]
+there. For the Netplex-encapsulated version, this is already done.
+
+{b RPC:} This is almost identical to the client case:
+
+{[
+let socket_config =
+  Rpc_server.tls_socket_config config
+
+let server =
+  Rpc_server.create2
+    (`Socket(Rpc.Tcp, connect_address, socket_config))
+]}
+
+If you use {!Rpc_netplex}, the [rpc_factory] doesn't allow to
+configure TLS via the configuration file. However, you can do it
+on your own, by calling {!Netplex_config.read_tls_config} to
+extract the TLS configuration from the file.
+
+
+{2 Server features}
+
+The HTTP server supports SNI, and thus name-based virtual hosting.
+For every domain, just configure a separate certificate.
+
+Wildcard certificates are supported.
+
+Both HTTP and RPC servers allow it to pass down the user name of a
+client that was authenticated with a client certificate. For HTTP,
+this name is available in the environment as [REMOTE_USER] variable.
+For RPC, you can use the {!Rpc_server.auth_transport}
+pseudo-authentication method (which does nothing on the RPC level, but
+just looks whether there is a more low-level way of authentication
+like a client certificate). The user name is then returned by
+{!Rpc_server.get_user}.
+
+So far, we don't support that servers request a client certificate
+in a rehandshake.
+
+
+{2 Programming with TLS}
+
+As already mentioned, it is normally not advisable to program with the
+TLS provider directly. Better ways:
+
+ - {!Netsys_tls} hides the first-class modules to some degree, but is
+   still close to what the provider defines.
+ - {!Netchannels_crypto.tls_layer} and {!Netchannels_crypto.tls_endpoint} 
+   allow it to
+   add TLS security to an existing input or output channel (as defined
+   by the {!Netchannels} module).
+ - {!Uq_multiplex.tls_multiplex_controller} allows it to add TLS
+   security to an existing {!Uq_multiplex.multiplex_controller}.
+ - The generic read/write functions in {!Netsys} can also deal with TLS-enabled
+   connections.
+ - {!Netsys_types} defines some important exceptions used by the
+   provider.
+
+In all cases, it is expected that there is already a bidirectional
+data connection between the client and the server. Unlike in the old
+[ocaml-ssl] binding, there is no such thing like a TLS-enabled socket.
+Rather, TLS can be started on top of any kind of bidirectional connection, and
+instead of using special versions of the [connect] and [accept] routines
+you can run the TLS [handshake] on the already existing connection.
+
+So, the following steps are needed:
+
+ - Establish the bidirectional data connection on a file descriptor
+   (which is often a socket, but is not restricted to this)
+ - Create the TLS endpoint for the TLS configuration. With {!Netsys_tls},
+   this is done by calling {!Netsys_tls.create_file_endpoint}.
+ - The handshake is done by calling {!Netsys_tls.handshake}. It is not
+   mandatory for the user to call this function, but if not done, the
+   call is triggered by the next step implicitly.
+ - Now use {!Netsys_tls.recv}, {!Netsys_tls.mem_recv}, {!Netsys_tls.send}
+   and {!Netsys_tls.mem_send} to exchange application data with the peer.
+ - Finally, invoke {!Netsys_tls.shutdown} to shut down the secure data
+   channel. Note that this function does not shut down the underlying
+   file descriptor, but just signals the end of the data transfer on TLS
+   level.
+
+The {!Netsys_tls} module assumes non-blocking data transfer. All I/O
+functions (including [handshake] and [shutdown]) may raise the
+two special exceptions {!Netsys_types.EAGAIN_RD} and {!Netsys_types.EAGAIN_WR}
+when they need to be called again when there is data to read, and buffer
+space for the next write, respectively. Note that it is possible that a
+[send] raises {!Netsys_types.EAGAIN_RD} and that a [recv] raises
+{!Netsys_types.EAGAIN_WR}.
+
+Example for using TLS on the descriptor [fd] (omitting exception handling,
+which is ok for synchronous descriptors):
+
+{[
+(* Get fd e.g. with Unix.socket, and connect it to the peer. *)
+
+let endpoint =
+  Netsys_tls.create_file_endpoint
+     ~role:`Client
+     ~rd:fd
+     ~wr:fd
+     ~peer_name:(Some "www.domain.com")
+     tls_config
+
+let () =
+  Netsys_tls.handshake endpoint
+
+let n =
+  Netsys_tls.recv endpoint s pos len
+
+let n =
+  Netsys_tls.send endpoint s pos len
+
+let () =
+  Netsys_tls.shutdown endpoint Unix.SHUTDOWN_ALL
+]}
+
+The {!Netsys_tls} module supports renegotiations of the security context.
+Normally, such renegotiations are just accepted, and automatically carried
+out. The {!Netsys_tls.recv} function allows it to intercept a renegotiation
+request, and to refuse it (or otherwise react on it) with the
+[on_rehandshake] callback.
+
+Note that passing the domain name to {!Netsys_tls.create_file_endpoint}
+is mandatory for clients that authenticate servers (i.e. for the "normal"
+case). Essentially, TLS ensures then that the server reachable under the
+IP address for the domain is really the server it claims to be.
+
+The {!Netsys.gread} and {Netsys.gwrite} functions also support TLS-protected
+descriptors. You need, however, pass the TLS endpoint explicitly to these
+functions, e.g.
+
+{[
+let fd_style = `TLS tls_endpoint
+
+(* Now use: *)
+let n = Netsys.gread fd_style fd s pos len
+let n = Netsys.gwrite fd_style fd s pos len
+let () = Netsys.gshutdown fd_style Unix.SHUTDOWN_ALL
+]}
+
+Similar "convenience functions" exist for Netchannels (see
+{!Netchannels_crypto.tls_layer}) and multiplex controllers (see
+{!Uq_multiplex.tls_multiplex_controller}).
+
+Some word on the shutdown of a TLS session: TLS implements this by
+exchanging a special alert message called "close notify". Either party
+of the connection can start closing the data channel by sending such
+a "close notify" to the other side, which means that no more data will
+follow. The other side can send more data, but will finally reply with
+another "close notify". At this point, the connection is completely
+shut down on the TLS level. The "close notify" is just a special byte
+pattern in the encrypted data channel. Because it is encrypted, nobody
+else can fake such a message.
+
+Note that this part of the protocol was not done right in the first
+revisions of TLS (in particular in SSL 1.0 and 2.0), and even today
+many protocol implementations are broken in this respect. In particular,
+you should know that:
+
+ - Some implementations just tear down the TCP connection instead
+   of going through the "close notify" protocol. It depends very much
+   on the application protocol whether this is ok or not. For example,
+   such a "hard termination" of the connection is ok between
+   HTTP messages when there is [Content-length] header, but it is not ok
+   to use it for signaling the end of a HTTP message when this header is
+   missing.
+ - Often, just one party sends a "close notify", but does not wait on
+   the closure message from the other side. For some protocols (e.g. HTTP)
+   this is explcitly allowed, for others not.
+ - Some implementations only react on a "close notify" when a closure on
+   TCP level follows. Because of this, it is common practice to just
+   do a one-sided TCP shutdown ([SHUTDOWN_SEND]) directly after sending
+   a "close notify", at least when the protocol allows this.
+
+Note you have to program the latter explicitly. Neither {!Netsys_tls}
+nor one of the other ways of interacting with the TLS provider will
+trigger a TCP shutdown on its own.
+
+
+{2 X.509 Certificates}
+
+For an introduction see {!Credentials.tls}.
+
+Ocamlnet includes now a simple parser for X.509 certificates. You can
+use this parser to add checks to clients and servers whether the
+certificates submitted by the peer are acceptable or not.
+
+The data structure used here is {!Netx509.x509_certificate}. If you get
+the certificate as binary blob it is normally DER-encoded, and you can
+use {!Netx509.x509_certificate_from_DER} to parse it. Many protocol
+interpreters also export an object {!Nettls_support.tls_session_props}
+which includes the already decoded certificate.
+
+There are also functions for dealing with distinguished names:
+
+ - {!Netx509.directory_name}
+ - {!Netx509.X509_DN_string}
+ - {!Netx509.lookup_dn_ava_utf8}
+ - {!Netx509.x509_dn_from_string}
+
+The most frequently used certificate extensions are also supported in
+{!Netx509}. For writing parsers there is the generic ASN.1 module
+{!Netasn1}.

@@ -18,16 +18,3 @@ val cots_connect : string -> string -> Unix.file_descr
    * The "tirdwr" module is pushed onto the STREAM such that
    * the "read" and "write" syscalls work.
    *)
-
-(** {2 Contact the keyserv daemon over XTI} *)
-
-type connector =
-    [ `Direct of (Rpc_client.connector * Rpc.protocol)
-    | `Keyenvoy of string
-    ]
-  (** Same as {!Rpc_key_service.connector} *)
-
-val keyserv_connector : connector
-  (** Returns a connector that can be used to call the
-   * keyserv daemon.
-   *)

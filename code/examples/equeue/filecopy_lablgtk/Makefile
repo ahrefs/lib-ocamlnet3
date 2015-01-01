@@ -1,19 +1,15 @@
 # make all: 		make program
 # make clean: 		remove intermediate files
 
-# Call with
-#   make all REQUIRES=equeue-gtk2
-# to compile for lablgtk2.
-
 #----------------------------------------------------------------------
 # specific rules for this package:
 
 OBJECTS  = filecopy.cmo
 NAME     = filecopy
-REQUIRES = equeue-gtk1
+REQUIRES = equeue-gtk2
 
 all: $(OBJECTS)
-	$(OCAMLC) -o filecopy filecopy.cmo  -linkpkg  -g
+	$(OCAMLC) -o filecopy filecopy.cmo  -linkpkg  -g -custom
 
 
 #----------------------------------------------------------------------

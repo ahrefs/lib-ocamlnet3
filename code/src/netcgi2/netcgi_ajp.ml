@@ -719,8 +719,8 @@ let handle_request ?script_name config output_type arg_store exn_handler f ~log 
 	`Conn_error error
 
 
-let rec handle_connection_1 fd ~config ?script_name output_type arg_store
-    exn_handler f =
+let rec handle_connection_1 config output_type arg_store exn_handler f
+                            ?script_name fd =
 
   let log = Some ajp_log_error in
   let fd_style = Netsys.get_fd_style fd in
@@ -745,8 +745,8 @@ let rec handle_connection_1 fd ~config ?script_name output_type arg_store
 
   match cdir with
     | `Conn_keep_alive ->
-	handle_connection_1 fd ~config ?script_name output_type arg_store
-	  exn_handler f
+	handle_connection_1 config ?script_name output_type arg_store
+	  exn_handler f fd
     | `Conn_close ->
 	Netlog.Debug.release_fd fd;
 	Unix.close fd
@@ -756,16 +756,16 @@ let rec handle_connection_1 fd ~config ?script_name output_type arg_store
 	raise error
     (* other cdir not possible *)
 
-let handle_connection fd ~config ?script_name output_type arg_store
-    exn_handler f =
+let handle_connection config output_type arg_store
+                      exn_handler f ?script_name fd =
   Netlog.Debug.track_fd
     ~owner:"Netcgi_ajp"
     ~descr:("connection from " ^
 	      try Netsys.string_of_sockaddr(Netsys.getpeername fd)
 	      with _ -> "(noaddr)")
     fd;
-  handle_connection_1 fd ~config ?script_name output_type arg_store
-    exn_handler f
+  handle_connection_1 config ?script_name output_type arg_store
+    exn_handler f fd
 
 
 let run
@@ -776,28 +776,35 @@ let run
     ?(output_type=(`Direct "": Netcgi.output_type))
     ?(arg_store=(fun _ _ _ -> `Automatic))
     ?(exn_handler=(fun _ f -> f()))
+    ?socket
     ?sockaddr
     ?(port=8009)
     f =
   (* Socket to listen to *)
-  let sockaddr = match sockaddr with
-    | None -> Unix.ADDR_INET(Unix.inet_addr_loopback, port)
-    | Some sockaddr -> sockaddr in
-  let sock =
-    Unix.socket (Unix.domain_of_sockaddr sockaddr) Unix.SOCK_STREAM 0 in
-  Unix.setsockopt sock Unix.SO_REUSEADDR true;
-  Unix.bind sock sockaddr;
-  Unix.listen sock 5;
-  Netlog.Debug.track_fd
-    ~owner:"Netcgi_ajp"
-    ~descr:("master " ^ Netsys.string_of_sockaddr sockaddr)
-    sock;
+  let sock = match socket with
+    | Some s -> s
+    | None ->
+        let saddr = match sockaddr with
+          | Some sa -> sa
+          | None -> Unix.ADDR_INET(Unix.inet_addr_loopback, port)
+        in
+        let sock =
+          Unix.socket (Unix.domain_of_sockaddr saddr) Unix.SOCK_STREAM 0 in
+        Unix.setsockopt sock Unix.SO_REUSEADDR true;
+        Unix.bind sock saddr;
+        Unix.listen sock 5;
+        Netlog.Debug.track_fd
+          ~owner:"Netcgi_ajp"
+          ~descr:("master " ^ Netsys.string_of_sockaddr saddr)
+          sock;
+        sock
+  in
   while true do
     let (fd, server) = Unix.accept sock in
     try
       if allow server then
-        handle_connection fd ~config ?script_name output_type arg_store
-          exn_handler f;
+        handle_connection config ?script_name output_type arg_store
+          exn_handler f fd;
     with
       | e when config.default_exn_handler ->
 	  (* Any exception occurring here is fatal *)

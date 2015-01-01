@@ -6,147 +6,153 @@
  *
  ************************************************************)
 type longstring = 
-      string
+     string
 and location_enum = 
-      Rtypes.int4
+     Netnumber.int4
 and location = 
-      [ | `not_found | `found of (longstring) ]
+     [ | `not_found | `found of (longstring) ]
 and t_Finder'V1'ping'arg = 
-      unit
+     unit
 and t_Finder'V1'ping'res = 
-      unit
+     unit
 and t_Finder'V1'find'arg = 
-      longstring
+     longstring
 and t_Finder'V1'find'res = 
-      location
+     location
 and t_Finder'V1'lastquery'arg = 
-      unit
+     unit
 and t_Finder'V1'lastquery'res = 
-      longstring
+     longstring
 and t_Finder'V1'shutdown'arg = 
-      unit
+     unit
 and t_Finder'V1'shutdown'res = 
-      unit
+     unit
 ;;
-let not_found = (Rtypes.mk_int4('\000','\000','\000','\000'));;
-let found = (Rtypes.mk_int4('\000','\000','\000','\001'));;
-let rec _to_longstring (x:Xdr.xdr_value) : longstring =
-  (Xdr.dest_xv_string x)
-and _of_longstring (x:longstring) : Xdr.xdr_value = (Xdr.XV_string x)
-and _to_location_enum (x:Xdr.xdr_value) : location_enum =
-  (match Xdr.dest_xv_enum_fast x with
-  | 0 -> (Rtypes.mk_int4('\000','\000','\000','\000'))
-  | 1 -> (Rtypes.mk_int4('\000','\000','\000','\001'))
-  | _ -> assert false
+let not_found = (Netnumber.int4_of_int (0));;
+let found = (Netnumber.int4_of_int (1));;
+let ( +! ) = Netxdr.safe_add
+let ( *! ) = Netxdr.safe_mul
+;;
+let rec _to_longstring (x:Netxdr.xdr_value) : longstring =
+  ( match x with | Netxdr.XV_string x -> x | _ -> raise Netxdr.Dest_failure )
+and _of_longstring (x:longstring) : Netxdr.xdr_value = (Netxdr.XV_string x)
+and _to_location_enum (x:Netxdr.xdr_value) : location_enum =
+  ( match x with
+    | Netxdr.XV_enum_fast 0 -> (Netnumber.int4_of_int (0))
+    | Netxdr.XV_enum_fast 1 -> (Netnumber.int4_of_int (1))
+    | _ -> raise Netxdr.Dest_failure
+    
   )
-and _of_location_enum (x:location_enum) : Xdr.xdr_value =
-  (match Rtypes.dest_int4 x with
-  | ('\000','\000','\000','\000') -> Xdr.XV_enum_fast 0
-  | ('\000','\000','\000','\001') -> Xdr.XV_enum_fast 1
+and _of_location_enum (x:location_enum) : Netxdr.xdr_value =
+  (match Netnumber.int32_of_int4 x with
+  | (0l) -> Netxdr.XV_enum_fast 0
+  | (1l) -> Netxdr.XV_enum_fast 1
   | _ -> failwith "RPC/XDR error: invalid enum value for type `location_enum'"
   )
-and _to_location (x:Xdr.xdr_value) : location =
-  (match Xdr.dest_xv_union_over_enum_fast x with
-  | (0, x) -> `not_found 
-  | (1, x) -> `found (_to_longstring x)
-  | _ -> assert false
-  :> [ | `not_found | `found of _ ]
+and _to_location (x:Netxdr.xdr_value) : location =
+  ( let k, x = Netxdr.dest_xv_union_over_enum_fast x in
+    match k with
+    | 0 -> `not_found 
+    | 1 -> `found (_to_longstring x)
+    | _ -> Netxdr.raise_xdr_format_undefined_descriminator()
+    :> [ | `not_found | `found of _ ]
   )
-and _of_location (x:location) : Xdr.xdr_value =
-  (match x with
-  | `not_found -> Xdr.XV_union_over_enum_fast(0, Xdr.XV_void)
-  | `found x -> Xdr.XV_union_over_enum_fast(1, (_of_longstring x)))
-and _to_Finder'V1'ping'arg (x:Xdr.xdr_value) : t_Finder'V1'ping'arg = ()
-and _of_Finder'V1'ping'arg (x:t_Finder'V1'ping'arg) : Xdr.xdr_value =
-  Xdr.XV_void
-and _to_Finder'V1'ping'res (x:Xdr.xdr_value) : t_Finder'V1'ping'res = ()
-and _of_Finder'V1'ping'res (x:t_Finder'V1'ping'res) : Xdr.xdr_value =
-  Xdr.XV_void
-and _to_Finder'V1'find'arg (x:Xdr.xdr_value) : t_Finder'V1'find'arg =
+and _of_location (x:location) : Netxdr.xdr_value =
+  ( match x with
+    | `not_found -> Netxdr.XV_union_over_enum_fast (0,Netxdr.XV_void)
+    | `found x -> Netxdr.XV_union_over_enum_fast (1,(_of_longstring x))
+  )
+and _to_Finder'V1'ping'arg (x:Netxdr.xdr_value) : t_Finder'V1'ping'arg = ()
+and _of_Finder'V1'ping'arg (x:t_Finder'V1'ping'arg) : Netxdr.xdr_value =
+  Netxdr.XV_void
+and _to_Finder'V1'ping'res (x:Netxdr.xdr_value) : t_Finder'V1'ping'res = ()
+and _of_Finder'V1'ping'res (x:t_Finder'V1'ping'res) : Netxdr.xdr_value =
+  Netxdr.XV_void
+and _to_Finder'V1'find'arg (x:Netxdr.xdr_value) : t_Finder'V1'find'arg =
   (_to_longstring x)
-and _of_Finder'V1'find'arg (x:t_Finder'V1'find'arg) : Xdr.xdr_value =
+and _of_Finder'V1'find'arg (x:t_Finder'V1'find'arg) : Netxdr.xdr_value =
   (_of_longstring x)
-and _to_Finder'V1'find'res (x:Xdr.xdr_value) : t_Finder'V1'find'res =
+and _to_Finder'V1'find'res (x:Netxdr.xdr_value) : t_Finder'V1'find'res =
   (_to_location x)
-and _of_Finder'V1'find'res (x:t_Finder'V1'find'res) : Xdr.xdr_value =
+and _of_Finder'V1'find'res (x:t_Finder'V1'find'res) : Netxdr.xdr_value =
   (_of_location x)
-and _to_Finder'V1'lastquery'arg (x:Xdr.xdr_value) : t_Finder'V1'lastquery'arg =
+and _to_Finder'V1'lastquery'arg (x:Netxdr.xdr_value) : t_Finder'V1'lastquery'arg =
   ()
-and _of_Finder'V1'lastquery'arg (x:t_Finder'V1'lastquery'arg) : Xdr.xdr_value =
-  Xdr.XV_void
-and _to_Finder'V1'lastquery'res (x:Xdr.xdr_value) : t_Finder'V1'lastquery'res =
+and _of_Finder'V1'lastquery'arg (x:t_Finder'V1'lastquery'arg) : Netxdr.xdr_value =
+  Netxdr.XV_void
+and _to_Finder'V1'lastquery'res (x:Netxdr.xdr_value) : t_Finder'V1'lastquery'res =
   (_to_longstring x)
-and _of_Finder'V1'lastquery'res (x:t_Finder'V1'lastquery'res) : Xdr.xdr_value =
+and _of_Finder'V1'lastquery'res (x:t_Finder'V1'lastquery'res) : Netxdr.xdr_value =
   (_of_longstring x)
-and _to_Finder'V1'shutdown'arg (x:Xdr.xdr_value) : t_Finder'V1'shutdown'arg =
+and _to_Finder'V1'shutdown'arg (x:Netxdr.xdr_value) : t_Finder'V1'shutdown'arg =
   ()
-and _of_Finder'V1'shutdown'arg (x:t_Finder'V1'shutdown'arg) : Xdr.xdr_value =
-  Xdr.XV_void
-and _to_Finder'V1'shutdown'res (x:Xdr.xdr_value) : t_Finder'V1'shutdown'res =
+and _of_Finder'V1'shutdown'arg (x:t_Finder'V1'shutdown'arg) : Netxdr.xdr_value =
+  Netxdr.XV_void
+and _to_Finder'V1'shutdown'res (x:Netxdr.xdr_value) : t_Finder'V1'shutdown'res =
   ()
-and _of_Finder'V1'shutdown'res (x:t_Finder'V1'shutdown'res) : Xdr.xdr_value =
-  Xdr.XV_void
+and _of_Finder'V1'shutdown'res (x:t_Finder'V1'shutdown'res) : Netxdr.xdr_value =
+  Netxdr.XV_void
 ;;
-let xdrt_longstring = Xdr.X_rec("longstring", Xdr.x_string_max)
+let xdrt_longstring = Netxdr.X_rec("longstring", Netxdr.x_string_max)
 ;;
 let xdrt_location_enum =
-  Xdr.X_rec("location_enum",
-    Xdr.X_enum
+  Netxdr.X_rec("location_enum",
+    Netxdr.X_enum
       [
-        ("NOT_FOUND", (Rtypes.mk_int4('\000','\000','\000','\000')));
-        ("FOUND", (Rtypes.mk_int4('\000','\000','\000','\001')));
+        ("NOT_FOUND", (Netnumber.int4_of_int (0)));
+        ("FOUND", (Netnumber.int4_of_int (1)));
       ])
 ;;
 let xdrt_location =
-  Xdr.X_rec("location",
-    Xdr.X_union_over_enum(
-      (Xdr.X_enum
+  Netxdr.X_rec("location",
+    Netxdr.X_union_over_enum(
+      (Netxdr.X_enum
          [
-           ("NOT_FOUND", (Rtypes.mk_int4('\000','\000','\000','\000')));
-           ("FOUND", (Rtypes.mk_int4('\000','\000','\000','\001')));
+           ("NOT_FOUND", (Netnumber.int4_of_int (0)));
+           ("FOUND", (Netnumber.int4_of_int (1)));
          ]),
       [
-        "NOT_FOUND", (Xdr.X_void);
+        "NOT_FOUND", (Netxdr.X_void);
         "FOUND", (xdrt_longstring);
       ],
       None))
 ;;
-let xdrt_Finder'V1'ping'arg = Xdr.X_void
+let xdrt_Finder'V1'ping'arg = Netxdr.X_void
 ;;
-let xdrt_Finder'V1'ping'res = Xdr.X_void
+let xdrt_Finder'V1'ping'res = Netxdr.X_void
 ;;
 let xdrt_Finder'V1'find'arg = xdrt_longstring
 ;;
 let xdrt_Finder'V1'find'res = xdrt_location
 ;;
-let xdrt_Finder'V1'lastquery'arg = Xdr.X_void
+let xdrt_Finder'V1'lastquery'arg = Netxdr.X_void
 ;;
 let xdrt_Finder'V1'lastquery'res = xdrt_longstring
 ;;
-let xdrt_Finder'V1'shutdown'arg = Xdr.X_void
+let xdrt_Finder'V1'shutdown'arg = Netxdr.X_void
 ;;
-let xdrt_Finder'V1'shutdown'res = Xdr.X_void
+let xdrt_Finder'V1'shutdown'res = Netxdr.X_void
 ;;
 let program_Finder'V1 =
   Rpc_program.create
-    (Rtypes.mk_uint4('\000','\003','\013','\064'))
-    (Rtypes.mk_uint4('\000','\000','\000','\001'))
-    (Xdr.validate_xdr_type_system [])
+    (Netnumber.uint4_of_int (200000))
+    (Netnumber.uint4_of_int (1))
+    (Netxdr.validate_xdr_type_system [])
     [
       "ping",
-        ((Rtypes.mk_uint4('\000','\000','\000','\000')),
+        ((Netnumber.uint4_of_int (0)),
         xdrt_Finder'V1'ping'arg,
         xdrt_Finder'V1'ping'res);
       "find",
-        ((Rtypes.mk_uint4('\000','\000','\000','\001')),
+        ((Netnumber.uint4_of_int (1)),
         xdrt_Finder'V1'find'arg,
         xdrt_Finder'V1'find'res);
       "lastquery",
-        ((Rtypes.mk_uint4('\000','\000','\000','\002')),
+        ((Netnumber.uint4_of_int (2)),
         xdrt_Finder'V1'lastquery'arg,
         xdrt_Finder'V1'lastquery'res);
       "shutdown",
-        ((Rtypes.mk_uint4('\000','\000','\000','\003')),
+        ((Netnumber.uint4_of_int (3)),
         xdrt_Finder'V1'shutdown'arg,
         xdrt_Finder'V1'shutdown'res);
     ]

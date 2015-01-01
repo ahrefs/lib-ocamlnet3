@@ -2,26 +2,27 @@ These license conditions apply to the libraries:
 
 - cgi
 - equeue
-- equeue-gtk1
 - equeue-gtk2
-- equeue-ssl
 - equeue-tcl
-- netcgi1
+- netcamlbox
 - netcgi2
 - netcgi2-plex
 - netclient
+- netgss-system
+- netmulticore
 - netplex
 - netshm
 - netstring
-- pop
+- netstring-pcre
+- netsys
+- nettls-gnutls
+- netunidata
+- netzip
 - rpc
-- rpc-auth-dh
 - rpc-auth-local
 - rpc-generator
-- rpc-ssl
 - rpc-xti
 - shell
-- smtp
 
 The same holds for all files for which there are no other license
 terms.

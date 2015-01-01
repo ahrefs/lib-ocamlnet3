@@ -36,7 +36,7 @@ request () {
     elif [ -n "$GDB_CLIENT" ]; then
 	gdb --args ./run ./test_client -verbose -port "$server_port" $args "$@"
     elif [ -n "$NETLOGGED_CLIENT" ]; then
-	# e.g. NETLOGGED_CLIENT="Http_client"
+	# e.g. NETLOGGED_CLIENT="Nethttp_client"
 	args="$args -track-fd"
 	for arg in $NETLOGGED_CLIENT; do
 	    args="$args -debug $arg"

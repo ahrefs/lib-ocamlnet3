@@ -6,11 +6,19 @@
     When two modules want to set the handler for the same signal, the framework
     decides in which order the handlers are executed.
 
-    The module also defines an empty handler list for [Sys.sigpipe], so these
-    signals are ignored by the program. This empty list can be extended, 
-    however.
+    The module also defines an empty handler for [Sys.sigpipe], so this
+    signal is ignored by the program (and you get a
+    [Unix.Unix_error(EPIPE,_,_)] exception instead). 
 
-    Win32: Only [Sys.sigint] handlers can effectively be registered. 
+    {b If you don't like that Netsys sets the Sigpipe handler, you can undo
+    this:}
+
+    {[
+Sys.set_signal Sys.sigpipe Sys.Signal_default;;
+Netsys_signal.keep_away_from Sys.sigpipe;;
+    ]}
+
+    {b Win32:} Only [Sys.sigint] handlers can effectively be registered. 
     Registrations for other signal types are accepted but ignored.
  *)
 

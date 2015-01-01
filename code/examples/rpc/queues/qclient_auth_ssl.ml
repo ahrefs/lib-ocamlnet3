@@ -2,17 +2,17 @@
 
 module C1 = Queues_clnt.QUEUESPROG.QUEUESVERS1 ;;
 
-Ssl.init();;  (* Don't forget! *)
+Nettls_gnutls.init() ;;
 
-let ctx = Ssl.create_context Ssl.TLSv1 "client.crt" "client.key" ;;
+let tls_config =
+  Netsys_tls.create_x509_config
+    ~trust:[ `PEM_file "ca.crt" ]
+    ~keys:[ (`PEM_file "client.crt", `PEM_file "client.key", None) ]
+    ~peer_auth:`Required
+    (Netsys_crypto.current_tls())
 
-Ssl.set_verify ctx [ Ssl.Verify_peer ] None;
-Ssl.set_verify_depth ctx 99;
-Ssl.load_verify_locations ctx "ca.crt" "" ;;
-
-
-let ssl_socket_config =
-  Rpc_ssl.ssl_client_socket_config ctx ;;
+let tls_socket_config =
+  Rpc_client.tls_socket_config tls_config ;;
 
 Qclient.pluggable_auth_module :=
   ( "auth_ssl",
@@ -20,7 +20,7 @@ Qclient.pluggable_auth_module :=
        let clnt = C1.create_client2 
 	 (`Socket(Rpc.Tcp, 
 		  Rpc_client.Portmapped host,
-		  ssl_socket_config)) in
+		  tls_socket_config)) in
        clnt
     )
   )

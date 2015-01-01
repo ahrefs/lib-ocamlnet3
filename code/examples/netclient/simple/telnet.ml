@@ -12,7 +12,7 @@
  * by the characters >, # or $.
  *)
 
-open Telnet_client;;
+open Nettelnet_client;;
 
 type state =
     Start               (* just connected *)

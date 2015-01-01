@@ -44,6 +44,7 @@ type fatal_error =
     | `Message_too_long
     | `Timeout
     | `Unix_error of Unix.error
+    | `TLS_error of string * string
     | `Server_error
     ]
 
@@ -54,6 +55,7 @@ let string_of_fatal_error =
     | `Message_too_long -> "Nethttpd: Message too long, dropping it"
     | `Timeout -> "Nethttpd: Connection timed out"
     | `Unix_error ue -> ("Nethttpd: System error: " ^ Unix.error_message ue)
+    | `TLS_error(code,msg) -> ("Nethttpd: TLS error code " ^ code ^ ": " ^ msg)
     | `Server_error -> "Nethttpd: Terminating connection because of internal error"
 	
 
@@ -236,7 +238,7 @@ object(self)
 		  let b = Netbuffer.create 256 in 
 		     (* Expect a short/empty header in most cases *)
 		  let ch = new Netchannels.output_netbuffer b in
-		  Mimestring.write_header ch info_header#fields;
+		  Netmime_string.write_header ch info_header#fields;
 		  Queue.push 
 		    (`Resp_wire_data (Netbuffer.unsafe_buffer b, 0, Netbuffer.length b))
 		    queue;
@@ -324,7 +326,7 @@ object(self)
 	  (* Convert the header to a data chunk: *)
 	  let b = Netbuffer.create 4096 in
 	  let ch = new Netchannels.output_netbuffer b in
-	  Mimestring.write_header ch resp_header#fields;
+	  Netmime_string.write_header ch resp_header#fields;
 	  Queue.push 
 	    (`Resp_wire_data (Netbuffer.unsafe_buffer b, 0, Netbuffer.length b)) queue;
 	  (* What is accepted next: *)
@@ -594,16 +596,26 @@ object
   method config_limit_pipeline_size : int
   method config_announce_server : announcement
   method config_suppress_broken_pipe : bool
+  method config_tls : Netsys_crypto_types.tls_config option
+end
+
+
+class type http_protocol_hooks =
+object
+  method tls_set_cache : store:(string -> string -> unit) ->
+                         remove:(string -> unit) ->
+                         retrieve:(string -> string) ->
+                            unit
 end
 
 
 let http_find_line_start s pos len =
-  try Mimestring.find_line_start s pos len
+  try Netmime_string.find_line_start s pos len
   with Not_found -> raise Buffer_exceeded
 
 
 let http_find_double_line_start s pos len =
-  try Mimestring.find_double_line_start s pos len
+  try Netmime_string.find_double_line_start s pos len
   with Not_found -> raise Buffer_exceeded
 
 
@@ -675,7 +687,7 @@ let parse_chunk_header s pos len =
   let c1 = s.[p1] in
   if c1=';' then (
     let p2 =
-      Mimestring.find_line_start s p1 (e - p1) in
+      Netmime_string.find_line_start s p1 (e - p1) in
     if p2 <> e then raise Not_found
   )
   else (
@@ -698,7 +710,52 @@ module StrSet = Set.Make(String)
 class http_protocol (config : #http_protocol_config) (fd : Unix.file_descr) =
   let pa = Netsys_posix.create_poll_array 1 in
   let fdi = Netsys.int64_of_file_descr fd in
+  let tls =
+    match config # config_tls with
+      | None -> None
+      | Some tc -> 
+          Some(Netsys_tls.endpoint
+                 (Netsys_tls.create_file_endpoint 
+                    ~role:`Server ~rd:fd ~wr:fd ~peer_name:None tc))
+  in
+  let tls_message code =
+    match config # config_tls with
+      | None -> code
+      | Some tc ->
+           let module Config = (val tc : Netsys_crypto_types.TLS_CONFIG) in
+           Config.TLS.error_message code in
+
+  let hooks =
+    ( object
+        method tls_set_cache ~store ~remove ~retrieve =
+          match tls with
+            | None ->
+                 ()
+            | Some ep ->
+                 let module Endpoint = 
+                   (val ep : Netsys_crypto_types.TLS_ENDPOINT) in
+                 Endpoint.TLS.set_session_cache
+                   ~store ~remove ~retrieve Endpoint.endpoint
+      end
+    ) in
 object(self)
+  val mutable override_dir = None
+    (* For TLS: can be set to [Some `R] or [Some `W] if the descriptor needs
+       to be read or written
+     *)
+
+  val mutable tls_handshake = (tls <> None)
+    (* Whether the handshake is not yet complete *)
+
+  val mutable tls_shutdown = false
+    (* Whether a TLS shutdown (for sending) needs to be done *)
+
+  val mutable tls_shutdown_done = false
+    (* Whether the TLS shutdown (for sending) is over *)
+
+  val mutable tls_session_props = None
+    (* Session properties (available after handshake) *)
+
   val mutable resp_queue = Queue.create()
     (* The queue of [http_response] objects. The first is currently being transmitted *)
 
@@ -709,6 +766,11 @@ object(self)
     (* Whether EOF has been seen. This is also set if the protocol engine is no
      * longer interested in any input because of processing errors
      *)
+
+  val mutable recv_fd_eof = false
+    (* Whether the descriptor is at EOF. This can be different from recv_eof
+       if TLS is active.
+     *) 
 
   val mutable recv_queue = (Queue.create() : (req_token * int) Queue.t)
     (* The queue of received tokens. The integer is the estimated buffer size *)
@@ -742,16 +804,26 @@ object(self)
     Unix.set_nonblock fd
   )
 
+  method hooks = hooks
+
   method cycle ?(block=0.0) () = 
+    override_dir <- None;
     try
       (* Block until we have something to read or write *)
       if block <> 0.0 then
 	self # block block;
-      (* Accept any arriving data, and process that *)
-      self # accept_data();
-      (* Transmit any outgoing data *)
-      self # transmit_response();
-
+      (* Maybe the TLS handshake is in progress: *)
+      if tls_handshake then
+        self # do_tls_handshake()
+      else
+        if tls_shutdown && not tls_shutdown_done then
+          self # do_tls_shutdown()
+        else (
+          (* Accept any arriving data, and process that *)
+          self # accept_data();
+          (* Transmit any outgoing data *)
+          self # transmit_response();
+        )
 
     with
       | Fatal_error e ->
@@ -833,6 +905,54 @@ object(self)
   method test_coverage =
     StrSet.elements test_coverage
 
+  (* ---- TLS ---- *)
+
+  method private do_tls_handshake() =
+    try
+      ( match tls with
+          | None -> ()
+          | Some t ->
+              Netsys_tls.handshake t;
+              tls_handshake <- false;
+      )
+    with
+      | Netsys_types.EAGAIN_RD ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_RD" fdi);
+          override_dir <- Some `R
+      | Netsys_types.EAGAIN_WR ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_WR" fdi);
+          override_dir <- Some `W
+      | Unix.Unix_error(Unix.EINTR,_,_) ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EINTR" fdi)
+      | Netsys_types.TLS_error code as e ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake TLS_ERROR %s" fdi
+                                   (Netexn.to_string e));
+          self # abort(`TLS_error(code,tls_message code))
+
+
+  method private do_tls_shutdown() =
+    try
+      ( match tls with
+          | None -> ()
+          | Some t ->
+              Netsys_tls.shutdown t Unix.SHUTDOWN_SEND
+      );
+      tls_shutdown_done <- true
+    with
+      | Netsys_types.EAGAIN_RD ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_RD" fdi);
+          override_dir <- Some `R
+      | Netsys_types.EAGAIN_WR ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EAGAIN_WR" fdi);
+          override_dir <- Some `W
+      | Unix.Unix_error(Unix.EINTR,_,_) ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake EINTR" fdi)
+      | Netsys_types.TLS_error code as e ->
+	  dlogr (fun () -> sprintf "FD %Ld: handshake TLS_ERROR %s" fdi
+                                   (Netexn.to_string e));
+          self # abort (`TLS_error(code,tls_message code))
+
+
   (* ---- Process received data ---- *)
 
   method private stop_input_acceptor() =
@@ -862,11 +982,23 @@ object(self)
 	    dlogr (fun () -> sprintf "FD %Ld: recv" fdi);
 	    let n = Netbuffer.add_inplace   (* or Unix_error *)
 	      recv_buf
-	      (fun s pos len -> Unix.recv fd s pos len []) in
+	      (fun s pos len -> 
+                 match tls with
+                   | None -> Unix.recv fd s pos len []
+                   | Some t -> Netsys_tls.recv t s pos len
+              ) in
 	    if n=0 then (
 	      recv_eof <- true;
-	      need_linger <- false;
-	      dlog (sprintf "FD %Ld: got EOF" fdi);
+              ( match tls with
+                  | None -> 
+                      recv_fd_eof <- true;
+                      need_linger <- false
+                  | Some t ->
+                      recv_fd_eof <- Netsys_tls.at_transport_eof t;
+                      tls_shutdown <- true;
+              );
+	      dlog (sprintf "FD %Ld: got EOF (fd_eof=%B)" 
+                            fdi recv_fd_eof);
 	    )
 	    else
 	      dlogr (fun () -> sprintf "FD %Ld: got %d bytes" fdi n);
@@ -876,7 +1008,8 @@ object(self)
 	    false (* no new data *)
 	)
       with
-	| Unix.Unix_error((Unix.EAGAIN | Unix.EWOULDBLOCK), _,_)->
+	| Unix.Unix_error((Unix.EAGAIN | Unix.EWOULDBLOCK), _,_)
+        | Netsys_types.EAGAIN_RD ->
 	    dlogr (fun () -> sprintf "FD %Ld: recv EWOULDBLOCK" fdi);
 	    false             (* socket not ready *)
 	| Unix.Unix_error(Unix.EINTR,_,_) ->
@@ -890,6 +1023,14 @@ object(self)
 	    dlogr (fun () -> sprintf "FD %Ld: recv ERROR" fdi);
 	    self # abort (`Unix_error e);
 	    false
+        | Netsys_types.EAGAIN_WR ->
+            (* Currently impossible *)
+            assert false
+        | Netsys_types.TLS_error code as e ->
+	    dlogr (fun () -> sprintf "FD %Ld: rev TLS_ERROR %s" fdi
+                                     (Netexn.to_string e));
+            self # abort(`TLS_error(code,tls_message code));
+            false
     in
     if continue then 
       self # accept_loop()
@@ -945,7 +1086,7 @@ object(self)
     waiting_for_next_message <- true;
     let l = Netbuffer.length recv_buf in
     let s = Netbuffer.unsafe_buffer recv_buf in
-    let block_start = Mimestring.skip_line_ends s pos (l - pos) in  (* (1) *)
+    let block_start = Netmime_string.skip_line_ends s pos (l - pos) in  (* (1) *)
     try
       (* (2) *)
       if block_start = l || (block_start+1 = l && s.[block_start] = '\013') then (
@@ -1020,12 +1161,33 @@ object(self)
        * in this case where we only read from a constant string.
        *)
       let req_h = 
-	try Netmime.read_mime_header str 
+	try Netmime_channels.read_mime_header str 
 	with Failure _ -> 
 	  #ifdef Testing
              self # case "accept_header/5";
           #endif
 	  raise(Bad_request `Bad_header) in
+      (* TLS: check whether Host header (if set) equals the SNI host name *)
+      ( match self#tls_session_props with
+          | None ->
+               ()
+          | Some props ->
+               ( try
+                   let host_hdr =
+                     match req_h # multiple_field "host" with
+                       | [ host_hdr ] -> host_hdr
+                       | [] -> raise Not_found
+                       | _ -> raise(Bad_request (`Bad_header_field "Host")) in
+                   let host_name, _ =
+                     try Nethttp.split_host_port host_hdr
+                     with _ -> host_hdr, None in
+                   if not (Nettls_support.is_endpoint_host host_name props)
+                   then
+                     raise(Bad_request (`Bad_header_field "Host"))
+                 with Not_found ->  (* No "Host" header => no checks *)
+                   ()
+               )
+      );
       (* (5) *)
       let close = 
 	match req_version with
@@ -1389,7 +1551,7 @@ object(self)
 		     ~pos:pos ~len:(trailer_end - pos) s in
 	  let str = new Netstream.input_stream ch in
 	  let req_tr =
-	    try Netmime.read_mime_header str 
+	    try Netmime_channels.read_mime_header str 
 	    with Failure _ -> 
 	      #ifdef Testing
                 self # case "accept_body_chunked_end/bad_tr";
@@ -1443,7 +1605,12 @@ object(self)
 	  | `Resp_wire_data (s,pos,len) ->
 	      (* Try to write: *)
 	      dlogr (fun () -> sprintf "FD %Ld: send" fdi);
-	      let n = Unix.send fd s pos len [] in  (* or Unix.error *)
+	      let n =
+                match tls with
+                  | None ->
+                      Unix.send fd s pos len []  (* or Unix.error *)
+                  | Some t ->
+                      Netsys_tls.send t s pos len in
 	      dlogr (fun () -> sprintf "FD %Ld: sent %d bytes" fdi n);
 	      (* Successful. Advance by [n] *)
 	      resp # advance n;
@@ -1454,8 +1621,11 @@ object(self)
 	      pipeline_len <- pipeline_len - 1;
 	      resp # set_state `Processed;
 	      (* Check if we have to close the connection: *)
-	      if resp # close_connection then
-		self # shutdown_sending();
+	      if resp # close_connection then (
+                match tls with
+                  | None -> self # shutdown_sending()
+                  | Some _ -> tls_shutdown <- true
+              );
 	      (* Continue with the next response, if any, and if possible: *)
 	      let next_resp = Queue.take resp_queue in
 	      next_resp # set_state `Active;   (* ... unless dropped *)
@@ -1469,7 +1639,8 @@ object(self)
       with
 	| Send_queue_empty ->
 	    ()    (* nothing to do *)
-	| Unix.Unix_error((Unix.EAGAIN | Unix.EWOULDBLOCK),_,_) ->
+	| Unix.Unix_error((Unix.EAGAIN | Unix.EWOULDBLOCK),_,_)
+        | Netsys_types.EAGAIN_WR ->
 	    ()    (* socket not ready *)
 	| Unix.Unix_error(Unix.EINTR,_,_) ->
 	    ()    (* Signal happened, try later again *)
@@ -1481,6 +1652,12 @@ object(self)
 	    resp # set_state `Error;
 	    ignore(Queue.take resp_queue);
 	    self # abort (`Unix_error e)
+        | Netsys_types.EAGAIN_RD ->
+            assert false   (* not possible here *)
+        | Netsys_types.TLS_error code as e ->
+	    dlogr (fun () -> sprintf "FD %Ld: rev TLS_ERROR %s" fdi
+                                     (Netexn.to_string e));
+            self # abort (`TLS_error(code,tls_message code))
 
   method private drop_remaining_responses() =
     (* Set the state to [`Dropped] for all responses in the [resp_queue]: *)
@@ -1532,7 +1709,8 @@ object(self)
     dlogr (fun () -> sprintf "FD %Ld: shutdown" fdi);
     self # stop_input_acceptor();
     self # drop_remaining_responses();
-    self # shutdown_sending()
+    tls_shutdown <- true;
+    if tls = None then self # shutdown_sending()
 
   method private shutdown_sending() =
     dlogr (fun () -> sprintf "FD %Ld: shutdown_sending" fdi);
@@ -1588,6 +1766,7 @@ object(self)
 	     sprintf "FD %Ld: abort %s" fdi (string_of_fatal_error err));
     need_linger <- false;
     self # shutdown();
+    tls_shutdown_done <- true; (* don't do the TLS shutdown protocol *)
     let err' =
       if err=`Broken_pipe && config#config_suppress_broken_pipe then
 	`Broken_pipe_ignore
@@ -1603,17 +1782,49 @@ object(self)
 
 
   method do_input =
-    not recv_eof && 
-    (pipeline_len <= config#config_limit_pipeline_length) &&
-    (recv_queue_byte_size <= config#config_limit_pipeline_size)
+    match override_dir with
+      | None ->
+          not recv_fd_eof &&    (* CHECK: can we get further alerts after TLS END ? *)
+            (pipeline_len <= config#config_limit_pipeline_length) &&
+              (recv_queue_byte_size <= config#config_limit_pipeline_size)
+      | Some `R ->
+          true
+      | Some `W ->
+          false
 
   method do_output =
-    not (Queue.is_empty resp_queue) &&
-    not ((Queue.peek resp_queue) # send_queue_empty)
+    match override_dir with
+      | None ->
+          self # resp_queue_filled
+      | Some `R ->
+          false
+      | Some `W ->
+          true
+
+  method resp_queue_filled =
+    ( not (Queue.is_empty resp_queue) &&
+        not ((Queue.peek resp_queue) # send_queue_empty)
+    ) ||
+    ( tls_shutdown && not tls_shutdown_done )
+
 
   method need_linger = 
-    need_linger
+    (* TLS: never need lingering close, as TLS alerts indicate the end of the
+       data stream
+     *)
+    tls = None && need_linger
 
+
+  method tls_session_props =
+    if not tls_handshake && tls_session_props = None then (
+      match tls with
+        | Some t ->
+             tls_session_props <- 
+               Some (Nettls_support.get_tls_session_props t)
+        | None ->
+             ()
+    );
+    tls_session_props
 end
 
 
@@ -1667,6 +1878,7 @@ let default_http_protocol_config =
       method config_limit_pipeline_size = 65536
       method config_announce_server = `Ocamlnet
       method config_suppress_broken_pipe = false
+      method config_tls = None
     end
   )
 
@@ -1683,6 +1895,7 @@ class modify_http_protocol_config
         ?config_limit_pipeline_size
         ?config_announce_server
         ?config_suppress_broken_pipe 
+        ?config_tls
         (config : http_protocol_config) : http_protocol_config =
   let config_max_reqline_length = 
     override config#config_max_reqline_length config_max_reqline_length in
@@ -1698,6 +1911,8 @@ class modify_http_protocol_config
     override config#config_announce_server config_announce_server in
   let config_suppress_broken_pipe =
     override config#config_suppress_broken_pipe config_suppress_broken_pipe in
+  let config_tls =
+    override config#config_tls config_tls in
 object
   method config_max_reqline_length = config_max_reqline_length
   method config_max_header_length = config_max_header_length
@@ -1706,4 +1921,5 @@ object
   method config_limit_pipeline_size = config_limit_pipeline_size
   method config_announce_server = config_announce_server
   method config_suppress_broken_pipe = config_suppress_broken_pipe
+  method config_tls = config_tls
 end

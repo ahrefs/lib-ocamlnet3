@@ -68,3 +68,32 @@ let string_of_socksymbol =
 	    p
 	  else
 	    "./" ^ p
+
+let norm_socksymbol =
+  function
+  | `Inet(ip,port) ->
+        `Inet(Netsys.norm_inet_addr ip, port)
+  | `Inet_byname(n, port) ->
+        ( try
+            let ip1 = Unix.inet_addr_of_string n in
+            let ip2 = Netsys.norm_inet_addr ip1 in
+            `Inet_byname(Unix.string_of_inet_addr ip2, port)
+          with
+            | Failure _ -> `Inet_byname(n,port)
+        )
+  | `Unix p -> `Unix p
+
+let ipv6_socksymbol =
+  function
+  | `Inet(ip,port) ->
+        `Inet(Netsys.ipv6_inet_addr ip, port)
+  | `Inet_byname(n, port) ->
+        ( try
+            let ip1 = Unix.inet_addr_of_string n in
+            let ip2 = Netsys.ipv6_inet_addr ip1 in
+            `Inet_byname(Unix.string_of_inet_addr ip2, port)
+          with
+            | Failure _ -> `Inet_byname(n,port)
+        )
+  | `Unix p -> `Unix p
+

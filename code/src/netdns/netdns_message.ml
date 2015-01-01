@@ -55,11 +55,11 @@ type q_entry =
 type soa =
     { soa_mname : domain;
       soa_rname : domain;
-      soa_serial : Rtypes.uint4;
-      soa_refresh : Rtypes.int4;
-      soa_retry : Rtypes.int4;
-      soa_expire : Rtypes.int4;
-      soa_minimum : Rtypes.uint4;
+      soa_serial : Netnumber.uint4;
+      soa_refresh : Netnumber.int4;
+      soa_retry : Netnumber.int4;
+      soa_expire : Netnumber.int4;
+      soa_minimum : Netnumber.uint4;
     }
 
 
@@ -88,7 +88,7 @@ type rr_entry =
     { rr_name : domain;
       rr_type : type_;
       rr_class : qclass;
-      rr_ttl : Rtypes.uint4;
+      rr_ttl : Netnumber.uint4;
       rr : rr
     }
 
@@ -264,7 +264,7 @@ let parse_rr count hdr s lexbuf =
 	    `TXT l
 
 	| `IN_, `A ->
-	    let a0,a1,a2,a3 = Rtypes.dest_uint4 (uint4 lexbuf) in
+	    let a0,a1,a2,a3 = Netnumber.dest_uint4 (uint4 lexbuf) in
 	    `A (sprintf "%d.%d.%d.%d"
 		  (Char.code a0)
 		  (Char.code a1)
@@ -381,11 +381,11 @@ let print_uint2 buf n =
 
 
 let print_uint4 buf n =
-  Buffer.add_string buf (Rtypes.uint4_as_string n)
+  Buffer.add_string buf (Netnumber.uint4_as_string n)
 
 
 let print_int4 buf n =
-  Buffer.add_string buf (Rtypes.int4_as_string n)
+  Buffer.add_string buf (Netnumber.int4_as_string n)
 
 
 let print_header buf nametbl hdr ihdr =
@@ -527,7 +527,7 @@ let print_rr_entry buf nametbl patches rre =
 		 let c1 = Char.chr a1 in
 		 let c2 = Char.chr a2 in
 		 let c3 = Char.chr a3 in
-		 Rtypes.uint4_as_string (Rtypes.mk_uint4 (c0,c1,c2,c3))) in
+		 Netnumber.BE.uint4_as_string (Netnumber.mk_uint4 (c0,c1,c2,c3))) in
 	  Buffer.add_string buf a
 
       | `Unknown ->

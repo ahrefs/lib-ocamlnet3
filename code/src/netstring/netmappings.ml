@@ -28,7 +28,8 @@ let get_to_unicode enc_name : int array =
 	Hashtbl.find to_unicode enc_name
       with
 	  Not_found ->
-	    let t = Netdb.read_db ("cmapf." ^ enc_name) in
+	    let t_str = Netdb.read_db ("cmapf." ^ enc_name) in
+            let t = Marshal.from_string t_str 0 in
 	    Hashtbl.add to_unicode enc_name t;
 	    t
     in
@@ -49,7 +50,8 @@ let get_from_unicode enc_name : from_uni_list array =
 	Hashtbl.find from_unicode enc_name
       with
 	  Not_found ->
-	    let t = Netdb.read_db ("cmapr." ^ enc_name) in
+	    let t_str = Netdb.read_db ("cmapr." ^ enc_name) in
+            let t = Marshal.from_string t_str 0 in
 	    Hashtbl.add from_unicode enc_name t;
 	    t
     in

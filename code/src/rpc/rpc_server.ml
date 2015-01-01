@@ -3,8 +3,8 @@
  *
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Unixqueue
 open Uq_engines
 open Rpc_common
@@ -54,9 +54,11 @@ type rule =
 
 type auth_result =
     Auth_positive of
-      (string * string * string * Xdr.encoder option * Xdr.decoder option)
+      (string * string * string * Netxdr.encoder option * Netxdr.decoder option *
+         Netsys_gssapi.server_props option)
+
   | Auth_negative of Rpc.server_error
-  | Auth_reply of (Xdr_mstring.mstring list * string * string)
+  | Auth_reply of (Netxdr_mstring.mstring list * string * string)
   | Auth_drop
 
 
@@ -81,17 +83,15 @@ object
   method verifier : string * string
   method frame_len : int
   method message : Rpc_packer.packed_value
+  method transport_user : string option
 end
 
 
 class type ['t] pre_auth_method =
 object
   method name : string
-
   method flavors : string list
-
   method peek : auth_peeker
-
   method authenticate :
     't ->
     connection_id ->
@@ -99,6 +99,8 @@ object
     (auth_result -> unit) ->
       unit
 
+  method invalidate_connection : connection_id -> unit
+  method invalidate : unit -> unit
 end
 
 
@@ -134,20 +136,20 @@ let uint4_min m =
   Uint4Map.fold
     (fun n _ acc ->
        let p =
-	 Rtypes.int64_of_uint4 n < Rtypes.int64_of_uint4 acc in
+	 Netnumber.int64_of_uint4 n < Netnumber.int64_of_uint4 acc in
        if p then n else acc)
     m
-    (Rtypes.uint4_of_int64 0xffffffffL) ;;
+    (Netnumber.uint4_of_int64 0xffffffffL) ;;
        
 
 let uint4_max m =
   Uint4Map.fold
     (fun n _ acc ->
        let p =
-	 Rtypes.int64_of_uint4 n > Rtypes.int64_of_uint4 acc in
+	 Netnumber.int64_of_uint4 n > Netnumber.int64_of_uint4 acc in
        if p then n else acc)
     m
-    (Rtypes.uint4_of_int 0) ;;
+    (Netnumber.uint4_of_int 0) ;;
        
 
 
@@ -157,21 +159,22 @@ type t =
 	mutable service : (Rpc_program.t * binding Uint4Map.t) 
 	                    Uint4Map.t Uint4Map.t;
 	        (* Program nr/version nr/procedure nr *)
-	mutable portmapped : int option;  (* port number *)
+	mutable portmapped : 
+                  (Unix.inet_addr * int * Rpc_portmapper.t option * int) option;
 	mutable esys : event_system;
 	mutable prot : protocol;
-	mutable exception_handler : exn -> unit;
+	mutable exception_handler : exn -> string -> unit;
 	mutable unmap_port : (unit -> unit);
 	mutable onclose : (connection_id -> unit) list;
 	mutable filter : (Rpc_transport.sockaddr -> connection_id -> rule);
 	mutable auth_methods : (string, t pre_auth_method) Hashtbl.t;
 	mutable auth_peekers : (auth_peeker * t pre_auth_method) list;
 	mutable connections : connection list;
-	mutable master_acceptor : server_socket_acceptor option;
+	mutable master_acceptor : server_endpoint_acceptor option;
 	mutable transport_timeout : float;
 	mutable nolog : bool;
 	mutable get_last_proc : unit->string;
-	mutable mstring_factories : Xdr_mstring.named_mstring_factories;
+	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
       }
 
 and connection =
@@ -225,7 +228,9 @@ and session =
 	auth_user : string;
 	auth_ret_flav : string;
 	auth_ret_data : string;
-	encoder : Xdr.encoder option;
+	encoder : Netxdr.encoder option;
+        tls_session_props : Nettls_support.tls_session_props option;
+        gssapi_props : Netsys_gssapi.server_props option;
       }
 
 and connector =
@@ -260,7 +265,9 @@ object
   method flavors = [ "AUTH_NONE" ]
   method peek = `None
   method authenticate _ _ _ f = 
-    f(Auth_positive("","AUTH_NONE","",None,None))
+    f(Auth_positive("","AUTH_NONE","",None,None,None))
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 let auth_none = new auth_none
@@ -272,6 +279,8 @@ object
   method peek = `None
   method authenticate _ _ _ f = 
     f(Auth_negative Auth_too_weak)
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 let auth_too_weak = new auth_too_weak
@@ -279,14 +288,24 @@ let auth_too_weak = new auth_too_weak
 class auth_transport : auth_method =
 object
   method name = "AUTH_TRANSPORT"
-  method flavors = [ ]
+  method flavors = [ "AUTH_TRANSPORT" ]   (* special-cased! *)
+(* The following would be too early, before the TLS handshake! *)
+(*
   method peek = 
     `Peek_multiplexer
       (fun mplex ->
 	 mplex # peer_user_name
       )
-  method authenticate _ _ _ f = 
-    f(Auth_negative Auth_too_weak)
+ *)
+  method peek = `None
+  method authenticate _ _ ad f = 
+    match ad#transport_user with
+      | None ->
+           f(Auth_negative Auth_too_weak)
+      | Some u ->
+           f(Auth_positive(u, "AUTH_NONE", "", None, None, None))
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 let auth_transport = new auth_transport
@@ -373,7 +392,7 @@ let mplexoptname mplex_opt =
 
 
 let xidname xid =
-  Int32.to_string (Rtypes.int32_of_uint4 xid)
+  Int32.to_string (Netnumber.int32_of_uint4 xid)
 
 let errname =
   function
@@ -411,7 +430,6 @@ type reaction =
   | Reject_procedure of server_error
 
 let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
-
   let sockaddr_opt =
     try Some(Lazy.force sockaddr_lz) with _ -> None in
 
@@ -430,6 +448,16 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	     | `Implied -> failwith "Cannot determine peer socket name"
 	     | `Sockaddr a -> a
 	 ) in
+
+  let get_tls_session_props() =
+    match conn.trans with
+      | None -> None
+      | Some trans -> trans # tls_session_props in
+
+  let get_trans_user() =
+    match conn.trans with
+      | None -> None
+      | Some trans -> trans # peer_user_name in
 
   let make_immediate_answer xid procname result f_ptrace_result =
     srv.get_last_proc <- 
@@ -451,7 +479,9 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
       auth_ret_flav = "AUTH_NONE";
       auth_ret_data = "";
       encoder = None;
-      ptrace_result = (if !Debug.enable_ptrace then f_ptrace_result() else "")
+      ptrace_result = (if !Debug.enable_ptrace then f_ptrace_result() else "");
+      tls_session_props = get_tls_session_props();
+      gssapi_props = None;
     }
   in
 
@@ -465,7 +495,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
       f()
     with
 	any ->
-	  (try srv.exception_handler any with _ -> ());
+          let bt = Printexc.get_backtrace() in
+	  (try srv.exception_handler any bt with _ -> ());
   in
 
   let protect ?(ret_flav="AUTH_NONE") ?(ret_data="") f =
@@ -485,8 +516,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		   (fun () -> "Error " ^ errname condition) in
 	       schedule_answer answer
 	    )
-      | (Xdr.Xdr_format _
-	| Xdr.Xdr_format_message_too_long _ as e
+      | (Netxdr.Xdr_format _
+	| Netxdr.Xdr_format_message_too_long _ as e
 	) ->
           (* Convert to Garbage *)
 	   protect_protect
@@ -519,7 +550,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  raise x
       | any ->
 	  (* Reply "System_err": *)
-	  (try srv.exception_handler any with _ -> ());
+          let bt = Printexc.get_backtrace() in
+	  (try srv.exception_handler any bt with _ -> ());
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
@@ -547,10 +579,10 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		    "Request (sock=%s,peer=%s,xid=%lu) for [0x%lx,0x%lx,0x%lx]"
 		    (Rpc_transport.string_of_sockaddr sockaddr)
 		    (Rpc_transport.string_of_sockaddr peeraddr)
-		    (Rtypes.logical_int32_of_uint4 xid)
-		    (Rtypes.logical_int32_of_uint4 prog_nr)
-		    (Rtypes.logical_int32_of_uint4 vers_nr)
-		    (Rtypes.logical_int32_of_uint4 proc_nr)
+		    (Netnumber.logical_int32_of_uint4 xid)
+		    (Netnumber.logical_int32_of_uint4 prog_nr)
+		    (Netnumber.logical_int32_of_uint4 vers_nr)
+		    (Netnumber.logical_int32_of_uint4 proc_nr)
 	       );
 	     
 	     let sess_conn_id =
@@ -566,12 +598,16 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		 | Some uid ->
 		     (conn.peeked_method,
 		      (fun _ _ _ cb ->
-			 cb (Auth_positive(uid, "AUTH_NONE", "", None, None)))
+			 cb (Auth_positive(uid, "AUTH_NONE", "", 
+                                           None, None, None)))
 		     )
 		 | None ->
 		     ( let m =
 			 try Hashtbl.find srv.auth_methods flav_cred
-			 with Not_found -> auth_too_weak in
+			 with Not_found ->
+                           ( try Hashtbl.find srv.auth_methods "AUTH_TRANSPORT"
+                             with Not_found -> auth_too_weak
+                           ) in
 		       (m, m#authenticate)
 		     )
 	     in
@@ -588,6 +624,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		   method verifier = (flav_verf, data_verf)
 		   method frame_len = frame_len
 		   method message = message
+                   method transport_user = get_trans_user()
 		 end
 	       ) in
 
@@ -598,7 +635,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	     authenticate
 	       srv sess_conn_id auth_details
 	       (function 
-		  Auth_positive(user,ret_flav,ret_data,enc_opt,dec_opt) ->
+		  Auth_positive(user,ret_flav,ret_data,enc_opt,dec_opt,gss) ->
 		  (* user: the username (method-dependent)
 		   * ret_flav: flavour of verifier to return
 		   * ret_data: data of verifier to return
@@ -655,7 +692,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 			      "Invoke (sock=%s,peer=%s,xid=%lu): %s"
 			      (Rpc_transport.string_of_sockaddr sockaddr)
 			      (Rpc_transport.string_of_sockaddr peeraddr)
-			      (Rtypes.logical_int32_of_uint4 xid)
+			      (Netnumber.logical_int32_of_uint4 xid)
 			      (Rpc_util.string_of_request
 				 !Debug.ptrace_verbosity
 				 prog
@@ -710,6 +747,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 				 auth_ret_data = ret_data;
 				 ptrace_result = "";  (* not yet known *)
 				 encoder = enc_opt;
+                                 tls_session_props = get_tls_session_props();
+                                 gssapi_props = gss;
 			       } in
 			     conn.next_call_id <- conn.next_call_id + 1;
 			     p.async_invoke this_session param
@@ -762,6 +801,9 @@ let terminate_any srv conn =
 	      ();
 	  with _ -> mplex # inactivate()
 	);
+        Hashtbl.iter
+          (fun _ auth_meth -> auth_meth # invalidate_connection conn.conn_id)
+          srv.auth_methods;
 	srv.connections <- 
 	  List.filter (fun c -> c != conn) srv.connections;
 	if srv.prot = Tcp then (
@@ -771,7 +813,8 @@ let terminate_any srv conn =
 		 action conn.conn_id
 	       with
 		 | any ->
-		     (try srv.exception_handler any with _ -> ())
+                     let bt = Printexc.get_backtrace() in
+		     (try srv.exception_handler any bt with _ -> ())
 	    )
 	    srv.onclose
 	)
@@ -990,7 +1033,7 @@ and next_outgoing_message' srv conn trans =
 	       (Rpc_transport.string_of_sockaddr sockaddr)
 	       (Rpc_transport.string_of_sockaddr reply.peeraddr)
 	       reply.call_id
-	       (Rtypes.logical_int32_of_uint4 reply.client_id)
+	       (Netnumber.logical_int32_of_uint4 reply.client_id)
 	       reply.ptrace_result
 	  );
 
@@ -1028,17 +1071,19 @@ type mode2 =
 
 
 let create2_srv prot esys =
-  let default_exception_handler ex =
+  let default_exception_handler ex bt =
     Netlog.log
       `Crit
-      ("Rpc_server exception handler: Exception " ^ Netexn.to_string ex)
+      ("Rpc_server exception handler: Exception " ^ Netexn.to_string ex);
+    dlog0
+      ("Rpc_server exception handler: Backtrace: " ^ bt);
   in
 
   let none = Hashtbl.create 3 in
   Hashtbl.add none "AUTH_NONE" auth_none;
 
   let mf = Hashtbl.create 1 in
-  Hashtbl.add mf "*" Xdr_mstring.string_based_mstrings;
+  Hashtbl.add mf "*" Netxdr_mstring.string_based_mstrings;
   
   { main_socket_name = `Implied;
     dummy = false;
@@ -1142,25 +1187,50 @@ let create2_multiplexer_endpoint mplex =
 ;;
 
 
-let mplex_of_fd ~close_inactive_descr prot fd esys =
+let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
   let preclose() =
     Netlog.Debug.release_fd fd in
   match prot with
     | Tcp ->
         Rpc_transport.stream_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys
+          ~close_inactive_descr ~preclose ~role:`Server ?tls fd esys
     | Udp ->
+        if tls <> None then (* a little ad... *)
+          failwith "Rpc_server: It is not supported to use TLS with datagrams. \
+                    Generally, there is an approach to solve this (via the \
+                    DTLS protocol variant of TLS), but this has not yet been \
+                    implemented. If it happens that you have some money left \
+                    in your pockets, you may support Gerd Stolpmann to \
+                    implement this feature. Contact gerd@gerd-stolpmann.de";
         Rpc_transport.datagram_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys 
+          ~close_inactive_descr ~preclose ~role:`Server fd esys 
 ;;
 
 
 class default_socket_config : socket_config = 
 object
-  method listen_options = default_listen_options
+  method listen_options = Uq_server.default_listen_options
 
   method multiplexing ~close_inactive_descr prot fd esys =
-    let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
+    let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
+    let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
+
+    when_state
+      ~is_aborted:(fun () -> mplex # inactivate())
+      ~is_error:(fun _ -> mplex # inactivate())
+      eng;
+
+    eng
+end
+
+
+class tls_socket_config tls_config : socket_config = 
+object
+  method listen_options = Uq_server.default_listen_options
+
+  method multiplexing ~close_inactive_descr prot fd esys =
+    let tls = Some(tls_config,None) in
+    let mplex = mplex_of_fd ~close_inactive_descr ~tls prot fd esys in
     let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
 
     when_state
@@ -1173,13 +1243,14 @@ end
 
 
 let default_socket_config = new default_socket_config 
+let tls_socket_config = new tls_socket_config 
 
 
 let create2_socket_endpoint ?(close_inactive_descr=true) 
                             prot fd esys =
   disable_nagle fd;
   if close_inactive_descr then track fd;
-  let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
+  let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
   create2_multiplexer_endpoint mplex 
 ;;
 
@@ -1188,6 +1259,16 @@ let create2_socket_server ?(config = default_socket_config)
 		          ?override_listen_backlog
 		          prot conn esys =
   let srv = create2_srv prot esys in
+  let stype = 
+    if prot = Tcp then Unix.SOCK_STREAM else Unix.SOCK_DGRAM in
+  let backlog =
+    match override_listen_backlog with
+      | Some n -> n
+      | None -> config#listen_options.lstn_backlog in
+  let opts =
+    { config#listen_options with
+      lstn_backlog = backlog
+    } in
 
   let create_multiplexer_eng ?(close_inactive_descr = true) fd prot =
     disable_nagle fd;
@@ -1221,102 +1302,62 @@ let create2_socket_server ?(config = default_socket_config)
 				accept_connections acc
 			     )
 		    ~is_error:(fun exn ->
-				 srv.exception_handler exn
+				 srv.exception_handler exn ""
 			      )
 		    mplex_eng
 	       )
       ~is_error:(fun exn ->
-		   srv.exception_handler exn
+		   srv.exception_handler exn ""
 		)
-      eng
-  in
+      eng in
 
-  let bind_to_internet addr port =
-    let dom = Netsys.domain_of_inet_addr addr in
+  let get_port s =
+    match Unix.getsockname s with
+      | Unix.ADDR_INET(addr,port) -> addr, port
+      | _ -> assert false in
 
-    let s =
-      Unix.socket
-	dom
-	(if prot = Tcp then Unix.SOCK_STREAM else Unix.SOCK_DGRAM)
-	0
-    in
-    try
-      Unix.setsockopt s Unix.SO_REUSEADDR 
-	(config#listen_options.lstn_reuseaddr || port <> 0);
-      Unix.setsockopt s Unix.SO_KEEPALIVE true;
-      Unix.bind
-	s
-	(Unix.ADDR_INET (addr, port));
-      s
-    with
-	any -> 
-	  Unix.close s; raise any
-  in
-
-  let bind_to_localhost port =
-    bind_to_internet (Unix.inet_addr_of_string "127.0.0.1") port
-  in
-
-  let bind_to_w32_pipe name mode =
-    let psrv = Netsys_win32.create_local_pipe_server name mode max_int in
-    let s = Netsys_win32.pipe_server_descr psrv in
-    s
-  in
-
+  let dlog_anon_port port =
+    dlogr srv
+	  (fun () ->
+	     sprintf "Using anonymous port %d" port) in
+    
   let get_descriptor() =
     let (fd, close_inactive_descr) =
       match conn with
 	| Localhost port ->
-	    let s = bind_to_localhost port in
+	    let s = 
+              Uq_server.listen_on_inet_socket
+                Unix.inet6_addr_loopback port stype opts in
 	    (s, true)
 	| Internet (addr,port) ->
-	    let s = bind_to_internet addr port in
+	    let s = 
+              Uq_server.listen_on_inet_socket
+                addr port stype opts in
+            if port = 0 then (
+	      let _, p = get_port s in
+              dlog_anon_port p;
+            );
 	    (s, true)
 	| Portmapped ->
-	    let s = bind_to_internet Unix.inet_addr_any 0 in
+            let s = 
+              Uq_server.listen_on_inet_socket
+                Unix.inet6_addr_any 0 stype opts in
 	    ( try
-		let port =
-		  match Unix.getsockname s with
-		    | Unix.ADDR_INET(_,port) -> port
-		    | _ -> assert false in
-		dlogr srv
-		  (fun () ->
-		     sprintf "Using anonymous port %d" port);
-		srv.portmapped <- Some port;
+		let addr, port = get_port s in
+                dlog_anon_port port;
+		srv.portmapped <- Some(addr,port,None,0);
 		(s, true)
 	      with
 		  any -> Unix.close s; raise any
 	    )
 	| Unix path ->
-	    ( match Sys.os_type with
-		| "Win32" ->
-		    let s =
-		      Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-		    Unix.bind s (Unix.ADDR_INET(Unix.inet_addr_loopback, 0));
-		    ( match Unix.getsockname s with
-			| Unix.ADDR_INET(_, port) ->
-			    let f = open_out path in
-			    output_string f (string_of_int port ^ "\n");
-			    close_out f
-			| _ -> ()
-		    );
-		    (s, true)
-		| _ ->
-		    let s =
-      		      Unix.socket
-			Unix.PF_UNIX
-			(if prot = Tcp then Unix.SOCK_STREAM else Unix.SOCK_DGRAM)
-			0
-		    in
-		    begin try
-		      Unix.bind s (Unix.ADDR_UNIX path);
-		      (s, true)
-		    with
-			any -> Unix.close s; raise any
-		    end
-	    )
+            let s =
+              Uq_server.listen_on_unix_socket path stype opts in
+	    (s, true)
 	| W32_pipe path ->
-	    let s = bind_to_w32_pipe path Netsys_win32.Pipe_duplex in
+            let s =
+              Uq_server.listen_on_w32_pipe
+                Netsys_win32.Pipe_duplex path opts in 
 	    (s, true)
 	| Descriptor s -> 
 	    (s, false)
@@ -1357,7 +1398,7 @@ let create2_socket_server ?(config = default_socket_config)
 		      next_incoming_message srv conn;
 		   )
 	  ~is_error:(fun exn ->
-		       srv.exception_handler exn
+		       srv.exception_handler exn ""
 		    )
 	  mplex_eng;
 	srv
@@ -1369,20 +1410,9 @@ let create2_socket_server ?(config = default_socket_config)
 	  (fun () ->
 	     sprintf "(sock=%s): Listening"
 	       (portname fd));
-	let backlog =
-	  match override_listen_backlog with
-	    | Some n -> n
-	    | None -> config#listen_options.lstn_backlog in
-	( match conn with
-	    | W32_pipe _ ->
-		let psrv = Netsys_win32.lookup_pipe_server fd in
-		Netsys_win32.pipe_listen psrv backlog
-	    | _ ->
-		Unix.listen fd backlog
-	);
 	if close_inactive_descr then track_server fd;	  
 	let acc = 
-	  new Uq_engines.direct_acceptor 
+	  new Uq_server.direct_acceptor 
 	    ~close_on_shutdown: close_inactive_descr
 	    ~preclose:(fun () -> Netlog.Debug.release_fd fd)
 	    fd esys in
@@ -1413,7 +1443,36 @@ let create2 mode esys =
 let is_dummy srv = srv.dummy
 
 
-let bind ?program_number ?version_number prog0 procs srv =
+let get_pm srv =
+  match srv.portmapped with
+    | None -> assert false
+    | Some(addr, port, pm_opt, pm_count) ->
+         ( match pm_opt with
+             | None ->
+                  let pm =
+                    Rpc_portmapper.create_local ~esys:srv.esys () in
+                  srv.portmapped <- Some(addr, port, Some pm, 1);
+                  pm
+             | Some pm ->
+                  srv.portmapped <- Some(addr, port, Some pm, pm_count+1);
+                  pm
+         )
+
+let close_pm srv =
+  match srv.portmapped with
+    | None -> assert false
+    | Some(addr, port, pm_opt, pm_count) ->
+         ( match pm_opt with
+             | None -> ()
+             | Some pm ->
+                  srv.portmapped <- Some(addr, port, 
+                                         (if pm_count=1 then None else pm_opt),
+                                         pm_count-1);
+                  if pm_count = 1 then
+                    Rpc_portmapper.shut_down pm
+         )
+
+let bind ?program_number ?version_number ?(pm_continue=false) prog0 procs srv =
   let prog = Rpc_program.update ?program_number ?version_number prog0 in
   let prog_nr = Rpc_program.program_number prog in
   let vers_nr = Rpc_program.version_number prog in
@@ -1446,35 +1505,16 @@ let bind ?program_number ?version_number prog0 procs srv =
 	  srv.service 
       ) in
 
-  let pm_mapping port =
-    { Rpc_portmapper_aux.prog = prog_nr;
-      vers = vers_nr;
-      prot = ( match srv.prot with
-                 | Tcp -> Rpc_portmapper_aux.ipproto_tcp
-                 | Udp -> Rpc_portmapper_aux.ipproto_udp
-             );
-      port = Rtypes.uint4_of_int port;
-    } in
+  let pm_error error =
+    close_pm srv;
+    (try srv.exception_handler error "" with _ -> ()) in
 
-  let pm_error pm error =
-    Rpc_client.shut_down pm;
-    (try srv.exception_handler error with _ -> ()) in
-
-  let pm_get_old_port pm f =
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_getport'async pm (pm_mapping 0)
-      (fun get_result ->
-	 try
-	   let old_port = get_result() in
-	   f (Rtypes.int_of_uint4 old_port)
-	 with
-	   | error -> pm_error pm error
-      ) in
-
-  let pm_unset_old_port pm old_port f =
+  let pm_unset pm f =
     dlogr srv
       (fun () ->
-	 sprintf "unregistering port: %d" old_port);
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset'async pm (pm_mapping old_port)
+	 sprintf "unregistering old port");
+    Rpc_portmapper.unset_rpcbind'async
+      pm prog_nr vers_nr "" "" ""
       (fun get_result ->
 	 try
 	   let success = get_result() in
@@ -1486,14 +1526,18 @@ let bind ?program_number ?version_number prog0 procs srv =
 	     failwith "Rpc_server.bind: Cannot unregister old port";
 	   f ()
 	 with
-	   | error -> pm_error pm error
+	   | error -> pm_error error
       ) in
 
-  let pm_set_new_port pm new_port f =
+  let pm_set_new_port_1 pm addr port f =
+    let netid = Rpc.netid_of_inet_addr addr srv.prot in
+    let uaddr = Rpc.create_inet_uaddr addr port in
+    let owner = string_of_int (Unix.getuid()) in
     dlogr srv
       (fun () ->
-	 sprintf "registering port: %d" new_port);
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_set'async pm (pm_mapping new_port)
+	 sprintf "registering netid=%s uaddr=%s owner=%s" netid uaddr owner);
+    Rpc_portmapper.set_rpcbind'async
+      pm prog_nr vers_nr netid uaddr owner
       (fun get_result ->
 	 try
 	   let success = get_result() in
@@ -1505,39 +1549,43 @@ let bind ?program_number ?version_number prog0 procs srv =
 	     failwith "Rpc_server.bind: Cannot register port";
 	   f ()
 	 with
-	   | error -> pm_error pm error
+	   | error -> pm_error error
       ) in
+  let pm_set_new_port pm addr port f =
+    let addrl =
+      if Netsys.is_ipv6_inet_addr addr then (
+        if addr = Unix.inet6_addr_any then
+          [ addr; Unix.inet_addr_any ]
+        else if addr = Unix.inet6_addr_loopback then
+          [ addr; Unix.inet_addr_loopback ]
+        else
+          [addr]
+      )
+      else [addr] in
+    let rec recurse l () =
+      match l with
+        | [] -> f()
+        | a :: l' -> pm_set_new_port_1 pm a port (recurse l') in
+    recurse addrl () in
 
   let pm_update_service pm () =
     update_service();
-    Rpc_client.shut_down pm in
+    Rpc_portmapper.shut_down pm in
 
   match srv.portmapped with
     | None ->
 	update_service()
 
-    | Some port ->
-	let pmap_port =
-	  Rtypes.int_of_uint4
-	    Rpc_portmapper_aux.pmap_port in
-	let pm =
-	  Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	    ~esys:srv.esys 
-	    (`Socket(Rpc.Udp, 
-		     Rpc_client.Inet("127.0.0.1", pmap_port), 
-		     Rpc_client.default_socket_config)) in
-	pm_get_old_port 
-	  pm
-	  (fun old_port ->
-	     if old_port > 0 then (
-	       pm_unset_old_port pm old_port
-		 (fun () ->
-		    pm_set_new_port pm port (pm_update_service pm)
-		 )
-	     )
-	     else
-	       pm_set_new_port pm port (pm_update_service pm)
-	  )
+    | Some(addr, port, _, _) ->
+	let pm = get_pm srv in
+        if pm_continue then
+          pm_set_new_port pm addr port (pm_update_service pm)
+        else
+	  pm_unset
+            pm
+            (fun () ->
+	       pm_set_new_port pm addr port (pm_update_service pm)
+	    )
 ;;
 
 
@@ -1565,25 +1613,16 @@ let unbind' ?(followup = fun () -> ())
     exists
   in
 
-  let pm_mapping port =
-    { Rpc_portmapper_aux.prog = prog_nr;
-      vers = vers_nr;
-      prot = ( match srv.prot with
-                 | Tcp -> Rpc_portmapper_aux.ipproto_tcp
-                 | Udp -> Rpc_portmapper_aux.ipproto_udp
-             );
-      port = Rtypes.uint4_of_int port;
-    } in
+  let pm_error error =
+    close_pm srv;
+    (try srv.exception_handler error "" with _ -> ()) in
 
-  let pm_error pm error =
-    Rpc_client.shut_down pm;
-    (try srv.exception_handler error with _ -> ()) in
-
-  let pm_unset_port pm port f =
+  let pm_unset pm f =
     dlogr srv
       (fun () ->
-	 sprintf "unregistering port: %d" port);
-    Rpc_portmapper_clnt.PMAP.V2.pmapproc_unset'async pm (pm_mapping port)
+	 sprintf "unregistering port");
+    Rpc_portmapper.unset_rpcbind'async
+      pm prog_nr vers_nr "" "" ""
       (fun get_result ->
 	 try
 	   let success = get_result() in
@@ -1592,10 +1631,10 @@ let unbind' ?(followup = fun () -> ())
 		sprintf "portmapper reports %s"
 		  (if success then "success" else "failure"));
 	   if not success then
-	     failwith "Rpc_server.unbind: Cannot unregister port";
+	     failwith "Rpc_server.bind: Cannot unregister old port";
 	   f ()
 	 with
-	   | error -> pm_error pm error
+	   | error -> pm_error error
       ) in
 
   match srv.portmapped with
@@ -1603,22 +1642,15 @@ let unbind' ?(followup = fun () -> ())
 	ignore(update_service());
 	followup()
 
-    | Some port ->
+    | Some _ ->
 	let exists = update_service() in
 
 	if exists then (
-	  let pmap_port =
-	    Rtypes.int_of_uint4
-	      Rpc_portmapper_aux.pmap_port in
-	  let pm =
-	    Rpc_portmapper_clnt.PMAP.V2.create_client2 
-	      ~esys:srv.esys 
-	      (`Socket(Rpc.Udp, 
-		       Rpc_client.Inet("127.0.0.1", pmap_port), 
-		       Rpc_client.default_socket_config)) 
-	  in
-	  pm_unset_port pm port (fun () -> Rpc_client.shut_down pm)
+	  let pm = get_pm srv in
+	  pm_unset pm (fun () -> close_pm srv; followup())
 	)
+        else
+          followup()
 ;;
 
 
@@ -1730,6 +1762,10 @@ let get_auth_method sess = sess.auth_method
 
 let get_last_proc_info srv = srv.get_last_proc()
 
+let get_tls_session_props sess = sess.tls_session_props
+
+let get_gssapi_props sess = sess.gssapi_props
+
   (*****)
 
 let reply_error a_session condition =
@@ -1777,7 +1813,7 @@ let reply a_session result_value =
   dlogr srv
     (fun () ->
        sprintf "reply xid=%Ld have_encoder=%B"
-	 (Rtypes.int64_of_uint4 a_session.client_id)
+	 (Netnumber.int64_of_uint4 a_session.client_id)
 	 (a_session.encoder <> None)
     );
   

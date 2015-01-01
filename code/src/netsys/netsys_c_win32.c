@@ -62,6 +62,42 @@ CAMLprim value netsys_fill_random (value s) {
 }
 
 
+CAMLprim value netsys_get_full_path_name(value path) {
+#ifdef _WIN32
+    TCHAR buffer[4096];
+
+    /* FIXME: dynamic allocation of result buffer */
+    if (GetFullPathName(String_val(path),
+                        4096,
+                        buffer,
+                        NULL) == 0) {
+        win32_maperr(GetLastError());
+	uerror("GetFullPathName", Nothing);
+    };
+    return caml_copy_string(buffer);
+#else
+    invalid_argument("netsys_get_full_path_name");
+#endif
+}
+
+
+CAMLprim value netsys_get_long_path_name(value path) {
+#ifdef _WIN32
+    TCHAR buffer[4096];
+
+    /* FIXME: dynamic allocation of result buffer */
+    if (GetLongPathName(String_val(path),
+                        buffer, 
+                        4096) == 0) {
+        win32_maperr(GetLastError());
+	uerror("GetLongPathName", Nothing);
+    };
+    return caml_copy_string(buffer);
+#else
+    invalid_argument("netsys_get_long_path_name");
+#endif
+}
+
 /* The implementation in Unix is problematic because the handle is
    duplicated!
 */

@@ -310,7 +310,7 @@ object(self)
 		     sprintf "Container %d: Accepting on fd %Ld"
 		       (Oo.id self)
 		       (Netsys.int64_of_file_descr fd));
-		let acc = new Uq_engines.direct_acceptor fd esys in
+		let acc = new Uq_server.direct_acceptor fd esys in
 		let e = acc # accept() in
 		Uq_engines.when_state
 		  ~is_done:(fun (fd_slave,_) ->
@@ -437,7 +437,7 @@ object(self)
 	  polling <- None;
 	  Rpc_client.set_batch_call r;
 	  Rpc_client.unbound_async_call
-	    r Netplex_ctrl_aux.program_Control'V1 "accepted" Xdr.XV_void
+	    r Netplex_ctrl_aux.program_Control'V1 "accepted" Netxdr.XV_void
 	    (fun _ ->
 	       self # process_conn fd_slave proto
 	    )
@@ -715,13 +715,13 @@ object(self)
 	      Rpc_program.signature p#program proc_name
 	    with
 	      | Not_found -> failwith "call_plugin: procedure not found" in
-	  let arg_str = Xdr.pack_xdr_value_as_string arg arg_ty [] in
+	  let arg_str = Netxdr.pack_xdr_value_as_string arg arg_ty [] in
 	  let res_str =
 	    Uq_mt.monitor_async
 	      sys_mon
 	      (Netplex_ctrl_clnt.System.V1.call_plugin'async r)
 	      ((Int64.of_int (Oo.id p)), proc_name, arg_str) in
-	  let res = Xdr.unpack_xdr_value ~fast:true res_str res_ty [] in
+	  let res = Netxdr.unpack_xdr_value ~fast:true res_str res_ty [] in
 	  res
 	    
   method private receive_admin_message msg =
@@ -900,7 +900,7 @@ object(self)
 	 sprintf "Container %d: Accepting on fd %Ld"
 	   (Oo.id self)
 	   (Netsys.int64_of_file_descr fd));
-    let acc = new Uq_engines.direct_acceptor fd esys in
+    let acc = new Uq_server.direct_acceptor fd esys in
     let e = acc # accept() in
     Uq_engines.when_state
       ~is_done:(fun (fd_slave,_) ->

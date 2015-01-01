@@ -142,49 +142,27 @@ module IntMap = Map.Make(Int)
 (* shm_descr                                                          *)
 (**********************************************************************)
 
-type shm_descr =
-    [ `POSIX of string * Unix.file_descr * bool ref
-    | `File of string * Unix.file_descr * bool ref
-    ]
-      (* (name, fd, is_open) *)
-
 type shm_type = [ `POSIX | `File ]
+
+type shm_descr =
+  { shm_type : shm_type;
+    file_name : string;
+    file_fd : Unix.file_descr;
+    posix_name : string;
+    mutable posix_fd : Unix.file_descr option;
+    mutable is_open : bool
+  }
 
 let supported_types =
   ( if Netsys.have_posix_shm() then [ `POSIX ] else [] )
   @ [ `File ]
 
-type shm_name = [ `POSIX of string | `File of string ]
+type shm_name = [ `POSIX of string * string | `File of string ]
 
 let shm_type_of_name =
   function
     | `POSIX _ -> `POSIX
     | `File _ -> `File
-
-let open_shm name flags perm =
-  match name with
-    | `File n ->
-	let fd = Unix.openfile n flags perm in
-	`File(n, fd, ref true)
-    | `POSIX n ->
-	let flags' =
-	  List.flatten
-	    (List.map
-	       (function
-		  | Unix.O_RDONLY -> [ Netsys.SHM_O_RDONLY ]
-		  | Unix.O_RDWR   -> [ Netsys.SHM_O_RDWR ]
-		  | Unix.O_CREAT  -> [ Netsys.SHM_O_CREAT ]
-		  | Unix.O_EXCL   -> [ Netsys.SHM_O_EXCL ]
-		  | Unix.O_TRUNC  -> [ Netsys.SHM_O_TRUNC ]
-		  | Unix.O_WRONLY ->
-		      invalid_arg "Netsys.open_shm: O_WRONLY not supported"
-		  | _ -> 
-		      []
-	       )
-	       flags) in
-	let fd = Netsys.shm_open n flags' perm in
-	`POSIX(n, fd, ref true)
-
 
 let rndsrc = Random.State.make_self_init()
 
@@ -201,7 +179,7 @@ let chars =
      *)
 
 
-let create_unique_shm name perm =
+let open_shm ?(unique=false) name flags perm =
   let inst_string n =
     (* Replace 'X' with random chars *)
     let n' = String.copy n in
@@ -212,73 +190,137 @@ let create_unique_shm name perm =
     n'
   in
 
-  let rec create iter =
-    if iter = 1000 then
-      failwith "Netshm.create_unique_shm: Unable to generate name for shared memory object";
-    let name' =
-      match name with
-	| `File n ->
-	    `File(inst_string n)
-	| `POSIX n ->
-	    `POSIX(inst_string n) in
+  let rec attempt f k n =
+    if k = 1000 then
+      failwith "Netshm.create_shm: Unable to generate name for \
+                shared memory object";
     try
-      open_shm name' [ Unix.O_RDWR; Unix.O_CREAT; Unix.O_EXCL ] perm
+      let name =
+        if unique then inst_string n else n in
+      (f name, name)
     with
-      | Unix.Unix_error(Unix.EEXIST,_,_) ->
-	  create (iter+1)
-  in
+      | Unix.Unix_error(Unix.EEXIST,_,_) when unique ->
+	  attempt f (k+1) n in
 
-  create 0
+  match name with
+    | `File nm ->
+	let fd, name = 
+          attempt (fun n -> Unix.openfile n flags perm) 1 nm in
+        { shm_type = `File;
+          file_name = name;
+          file_fd = fd;
+          posix_name = "";
+          posix_fd = None;
+          is_open = true
+        }
+    | `POSIX(file_n,mem_n) ->
+	let fd, name = 
+          attempt (fun n -> Unix.openfile n flags perm) 1 file_n in
+	let mem_flags =
+	  List.flatten
+	    (List.map
+	       (function
+		  | Unix.O_RDONLY -> [ Netsys.SHM_O_RDONLY ]
+		  | Unix.O_RDWR   -> [ Netsys.SHM_O_RDWR ]
+		  | Unix.O_CREAT  -> [ Netsys.SHM_O_CREAT ]
+		  | Unix.O_EXCL   -> [ Netsys.SHM_O_EXCL ]
+		  | Unix.O_TRUNC  -> [ Netsys.SHM_O_TRUNC ]
+		  | Unix.O_WRONLY ->
+		      invalid_arg "Netsys.open_shm: O_WRONLY not supported"
+		  | _ -> 
+		      []
+	       )
+	       flags) in
+	let mem_fd, mem_name = 
+          attempt (fun n -> Netsys.shm_open n mem_flags perm) 1 mem_n in
+        let n64_1 =
+          (Unix.LargeFile.fstat fd).Unix.LargeFile.st_size in
+        let n64_2 =
+          (Unix.LargeFile.fstat mem_fd).Unix.LargeFile.st_size in
+        if n64_1 = 0L && n64_2 = 0L then (
+          let ch = Unix.out_channel_of_descr fd in
+          fprintf ch "R POSIX_SHM %S\n%!" mem_name;
+        );
+        { shm_type = `POSIX;
+          file_name = name;
+          file_fd = fd;
+          posix_name = mem_name;
+          posix_fd = Some mem_fd;
+          is_open = true
+        }
 
 
-let name_of_shm =
-  function
-    | `File(n,_,_) -> `File n
-    | `POSIX(n,_,_) -> `POSIX n
+let create_unique_shm name perm =
+  open_shm ~unique:true name [ Unix.O_RDWR; Unix.O_CREAT; Unix.O_EXCL ] perm
 
 
-let close_shm =
-  function
-    | `File(_,fd,is_open) -> if !is_open then Unix.close fd; is_open := false
-    | `POSIX(_,fd,is_open) -> if !is_open then Unix.close fd; is_open := false
+let name_of_shm shm =
+  match shm.shm_type with
+    | `File -> `File shm.file_name
+    | `POSIX -> `POSIX(shm.file_name,shm.posix_name)
+
+
+let close_shm shm =
+  ( match shm.posix_fd with
+      | Some fd -> Unix.close fd; shm.posix_fd <- None
+      | None -> ()
+  );
+  if shm.is_open then (
+    Unix.close shm.file_fd;
+    shm.is_open <- false
+  )
 
 
 let unlink_shm =
   function
-    | `File n -> Unix.unlink n
-    | `POSIX n -> Netsys.shm_unlink n
+  | `File name ->
+       Unix.unlink name
+  | `POSIX(f_name,m_name) ->
+       Netsys.shm_unlink m_name;
+       Unix.unlink f_name
 
 
-
-let chmod_shm_fd fd is_open perm =
-  if not !is_open then
-    failwith "Netshm.chmod_shm: descriptor is not open";
+let chmod_shm_fd fd perm =
   ( try Unix.fchmod fd perm
     with Unix.Unix_error(Unix.EINVAL,_,_) -> ()
       (* OSX seems to throw EINVAL here *)
   )
 
-let chmod_shm =
-  function
-    | `File(_,fd,is_open) -> chmod_shm_fd fd is_open
-    | `POSIX(_,fd,is_open) -> chmod_shm_fd fd is_open
+let chmod_shm shm perm =
+  if not shm.is_open then
+    failwith "Netshm.chmod_shm: descriptor is not open";
+  chmod_shm_fd shm.file_fd perm;
+  ( match shm.posix_fd with
+      | None -> ()
+      | Some fd -> chmod_shm_fd fd perm
+  )
 
 
-let chown_shm_fd fd is_open uid gid =
-  if not !is_open then
-    failwith "Netshm.chown_shm: descriptor is not open";
+let chown_shm_fd fd uid gid =
   Unix.fchown fd uid gid
 
 
-let chown_shm =
-  function
-    | `File(_,fd,is_open) -> chown_shm_fd fd is_open
-    | `POSIX(_,fd,is_open) -> chown_shm_fd fd is_open
+let chown_shm shm uid gid =
+  if not shm.is_open then
+    failwith "Netshm.chown_shm: descriptor is not open";
+  chown_shm_fd shm.file_fd uid gid;
+  ( match shm.posix_fd with
+      | None -> ()
+      | Some fd -> chown_shm_fd fd uid gid
+  )
 
 
-let size_of_shm_fd fd is_open =
-  if not !is_open then
+let mem_fd shm =
+  assert(shm.is_open);
+  match shm.posix_fd with
+    | None -> shm.file_fd
+    | Some fd -> fd
+
+
+let size_of_shm shm =
+  if not shm.is_open then
     failwith "Netshm.size_of_shm: descriptor is not open";
+  let fd = mem_fd shm in
   let n64 =
     (Unix.LargeFile.fstat fd).Unix.LargeFile.st_size in
   if n64 > Int64.of_int max_int then
@@ -286,32 +328,21 @@ let size_of_shm_fd fd is_open =
   Int64.to_int n64
 
 
-let size_of_shm =
-  function
-    | `File(_,fd,is_open) -> size_of_shm_fd fd is_open
-    | `POSIX(_,fd,is_open) -> size_of_shm_fd fd is_open
-
-
-let resize_shm_fd fd is_open n =
-  if not !is_open then
+let resize_shm shm n =
+  if not shm.is_open then
     failwith "Netshm.resize_shm: descriptor is not open";
+  let fd = mem_fd shm in
   Unix.LargeFile.ftruncate fd (Int64.of_int n)
-
-
-let resize_shm =
-  function
-    | `File(_,fd,is_open) -> resize_shm_fd fd is_open
-    | `POSIX(_,fd,is_open) -> resize_shm_fd fd is_open
 
 
 let map_int32matrix_fd fd is_open rows cols =
   Bigarray.Array2.map_file
     fd Bigarray.int32 Bigarray.c_layout true rows cols
 
-let map_int32matrix =
-  function
-    | `File(_,fd,is_open) -> map_int32matrix_fd fd is_open
-    | `POSIX(_,fd,is_open) -> map_int32matrix_fd fd is_open
+let map_int32matrix shm rows cols =
+  let fd = mem_fd shm in
+  Bigarray.Array2.map_file
+    fd Bigarray.int32 Bigarray.c_layout true rows cols
 
 let dummy_int32matrix() =
   Bigarray.Array2.create Bigarray.int32 Bigarray.c_layout 0 0
@@ -344,12 +375,9 @@ type record_locking_descr =
 
 
 let rec rl_do_lock rld page lt =
-  let fd, is_open =
-    match rld.rld_sd with
-      | `POSIX(_,fd,is_open) -> fd, is_open
-      | `File(_,fd,is_open) -> fd, is_open in
-  if not !is_open then
+  if not rld.rld_sd.is_open then
     failwith "Netshm: Shared memory object is not open";
+  let fd = rld.rld_sd.file_fd in
   try
     ignore(Unix.lseek fd (page * rld.rld_pagesize) Unix.SEEK_SET);
     Unix.lockf fd (if lt = Read then Unix.F_RLOCK else Unix.F_LOCK) 1;
@@ -378,12 +406,9 @@ let rl_lock rld page lt =
 
 let rl_unlock rld page =
   (* releases the last (most recent) lock requirement for [page] *)
-  let fd, is_open =
-    match rld.rld_sd with
-      | `POSIX(_,fd,is_open) -> fd, is_open
-      | `File(_,fd,is_open) -> fd, is_open in
-  if not !is_open then
+  if not rld.rld_sd.is_open then
     failwith "Netshm: Shared memory object is not open";
+  let fd = rld.rld_sd.file_fd in
   try
     let lt_list = IntMap.find page rld.rld_table in
     ( match !lt_list with

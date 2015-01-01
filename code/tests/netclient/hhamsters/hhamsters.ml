@@ -1,4 +1,4 @@
-open Http_client
+open Nethttp_client
 
 (* Number of iterations required to trigger bug. *)
 let max_count = 4
@@ -23,6 +23,7 @@ let rec main esys pipe count url =
   )
 
 let () =
+  let () = Nettls_gnutls.init() in
   let esys  = Unixqueue.create_unix_event_system () in
   let pipe  = new pipeline in
   pipe # set_event_system esys;
@@ -30,11 +31,6 @@ let () =
   (* Commenting-out these lines fixes the symptom... *)
   let cache = create_aggressive_cache () in
   pipe # set_connection_cache cache;
-
-  (* twitter redirects to https now, but this client does not support it *)
-  let opts = pipe # get_options in
-  let opts' = { opts with maximum_redirections = 0 } in
-  pipe # set_options opts';
 
   (* twitter: sends immediately a close-connection, so no persistency *)
   main esys pipe 0 "http://twitter.com/hhamsters";

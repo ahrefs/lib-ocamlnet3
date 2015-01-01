@@ -147,7 +147,7 @@ object
   method input_content_length : int
   method input_content_type_string : string
   method input_content_type :
-    unit -> string * (string * Mimestring.s_param) list
+    unit -> string * (string * Netmime_string.s_param) list
 
   method output_header : Netmime.mime_header
   method output_header_field : ?default:string -> string -> string

@@ -47,24 +47,20 @@ The module {!Netshm} defines the possible global names:
 
 {[ 
 type shm_name =
-  [ `POSIX of string
+  [ `POSIX of string * string
   | `File of string
   ]
 ]}
 
 For POSIX shared memory you must take a [`POSIX] global name, for
-file-backed memory a [`File] name. A [`POSIX] global name has 
-a string as argument that looks like a strange file name. It must
-begin with a slash, followed by the name that must not contain 
-further slashes, e.g. [`POSIX "/sample"].
-
-Actually, the OS transforms this name to a real filename in a
-system-dependent way. For example, Linux would map [`POSIX "/sample"]
-to the real file [/dev/shm/sample]. There is, however, no way to
-find something out about this transformation from a portable
-program.
-
-The [`File] names are real file names.
+file-backed memory a [`File] name. A [`POSIX] global name has two
+strings as arguments: [(file_name,mem_name)]. The [file_name] points
+to a normal file, usually located in the [/tmp] hierarchy.  This file
+is only used for management and locking purposes.  The [mem_name] is
+the actual POSIX memory object. This name looks like a file name, but
+actually lives in a different name space.  It must begin with a slash,
+followed by the name that must not contain further slashes. An
+exampe: [`POSIX("/tmp/sample", "/sample")].
 
 
 {2 Opening shared memory objects}
@@ -74,7 +70,8 @@ There is the function {!Netshm.open_shm} that works much like
 
 {[
 let sd = 
-  Netshm.open_shm (`POSIX "/sample") [Unix.O_CREAT; Unix.O_RDWR] 0o666
+  Netshm.open_shm
+    (`POSIX("/tmp/sample","/sample")) [Unix.O_CREAT; Unix.O_RDWR] 0o666
 ]}
 
 opens [/sample] for read-write access, and if the object does not
@@ -90,7 +87,8 @@ For example:
 
 {[
 let sd =
-  Netshm.create_unique_shm (`POSIX "/myprogram.XXXXX") 0o666
+  Netshm.create_unique_shm
+     (`POSIX("/tmp/myprogram.XXXXX","/myprogram.XXXXX")) 0o666
 ]}
 
 The actual name is returned by {!Netshm.name_of_shm}.
@@ -155,7 +153,7 @@ it is necessary to [manage] it:
 
 {[ 
   let sd = 
-    Netshm.open_shm (`POSIX "/sample") [Unix.O_RDWR] 0 in
+    Netshm.open_shm (`POSIX("/tmp/sample", "/sample")) [Unix.O_RDWR] 0 in
   let tab =
     Netshm_hashtbl.manage
       Netshm_data.string_manager
@@ -291,6 +289,28 @@ written, and the second trial to write a value triggers the exception.
 Well, written is written, and there is no mechanism to "undo"
 the chaos. Best strategy: avoid such cycles, or use another way
 to store values in a shared storage (e.g. database system).
+
+
+{2 Persistency of shared memory}
+
+Note that POSIX shared memory is not automatically released when the
+process terminates. Instead, such memory objects persist until
+explicitly deleted (just like files). {b If you forget to delete such objects,
+RAM will be consumed until the system is rebooted!}
+
+There is a helper data structure in {!Netsys_pmanage} helping to find
+and delete memory: If you have an object
+[`POSIX(tmp_name, mem_name)], the file [tmp_name] contains a line
+pointing to [mem_name], e.g.
+
+{[ R POSIX_SHM "/my_object" ]}
+
+You can use {!Netsys_pmanage} to read this line and to unlink the object:
+
+{[
+let m = Netsys_pmanage.pmanage tmp_name in
+m # unlink()
+]}
 
 
 {2 Applications}

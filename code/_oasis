@@ -1,0 +1,164 @@
+OASISFormat:  0.4
+Name:         ocamlnet
+Version:      4.0
+Synopsis:     Internet protocols and helper data structures
+Authors:      Gerd Stolpmann et al.
+ConfType:     custom (0.4)
+BuildType:    custom (0.4)
+InstallType:  custom (0.4)
+BuildTools:   make
+License:      http://download.camlcity.org/download/licenses/ocamlnet
+OCamlVersion: >= 4.00.0
+Homepage:     http://projects.camlcity.org/projects/ocamlnet
+
+XCustomConf: ./configure
+PostConfCommand: make -s postconf
+XCustomBuild: make build
+XCustomInstall: make install
+XCustomUninstall: make uninstall
+
+Flag "gtk2"
+  Description: Support for gtk2 event loops
+  Default: false
+
+Flag "tcl"
+  Description: Support for Tcl/Tk event loops
+  Default: false
+
+Flag "zlib"
+  Description: Support for compression
+  Default: false
+
+Flag "apache"
+  Description: Build the Apache module
+  Default: false
+
+Flag "gnutls"
+  Description: Enable TLS
+  Default: false
+
+Flag "gssapi"
+  Description: Enable GSSAPI
+  Default: false
+
+Flag "pcre"
+  Description: Build netstring-pcre library
+  Default: false
+
+Flag "full_pcre"
+  Description: Use pcre for all regular expressions
+  Default: false
+
+Flag "nethttpd"
+  Description: Build the webserver nethttpd
+  Default: false
+
+Library "equeue"
+  Path: src/equeue
+
+Library "equeue-gtk2"
+  Path: src/equeue-gtk2
+  BuildDepends: lablgtk2
+  Build: false
+  if flag(gtk2)
+    Build: true
+
+Library "equeue-tcl"
+  Path: src/equeue-tcl
+  Build: false
+  if flag(tcl)
+    Build: true
+
+Library "netcamlbox"
+  Path: src/netcamlbox
+
+Library "netcgi2"
+  Path: src/netcgi2
+
+Library "netcgi2-plex"
+  Path: src/netcgi2-plex
+
+Library "netcgi2-apache"
+  Path: src/netcgi2-apache
+  Build: false
+  if flag(apache)
+    Build: true
+
+Library "netclient"
+  Path: src/netclient
+
+Library "netgss-system"
+  Path: src/netgss-system
+  Build: false
+  if flag(gssapi)
+    Build: true
+
+Library "nethttpd"
+  Path: src/nethttpd
+  Build: false
+  if flag(nethttpd)
+    Build: true
+
+Library "netmulticore"
+  Path: src/netmulticore
+
+Library "netplex"
+  Path: src/netplex
+
+Library "netshm"
+  Path: src/netshm
+
+Library "netstring"
+  Path: src/netstring
+
+Library "netstring-pcre"
+  Path: src/netstring-pcre
+  BuildDepends: pcre
+  Build: false
+  if flag(pcre) || flag(full_pcre)
+    Build: true
+
+Library "netsys"
+  Path: src/netsys
+
+Library "nettls-gnutls"
+  Path: src/netsys-gnutls
+  Build: false
+  if flag(gnutls)
+    Build: true
+
+Library "netunidata"
+  Path: src/netunidata
+
+Library "netzip"
+  Path: src/netzip
+  BuildDepends: zip
+  Build: false
+  if flag(zlib)
+    Build: true
+
+Library "rpc"
+  Path: src/rpc
+
+Library "rpc-auth-local"
+  Path: src/rpc-auth-local
+
+Library "rpc-generator"
+  Path: src/rpc-generator
+
+Library "rpc-xti"
+  Path: src/rpc-xti
+  Build: false
+  if system(sunos) || system(solaris)
+    Build: true
+
+Library "shell"
+  Path: src/shell
+
+Executable "ocamlrpcgen"
+  Path: src/rpc-generator
+  MainIs: main.ml
+
+Executable "netplex-admin"
+  Path: src/netplex
+  MainIs: netplex_admin.ml

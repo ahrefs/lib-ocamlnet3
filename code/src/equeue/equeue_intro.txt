@@ -1521,7 +1521,7 @@ events are not associated to any group. Every event handler will get them.
 There are some situations where the program may still block, if it is
 not programmed very carefully.
 
-- Despite the [open] system call, the
+- Besides the [open] system call, the
   [connect] system call may also block. To avoid blocking, you
   must first set the socket to non-blocking mode. E.g.
   {[

@@ -2,6 +2,7 @@
 
 open Netplex_types
 open Genlex
+open Printf
 
 exception Config_error of string
 
@@ -19,6 +20,13 @@ let is_win32 =
   match Sys.os_type with
     | "Win32" -> true
     | _ -> false;;
+
+
+let mk_absolute dir path =
+  if Netsys.is_absolute path then
+    path
+  else
+    Filename.concat dir path
 
 
 let parse_config_file filename =
@@ -164,8 +172,10 @@ let rec iter_config_tree f prefix cnt (tree : ext_config_tree) =
 ;;	
 
 
-class repr_config_file filename simple_tree : Netplex_types.config_file =
+class repr_config_file filename0 simple_tree : Netplex_types.config_file =
   let tree = ext_config_tree simple_tree in
+  let filename =
+    mk_absolute (Unix.getcwd()) filename0 in
 object(self)
   val addresses = Hashtbl.create 100
 
@@ -376,13 +386,6 @@ let inet6_binding =
 let host_binding =
   Netstring_str.regexp "^\\(.*\\):\\([0-9]+\\)$" ;;
 
-let mk_absolute dir path =
-  if Netsys.is_absolute path then
-    path
-  else
-    Filename.concat dir path
-
-
 let extract_address socket_dir service_name proto_name cf addraddr =
   let typ =
     try
@@ -524,6 +527,30 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
   let ctrl_cfg = Netplex_controller.extract_config c_logger_cfg cf in
   let socket_dir = ctrl_cfg # socket_directory in
 
+  let parse_owner prefix s =
+    try
+      let p = 
+        try String.index s ':'
+        with Not_found -> failwith "missing ':'" in
+      let u_str = String.sub s 0 p in
+      let g_str = String.sub s (p+1) (String.length s - p - 1) in
+      let u =
+        try int_of_string u_str
+        with Failure _ ->
+          try (Unix.getpwnam u_str).Unix.pw_uid
+          with Not_found ->
+            failwith ("unknown user: " ^ u_str) in
+      let g =
+        try int_of_string g_str
+        with Failure _ ->
+          try (Unix.getgrnam g_str).Unix.gr_gid
+          with Not_found ->
+            failwith ("unknown group: " ^ g_str) in
+      (u,g)
+    with
+      | Failure msg ->
+           failwith (prefix ^ msg) in
+
   let services =
     List.map
       (fun addr ->
@@ -561,7 +588,7 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		   with Not_found ->
 		     failwith ("Unknown user: " ^ cf#print addr ^ ".user") in
 		 let group_ent =
-		   try Unix.getgrnam user
+		   try Unix.getgrnam group
 		   with Not_found ->
 		     failwith ("Unknown group: " ^ cf#print addr ^ ".group") in
 		 Some(user_ent.Unix.pw_uid, group_ent.Unix.gr_gid)
@@ -607,7 +634,9 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 						    "lstn_backlog";
 						    "lstn_reuseaddr";
 						    "so_keepalive";
-						    "tcp_nodelay"
+						    "tcp_nodelay";
+                                                    "local_chmod";
+                                                    "local_chown";
 						  ];
 
 		let prot_name =
@@ -636,6 +665,25 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		    cf # bool_param (cf # resolve_parameter protaddr "tcp_nodelay") 
 		  with
 		    | Not_found -> false in
+                let local_chmod =
+                  try
+                    Some(cf # int_param (cf # resolve_parameter protaddr "local_chmod"))
+                  with
+                    | Not_found -> None
+                    | Config_error _ ->
+                         (* so that octal numbers work *)
+                         Some(int_of_string
+                                (cf # string_param
+                                   (cf # resolve_parameter protaddr "local_chmod"))) in
+                let local_chown =
+                  try
+                    Some(parse_owner
+                           (cf#print protaddr ^ ".local_chown: ")
+                           (cf # string_param
+                              (cf # resolve_parameter protaddr "local_chown")))
+                  with
+                    | Not_found -> None in
+
 		let addresses =
 		  List.flatten
 		    (List.map
@@ -649,6 +697,8 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		    method lstn_reuseaddr = lstn_reuseaddr
 		    method so_keepalive = so_keepalive
 		    method tcp_nodelay = tcp_nodelay
+                    method local_chmod = local_chmod
+                    method local_chown = local_chown
 		    method configure_slave_socket _ = ()
 		  end
 		)
@@ -746,5 +796,139 @@ let read_netplex_config ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
   with
     | Failure msg ->
 	raise (Config_error(cf#filename ^ ": " ^ msg))
-;;
 
+
+let read_pem (cf:config_file) pname addr =
+  let basedir = Filename.dirname cf#filename in
+  try
+    `PEM_file(mk_absolute
+                basedir
+                (cf # string_param (cf # resolve_parameter addr pname)))
+  with
+    | Not_found ->
+         failwith ("Bad section: " ^ cf # print addr)
+
+
+let read_key (cf:config_file) addr =
+  let basedir = Filename.dirname cf#filename in
+  let cert =
+    read_pem cf "crt_file" addr in
+  let key =
+    read_pem cf "key_file" addr in
+  let pw_opt =
+    try
+      Some(cf # string_param (cf # resolve_parameter addr "password"))
+    with
+      | Not_found ->
+           try
+             let name = cf # string_param 
+                               (cf # resolve_parameter addr "password_file") in
+             let name = mk_absolute basedir name in
+             let ch = open_in name in
+             let pw = try input_line ch with End_of_file -> "" in
+             close_in ch;
+             Some pw
+           with
+             | Not_found ->
+                  None in
+  (cert, key, pw_opt)
+
+
+let read_x509_config (cf:config_file) a_x509 =
+  let trust =
+    List.map
+      (read_pem cf "crt_file")
+      (cf # resolve_section a_x509 "trust") in
+  let revoke =
+    List.map
+      (read_pem cf "crl_file")
+      (cf # resolve_section a_x509 "revoke") in
+  let keys =
+    List.map
+      (read_key cf)
+      (cf # resolve_section a_x509 "key") in
+  (trust, revoke, keys)
+
+
+let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
+  let basedir = Filename.dirname cf#filename in
+  match cf#resolve_section addr "tls" with
+    | [] ->
+         None
+    | [a_tls] ->
+         ( match tls_opt with
+             | None ->
+                  failwith ("No TLS provider available, but config section " ^ 
+                              cf # print addr ^ " exists")
+             | Some tls ->
+                  let algorithms =
+                    try Some(cf # string_param
+                                    (cf # resolve_parameter a_tls "algorithms"))
+                    with Not_found -> None in
+                  let dh_params =
+                    match cf#resolve_section a_tls "dh_params" with
+                      | [] -> None
+                      | [a_dh] ->
+                           ( try
+                               Some(`PKCS3_PEM_file
+                                     (mk_absolute basedir
+                                        (cf # string_param
+                                           (cf # resolve_parameter
+                                                a_dh "pkcs3_file"))))
+                             with
+                               | Not_found ->
+                                    try
+                                      Some(`Generate
+                                            (cf # int_param
+                                              (cf # resolve_parameter 
+                                                      a_dh "bits")))
+                                    with
+                                      | Not_found ->
+                                           failwith("Bad section: " ^ 
+                                                      cf # print a_dh)
+                           )
+                      | _ ->
+                           failwith ("Several sections: " ^ 
+                                       cf#print a_tls ^ ".dh_params") in
+(*
+                  let peer_name =
+                    try Some(cf # string_param
+                                    (cf # resolve_parameter a_tls "peer_name"))
+                    with Not_found -> None in
+ *)
+                  let peer_auth =
+                    try
+                      match cf # string_param
+                                   (cf # resolve_parameter a_tls "peer_auth")
+                      with
+                        | "none" -> `None
+                        | "optional" -> `Optional
+                        | "required" -> `Required
+                        | s ->
+                             failwith ("Bad parameter: " ^ cf # print a_tls ^ 
+                                         ".peer_auth")
+                    with Not_found -> `None in
+                  ( match cf # resolve_section a_tls "x509" with
+                      | [] ->
+                           failwith ("Missing section: " ^ cf # print a_tls ^
+                                       ".x509")
+                      | [a_x509] ->
+                           let (trust, revoke, keys) =
+                             read_x509_config cf a_x509 in
+                           Some(Netsys_tls.create_x509_config
+                                  ?algorithms
+                                  ?dh_params
+                                  ?verify
+                                  ?peer_name_unchecked
+                                  ~trust
+                                  ~revoke
+                                  ~keys
+                                  ~peer_auth
+                                  tls)
+                      | _ ->
+                           failwith ("Several sections: " ^ cf#print a_tls ^ 
+                                       ".x509")
+                  )
+         )
+    | _ ->
+         failwith ("Several sections: " ^ cf#print addr ^ ".tls")

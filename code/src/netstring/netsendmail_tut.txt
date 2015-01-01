@@ -54,14 +54,14 @@ compose
   ~out_charset:`Enc_iso885915
   ~from_addr:("Heinz Dräger", "heinz\@draeger.de") 
   ~to_addr:("Marion Schröder", "marion\@irgendwo.de")
-  ~content_type:("text/html", ["charset", Mimestring.mk_param "ISO-8859-1"])
+  ~content_type:("text/html", ["charset", Netmime_string.mk_param "ISO-8859-1"])
   ~subject:"Geschäftlich"
   "<html><body>Verkaufe Teddy-Bären für 100&euro;</body></html>"
 ]}
 Here, the header fields are encoded in ISO-8859-15, but the main
 text uses ISO-8859-1.
 
-The function {!Mimestring.mk_param} encapsulates parameter values for
+The function {!Netmime_string.mk_param} encapsulates parameter values for
 several kinds of structured values that may occur in mail headers,
 here for [Content-type]. This function takes care of the appropriate
 representation of the parameter value (e.g. for parameters like "title"
@@ -102,7 +102,7 @@ compose
                 wrap_attachment
                   ~content_type:("image/gif", [])
                   ~content_disposition:("attachment", ["filename",
-                                                       Mimestring.mk_param "foo.gif"])
+                                                       Netmime_string.mk_param "foo.gif"])
                   (new Netmime.file_mime_body "foo.gif") ]
   ...
 ]}
@@ -182,7 +182,7 @@ wrap_mail
    ~from_addr ~to_addrs ~subject
    (wrap_parts
       ~content_type:("multipart/related",
-                     [ "type", Mimestring.mk_param "text/html" ])
+                     [ "type", Netmime_string.mk_param "text/html" ])
       [ wrap_attachment
           ~content_type:("text/html", [])
           (new Netmime.memory_mime_body s_html);

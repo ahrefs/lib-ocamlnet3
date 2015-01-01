@@ -3,6 +3,9 @@
  * to load a file in a "funny" way.
  *)
 
+#use "topfind";;
+#require "equeue";;
+
 open Uq_engines;;
 
 class funny_async_buffer b ues =
@@ -80,9 +83,11 @@ let main() =
   let b = Buffer.create 10000 in
   let src = Unix.openfile filename [Unix.O_RDONLY] 0 in
   let dst = new funny_async_buffer b ues in
-  let recv = new receiver ~src ~dst ues in
+  let _recv = new Uq_transfer.receiver ~src ~dst ues in
 
   prerr_endline "Starting event system...";
   Unixqueue.run ues;
   prerr_endline "Returning from event system!"
 ;;
+
+main()

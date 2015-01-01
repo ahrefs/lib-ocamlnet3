@@ -207,5 +207,6 @@ let start() =
     cmdline_cfg
 ;;
 
+Printexc.record_backtrace true;
 Netsys_signal.init();
 start();;

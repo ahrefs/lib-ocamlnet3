@@ -20,8 +20,8 @@
  * (a set of definitions of type names).
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 
 type t
   (** Type of RPC programs *)

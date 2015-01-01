@@ -42,6 +42,7 @@ type fatal_error =
     | `Message_too_long
     | `Timeout
     | `Unix_error of Unix.error
+    | `TLS_error of string * string
     | `Server_error
     ]
     (** These are the serious protocol violations after that the daemon stops
@@ -58,6 +59,9 @@ type fatal_error =
       * Fatal server errors can happen when exceptions are not properly handled.
       * As last resort the HTTP daemon closes the connection without notifying
       * the client.
+      *
+      * [`TLS_error] means any error on the TLS level. The two strings identify
+      * the problem as for {!Netsys_tls.Error}.
      *)
 
 val string_of_fatal_error : fatal_error -> string
@@ -394,6 +398,9 @@ object
       * [`Broken_pipe_ignore] is reported.
      *)
 
+  method config_tls : Netsys_crypto_types.tls_config option
+    (** If set, the server enables TLS with the arugment config *)
+
 end
 
 
@@ -406,6 +413,7 @@ val default_http_protocol_config : http_protocol_config
       - [config_limit_pipeline_size = 65536]
       - [config_announce_server = `Ocamlnet]
       - [config_suppress_broken_pipe = false]
+      - [config_tls = None]
    *)
 
 class modify_http_protocol_config : 
@@ -416,10 +424,22 @@ class modify_http_protocol_config :
         ?config_limit_pipeline_size:int ->
         ?config_announce_server:announcement ->
         ?config_suppress_broken_pipe:bool ->
+        ?config_tls:Netsys_crypto_types.tls_config option ->
         http_protocol_config -> http_protocol_config 
   (** Modifies the passed config object as specified by the optional
       arguments
    *)
+
+(** Allows it to set hooks for {!Nethttpd_kernel.http_protocol} *)
+class type http_protocol_hooks =
+object
+  method tls_set_cache : store:(string -> string -> unit) ->
+                         remove:(string -> unit) ->
+                         retrieve:(string -> string) ->
+                            unit
+    (** Sets the functions for accessing the session cache *)
+end
+
 
 (** The core event loop of the HTTP daemon *)
 class http_protocol : #http_protocol_config -> Unix.file_descr ->
@@ -499,6 +519,9 @@ object
     * 400 error response.
    *)
 
+  method hooks : http_protocol_hooks
+    (** Set hooks *)
+
   method cycle : ?block:float -> unit -> unit
     (** Looks at the file descriptor. If there is data to read from the descriptor,
       * and there is free space in the input buffer, additional data is read into
@@ -561,6 +584,8 @@ object
 
   method shutdown : unit -> unit
     (** Shuts the socket down. Note: the descriptor is not closed.
+
+        TLS: You need to further [cycle] until XXX.
      *)
 
   method timeout : unit -> unit
@@ -584,12 +609,22 @@ object
   method do_output : bool
     (** Returns [true] iff the protocol engine has data to output to the socket *)
 
+  method resp_queue_filled : bool
+    (** Whether there is data to send in the internal output queue. If
+        TLS is enabled, this is not always the same as [do_output].
+     *)
+
   method need_linger : bool
     (** Returns [true] when a lingering close operation is needed to reliably shut
       * down the socket. In many cases, this expensive operation is not necessary.
       * See the class [lingering_close] below.
      *)
 
+  method tls_session_props : Nettls_support.tls_session_props option
+    (** If TLS is enabled, this returns the session properties. These
+        are first available after the TLS handshake.
+     *)
+   
   method config : http_protocol_config
     (** Just returns the configuration *)
 

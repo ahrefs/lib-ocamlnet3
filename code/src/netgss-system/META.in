@@ -1,0 +1,5 @@
+description = "Ocamlnet - GSSAPI bindings"
+requires = "unix,bigarray,netsys,netstring"
+version = "@VERSION@"
+archive(byte) = "netgss-system.cma"
+archive(native) = "netgss-system.cmxa"

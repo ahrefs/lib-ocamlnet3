@@ -14,9 +14,12 @@ TOP_DIR=.
 # default value if no Makefile.conf exists.
 PKGLIST ?= netstring cgi
 
+.PHONY: build
+build: all
+	if ocamlopt 2>/dev/null; then $(MAKE) opt; fi
+
 .PHONY: all
-all:
-	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) all )
+all: tools
 	for pkg in $(PKGLIST); do \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
@@ -24,8 +27,7 @@ all:
 	done
 
 .PHONY: opt
-opt:
-	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) opt )
+opt: tools
 	for pkg in $(PKGLIST); do \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		( cd src/$$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
@@ -43,6 +45,11 @@ doc:
 		}; \
 	done
 	cd doc; $(MAKE) doc
+
+.PHONY: tools
+tools:
+	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) all )
+	( cd tools/unimap_to_ocaml && $(MAKE) all )
 
 
 # The following PHONY rule is important for Cygwin:
@@ -67,6 +74,7 @@ clean:
 	done
 	if test -f doc/Makefile; then cd doc && $(MAKE) clean; fi
 	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) clean )
+	( cd tools/unimap_to_ocaml && $(MAKE) clean )
 
 .PHONY: clean-doc
 clean-doc:
@@ -87,3 +95,11 @@ distclean:
 		test ! -f $$pkg/Makefile || \
 			( cd $$pkg && $(MAKE) -f Makefile.pre distclean); \
 	done
+
+# That one is for oasis
+
+.PHONY: postconf
+postconf:
+	echo 'pkg_version="$(VERSION)"' >>setup.data
+	echo 'bindir="$(BINDIR)"' >>setup.data
+	echo 'datadir="$(NET_DB_DIR)"' >>setup.data

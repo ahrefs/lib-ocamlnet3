@@ -49,12 +49,31 @@ class nethttpd_processor ?(hooks = new Netplex_kit.empty_processor_hooks())
 object(self)
   inherit Netplex_kit.processor_hooks_delegation hooks
 
+  method post_add_hook _ ctrl =
+    ctrl # add_plugin Netplex_sharedvar.plugin
+
   method process ~when_done (container : Netplex_types.container) fd proto =
     let config = mk_config container in
+    let config_hooks hooks =
+      let store key value =
+        let name = "nethttpd.tls_cache." ^ Netencoding.to_hex key in
+        let _ex = Netplex_sharedvar.create_var ~own:true ~timeout:300.0 name in
+        ignore(Netplex_sharedvar.set_value name value) in
+      let remove key =
+        let name = "nethttpd.tls_cache." ^ Netencoding.to_hex key in
+        ignore(Netplex_sharedvar.delete_var name) in
+      let retrieve key =
+        let name = "nethttpd.tls_cache." ^ Netencoding.to_hex key in
+        match Netplex_sharedvar.get_value name with
+          | Some value -> value
+          | None -> raise Not_found in
+      hooks # tls_set_cache
+        ~store ~remove ~retrieve  
+    in
     match encap with
       | `Reactor ->
 	  ( try
-	      Nethttpd_reactor.process_connection config fd srv
+	      Nethttpd_reactor.process_connection ~config_hooks config fd srv
 	    with
 	      | err ->
 		  container # log `Err ("Exception caught by HTTP server: " ^ 
@@ -66,6 +85,7 @@ object(self)
 	    new Nethttpd_engine.buffering_engine_processing_config in
 	  let ctx =
 	    Nethttpd_engine.process_connection
+              ~config_hooks
 	      config engine_config fd container#event_system srv in
 	  Uq_engines.when_state 
 	    ~is_done:(fun () -> 
@@ -240,7 +260,8 @@ let default_services =
 
 
 let create_processor hooks config_cgi handlers services log_error log_access 
-                     error_response processor_factory encap ctrl_cfg cfg addr =
+                     error_response processor_factory encap tls_provider
+                     ctrl_cfg cfg addr =
 
   let req_str_param = cfg_req_str_param cfg in
   let opt_str_param = cfg_opt_str_param cfg in
@@ -401,10 +422,10 @@ let create_processor hooks config_cgi handlers services log_error log_access
   in
 
   cfg # restrict_subsections addr
-    [ "host"; "uri"; "method"; "service" ];
+    [ "host"; "uri"; "method"; "service"; "tls" ];
   cfg # restrict_parameters addr
     [ "type"; "timeout"; "timeout_next_request"; "access_log"; 
-      "suppress_broken_pipe"
+      "suppress_broken_pipe"; "tls_cert_props"; "tls_remote_user";
     ];
 
   let srv =
@@ -423,6 +444,14 @@ let create_processor hooks config_cgi handlers services log_error log_access
       | Some "debug" -> (true,true)
       | _ -> failwith "Bad parameter 'access_log'" in
   let suppress_broken_pipe = bool_param addr "suppress_broken_pipe" in
+  let tls_cert_props =  not(bool_param addr "tls_no_cert_props") in
+  let tls_remote_user =  not(bool_param addr "tls_no_remote_user") in
+
+  let config_tls =
+    Netplex_config.read_tls_config
+      cfg
+      addr
+      tls_provider in
 
   let mk_config container =
     let cle = log_error container in
@@ -446,6 +475,9 @@ let create_processor hooks config_cgi handlers services log_error log_access
        method config_limit_pipeline_size = 65536
        method config_announce_server = `Ocamlnet (* TODO *)
        method config_suppress_broken_pipe = suppress_broken_pipe
+       method config_tls = config_tls
+       method config_tls_cert_props = tls_cert_props
+       method config_tls_remote_user = tls_remote_user
      end
     ) in
 
@@ -466,12 +498,17 @@ let nethttpd_factory ?(name = "nethttpd")
 		       ?(log_access = std_log_access)
                        ?(error_response = std_error_response)
 		       ?processor_factory
+                       ?tls
 		       () : processor_factory =
 object
   method name = name
   method create_processor ctrl_cfg cfg addr =
+    let tls_provider =
+      match tls with
+        | Some t -> Some t
+        | None -> Netsys_crypto.current_tls_opt() in
     create_processor 
       hooks config_cgi handlers services log_error log_access error_response
-      processor_factory encap
+      processor_factory encap tls_provider
       ctrl_cfg cfg addr
 end

@@ -3,22 +3,8 @@
  *
  *)
 
-(* TODO:
- * - werden alle Deskriptoren wieder geschlossen?
- * - abort handler einfügen, Abort exceptions erzeugen
- * - beim Schliessen auch clear machen, um handler zu löschen
- * - Testen: Fehlerbehandlung im Server und Client
- * - Testen: Signals
- * - Testen: clear-Funktion
- * - Client: Timeouts behandeln
- * - Portmapper
- * - restl. Module
- * - XDR-Selbstreferenzen
- * - Rest Portmapper
- * - UNIX-Authentifizierung, ggf. Interface um weiter Auths einzuhängen
- *)
-
-open Rtypes
+open Netnumber
+open Printf
 
 type protocol =
     Tcp          (* means: stream-oriented connection *)
@@ -57,8 +43,8 @@ let string_of_server_error =
 	"Unavailable_program"
     | Unavailable_version(v1,v2) ->
 	"Unavailable_version(" ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v1) ^ ", " ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v2) ^ ")"
+	  Int64.to_string(Netnumber.int64_of_uint4 v1) ^ ", " ^ 
+	  Int64.to_string(Netnumber.int64_of_uint4 v2) ^ ")"
     | Unavailable_procedure ->
 	"Unavailable_procedure"
     | Garbage ->
@@ -67,8 +53,8 @@ let string_of_server_error =
 	"System_err"
     | Rpc_mismatch(v1,v2) ->
 	"Rpc_mismatch(" ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v1) ^ ", " ^ 
-	  Int64.to_string(Rtypes.int64_of_uint4 v2) ^ ")"
+	  Int64.to_string(Netnumber.int64_of_uint4 v1) ^ ", " ^ 
+	  Int64.to_string(Netnumber.int64_of_uint4 v2) ^ ")"
     | Auth_bad_cred ->
 	"Auth_bad_cred"
     | Auth_rejected_cred ->
@@ -104,3 +90,63 @@ let () =
 	 | _ ->
 	     assert false
     )
+
+
+let create_inet_uaddr ip port =
+  sprintf "%s.%d.%d"
+          (Unix.string_of_inet_addr ip)
+          ((port land 0xff00) lsr 8)
+          (port land 0xff)
+
+
+let parse_inet_uaddr s =
+  let l = String.length s in
+  try
+    let k2 = String.rindex s '.' in
+    let s2 = String.sub s (k2+1) (l-k2-1) in
+    if k2 = 0 then raise Not_found;
+    let k1 = String.rindex_from s (k2-1) '.' in
+    let s1 = String.sub s (k1+1) (k2-k1-1) in
+    let s0 = String.sub s 0 k1 in
+    let port = (int_of_string s1 lsl 8) lor (int_of_string s2) in
+    let ip = Unix.inet_addr_of_string s0 in
+    (ip, port)
+  with
+    | Not_found
+    | Failure _ ->
+        failwith "Rpc.parse_inet_uaddr"
+
+
+let parse_inet_uaddr_dom s dom =
+  let (ip, port) = parse_inet_uaddr s in
+  if Netsys.domain_of_inet_addr ip <> dom then
+    failwith "Rpc.sockaddr_of_uaddr";
+  (ip,port)
+
+
+let sockaddr_of_uaddr netid uaddr =
+  match netid with
+    | "tcp" -> 
+        let (ip,port) = parse_inet_uaddr_dom uaddr Unix.PF_INET in
+        Some (Unix.ADDR_INET(ip,port), Tcp)
+    | "tcp6" ->
+        let (ip,port) = parse_inet_uaddr uaddr in
+        Some (Unix.ADDR_INET(Netsys.ipv6_inet_addr ip,port), Tcp)
+    | "udp" ->
+        let (ip,port) = parse_inet_uaddr_dom uaddr Unix.PF_INET in
+        Some (Unix.ADDR_INET(ip,port), Udp)
+    | "udp6" ->
+        let (ip,port) = parse_inet_uaddr uaddr in
+        Some (Unix.ADDR_INET(Netsys.ipv6_inet_addr ip,port), Udp)
+    | "local" | "unix" ->
+        Some (Unix.ADDR_UNIX uaddr, Tcp)
+    | _ ->
+        None
+
+let netid_of_inet_addr ip proto =
+  match Netsys.domain_of_inet_addr ip, proto with
+    | Unix.PF_INET, Tcp -> "tcp"
+    | Unix.PF_INET, Udp -> "udp"
+    | Unix.PF_INET6, Tcp -> "tcp6"
+    | Unix.PF_INET6, Udp -> "udp6"
+    | Unix.PF_UNIX, _ -> "local"

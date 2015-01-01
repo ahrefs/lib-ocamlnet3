@@ -1,0 +1,50 @@
+----------------------------------------------------------------------
+Installation
+----------------------------------------------------------------------
+
+This library needs to be linked against the system-wide GSSAPI
+library. There are three implementations:
+
+ - MIT Kerberos
+ - Heimdal
+ - Shishi
+
+Note that Windows Kerberos does not qualify because Microsoft does not
+support the standard C version of the GSSAPI as specified in RFC 2744,
+and instead prefers to export almost the same functionality via its
+own SSPI interface. We do not suport SSPI here.
+
+When configuring you need to enable the GSSAPI:
+
+ ./configure -enable-gssapi
+
+This searches for
+
+  - libgssglue
+  - libgssapi_krb5
+  - libgssapi
+  - libgss
+
+in this order.
+
+----------------------------------------------------------------------
+Covered features
+----------------------------------------------------------------------
+
+- RFC 2744
+
+  TODO: channel bindings not yet done
+
+
+TODO:
+
+- RFC 4178: gss_set_neg_mechs, gss_get_net_mechs
+- RFC 4401: gss_pseudo_random
+- RFC 5801: gss_inquire_saslname_for_mech, inquire_mech_for_saslname
+- RFC 5587: gss_indicate_mechs_by_attrs, gss_inquire_attrs_for_mech,
+            gss_display_mech_attr
+
+Non-standard but common extensions, e.g.
+
+ - gss_acquire_cred_with_password
+ - gss_add_cred_with_password

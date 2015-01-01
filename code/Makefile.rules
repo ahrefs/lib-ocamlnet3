@@ -126,7 +126,7 @@ CLEAN_LIST = *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa dll* packlist-* \
 	$(OCAMLYACC) $<
 
 .c.o:
-	$(STUBCC) -ccopt -O $(CC_OPTIONS) $(CC_OPTIONS_FOR_$<) $<
+	$(STUBCC) -ccopt "-O -g" $(CC_OPTIONS) $(CC_OPTIONS_FOR_$<) $<
 
 # We add $(OBJECTS) to the antecedents of ocamldoc.dump to ensure that
 # the files are compiled. ocamldoc needs the .cmi files, and this is
@@ -191,7 +191,7 @@ depend: $(DEP_FILES)
 	$(NODEP) $(OCAMLDEP) *.ml *.mli >$@ || { rm -f $@; exit 1; }
 
 .PHONY: clean
-clean::
+clean:: genclean
 	rm -f $(CLEAN_LIST)
 
 .PHONY: clean-doc
@@ -199,7 +199,7 @@ clean-doc::
 	rm -f ocamldoc.dump
 
 .PHONY: distclean
-distclean::
+distclean:: genclean
 	rm -f $(CLEAN_LIST) META
 	rm -f *~ depend
 
@@ -209,3 +209,11 @@ generate:
 
 .PHONY: realgenerate
 realgenerate:: $(GENERATE)
+
+.PHONY: genclean
+genclean:
+	@test ! -f Makefile.pre || $(MAKE) -f Makefile.pre realgenclean
+
+.PHONY: realgenclean
+realgenclean::
+	rm -f $(CLEAN_LIST) META

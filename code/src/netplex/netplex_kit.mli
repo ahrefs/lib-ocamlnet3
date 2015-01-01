@@ -138,6 +138,8 @@ val create_protocol : ?lstn_backlog:int ->
                       ?lstn_reuseaddr:bool ->
                       ?so_keepalive:bool -> 
                       ?tcp_nodelay:bool ->
+                      ?local_chmod:int ->
+                      ?local_chown:(int*int) ->
                       ?configure_slave_socket:(Unix.file_descr ->unit) ->
                       string ->
                       extended_address array ->

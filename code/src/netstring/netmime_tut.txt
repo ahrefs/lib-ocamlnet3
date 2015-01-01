@@ -140,20 +140,20 @@ header fields are case-insensitive. To set a field, use
 The methods [field] and [update_field] process the field value
 as unparsed string (the parsers do only very little preprocessing,
 e.g. one can configure to remove all linefeeds). The module
-{!Mimestring} has a lot functions to parse and generate field
+{!Netmime_string} has a lot functions to parse and generate field
 values with a certain syntax. For example, "Subject" may contain
 so-called encoded words to express text written in a character
 set other than ASCII. To parse this, use
 
 {[
 let subject = mail_header # field "subject" in
-let word_list = Mimestring.scan_encoded_text_value subject in
+let word_list = Netmime_string.scan_encoded_text_value subject in
 ]}
 Now, the words contained in [word_list] can be accessed with
 a number of functions, e.g.
 {[
-let word_val = Mimestring.get_decoded_word word in
-let word_cset = Mimestring.get_charset word
+let word_val = Netmime_string.get_decoded_word word in
+let word_cset = Netmime_string.get_charset word
 ]}
 Here, the string [word_val] is the word written in the character set
 [word_cset].
@@ -166,7 +166,7 @@ this method returns a [word_list] with one word, and for this word
 [word_val = "this is some text"] and [word_cset = "iso-8859-1"].
 
 To create such structured header values, there is the function [write_value] 
-in {!Mimestring}. This function requires some more background beyond the
+in {!Netmime_string}. This function requires some more background beyond the
 scope of this tutorial. As this function also supports folding of header
 fields, we explain only this particular application.
 
@@ -182,10 +182,10 @@ the header field (note: this example can be programmed better, see below):
 {[
 let name = "Subject" in
 let words = Str.split (Str.regexp "[ \t]+") s in
-let atoms = List.map (fun w -> Mimestring.Atom w) in
+let atoms = List.map (fun w -> Netmime_string.Atom w) in
 let buf = Buffer.create 100 in
 let ch = new Netchannels.output_buffer buf in
-Mimestring.write_value 
+Netmime_string.write_value 
   ~maxlen1:(78 - String.length name - 2)
   ~maxlen:78
   ~hardmaxlen1:(998 - String.length name - 2)
@@ -302,7 +302,7 @@ separating the parts of a structured body.
 
 Finally, one can invoke the parser:
 
-[ let tree = read_mime_message nstr ]
+[ let tree = Netmime_channels.read_mime_message nstr ]
 
 There are a number of optional arguments for this function that can
 modify the way the message tree is generated. By default, all bodies
@@ -393,7 +393,7 @@ let tree =
 
 In order to print [tree] to the object channel [ch], simply call
 
-[ write_mime_message ch tree ]
+[ Netmime_channels.write_mime_message ch tree ]
 
 Before invoking this function, ensure the following:
 - The [Content-type] field of all leaves should be set

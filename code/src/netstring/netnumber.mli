@@ -2,7 +2,7 @@
 
 (** Binary encodings of numbers *)
 
-(** This is the successor of the {!Rtypes} module *)
+(** This is the successor of the [Rtypes] module *)
 
 (** {2 Numeric types} *)
 

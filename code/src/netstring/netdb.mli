@@ -11,16 +11,14 @@
  * from string values.
  *)
 
-val read_db : string -> 'a
-  (* Reads the value with the given name, and returns it. This function
-   * does not cache the returned value, and the marshalled string is
-   * deserialized every time the function is called.
+val read_db : string -> string
+  (* Reads the value with the given name, and returns it.
    *
    * First it is checked whether there was a set_db call, and if so,
    * this value is unmarshalled and returned. Otherwise, it is checked
-   * whether there is a matching external file (unless file lookup is 
-   * disabled), and if so, the file is loaded and unmarshalled.
-   * If neither of the two methods works, the function fails.
+   * whether there is a loader, and if so, it is called.
+   *
+   * In both cases the checksum is checked.
    *)
 
 val exists_db : string -> bool
@@ -28,16 +26,19 @@ val exists_db : string -> bool
    * be able to find it
    *)
 
+val set_db_checksum : string -> string -> unit
+  (* [set_db_checksum key cksum]: sets the MD5 digest of this key *)
+
 val set_db : string -> string -> unit
   (* Sets the persistent value with the given name (1st arg) to the 
    * passed value (2nd arg). The value must be marshalled as string.
    *)
 
-
-val disable_file_db : unit -> unit
-  (* Disables file lookup. *)
-
-val override_file_db : string -> unit
-  (* Set in which directory the *.netdb files reside. Defaults to a build-time
-     directory
+val set_db_loader : string -> (string -> string) -> unit
+  (* [set_db_loader key loader]: sets a loader for this key, which is called
+     when set_db has not been set for this key. The arg of the loader is the
+     key.
    *)
+
+val enable_db_loaders : bool -> unit
+  (* Whether dynamic loading is enabled *)

@@ -10,10 +10,10 @@
  *
  * - {!Netmime.types}
  * - {!Netmime.classes}
- * - {!Netmime.parsing}
- * - {!Netmime.printing}
  *
- * The tutorial has been moved to {!Netmime_tut}.
+ * The tutorial has been moved to {!Netmime_tut}. Parsers for MIME
+ * headers are now in {!Netmime_header}. Parser and printers for MIME
+ * channels are now in {!Netmime_channels}.
  *)
 
 (* ***************************** Types ******************************** *)
@@ -91,39 +91,10 @@ object
      * The order of the fields is preserved.
      *)
 
-  (* --------------------- Standard fields ----------------------- *)
-
-  (** Access methods for frequent standard fields.
-   *
-   * These methods will raise [Not_found] if the fields are not
-   * present.
+  (** Since OCamlnet-4 the methods [content_length], [content_type],
+      [content_dispositions] and [content_transfer_encoding] have been
+      moved to {!Netmime_header}.
    *)
-
-  method content_length : unit -> int
-    (** Returns the Content-length field as integer *)
-
-  method content_type : 
-           unit -> (string * (string * Mimestring.s_param)list)
-    (** Returns the Content-type as parsed value. The left value of the
-     * pair is the main type, and the right value is the list of 
-     * parameters. For example, for the field value
-     * ["text/plain; charset=utf-8"] this method returns
-     * [("text/plain", ["charset", p])] where [p] is an opaque value
-     * with [Mimestring.param_value p = "utf-8"]. 
-     *)
-
-  method content_disposition : 
-           unit -> (string * (string * Mimestring.s_param)list)
-    (** Returns the Content-disposition field as parsed value. The
-     * left value is the main disposition, and the right value is the
-     * list of parameters. For example, for the field value
-     * ["attachment; filename=xy.dat"] this method returns
-     * [("attachment", ["filename", p])] where [p] is an opaque value
-     * with [Mimestring.param_value p = "xy.dat"].
-     *)
-
-  method content_transfer_encoding : unit -> string
-    (** Returns the Content-transfer-encoding as string *)
 end
 
 
@@ -320,7 +291,7 @@ type mime_message_ro = mime_header_ro * [ `Body of mime_body_ro ]
 
 (** {1:classes Classes} *)
 
-class basic_mime_header : ?ro:bool -> (string * string) list -> mime_header
+class basic_mime_header : (string * string) list -> mime_header
   (** An implementation of [mime_header].
    *
    * The argument is the list of (name,value) pairs of the header. 
@@ -342,11 +313,24 @@ class basic_mime_header : ?ro:bool -> (string * string) list -> mime_header
    * - [fields]: O(n * m)
    * - [update_field], [update_multiple_field]: O(log n + m)
    * - [delete_field]: O(n + m)
-   *
-   * @param ro whether the header is read-only (default: false)
    *)
 
-class memory_mime_body : ?ro:bool -> string -> mime_body
+val basic_mime_header : (string * string) list -> mime_header
+  (** Same as function *)
+
+class wrap_mime_header : #mime_header -> mime_header
+  (** Wraps the inner header *)
+
+class wrap_mime_header_ro : #mime_header_ro -> mime_header
+  (** Wraps the inner header but disallows modifications. In this case,
+      [Immutable] is raised.
+   *)
+
+val wrap_mime_header_ro : #mime_header_ro -> mime_header
+  (** Same as function *)
+
+
+class memory_mime_body : string -> mime_body
   (** An implementation of [mime_body] where the value is stored
    * in-memory.
    *
@@ -355,12 +339,12 @@ class memory_mime_body : ?ro:bool -> string -> mime_body
    *
    * Example: To create a body from a string, call
    * {[ new memory_mime_body "The value as string" ]}
-   *
-   * @param ro whether the body is read-only (default: false)
    *)
 
+val memory_mime_body : string -> mime_body
+  (** Same as function *)
 
-class file_mime_body : ?ro:bool -> ?fin:bool -> string -> mime_body
+class file_mime_body : ?fin:bool -> string -> mime_body
   (** An implementation of [mime_body] where the value is stored
    * in an external file.
    *
@@ -372,261 +356,23 @@ class file_mime_body : ?ro:bool -> ?fin:bool -> string -> mime_body
    * Example: To create a body from the file "f", call
    * {[ new file_mime_body "f" ]}
    *
-   * @param ro whether the body is read-only (default: false)
    * @param fin whether to delete the file when the [finalize] method is called
    *   (default: false)
    *)
 
-(* ******************************************************************** *)
+val file_mime_body : ?fin:bool -> string -> mime_body
+  (** Same as function *)
 
-(** {1:parsing Parsing MIME messages} *)
+class wrap_mime_body : #mime_body -> mime_body
+  (** Wraps the inner body *)
 
-val read_mime_header :
-      ?unfold:bool ->                        (* default: false *)
-      ?strip:bool ->                         (* default: true *)
-      ?ro:bool ->                            (* default: false *)
-      Netstream.in_obj_stream -> 
-	mime_header
-  (** Decodes the MIME header that begins at the current position of the
-   * netstream, and returns the header as class [basic_mime_header].
-   * After returning, the stream is advanced to the byte following the 
-   * empty line terminating the header.
-   *
-   * Example: To read the header at the beginning of the file "f", use:
-   * {[ 
-   * let ch = new Netchannels.input_channel (open_in "f") in
-   * let stream = new Netstream.input_stream ch in
-   * let h = read_mime_header stream in
-   * ...
-   * stream#close_in();    (* no need to close ch *)
-   * ]}
-   *
-   * Note that although the [stream] position after parsing is exactly 
-   * known, the position of [ch] cannot be predicted.
-   *
-   * @param unfold whether linefeeds are replaced by spaces in the values of the
-   *   header fields (Note: defaults to [false] here in contrast to
-   *   [Mimestring.scan_header]!)
-   * @param strip whether whitespace at the beginning and at the end of the 
-   *   header fields is stripped
-   * @param ro whether the returned header is read-only (default: false)
+class wrap_mime_body_ro : #mime_body_ro -> mime_body
+  (** Wraps the inner body but disallows modifications. In this case,
+      [Immutable] is raised.
    *)
 
-(** Hint: To write the header [h] into the channel [ch], use
- * {[ Mimestring.write_header ch h#fields ]}
- *
- * Link: {!Mimestring.write_header}
- *)
+val wrap_mime_body_ro : #mime_body_ro -> mime_body
+  (** Same as function *)
 
-type multipart_style = [ `None | `Flat | `Deep ]
-  (** How to parse multipart messages:
-   * - [`None]: Do not handle multipart messages specially. Multipart bodies
-   *    are not further decoded, and returned as [`Body b] where [b] is
-   *    the transfer-encoded text representation.
-   * - [`Flat]: If the top-level message is a multipart message, the parts
-   *    are separated and returned as list. If the parts are again multipart
-   *    messages, these inner multipart messages are not furher decoded 
-   *    and returned as [`Body b].
-   * - [`Deep]: Multipart messages are recursively decoded and returned as
-   *    tree structure.
-   *
-   * This value determines how far the [complex_mime_message] structure
-   * is created for a parsed MIME message. [`None] means that no parts
-   * are decoded, and messages have always only a simple [`Body b],
-   * even if [b] is in reality a multi-part body. With [`Flat], the
-   * top-level multi-part bodies are decoded (if found), and messages
-   * can have a structured [`Parts [_, `Body b1; _, `Body b1; ...]]
-   * body. Finally, [`Deep] allows that inner multi-part bodies are
-   * recursively decoded, and messages can have an arbitrarily complex
-   * form.
-   *)
-
-val decode_mime_body : #mime_header_ro -> out_obj_channel -> out_obj_channel
-  (** [let ch' = decode_mime_body hdr ch]:
-   * According to the value of the Content-transfer-encoding header field
-   * in [hdr] the encoded MIME body written to [ch'] is decoded and transferred
-   * to [ch].
-   * 
-   * Handles 7bit, 8bit, binary, quoted-printable, base64.
-   *
-   * Example: The file "f" contains base64-encoded data, and is to be decoded 
-   * and to be stored in "g":
-   *
-   * {[ 
-   * let ch_f = new Netchannels.input_channel (open_in "f") in
-   * let ch_g = new Netchannels.output_channel (open_out "g") in
-   * let hdr = new basic_mime_header ["content-transfer-encoding", "base64" ] in
-   * let ch = decode_mime_body hdr ch_g in
-   * ch # output_channel ch_f;
-   * ch # close_out();
-   * ch_g # close_out();
-   * ch_f # close_in();
-   * ]}
-   *
-   * Note: This function is internally used by [read_mime_message] to
-   * decode bodies. There is usually no need to call it directly.
-   *)
-
-
-val storage : ?ro:bool -> ?fin:bool -> store -> (mime_body * out_obj_channel)
-  (** Creates a new storage facility for a mime body according to [store].
-   * This function can be used to build the [storage_style] argument 
-   * of the class [read_mime_message] (below). For example, this is
-   * useful to store large attachments in external files, as in:
-   *
-   * {[ 
-   * let storage_style hdr = 
-   *   let filename = hdr ... (* extract from hdr *) in
-   *   storage (`File filename)
-   * ]}
-   *
-   * @param ro whether the returned mime_bodies are read-only or not. Note that
-   *   it is always possible to write into the body using the returned
-   *   out_obj_channel regardless of the value of ~ro.
-   *   Default: false
-   * @param fin whether to finalize bodies stored in files.
-   *   Default: false
-   *)
-
-val read_mime_message : 
-      ?unfold:bool ->                                     (* Default: false *)
-      ?strip:bool ->                                      (* default: true *)
-      ?ro:bool ->                                         (* Default: false *)
-      ?multipart_style:multipart_style ->                 (* Default: `Deep *)
-      ?storage_style:(mime_header -> (mime_body * out_obj_channel)) ->
-      Netstream.in_obj_stream -> 
-        complex_mime_message
-  (** Decodes the MIME message that begins at the current position of the
-   * passed netstream. It is expected that the message continues until
-   * EOF of the netstream.
-   *
-   * Multipart messages are decoded as specified by [multipart_style] (see
-   * above).
-   *
-   * Message bodies with content-transfer-encodings of 7bit, 8bit, binary,
-   * base64, and quoted-printable can be processed. The bodies are stored
-   * without content-transfer-encoding (i.e. in decoded form), but the
-   * content-transfer-encoding header field is not removed from the header.
-   *
-   * The [storage_style] function determines where every message body is
-   * stored. The corresponding header of the body is passed to the function
-   * as argument; the result of the function is a pair of a new [mime_body]
-   * and an [out_obj_channel] writing into this body. You can create such a
-   * pair by calling [storage] (above).
-   *
-   * By default, the [storage_style] is [storage ?ro `Memory] for every header. 
-   * Here, the designator [`Memory] means that the body will be stored in an
-   * O'Caml string. The designator [`File fn] would mean that the body will be stored in the
-   * file [fn]. The file would be created if it did not yet exist, and
-   * it would be overwritten if it did already exist.
-   *
-   * Note that the [storage_style] function is called for every non-multipart
-   * body part.
-   *
-   * Large message bodies (> maximum string length) are supported if the
-   * bodies are stored in files. The memory consumption is optimized for
-   * this case, and usually only a small constant amount of memory is needed.
-   *
-   * Example:
-   *
-   * Parse the MIME message stored in the file f:
-   *
-   * {[
-   * let m = read_mime_message 
-   *           (new input_stream (new input_channel (open_in f)))
-   * ]}
-   *
-   * @param unfold whether linefeeds are replaced by spaces in the values of the
-   *   header fields (Note: defaults to [false] here in contrast to
-   *   {!Mimestring.scan_header}!)
-   * @param strip whether whitespace at the beginning and at the end of the 
-   *   header fields is stripped
-   * @param ro Whether the created MIME headers are read-only or not. Furthermore,
-   *   the default [storage_style] uses this parameter for the MIME bodies, too.
-   *   However, the MIME bodies may have a different read-only flag in general.
-   *
-   *)
-
-  (* TODO: what about messages with type "message/*"? It may be possible that
-   * they can be recursively decoded, but it is also legal for some media
-   * types that they are "partial".
-   * Currently the type "message/*" is NOT decoded.
-   *)
-
-(** {1:printing Printing MIME Messages} *)
-
-val encode_mime_body : ?crlf:bool -> #mime_header_ro -> out_obj_channel -> out_obj_channel
-  (** [let ch' = encode_mime_body hdr ch]:
-   * According to the value of the Content-transfer-encoding header field
-   * in [hdr] the unencoded MIME body written to ch' is encoded and transferred
-   * to ch.
-   *
-   * Handles 7bit, 8bit, binary, quoted-printable, base64.
-   *
-   * For an example, see [decode_mime_body] which works in a similar way
-   * but performs decoding instead of encoding.
-   *
-   * @param crlf if set (this is by default the case) CR/LF will be used for
-   *   end-of-line (eol) termination, if not set LF will be used. For 7bit, 8bit and
-   *   binary encoding the existing eol delimiters are not rewritten, so this option
-   *   has only an effect for quoted-printable and base64.
-   *)
-
-
-val write_mime_message :
-      ?wr_header:bool ->                       (* default: true *)
-      ?wr_body:bool ->                         (* default: true *)
-      ?nr:int ->                               (* default: 0 *)
-      ?ret_boundary:string ref ->              (* default: do not return it *)
-      ?crlf:bool ->                            (* default: true *)
-      Netchannels.out_obj_channel ->
-      complex_mime_message ->
-        unit
-  (** Writes the MIME message to the output channel. The content-transfer-
-   * encoding of the leaves is respected, and their bodies are encoded
-   * accordingly. The content-transfer-encoding of multipart messages is
-   * always "fixed", i.e. set to "7bit", "8bit", or "binary" depending
-   * on the contents.
-   *
-   * The function fails if multipart messages do not have a multipart
-   * content type field (i.e. the content type does not begin with "multipart").
-   * If only the boundary parameter is missing, a good boundary parameter is
-   * added to the content type. "Good" means here that it is impossible
-   * that the boundary string occurs in the message body if the
-   * content-transfer-encoding is quoted-printable or base64, and that
-   * such an occurrence is very unlikely if the body is not encoded.
-   * If the whole content type field is missing, a "multipart/mixed" type
-   * with a boundary parameter is added to the printed header.
-   *
-   * Note that already existing boundaries are used, no matter whether
-   * they are of good quality or not.
-   *
-   * No other header fields are added, deleted or modified. The mentioned
-   * modifications are _not_ written back to the passed MIME message but
-   * only added to the generated message text.
-   *
-   * It is possible in some cases that the boundary does not work (both
-   * the existing boundary, and the added boundary). This causes that a wrong
-   * and unparseable MIME message is written. In order to ensure a correct
-   * MIME message, it is recommended to parse the written text, and to compare
-   * the structure of the message trees. It is, however, very unlikely that
-   * a problem arises.
-   *
-   * Note that if the passed message is a simple message like (_,`Body _),
-   * and if no content-transfer-encoding is set, the written message might
-   * not end with a linefeed character.
-   *
-   * @param wr_header If true, the outermost header is written. Inner headers
-   *   of the message parts are written unless ~wr_body=false.
-   * @param wr_body If true, the body of the whole message is written; if false,
-   *   no body is written at all.
-   * @param nr This argument sets the counter that is included in generated
-   *   boundaries to a certain minimum value.
-   * @param ret_boundary if passed, the boundary of the outermost multipart
-   *   message is written to this reference. (Internally used.)
-   * @param crlf if set (this is by default the case) CR/LF will be used for
-   *   end-of-line (eol) termination, if not set LF will be used. The eol 
-   *   separator is used for the header, the multipart framing, and for
-   *   bodies encoded as quoted-printable or base64. Other eol separators are
-   *   left untouched.
-   *)
+val wrap_complex_mime_message_ro : complex_mime_message_ro -> 
+                                   complex_mime_message

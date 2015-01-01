@@ -743,9 +743,13 @@ end
 
 module Header = struct
   open Netmime
-  open Mimestring
+  open Netmime_string
 
-  (* As scanner we use the scanner for mail header fields from Mimestring. It
+  type param_value = [ `V of string | `Q of string ]
+  type auth_challenge = string * (string * param_value) list
+  type auth_credentials = string * (string * param_value) list
+
+  (* As scanner we use the scanner for mail header fields from Netmime_string. It
    * is very configurable.
    *)
 
@@ -1024,11 +1028,11 @@ module Header = struct
 
   let best_media_type mh supp =
     let match_mime a b =
-      let (main_type, sub_type) = Mimestring.split_mime_type b
+      let (main_type, sub_type) = Netmime_string.split_mime_type b
       in
         sub_type = "*" (*Ignore non-wildcard types*) &&
         (main_type = "*" ||
-        main_type = (fst (Mimestring.split_mime_type a)))
+        main_type = (fst (Netmime_string.split_mime_type a)))
     in
     let filter p l =
       List.fold_right
@@ -1706,38 +1710,109 @@ module Header = struct
 	| _ ->
 	    []
 
+    and parse_auth_params_negotiate stream =
+      match Stream.npeek 1 stream with
+        | [ (Atom d1) ] ->
+             Stream.junk stream;
+             let d2 =
+               match Stream.npeek 1 stream with
+                 | [ Special '=' ] -> 
+                     Stream.junk stream;
+                     ( match Stream.npeek 1 stream with
+                         | [ Special '=' ] -> 
+                             Stream.junk stream;
+                             "=="
+                         | _ ->
+                             "="
+                     )
+                 | _ -> "" in
+             [ "credentials", d1 ^ d2 ]
+        | _ ->
+             [ "credentials", "" ]
+
     and parse_challenge stream =
       match Stream.peek stream with
         | Some (Atom auth_scheme) ->
             Stream.junk stream;
-            let auth_params = parse_auth_params stream in
+            let auth_params =
+              match String.lowercase auth_scheme with
+                | "negotiate" -> 
+                     parse_auth_params_negotiate stream
+                | _ -> 
+                     parse_auth_params stream in
 	    Some(auth_scheme, auth_params)
         | _ ->
             None
     in
     parse_comma_separated_field mh fn_name parse_challenge fieldname
-      
+
+  let encode_param p_val =
+    match p_val with
+      | `Q s -> s
+      | `V s -> string_of_value s 
+                                
   let mk_challenges fields =
     String.concat "," 
       (List.map
 	 (fun (auth_name, auth_params) ->
-	    auth_name ^ " " ^ 
-	      (String.concat ","
-		 (List.map
-		    (fun (p_name, p_val) ->
-		       p_name ^ "=" ^ string_of_value p_val)
-		    auth_params))
+            let pstring =
+              match String.lowercase auth_name with
+                | "negotiate" ->
+                     ( match auth_params with
+                         | [ "credentials", data ] -> encode_param data
+                         | _ -> ""
+                     )
+                | _ ->
+	             (String.concat
+                        ","
+		        (List.map
+		           (fun (p_name, p_val) ->
+		              p_name ^ "=" ^ encode_param p_val
+                           )
+		           auth_params
+                        )
+                     ) in
+            auth_name ^ (if pstring <> "" then " " ^ pstring else "")
 	 )
 	 fields)
 
+  let mark_decoded (n,v) = (n, `V v)
+
+  let mark_params_decoded (mech,params) =
+    (mech, List.map mark_decoded params)
+
+  let mark_many_decoded l =
+    List.map mark_params_decoded l
+
   let get_www_authenticate mh =
-    parse_challenges mh "Nethttp.get_www_authenticate" "WWW-Authenticate"
+    mark_many_decoded
+      (parse_challenges mh "Nethttp.get_www_authenticate" "WWW-Authenticate")
+
+  let parse_quoted_parameters s =
+    let u = "dummy " ^ s in
+    let mh = new Netmime.basic_mime_header ["WWW-Authenticate", u ] in
+    try
+      match get_www_authenticate mh with
+        | [] -> []
+        | [_, params] ->
+            ( List.map
+                (fun (n,v) ->
+                   match v with
+                     | `Q _ -> assert false
+                     | `V s -> (n,s)
+                )
+                params
+            )
+        | _ -> assert false 
+    with
+      | Bad_header_field _ -> failwith "parse_quoted_parameters"
 
   let set_www_authenticate mh fields =
     mh # update_field "WWW-Authenticate" (mk_challenges fields)
 
   let get_proxy_authenticate mh =
-    parse_challenges mh "Nethttp.get_proxy_authenticate" "Proxy-Authenticate"
+    mark_many_decoded
+     (parse_challenges mh "Nethttp.get_proxy_authenticate" "Proxy-Authenticate")
 
   let set_proxy_authenticate mh fields =
     mh # update_field "Proxy-Authenticate" (mk_challenges fields)
@@ -1782,34 +1857,40 @@ module Header = struct
     let v = mh # field fieldname in  (* or Not_found *)
     match Netstring_str.split ws_re v with
       | [ name; creds ] when String.lowercase name = "basic" ->
-	  ("basic", ["credentials", creds])
+	  (name, ["credentials", creds])
+      | [ name; creds ] when String.lowercase name = "negotiate" ->
+	  (name, ["credentials", creds])
       | _ ->
 	  parse_field mh fn_name parse_creds fieldname
 
   let mk_credentials (auth_name, auth_params) =
-    if String.lowercase auth_name = "basic" then (
-      let creds = 
-	try List.assoc "credentials" auth_params 
-	with Not_found -> 
-	  failwith "Nethttp.mk_credentials: basic credentials not found" in
-      "Basic " ^ creds
-    )
-    else
-      auth_name ^ " " ^ 
-	(String.concat ","
-	   (List.map
-	      (fun (p_name, p_val) ->
-		 p_name ^ "=" ^ string_of_value p_val)
-	      auth_params))
-
+    match String.lowercase auth_name with
+      | "basic"
+      | "negotiate" ->
+           let creds = 
+	     try List.assoc "credentials" auth_params 
+	     with Not_found -> 
+	       failwith "Nethttp.mk_credentials: credentials not found" in
+           auth_name ^ " " ^ encode_param creds
+      | _ ->
+           auth_name ^ " " ^ 
+	     (String.concat ","
+	                    (List.map
+	                       (fun (p_name, p_val) ->
+		                p_name ^ "=" ^ encode_param p_val)
+	                       auth_params))
+               
   let get_authorization mh =
-    parse_credentials mh "Nethttp.get_authorization" "authorization"
+    mark_params_decoded
+      (parse_credentials mh "Nethttp.get_authorization" "authorization")
 
   let set_authorization mh v =
     mh # update_field "Authorization" (mk_credentials v)
 
   let get_proxy_authorization mh = 
-    parse_credentials mh "Nethttp.get_proxy_authorization" "proxy-authorization"
+    mark_params_decoded
+      (parse_credentials
+         mh "Nethttp.get_proxy_authorization" "proxy-authorization")
 
   let set_proxy_authorization mh v = 
     mh # update_field "Proxy-Authorization" (mk_credentials v)
@@ -1974,3 +2055,69 @@ module Header = struct
 
 
 end
+
+
+type transport_layer_id = int
+
+let new_trans_id () =
+  Oo.id (object end)
+
+let http_trans_id = new_trans_id()
+let https_trans_id = new_trans_id()
+let spnego_trans_id = new_trans_id()
+let proxy_only_trans_id = new_trans_id()
+
+type match_result =
+    [ `Accept of string * string option
+    | `Reroute of string * int
+    | `Accept_reroute of string * string option * int
+    | `Reject
+    ]
+
+
+module type HTTP_MECHANISM =
+  sig
+    val mechanism_name : string
+    val available : unit -> bool
+    val restart_supported : bool
+    type credentials
+    val init_credentials :
+          (string * string * (string * string) list) list ->
+            credentials
+    val client_match : params:(string * string * bool) list -> 
+                       Header.auth_challenge ->
+                         match_result
+    type client_session
+    val client_state : client_session -> Netsys_sasl_types.client_state
+    val create_client_session :
+          user:string ->
+          creds:credentials ->
+          params:(string * string * bool) list -> 
+          unit ->
+            client_session
+    val client_configure_channel_binding : client_session -> 
+                                           Netsys_sasl_types.cb -> unit
+    val client_restart : params:(string * string * bool) list -> 
+                         client_session -> unit
+    val client_process_challenge :
+          client_session -> string -> string -> #http_header_ro -> 
+          Header.auth_challenge -> unit
+    val client_emit_response :
+          client_session -> string -> string -> #http_header_ro ->
+          Header.auth_credentials * (string * string) list
+    val client_channel_binding : client_session -> Netsys_sasl_types.cb
+    val client_user_name : client_session -> string
+    val client_stash_session :
+          client_session -> string
+    val client_resume_session :
+          string -> 
+             client_session
+    val client_session_id : client_session -> string option
+    val client_domain : client_session -> string list
+    val client_prop : client_session -> string -> string
+    val client_gssapi_props : client_session -> Netsys_gssapi.client_props
+  end
+
+
+
+let qstring_of_value = Header.qstring_of_value

@@ -13,7 +13,7 @@
 #   --> run the tests for SSL
 
 # Debug Http_client:
-#   NETLOGGED_CLIENT="Http_client Uq_engines" \
+#   NETLOGGED_CLIENT="Nethttp_client Uq_engines" \
 #   BENCH_ARGS=timeout-error \
 #   ./test_suite -d netclient/http_bench run
 
@@ -42,7 +42,8 @@ dirs="netclient/hhamsters \
       shell"
 
 dirs_ssl="netclient/http_bench
-          netclient/ssl_sites"
+          netclient/ssl_sites
+	  rpc/bench"
 
 
 clean() {

@@ -1,0 +1,111 @@
+----------------------------------------------------------------------
+Immutable strings (new "bytes" type)
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+netsys:
+----------------------------------------------------------------------
+
+Netsys_types:
+  type buffer_space = [ `Bytes of bytes | `Memory of memory ]
+  type 's stringlike = { ... }
+
+     find_char : char list -> 'a -> direction -> int -> int
+     skip_char : char list -> 'a -> direction -> int -> int
+
+
+Netsys.gread: switch to "bytes"
+Netsys.blocking_gread: same
+Netsys.really_gread: same
+
+Netsys.gread_bs: new, using buffer_space
+Netsys.blocking_gread_bs: new, using buffer_space
+Netsys.really_gread_bs: new, using buffer_space
+
+Netsys.gwrite: switch to "bytes"
+Netsys.really_gwrite: same
+
+Netsys.gwrite_bs: new, using buffer_space
+Netsys.really_gwrite_bs: new, using buffer_space
+
+Netsys.gwrite_substring: new
+Netsys.really_gwrite_substring: new
+
+Netsys: remove deprecated stuff
+
+Netsys_rng.fill_random: switch to "bytes"
+
+Netsys_w32.pipe_read: switch to "bytes"
+Netsys_w32.pipe_read_bs: new
+Netsys_w32.pipe_write: switch to "bytes"
+Netsys_w32.pipe_write_bs: new
+Netsys_w32.pipe_write_substring: new
+
+Netsys_w32.input_thread_read: switch to "bytes"
+Netsys_w32.input_thread_read_bs: new
+Netsys_w32.output_thread_write: switch to "bytes"
+Netsys_w32.output_thread_write_bs: new
+Netsys_w32.output_thread_write_substring: new
+
+Netsys_w32.fill_random: switch to "bytes"
+
+Netsys_mem.blit_memory_to_string: remove
+Netsys_mem.blit_memory_to_string_unsafe: remove
+Netsys_mem.blit_memory_to_bytes: new
+Netsys_mem.blit_memory_to_bytes_unsafe: new
+Netsys_mem.blit_bytes_to_memory: new
+Netsys_mem.blit_bytes_to_memory_unsafe: new
+
+Netsys_tls.recv: change "string" into "bytes"
+Netsys_tls.recv_bs: new
+Netsys_tls.send: change "string" into "bytes"
+Netsys_tls.send_bs: new
+Netsys_tls.send_substring: new
+
+Netlog: no change, all string types remain
+Netexn: no change
+Netsys_pmanage: no change, all string types remain
+Netsys_posix: no change
+Netsys_sem: no change
+Netsys_signal: no change
+Netsys_tmp: no change
+Netsys_crypto: no change
+Netsys_crypto_types: no change
+Netsys_pollset*: no change
+
+----------------------------------------------------------------------
+netstring:
+----------------------------------------------------------------------
+
+Mimestring:
+  helper functions for MIME parsing
+    --> generalize for stringlike, this should go elsewhere
+
+  find_line_end_sl : stringlike -> int -> int -> int
+  find_line_start_sl
+  find_double_line_start_sl
+  skip_line_ends_sl
+  fold_lines_p_sl
+  fold_lines_sl : ('a -> string -> a) -> 'a -> stringlike -> int -> int -> 'a
+  iter_lines_sl : (string -> unit) -> stringlike -> int -> int -> unit
+  skip_whitespace_left_sl
+  skip_whitespace_right_sl
+
+  MIME parsing:
+
+  fold_header_sl: ... -> ('a -> string -> string -> 'a) ->
+                         'a -> stringlike -> int -> int -> 'a
+  list_header_sl: ... -> stringlike -> int -> int -> (string * string) list
+  scan_header_sl: ... -> stringlike -> int -> int -> ((string * string) list * int)
+
+Netchannels:
+
+  ...
+
+  out_obj_channel should include method output_memory,
+  in_obj_channel should include method input_memory
+
+  followup: Netchannels_crypto.{encrypt,decrypt}_{in,out} can be based
+  on memory, avoiding strings completely. Probably new augment classes
+  would be nice that use {in,out}put_memory as starting point.
+

@@ -1,0 +1,105 @@
+{1 Cryptography}
+
+OCamlnet-4 does not include any implementations of cryptographic
+ciphers or hashes. It does, however, include a binding to GnuTLS and
+GNU Nettle, providing cryptography, and it defines a number of helper
+functions to use cryptography efficiently.
+
+Before OCamlnet-4, some modules used Xavier Leroy's Cryptokit. This
+dependency is gone now.
+
+
+{2 Cryptography providers}
+
+Like for TLS (see {!Tls}), first-class modules are used to modularize
+the provider of the crypto functions:
+
+ - {!Netsys_crypto_types.SYMMETRIC_CRYPTO}: Defines symmetric ciphers
+ - {!Netsys_crypto_types.DIGESTS}: Defines digests (hashes)
+
+There are default providers:
+
+ - {!Netsys_crypto.default_symmetric_crypto}
+ - {!Netsys_crypto.default_digests}
+
+If not initialized, these providers are empty, i.e. the lists of available
+ciphers and digests are empty. This can be changed by initializing a provider.
+So far, there is only GnuTLS/Nettle, and you can enable this by
+
+ - linking with the package nettls-gnutls
+ - calling [Nettls_gnutls.init()]
+
+{2 Using cryptography}
+
+It is not advised to call any functions of the providers directly: the API
+is not yet stable, and may change, and there are some inconveniences
+in the buffer management. Instead, use the following functionality:
+
+ - {!Netsys_ciphers} is the main user-oriented API for encrypting or decrypting
+   a message with symmetric ciphers
+ - Also see the channels described here: {!Netchannels_crypto.symmetric}
+ - {!Netsys_digests} is the main API for digesting messages.
+
+{2 Examples}
+
+Encrypt a string [s] with AES-128 in CBC mode and length-style padding:
+
+{[
+let key = "0123456789abcdef"
+let iv = "0123456789abcdef"
+let cipher = Netsys_ciphers.find ("AES-128", "CBC")
+let ctx = cipher # create key `Length
+let () = ctx # set_iv iv
+let s_enc = ctx # encrypt_string s
+]}
+
+Compute the SHA1 digest of a string [s]:
+
+{[
+let digest = Netsys_digests.find "SHA1-160"
+let ctx = digest # create()
+let () = ctx # add_substring s 0 (String.length s)
+let result = ctx # finish()
+]}
+
+
+{2 Supported ciphers}
+
+If using nettls-gnutls as provider, you can normally expect:
+
+ - AES (key sizes: 128, 192, 256)
+ - ARCFOUR (key size: 128)
+ . RC2 (key sizes: 40, 64, 128)
+ - BLOWFISH (key size variable)
+ - CAMELLIA (key sizes: 128, 192, 256)
+ - CAST (key size: 128)
+ - DES (key size: 56)
+ - 3DES (key size: 112)
+ - SERPENT (key sizes: 128, 192, 256)
+ - TWOFISH (key sizes: 128, 192, 256)
+
+All ciphers are supported in ECB, CBC, CTR, and OFB modes.
+
+If using a recent version of GnuTLS/Nettls:
+
+ - AES in CBC mode is accelerated if the CPU supports it (Intel AES-NI, or
+   VIA Padlock)
+ - AES in GCM mode, also with an acceleration option
+ - CAMELLIA in GCM mode
+
+{2 Supported digests}
+
+If using nettls-gnutls as provider, you can normally expect:
+
+ - MD2
+ - MD4
+ - MD5
+ - SHA1
+ - SHA2-256
+
+If using a recent version of GnuTLS/Nettls:
+
+ - SHA2 with block sizes 224, 256, 384 and 512 bits
+ - SHA3 with block sizes 224, 256, 384 and 512 bits
+ - RIPEMD (160 bits)
+ - GOSTHASH94 (256 bits)

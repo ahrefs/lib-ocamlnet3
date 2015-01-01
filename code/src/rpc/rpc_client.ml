@@ -4,13 +4,15 @@
  *)
 
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 open Rpc_common
 open Rpc_packer
 open Unixqueue
 open Printf
+
+open Uq_engines.Operators
 
 exception Message_not_processable
 
@@ -23,15 +25,7 @@ exception Client_is_down
 exception Keep_call
 exception Unbound_exception of exn
 
-module type USE_CLIENT = sig
-  type t
-  val use : t -> Rpc_program.t -> unit
-  val unbound_sync_call : 
-        t -> Rpc_program.t -> string -> xdr_value -> xdr_value
-  val unbound_async_call :
-        t -> Rpc_program.t -> string -> xdr_value -> 
-        ((unit -> xdr_value) -> unit) -> unit
-end
+module type USE_CLIENT = Rpc_client_pre.USE_CLIENT
 
 let () =
   Netexn.register_printer
@@ -87,8 +81,8 @@ class type ['t] pre_auth_session =
 object
   method next_credentials :
      't -> Rpc_program.t -> string -> uint4 ->
-     (string * string * string * string * Xdr.encoder option * 
-	Xdr.decoder option)
+     (string * string * string * string * Netxdr.encoder option * 
+	Netxdr.decoder option)
   method server_rejects : 't -> uint4 -> server_error -> reject_code
   method server_accepts : 't -> uint4 -> string -> string -> unit
 (*
@@ -105,6 +99,8 @@ object
          [ `Emit | `Receive of uint4 | `Done of 't pre_auth_session | `Error]
   method emit : uint4 -> uint4 -> uint4 -> Rpc_packer.packed_value
   method receive : Rpc_packer.packed_value -> unit
+  method gssapi_props : Netsys_gssapi.client_props option
+  method destroy : unit -> unit
   method auth_method : 't pre_auth_method
 end
 
@@ -121,7 +117,7 @@ type regular_call =
       mutable proc : string;
       mutable param : xdr_value;       (* the argument of the call *)
       mutable get_result : (unit -> xdr_value) -> unit;
-      mutable decoder : Xdr.decoder option;
+      mutable decoder : Netxdr.decoder option;
       mutable call_user_name : string option;
     }
 
@@ -141,7 +137,7 @@ type call =
 	mutable timeout_group : group option;
 	  (* If a timeout handler has been set, this is the corresponding group *)
 
-	mutable call_auth_proto : t pre_auth_protocol;
+	mutable call_auth_proto : client pre_auth_protocol;
 	  (* calls store the authentication protocol *)
 
 	mutable batch_flag : bool;
@@ -150,7 +146,7 @@ type call =
 	(* The request while the call is waiting *)
       }
 
-and t =
+and client =
       { mutable ready : bool;
 	mutable nolog : bool;
 
@@ -160,9 +156,9 @@ and t =
         mutable esys :  event_system;
 	
 	mutable est_engine : Rpc_transport.rpc_multiplex_controller Uq_engines.engine option;
-	mutable shutdown_connector : t -> Rpc_transport.rpc_multiplex_controller -> (unit->unit) -> unit;
+	mutable shutdown_connector : client -> Rpc_transport.rpc_multiplex_controller -> (unit->unit) -> unit;
 
-	mutable delayed_calls : (t pre_auth_protocol,call Queue.t) Hashtbl.t;
+	mutable delayed_calls : (client pre_auth_protocol,call Queue.t) Hashtbl.t;
 	  (* delayed: the request cannot be sent - because the authentication
 	     protocol is not yet done
 	   *)
@@ -175,6 +171,7 @@ and t =
 	mutable used_xids : unit SessionMap.t;
 	mutable last_replier : Unix.sockaddr option;
 	mutable last_xid : uint4 option;
+        mutable last_auth_proto : client pre_auth_protocol option;
 
 	(* configs: *)
 	mutable timeout : float;
@@ -185,13 +182,13 @@ and t =
 	mutable next_batch_flag : bool;
 	mutable max_resp_length : int option;
 	mutable user_name : string option;
-	mutable mstring_factories : Xdr_mstring.named_mstring_factories;
+	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
 
 	(* authentication: *)
-	mutable all_auth_methods : t pre_auth_method list;
-	mutable auth_methods : t pre_auth_method list;     
+	mutable all_auth_methods : client pre_auth_method list;
+	mutable auth_methods : client pre_auth_method list;     
 	   (* remaining methods to try *)
-	mutable auth_current : (string option,t pre_auth_protocol) Hashtbl.t;
+	mutable auth_current : (string option,client pre_auth_protocol) Hashtbl.t;
 	   (* The protocol used for this user *)
 
 	mutable exception_handler : exn -> unit;
@@ -205,6 +202,8 @@ and connector =
   | Descriptor of Unix.file_descr
   | Dynamic_descriptor of (unit -> Unix.file_descr)
   | Portmapped of string
+
+type t = client
 
 class type auth_session = [t] pre_auth_session
 class type auth_method = [t] pre_auth_method
@@ -232,6 +231,8 @@ object(self)
       | Some s -> `Done s
   method emit _ _ _ = assert false
   method receive _ = assert false
+  method gssapi_props = None
+  method destroy() = ()
   method auth_method = m
 end
 
@@ -311,6 +312,7 @@ let stop_retransmission_timer cl call =
 
 let pass_result cl call f =
   (* for regular calls only! *)
+  cl.last_auth_proto <- Some call.call_auth_proto;
 
   (* Stop the timer, if any : *)
   stop_retransmission_timer cl call;
@@ -418,6 +420,8 @@ let close ?error ?(ondown=fun()->()) cl =
     cl.used_xids <- SessionMap.empty;
     Queue.clear cl.waiting_calls;
     Hashtbl.clear cl.delayed_calls;
+    Hashtbl.iter (fun _ p -> p#destroy()) cl.auth_current;
+    Hashtbl.clear cl.auth_current;
     match cl.trans with
       | None -> 
 	  ondown()
@@ -459,9 +463,9 @@ let find_or_make_auth_protocol cl user_opt =
 let rec next_xid cl =
   let xid = cl.next_xid in
   (* xid is uint4, so we increment as int64: *)
-  let xid64 = Rtypes.int64_of_uint4 xid in
+  let xid64 = Netnumber.int64_of_uint4 xid in
   let xid64' = Int64.logand (Int64.succ xid64) 0xffff_ffff_L in
-  cl.next_xid <- Rtypes.uint4_of_int64 xid64';
+  cl.next_xid <- Netnumber.uint4_of_int64 xid64';
   if SessionMap.mem xid cl.used_xids then
     next_xid cl
   else
@@ -515,13 +519,18 @@ let continue_call cl call =
       cl rc.prog rc.proc call.xid in
   rc.decoder <- dec_opt;
   let request =
-    Rpc_packer.pack_call
-      ?encoder:enc_opt
-      rc.prog
-      call.xid
-      rc.proc
-      cred_flav cred_data verf_flav verf_data
-      rc.param in
+    try
+      Rpc_packer.pack_call
+        ?encoder:enc_opt
+        rc.prog
+        call.xid
+        rc.proc
+        cred_flav cred_data verf_flav verf_data
+        rc.param
+    with
+      | error ->
+          dlogr cl (fun () -> sprintf "pack_call: %s" (Netexn.to_string error));
+          raise error in
   call.request <- Some request;
 
   Queue.add call cl.waiting_calls
@@ -677,7 +686,7 @@ let unbound_async_call_r cl prog procname param receiver authsess_opt =
       failwith ("Rpc_client.unbound_async_call: No such procedure: " ^
 		  procname) in
 
-  if cl.next_batch_flag && Xdr.xdr_type_term out_type <> X_void then
+  if cl.next_batch_flag && Netxdr.xdr_type_term out_type <> X_void then
     failwith ("Rpc_client.unbound_async_call: Cannot call in batch mode: " ^
 		procname);
 
@@ -773,6 +782,7 @@ let unbound_async_call_r cl prog procname param receiver authsess_opt =
   in
 
   cl.last_xid <- Some new_call.xid;
+  cl.last_auth_proto <- None;
   cl.used_xids <- SessionMap.add new_call.xid () cl.used_xids;
   cl.next_timeout <- cl.timeout;
   cl.next_max_retransmissions <- cl.max_retransmissions;
@@ -853,7 +863,7 @@ let process_regular_incoming_message cl message peer sock call rc =
 		     "RPC <-- (sock=%s,peer=%s,xid=%Ld) Auth error %s - reaction: %s"
 		     (Rpc_transport.string_of_sockaddr sock)
 		     (Rpc_transport.string_of_sockaddr peer)
-		     (Rtypes.int64_of_uint4 call.xid)
+		     (Netnumber.int64_of_uint4 call.xid)
 		     (Rpc.string_of_server_error auth_problem)
 		     (string_of_reject_code code)
 		);
@@ -916,7 +926,7 @@ let process_regular_incoming_message cl message peer sock call rc =
 		   "RPC <-- (sock=%s,peer=%s,xid=%Ld) %s"
 		   (Rpc_transport.string_of_sockaddr sock)
 		   (Rpc_transport.string_of_sockaddr peer)
-		   (Rtypes.int64_of_uint4 call.xid)
+		   (Netnumber.int64_of_uint4 call.xid)
 		   (Rpc_util.string_of_response
 		      !Debug.ptrace_verbosity
 		      rc.prog
@@ -941,7 +951,7 @@ let process_regular_incoming_message cl message peer sock call rc =
 		   "RPC <-- (sock=%s,peer=%s,xid=%Ld) Error %s"
 		   (Rpc_transport.string_of_sockaddr sock)
 		   (Rpc_transport.string_of_sockaddr peer)
-		   (Rtypes.int64_of_uint4 call.xid)
+		   (Netnumber.int64_of_uint4 call.xid)
 		   (Netexn.to_string error)
 	      );
 	    let f = (fun () -> raise error) in
@@ -1012,7 +1022,12 @@ let process_incoming_message cl message peer =
 			Hashtbl.remove cl.delayed_calls call.call_auth_proto;
 			Queue.iter
 			  (fun d_call ->
-			     continue_call cl d_call
+                             (* the call may not be packable! *)
+                             try
+			       continue_call cl d_call
+                             with
+                               | error ->
+                                   pass_exception cl d_call error
 			  )
 			  q;
 			None
@@ -1202,7 +1217,7 @@ and next_outgoing_message' cl trans =
 			 "RPC --> (sock=%s,peer=%s,xid=%Ld) %s"
 			 (Rpc_transport.string_of_sockaddr trans#getsockname)
 			 (Rpc_transport.string_of_sockaddr dest)
-			 (Rtypes.int64_of_uint4 call.xid)
+			 (Netnumber.int64_of_uint4 call.xid)
 			 (match call.detail with
 			    | `Regular rc ->
 				Rpc_util.string_of_request
@@ -1282,16 +1297,23 @@ let shutdown_connector cl mplex ondown =
   )
 
 
-let mplex_of_fd ~close_inactive_descr prot fd esys =
+let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
   let preclose() =
     Netlog.Debug.release_fd fd in
   match prot with
     | Tcp ->
         Rpc_transport.stream_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys
+          ~close_inactive_descr ~preclose ~role:`Client ?tls fd esys
     | Udp ->
+        if tls <> None then (* a little ad... *)
+          failwith "Rpc_client: It is not supported to use TLS with datagrams. \
+                    Generally, there is an approach to solve this (via the \
+                    DTLS protocol variant of TLS), but this has not yet been \
+                    implemented. If it happens that you have some money left \
+                    in your pockets, you may support Gerd Stolpmann to \
+                    implement this feature. Contact gerd@gerd-stolpmann.de";
         Rpc_transport.datagram_rpc_multiplex_controller
-          ~close_inactive_descr ~preclose fd esys
+          ~close_inactive_descr ~preclose ~role:`Client fd esys
 
 
 class type socket_config =
@@ -1299,31 +1321,34 @@ object
   method non_blocking_connect : bool
   method multiplexing :
     close_inactive_descr:bool ->
+    peer_name:string option ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller Uq_engines.engine
 end
 
 
+let close_fd fd =
+  Netlog.Debug.release_fd fd;
+  try
+    match Netsys_win32.lookup fd with
+      | Netsys_win32.W32_pipe ph ->
+	   Netsys_win32.pipe_shutdown ph;
+	   Unix.close fd
+      | _ -> 
+	   ()
+  with Not_found ->
+    Unix.close fd 
+
+
 class default_socket_config : socket_config =
 object
   method non_blocking_connect = true
-  method multiplexing ~close_inactive_descr prot fd esys =
+  method multiplexing ~close_inactive_descr ~peer_name prot fd esys =
     let close() =
-      if close_inactive_descr then (
-	Netlog.Debug.release_fd fd;
-	try
-	  match Netsys_win32.lookup fd with
-	    | Netsys_win32.W32_pipe ph ->
-		Netsys_win32.pipe_shutdown ph;
-		Unix.close fd
-	    | _ -> 
-		()
-	with Not_found ->
-	  Unix.close fd 
-      ) in
+      if close_inactive_descr then close_fd fd in
     let eng = 
       try
-	let mplex = mplex_of_fd ~close_inactive_descr prot fd esys in
+	let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
 	new Uq_engines.epsilon_engine (`Done mplex) esys 
       with
 	| error -> 
@@ -1342,8 +1367,31 @@ object
   method non_blocking_connect = false
 end
 
+
+class tls_socket_config tls_config : socket_config =
+object
+  method non_blocking_connect = true
+  method multiplexing ~close_inactive_descr ~peer_name prot fd esys =
+    let tls = Some(tls_config, peer_name) in
+    let close() =
+      if close_inactive_descr then close_fd fd in
+    let eng = 
+      try
+	let mplex = mplex_of_fd ~close_inactive_descr ~tls prot fd esys in
+	new Uq_engines.epsilon_engine (`Done mplex) esys 
+      with
+	| error -> 
+	    new Uq_engines.epsilon_engine (`Error error) esys in
+    Uq_engines.when_state
+      ~is_aborted:(fun () -> close())
+      ~is_error:(fun _ -> close())
+      eng;
+    eng
+end
+
 let default_socket_config = new default_socket_config
 let blocking_socket_config = new blocking_socket_config
+let tls_socket_config = new tls_socket_config
 
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
@@ -1356,7 +1404,7 @@ class unbound_async_call cl prog name v =
   let emit = ref (fun _ -> assert false) in
   let call = unbound_async_call_r cl prog name v (fun gr -> !emit gr) None in
 object(self)
-  inherit [ Xdr.xdr_value ] Uq_engines.engine_mixin (`Working 0) cl.esys
+  inherit [ Netxdr.xdr_value ] Uq_engines.engine_mixin (`Working 0) cl.esys
 
   initializer
     emit := (fun get_result -> 
@@ -1380,6 +1428,85 @@ object(self)
 end
 
 
+  (*****)
+
+
+let bind cl prog =
+  cl.progs <- prog :: cl.progs
+
+let use cl prog =
+  let prog_id = Rpc_program.id prog in
+  if not(List.exists (fun p -> Rpc_program.id p = prog_id) cl.progs) then
+    failwith "Rpc_client.use: This program is not bound by this client"
+
+
+let event_system cl =
+  cl.esys
+
+
+
+(* Now synchronous calls: *)
+
+type 'a result =
+    No
+  | Reply of 'a
+  | Error of exn
+
+
+exception Stop_call
+
+let synchronize esys f_async arg =
+  let r = ref No in
+  let get_result transmitter =
+    try
+      r := Reply (transmitter())
+    with
+      x ->
+	r := Error x;
+	if x = Message_timeout then 
+	  raise (Unbound_exception Stop_call)
+  in
+  (* push the request onto the queue: *)
+  let () = f_async arg get_result in
+  (* run through the queue and process all elements: *)
+  ( try Unixqueue.run esys with Stop_call -> ());
+  (* now a call back of 'get_result' should have happened. *)
+  match !r with
+    No -> failwith "Rpc_client.synchronize: internal error"
+  | Reply x -> x
+  | Error e -> raise e
+
+
+
+let unbound_sync_call cl prog proc arg =
+  synchronize
+    cl.esys
+    (unbound_async_call cl prog proc)
+    arg
+
+
+let get_socket_name cl =
+  match cl.trans with
+    | None -> failwith "Rpc_client.get_socket_name: not connected"
+    | Some trans ->
+	( match trans # getsockname with
+	    | `Implied ->
+		failwith "Rpc_client.get_socket_name: not applicable"
+	    | `Sockaddr a -> a
+	)
+
+let get_peer_name cl =
+  match cl.trans with
+    | None -> failwith "Rpc_client.get_peer_name: not connected"
+    | Some trans ->
+	( match trans # getpeername with
+	    | `Implied ->
+		failwith "Rpc_client.get_peer_name: not applicable"
+	    | `Sockaddr a -> a
+	)
+
+  (*****)
+
 let string_of_file_descr fd =
   Int64.to_string (Netsys.int64_of_file_descr fd)
 
@@ -1387,6 +1514,39 @@ let rec internal_create initial_xid
                         shutdown
 			prog_opt
                         mode esys =
+
+  let module C = struct
+    type t = client
+(*    let last_sockname = ref None *)
+    let create_inet esys host port proto =
+(*
+      (* Create the socket immediately, as we want to know our own sockaddr *)
+      let opts = Uq_client.default_connect_options in
+      let sock = `Socket(`Sock_inet_byname(Unix.SOCK_DGRAM,host,port),opts) in
+      let status = Uq_client.connect sock 15.0 in
+      let fd =
+        match status with
+          | `Socket(fd,_) -> fd
+          | _ -> assert false in
+      last_sockname := Some (Unix.getsockname fd);
+      let conn = `Socket_endpoint(Rpc.Udp,fd) in
+ *)
+      let conn = `Socket(proto, Inet(host,port), default_socket_config) in
+      internal_create
+        (Netnumber.uint4_of_int 0) shutdown_connector None conn esys
+    let create_unix esys path =
+      let conn = `Socket(Rpc.Tcp, Unix path, default_socket_config) in
+      internal_create
+        (Netnumber.uint4_of_int 0) shutdown_connector None conn esys
+    let bind = bind
+    let shut_down c = close c
+    let synchronize = synchronize
+    let event_system = event_system
+    let use = use
+    let unbound_sync_call = unbound_sync_call
+    let unbound_async_call = unbound_async_call
+  end in
+  let module PM = Rpc_portmapper_impl.PM(C) in
 
   let id_s_0 =
     match mode with
@@ -1419,7 +1579,7 @@ let rec internal_create initial_xid
       | Some prog ->
 	  id_s_0 ^ " for program " ^ 
 	    (Int32.to_string 
-	       (Rtypes.logical_int32_of_uint4
+	       (Netnumber.logical_int32_of_uint4
 		  (Rpc_program.program_number prog))) in
 
   let non_blocking_connect =
@@ -1450,6 +1610,7 @@ let rec internal_create initial_xid
       mstring_factories = Hashtbl.create 1;
       last_replier = None;
       last_xid = None;
+      last_auth_proto = None;
       timeout = (-1.0);
       max_retransmissions = 0;
       exception_handler = (fun _ -> ());
@@ -1459,65 +1620,61 @@ let rec internal_create initial_xid
       nolog = false;
     }
   in
-  Hashtbl.add cl.mstring_factories "*" Xdr_mstring.string_based_mstrings;
-  
+  Hashtbl.add cl.mstring_factories "*" Netxdr_mstring.string_based_mstrings;
 
-  let portmapper_engine prot host prog esys = 
-    (* Performs GETPORT for the program on [host]. We use 
-     * Rpc_portmapper_aux but not Rpc_portmapper_clnt. The latter is
-     * impossible because of a dependency cycle.
-     *)
+  let portmapper_engine prot addr prog esys = 
     dlog cl "starting portmapper query";
-    let pm_port = Rtypes.int_of_uint4 Rpc_portmapper_aux.pmap_port in
-    let pm_prog = Rpc_portmapper_aux.program_PMAP'V2 in
-    let pm_client = 
-      internal_create
-	(Rtypes.uint4_of_int 0)
-	shutdown_connector
-	(Some pm_prog)
-	(`Socket(Rpc.Udp, Inet(host, pm_port), default_socket_config))
-	esys
-    in
-    let v =
-      Rpc_portmapper_aux._of_PMAP'V2'pmapproc_getport'arg
-	{ Rpc_portmapper_aux.prog = Rpc_program.program_number prog;
-	  vers = Rpc_program.version_number prog;
-	  prot = ( match prot with
-		     | Tcp -> Rpc_portmapper_aux.ipproto_tcp
-		     | Udp -> Rpc_portmapper_aux.ipproto_udp
-		 );
-	  port = Rtypes.uint4_of_int 0;
-	} in
-    let close_deferred() =
-      Unixqueue.once esys (Unixqueue.new_group esys) 0.0 
-	(fun() -> close pm_client) in
-    new Uq_engines.map_engine
-      ~map_done:(fun r ->
-		   dlog cl "Portmapper GETPORT done";
-		   let addr =
-		     match pm_client.trans with
-		       | None -> assert false
-		       | Some trans ->
-			   ( match trans # getpeername with
-			       | `Implied -> assert false
-			       | `Sockaddr a -> a
-			   ) in
-		   let port =
-		     Rpc_portmapper_aux._to_PMAP'V2'pmapproc_getport'res r in
-		   let port = Rtypes.int_of_uint4 port in
-		   close_deferred();
-		   if port = 0 then
-		     `Error (Failure "Program not bound in Portmapper")
-		   else
-		     `Done(addr, port)
-		)
-      ~map_error:(fun err ->
-		    dlog cl "Portmapper GETPORT error";
-		    close_deferred();
-		    `Error err)
-      (new unbound_async_call pm_client pm_prog "PMAPPROC_GETPORT" v)
-  in
-
+    let pm_prot = prot (* required when netid="" *) in
+    let pm = PM.create_inet ~esys (Unix.string_of_inet_addr addr) pm_prot in
+(*
+    let client = PM.(pm.client) in
+    let netid = Rpc.netid_of_inet_addr addr prot in
+    let client_sa = 
+      match !C.last_sockname with
+        | Some sa -> sa
+        | None -> assert false in
+    let client_uaddr =
+      match client_sa with
+        | Unix.ADDR_INET(a,p) -> Rpc.create_inet_uaddr a p
+        | _ -> "" in
+ *)
+    let e, signal = Uq_engines.signal_engine esys in
+    (* Linux RPCBIND is completely buggy when called with netid != "".
+       So we don't do it, and use only the less capable way netid = "".
+       This means we get the entry for the netid corresponding to how
+       we invoked RPCBIND.
+     *)
+    PM.getaddr_rpcbind'async
+      pm
+      (Rpc_program.program_number prog)
+      (Rpc_program.version_number prog)
+      "" (* netid *)
+      "" (* client_uaddr *)
+      (fun getresult ->
+         try
+           let uaddr =
+             match getresult() with
+               | Some uaddr -> uaddr
+               | None ->
+                    failwith "Program not bound in Portmapper/RPCBIND" in
+           let addr1, port1 = Rpc.parse_inet_uaddr uaddr in
+           PM.shut_down pm;
+	   dlog cl "Portmapper GETADDR done";
+           (* Note that addr1 can be inet_addr_any or inet6_addr_any. In that
+              case return the PM address instead
+            *)
+           let addr2 =
+             if addr1 = Unix.inet_addr_any || addr1 = Unix.inet6_addr_any then
+               addr
+             else
+               addr1 in
+           signal (`Done (addr2, port1))
+         with error ->
+	   dlog cl "Portmapper GETADDR error";
+           PM.shut_down pm;
+           signal (`Error error)
+      );
+    e in
   let connect_engine addr esys =
     match addr with
       | `Portmapped(prot,host) ->
@@ -1526,25 +1683,25 @@ let rec internal_create initial_xid
 		  failwith 
 		    "Rpc_client.unbound_create: Portmapped not supported"
 	      | Some prog ->
-		  new Uq_engines.seq_engine
-		    (portmapper_engine prot host prog esys)
-		    (fun (sockaddr, port) ->
-		       let inetaddr =
-			 match sockaddr with
-			   | Unix.ADDR_INET(inet, _) -> inet
-			   | _ -> assert false in
-		       let stype = 
-			 match prot with 
-			   | Tcp -> Unix.SOCK_STREAM 
-			   | Udp -> Unix.SOCK_DGRAM in
-		       let addr = `Sock_inet(stype, inetaddr, port) in
-		       let opts = Uq_engines.default_connect_options in
-		       Uq_engines.connector (`Socket(addr,opts)) esys
+                  let resolver = Uq_resolver.current_resolver() in
+                  resolver # host_by_name host esys
+                  ++ (fun he ->
+                        let addr = Unix.(he.h_addr_list.(0)) in
+                        portmapper_engine prot addr prog esys
+                        ++ (fun (raddr,rport) ->
+		              let stype = 
+			        match prot with 
+			          | Tcp -> Unix.SOCK_STREAM 
+			          | Udp -> Unix.SOCK_DGRAM in
+		              let addr = `Sock_inet(stype, raddr, rport) in
+		              let opts = Uq_client.default_connect_options in
+		              Uq_client.connect_e (`Socket(addr,opts)) esys
+                           )
 		    )
 	  )
 
       | #Uq_engines.connect_address as addr ->
-	  Uq_engines.connector addr esys in
+	  Uq_client.connect_e addr esys in
 
   let track fd =
     Netlog.Debug.track_fd ~owner:"Rpc_client" ~descr:id_s fd in
@@ -1554,20 +1711,21 @@ let rec internal_create initial_xid
       Unix.setsockopt fd Unix.TCP_NODELAY true
     with _ -> () in
 
-  let open_socket_non_blocking addr prot conf =
+  let open_socket_non_blocking host_opt addr prot conf =
     new Uq_engines.seq_engine
       (connect_engine addr esys)
       (fun status ->
 	  dlogr  cl
 	    (fun () -> 
 	       "Non-blocking socket connect successful for " ^ id_s);
-	 let fd = Uq_engines.client_endpoint status in
+	 let fd = Uq_client.client_endpoint status in
 	 disable_nagle fd;
 	 track fd;
-	 conf # multiplexing ~close_inactive_descr:true prot fd esys
+	 conf # multiplexing 
+            ~close_inactive_descr:true ~peer_name:host_opt prot fd esys
       ) in
 
-  let open_socket_blocking addr prot conf =
+  let open_socket_blocking host_opt addr prot conf =
     let conn_esys = Unixqueue.create_unix_event_system() in
     let c = connect_engine addr conn_esys in
     Unixqueue.run conn_esys;
@@ -1576,10 +1734,11 @@ let rec internal_create initial_xid
 	  dlogr cl
 	    (fun () ->
 	       "Blocking socket connect successful for " ^ id_s);
-	  let fd = Uq_engines.client_endpoint status in
+	  let fd = Uq_client.client_endpoint status in
 	  disable_nagle fd;
 	  track fd;
-	  conf # multiplexing ~close_inactive_descr:true prot fd esys
+	  conf # multiplexing 
+             ~close_inactive_descr:true ~peer_name:host_opt prot fd esys
       | `Error err ->
 	  raise err
       | _ ->
@@ -1597,7 +1756,8 @@ let rec internal_create initial_xid
       | `Socket_endpoint(prot,fd) ->
 	  disable_nagle fd;
 	  track fd;
-	  let m = mplex_of_fd ~close_inactive_descr:true prot fd esys in
+	  let m = 
+            mplex_of_fd ~close_inactive_descr:true ~tls:None prot fd esys in
 	  (prot, new Uq_engines.epsilon_engine (`Done m) esys)
       | `Multiplexer_endpoint(mplex) ->
 	  if mplex # event_system != esys then
@@ -1612,38 +1772,41 @@ let rec internal_create initial_xid
 	      | Inet (host,port) ->
 		  let saddr = `Sock_inet_byname(stype, host, port) in
 		  let addr = 
-		    `Socket(saddr, Uq_engines.default_connect_options) in
-		  (prot, open_socket addr prot conf)
+		    `Socket(saddr, Uq_client.default_connect_options) in
+		  (prot, open_socket (Some host) addr prot conf)
 	      | Internet (host,port) ->
 		  let saddr = `Sock_inet(stype, host, port) in
 		  let addr = 
-		    `Socket(saddr, Uq_engines.default_connect_options) in
-		  (prot, open_socket addr prot conf)
+		    `Socket(saddr, Uq_client.default_connect_options) in
+		  (prot, open_socket None addr prot conf)
 	      | Unix path ->
 		  let saddr = `Sock_unix(stype, path) in
 		  let addr = 
 		    `Socket(saddr, 
-			    Uq_engines.default_connect_options) in
-		  (prot, open_socket addr prot conf)
+			    Uq_client.default_connect_options) in
+		  (prot, open_socket None addr prot conf)
 	      | W32_pipe path ->
 		  if prot <> Rpc.Tcp then
 		    failwith "Rpc_client.create2: \
                               Pipe only supported for Rpc.Tcp protocol type";
 		  let addr = `W32_pipe(Netsys_win32.Pipe_duplex, path) in
-		  (prot, open_socket addr prot conf)
+		  (prot, open_socket None addr prot conf)
 	      |	Descriptor fd -> 
 		  (* no track! *)
 		  let m = 
-		    mplex_of_fd ~close_inactive_descr:false prot fd esys in
+		    mplex_of_fd ~close_inactive_descr:false ~tls:None
+                                prot fd esys in
 		  (prot, new Uq_engines.epsilon_engine (`Done m) esys)
 	      |	Dynamic_descriptor f ->
 		  let fd = f() in
 		  track fd;
 		  let m = 
-		    mplex_of_fd ~close_inactive_descr:true prot fd esys in
+		    mplex_of_fd ~close_inactive_descr:true ~tls:None
+                                prot fd esys in
 		  (prot, new Uq_engines.epsilon_engine (`Done m) esys)
 	      | Portmapped host ->
-		  (prot, open_socket (`Portmapped(prot,host)) prot conf)
+		  (prot, 
+                   open_socket (Some host) (`Portmapped(prot,host)) prot conf)
 	   )
   in
 
@@ -1698,21 +1861,57 @@ let create2 ?program_number ?version_number ?(initial_xid=0)
   let prog = Rpc_program.update ?program_number ?version_number prog0 in
   let cl = 
     internal_create
-      (Rtypes.uint4_of_int initial_xid) shutdown (Some prog) mode esys in
+      (Netnumber.uint4_of_int initial_xid) shutdown (Some prog) mode esys in
   cl
 
 let unbound_create ?(initial_xid=0) ?(shutdown = shutdown_connector) 
                    mode esys =
-  internal_create (Rtypes.uint4_of_int initial_xid) shutdown None mode esys
+  internal_create (Netnumber.uint4_of_int initial_xid) shutdown None mode esys
 
 
-let bind cl prog =
-  cl.progs <- prog :: cl.progs
+  (*****)
 
-let use cl prog =
-  let prog_id = Rpc_program.id prog in
-  if not(List.exists (fun p -> Rpc_program.id p = prog_id) cl.progs) then
-    failwith "Rpc_client.use: This program is not bound by this client"
+let gen_shutdown cl is_running run ondown =
+  if cl.ready then (
+    let b = is_running cl.esys in
+    ( match cl.est_engine with
+        | None -> ()
+        | Some e -> e#abort()
+    );
+    close ~ondown cl;
+    if not b then run cl.esys
+  )
+  else
+    ondown()
+
+
+let shut_down cl =
+  gen_shutdown 
+    cl 
+    Unixqueue.is_running 
+    Unixqueue.run 
+    (fun () -> ())
+
+
+let sync_shutdown cl =
+  gen_shutdown 
+    cl 
+    (fun esys -> 
+       if Unixqueue.is_running esys then
+         failwith "Rpc_client.sync_shutdown: called from event loop";
+       false)
+    Unixqueue.run 
+    (fun () -> ())
+  
+let trigger_shutdown cl ondown =
+  gen_shutdown
+    cl
+    (fun _ -> true)
+    Unixqueue.run
+    (fun () ->
+       let g = Unixqueue.new_group cl.esys in
+       Unixqueue.once cl.esys g 0.0 ondown
+    )
 
 
   (*****)
@@ -1747,75 +1946,11 @@ let set_mstring_factories cl fac =
 let set_user_name cl n =
   cl.user_name <- n
 
-let gen_shutdown cl is_running run ondown =
-  if cl.ready then (
-    let b = is_running cl.esys in
-    ( match cl.est_engine with
-	| None -> ()
-	| Some e -> e#abort()
-    );
-    close ~ondown cl;
-    if not b then run cl.esys
-  )
-  else
-    ondown()
-
-let shut_down cl =
-  gen_shutdown 
-    cl 
-    Unixqueue.is_running 
-    Unixqueue.run 
-    (fun () -> ())
-
-let sync_shutdown cl =
-  gen_shutdown 
-    cl 
-    (fun esys -> 
-       if Unixqueue.is_running esys then
-	 failwith "Rpc_client.sync_shutdown: called from event loop";
-       false)
-    Unixqueue.run 
-    (fun () -> ())
-  
-let trigger_shutdown cl ondown =
-  gen_shutdown
-    cl
-    (fun _ -> true)
-    Unixqueue.run
-    (fun () ->
-       let g = Unixqueue.new_group cl.esys in
-       Unixqueue.once cl.esys g 0.0 ondown
-    )
-
-
-let event_system cl =
-  cl.esys
-
 let program cl =
   List.hd cl.progs
 
 let programs cl =
   cl.progs
-
-let get_socket_name cl =
-  match cl.trans with
-    | None -> failwith "Rpc_client.get_socket_name: not connected"
-    | Some trans ->
-	( match trans # getsockname with
-	    | `Implied ->
-		failwith "Rpc_client.get_socket_name: not applicable"
-	    | `Sockaddr a -> a
-	)
-
-let get_peer_name cl =
-  match cl.trans with
-    | None -> failwith "Rpc_client.get_peer_name: not connected"
-    | Some trans ->
-	( match trans # getpeername with
-	    | `Implied ->
-		failwith "Rpc_client.get_peer_name: not applicable"
-	    | `Sockaddr a -> a
-	)
 
 let get_sender_of_last_response cl =
   match cl.last_replier with
@@ -1833,50 +1968,21 @@ let get_xid_of_last_call cl =
 let get_protocol cl =
   cl.prot
 
+let get_tls_session_props cl =
+  match cl.trans with
+    | None -> failwith "Rpc_client.get_tls_session_props: not connected"
+    | Some trans ->
+        trans # tls_session_props
+
+let get_gssapi_props cl =
+  match cl.last_auth_proto with
+    | None ->
+        failwith "Rpc_client.get_gssapi_props: nothing available"
+    | Some proto ->
+        proto # gssapi_props
+
 let verbose b =
   Debug.enable := b
-
-  (*****)
-
-(* Now synchronous calls: *)
-
-type 'a result =
-    No
-  | Reply of 'a
-  | Error of exn
-
-
-exception Stop_call
-
-let synchronize esys f_async arg =
-  let r = ref No in
-  let get_result transmitter =
-    try
-      r := Reply (transmitter())
-    with
-      x ->
-	r := Error x;
-	if x = Message_timeout then 
-	  raise (Unbound_exception Stop_call)
-  in
-  (* push the request onto the queue: *)
-  let () = f_async arg get_result in
-  (* run through the queue and process all elements: *)
-  ( try Unixqueue.run esys with Stop_call -> ());
-  (* now a call back of 'get_result' should have happened. *)
-  match !r with
-    No -> failwith "Rpc_client.synchronize: internal error"
-  | Reply x -> x
-  | Error e -> raise e
-
-
-
-let unbound_sync_call cl prog proc arg =
-  synchronize
-    cl.esys
-    (unbound_async_call cl prog proc)
-    arg
-
 
   (*****)
 

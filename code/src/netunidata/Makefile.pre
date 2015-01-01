@@ -1,0 +1,99 @@
+TOP_DIR=../..
+
+PRE = 1
+PKGNAME = netunidata
+
+MAPPINGS = netmappings_iso.ml \
+	   netmappings_other.ml \
+	   netmappings_jp.ml \
+	   netmappings_kr.ml
+GENERATE = $(MAPPINGS) netunichecksums.ml netuniconfig.ml netdb_done META
+PMAP = $(MAPPINGS:.ml=.pmap)
+
+CLEAN_LIST += $(GENERATE)
+
+ISO_MAPPINGS   = mappings/iso*.unimap
+JP_MAPPINGS    = mappings/jis*.*map
+KR_MAPPINGS    = mappings/ks*.*map
+OTHER_MAPPINGS = mappings/cp*.unimap \
+                 mappings/adobe*.unimap \
+                 mappings/koi*.unimap \
+                 mappings/mac*.unimap \
+                 mappings/windows*.unimap
+
+INSTOTHER = install-netdb
+PACKLIST = netdb-packlist
+INSTALL_EXTRA = $(MAPPINGS:.ml=.cmo) $(MAPPINGS:.ml=.cmx) $(MAPPINGS:.ml=.o) \
+                netuniinit.cmo netuniinit.cmx netuniinit.o
+
+include $(TOP_DIR)/Makefile.rules
+
+netdb-packlist: netdb_done
+	test -d netdb
+	(cd netdb && ls *.netdb) | \
+	{ while read f; do echo "$(NET_DB_DIR)/$$f"; done; } >netdb-packlist
+
+.PHONY: install-netdb
+install-netdb:
+	mkdir -p "$(DESTDIR)$(NET_DB_DIR)"
+	cp netdb/*.netdb "$(DESTDIR)$(NET_DB_DIR)"
+	@echo "Installed .netdb files into $(DESTDIR)$(NET_DB_DIR)"
+
+
+# ASN1: these tables are built-in, see netstring
+
+unimap_to_ocaml = $(TOP_DIR)/tools/unimap_to_ocaml/unimap_to_ocaml
+
+# The .pmap files are the distributed files. The .unimap files cannot be
+# distributed because of license conditions.
+
+netmappings_iso.pmap:
+	$(unimap_to_ocaml) \
+	        -o netmappings_iso.pmap -pmap $(ISO_MAPPINGS)
+
+netmappings_iso.ml: netmappings_iso.pmap
+	$(unimap_to_ocaml) \
+		-o netmappings_iso.ml netmappings_iso.pmap
+
+netmappings_jp.pmap:
+	$(unimap_to_ocaml) \
+	        -o netmappings_jp.pmap -pmap $(JP_MAPPINGS)
+
+netmappings_jp.ml: netmappings_jp.pmap
+	$(unimap_to_ocaml) \
+		-o netmappings_jp.ml netmappings_jp.pmap
+
+netmappings_kr.pmap:
+	$(unimap_to_ocaml) \
+	        -o netmappings_kr.pmap -pmap $(KR_MAPPINGS)
+
+netmappings_kr.ml: netmappings_kr.pmap
+	$(unimap_to_ocaml) \
+		-o netmappings_kr.ml netmappings_kr.pmap
+
+netmappings_other.pmap:
+	$(unimap_to_ocaml) \
+	        -o netmappings_other.pmap -pmap $(OTHER_MAPPINGS)
+
+netmappings_other.ml: netmappings_other.pmap
+	$(unimap_to_ocaml) \
+		-o netmappings_other.ml netmappings_other.pmap
+
+netunichecksums.ml: $(PMAP)
+	$(unimap_to_ocaml) \
+		-o netunichecksums.ml -cksum $(PMAP)
+
+netuniconfig.ml:
+	{ echo "(* Generated file *)"; \
+	  echo 'let net_db_dir = "$(NET_DB_DIR)";;'; \
+	} >netuniconfig.ml
+
+netdb_done: $(PMAP)
+	mkdir -p netdb
+	cd netdb && \
+	        ../$(unimap_to_ocaml) -netdb ../*.pmap
+	touch netdb_done
+
+realgenclean::
+	rm -rf netdb
+

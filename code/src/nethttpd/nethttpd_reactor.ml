@@ -49,6 +49,8 @@ object
   method config_error_response : error_response_params -> string
   method config_log_error : request_info -> string -> unit
   method config_log_access : full_info -> unit
+  method config_tls_cert_props : bool
+  method config_tls_remote_user : bool
 end
 
 class type http_reactor_config =
@@ -101,6 +103,10 @@ let logged_error_response fd_addr peer_addr req_meth_uri_opt
     ( object
 	method server_socket_addr = fd_addr
 	method remote_socket_addr = peer_addr
+        method tls_session_props =
+          match env_opt with
+            | None -> None
+            | Some env -> env # tls_session_props
 	method request_method = fst(unopt req_meth_uri_opt)
 	method request_uri = snd(unopt req_meth_uri_opt)
 	method input_header = (unopt env_opt) # input_header
@@ -138,6 +144,7 @@ let no_info =
   ( object
       method server_socket_addr = raise Not_found
       method remote_socket_addr = raise Not_found
+      method tls_session_props = None
       method request_method = raise Not_found
       method request_uri = raise Not_found
       method input_header = raise Not_found
@@ -147,12 +154,46 @@ let no_info =
   )
 
 
+let cert_atts =
+  [ Netx509.DN_attributes.at_commonName, "_CN";
+    Netx509.DN_attributes.at_emailAddress, "_Email";    
+    Netx509.DN_attributes.at_organizationName, "_O";
+    Netx509.DN_attributes.at_organizationalUnitName, "_OU";
+    Netx509.DN_attributes.at_countryName, "_C";
+    Netx509.DN_attributes.at_stateOrProvinceName, "_SP";
+    Netx509.DN_attributes.at_localityName, "_L";
+  ]
+
+
+let gen_dn_props dn prefix =
+  let p = prefix ^ "_DN" in
+  (p, dn#string) ::
+    List.flatten
+      (List.map
+         (fun (oid, suffix) ->
+            try
+              let s = Netx509.lookup_dn_ava_utf8 dn oid in
+              [ p ^ suffix, s ]
+            with Not_found -> []
+         )
+         cert_atts
+      )
+
+
+let gen_cert_props cert prefix =
+  [ prefix ^ "_M_SERIAL", Netencoding.to_hex (cert#serial_number);
+    prefix ^ "_V_START", Netdate.mk_internet_date ~zone:0 cert#valid_not_before;
+    prefix ^ "_V_END", Netdate.mk_internet_date ~zone:0 cert#valid_not_after;
+  ]
+
+
 class http_environment (proc_config : #http_processor_config)
                        req_meth req_uri req_version req_hdr 
                        fd_addr peer_addr
                        in_ch in_cnt 
                        out_ch output_state resp after_send_file
 		       reqrej fdi
+                       tls_props
                       : internal_environment =
 
   (* Decode important input header fields: *)
@@ -201,27 +242,77 @@ object(self)
     in_channel <- in_ch;
     out_channel <- out_ch;
     protocol <- req_version;
-    properties <- [ "GATEWAY_INTERFACE", "Nethttpd/0.0";
-		  "SERVER_SOFTWARE",   "Nethttpd/0.0";
-		  "SERVER_NAME",       in_host;
-		  "SERVER_PROTOCOL",   string_of_protocol req_version;
-		  "REQUEST_METHOD",    req_meth;
-		  "SCRIPT_NAME",       script_name;
-		  (* "PATH_INFO",         ""; *)
-		  (* "PATH_TRANSLATED",   ""; *)
-		  "QUERY_STRING",      query_string;
-		  (* "REMOTE_HOST",       ""; *)
-		  "REMOTE_ADDR",       fst(get_this_host peer_addr);
-		  (* "AUTH_TYPE",         ""; *)
-		  (* "REMOTE_USER",       ""; *)
-		  (* "REMOTE_IDENT",      ""; *)
-		  "HTTPS",             "off";
-		  "REQUEST_URI",       req_uri;
-		  ] @
-                  ( match in_port_opt with
-		      | Some p -> [ "SERVER_PORT", string_of_int p ]
-		      | None   -> [] );
-    logged_props <- properties
+    properties <- 
+      [ "GATEWAY_INTERFACE",   "Nethttpd/0.0";
+	"SERVER_SOFTWARE",     "Nethttpd/0.0";
+	"SERVER_NAME",         in_host;
+	"SERVER_PROTOCOL",     string_of_protocol req_version;
+	"REQUEST_METHOD",      req_meth;
+	"SCRIPT_NAME",         script_name;
+	(* "PATH_INFO",        ""; *)
+	(* "PATH_TRANSLATED",  ""; *)
+	"QUERY_STRING",        query_string;
+	(* "REMOTE_HOST",      ""; *)
+	"REMOTE_ADDR",         fst(get_this_host peer_addr);
+	(* "AUTH_TYPE",        ""; *)
+	(* "REMOTE_USER",      ""; *)
+	(* "REMOTE_IDENT",     ""; *)
+	"HTTPS",               (if tls_props = None then "off" else "on");
+	"REQUEST_URI",         req_uri;
+      ] @
+        ( match in_port_opt with
+	    | Some p -> [ "SERVER_PORT", string_of_int p ]
+	    | None   -> []
+        ) @
+        ( match tls_props with
+            | None -> []
+            | Some (p:Nettls_support.tls_session_props) ->
+                 (* see http://httpd.apache.org/docs/2.4/mod/mod_ssl.html
+                    for a reference. Not everything is supported here, though.
+                  *)
+                 [ "SSL_PROTOCOL", p#protocol;
+                   "SSL_VERSION_LIBRARY", "Nethttpd/0.0";
+                   "SSL_CIPHER", p#kx_algo ^ "-" ^ p#cipher_algo ^ "-" ^ 
+                                   p#mac_algo;
+                   "SSL_SESSION_ID", Netencoding.to_hex p#id
+                 ] 
+                 @
+                 (if proc_config # config_tls_remote_user then
+                    match p # peer_credentials with
+                      | `X509 cert ->
+                           ( try
+                               let name =
+                                 Nettls_support.get_tls_user_name p in
+                               [ "REMOTE_USER", name ]
+                             with Not_found -> []
+                           )
+                      | _ -> []
+
+                  else
+                    []
+                 )
+                 @
+                 (if proc_config # config_tls_cert_props then
+                    ( match p # endpoint_credentials with
+                        | `X509 cert ->
+                             gen_dn_props cert#subject "SSL_SERVER_S"
+                             @ gen_dn_props cert#issuer "SSL_SERVER_I"
+                             @ gen_cert_props cert "SSL_SERVER"
+                        | _ -> []
+                    ) @
+                    ( match p # peer_credentials with
+                        | `X509 cert ->
+                             gen_dn_props cert#subject "SSL_CLIENT_S"
+                             @ gen_dn_props cert#issuer "SSL_CLIENT_I"
+                             @ gen_cert_props cert "SSL_CLIENT"
+                        | _ -> []
+                    )
+                  else
+                    []
+                 )
+        );
+    logged_props <- properties;
+    tls_session_props <- tls_props;
   )
 
   method unlock() =
@@ -285,6 +376,7 @@ object(self)
 	  method input_header = req_hdr
 	  method cgi_properties = logged_props
 	  method input_body_size = !in_cnt
+          method tls_session_props = tls_props
 	end
       ) in
     proc_config # config_log_error info s
@@ -311,7 +403,8 @@ object(self)
 	    method request_body_rejected = !reqrej
 	    method output_header = sent_resp_hdr
 	    method output_body_size = resp#body_size
-	  end
+            method tls_session_props = tls_props
+ 	  end
 	) in
       proc_config # config_log_access full_info;
       access_logged <- true
@@ -565,7 +658,8 @@ end
 
 
 
-class http_reactor (config : #http_reactor_config) fd =
+class http_reactor ?(config_hooks = fun _ -> ())
+                   (config : #http_reactor_config) fd =
   (* note that "new http_reactor" can already raise exceptions, e.g.
      Unix.ENOTCONN
    *)
@@ -580,7 +674,8 @@ object(self)
       ~descr:(sprintf "HTTP %s->%s"
 		(Netsys.string_of_sockaddr peer_addr)
 		(Netsys.string_of_sockaddr fd_addr))
-      fd
+      fd;
+    config_hooks proto#hooks
   )
 
   method private cycle() =
@@ -662,7 +757,7 @@ object(self)
     (* Ensure that all written data are actually transmitted: *)
     dlogr (fun () -> 
 	     sprintf "FD %Ld: synch loop" (Netsys.int64_of_file_descr fd));
-    while proto # do_output do
+    while proto # resp_queue_filled do
       self # cycle();
     done;
     dlogr (fun () -> 
@@ -733,6 +828,7 @@ object(self)
 			      lifted_output_ch output_state
 			      resp after_send_file reqrej
 			      (Netsys.int64_of_file_descr fd)
+                              proto#tls_session_props
 	      in
 	      env_opt := Some env;
 	      let req_obj = new http_reactive_request_impl 
@@ -858,7 +954,7 @@ type x_reaction =
     ]
 
 
-let process_connection config fd (stage1 : 'a http_service) =
+let process_connection ?config_hooks config fd (stage1 : 'a http_service) =
 
   let fd_addr_str =
     try Netsys.string_of_sockaddr (Unix.getsockname fd)
@@ -1049,7 +1145,7 @@ let process_connection config fd (stage1 : 'a http_service) =
   
   let reactor = 
     try
-      new http_reactor config fd 
+      new http_reactor ?config_hooks config fd 
     with
 	err ->
 	  (* An exception means here that getsockname or getpeername failed.
@@ -1065,7 +1161,12 @@ let process_connection config fd (stage1 : 'a http_service) =
       fetch_requests reactor
     with
 	err ->
-	  let msg = Netexn.to_string err in
+          let bt = Printexc.get_backtrace() in
+	  let msg1 = Netexn.to_string err in
+          let msg =
+            msg1 ^ 
+              (if Printexc.backtrace_status() then " (backtrace: " ^ bt ^ ")" 
+               else "") in
 	  dlogr (fun () ->
 		   sprintf "Exception forwarding to error log: %s" msg);
 	  config # config_log_error no_info
@@ -1075,7 +1176,12 @@ let process_connection config fd (stage1 : 'a http_service) =
       reactor # close()
     with
 	err ->
-	  let msg = Netexn.to_string err in
+          let bt = Printexc.get_backtrace() in
+	  let msg1 = Netexn.to_string err in
+          let msg =
+            msg1 ^ 
+              (if Printexc.backtrace_status() then " (backtrace: " ^ bt ^ ")" 
+               else "") in
 	  dlogr (fun () ->
 		   sprintf "Exception forwarding to error log: %s" msg);
 	  config # config_log_error no_info
@@ -1096,6 +1202,8 @@ let default_http_processor_config =
 	let s = Nethttpd_util.std_error_log_string p msg in
 	Netlog.log `Err s
       method config_log_access p = ()
+      method config_tls_cert_props = true
+      method config_tls_remote_user = true
     end
   )
 
@@ -1114,6 +1222,8 @@ class modify_http_processor_config
       ?config_error_response
       ?config_log_error
       ?config_log_access
+      ?config_tls_cert_props
+      ?config_tls_remote_user
       (config : http_processor_config) : http_processor_config =
   let config_timeout_next_request =
     override config#config_timeout_next_request config_timeout_next_request in
@@ -1127,6 +1237,10 @@ class modify_http_processor_config
     override config#config_log_error config_log_error in
   let config_log_access =
     override config#config_log_access config_log_access in
+  let config_tls_cert_props =
+    override config#config_tls_cert_props config_tls_cert_props in
+  let config_tls_remote_user =
+    override config#config_tls_remote_user config_tls_remote_user in
 object
   inherit modify_http_protocol_config (m1 (config:>http_protocol_config))
   method config_timeout_next_request = config_timeout_next_request
@@ -1135,6 +1249,8 @@ object
   method config_error_response = config_error_response
   method config_log_error = config_log_error
   method config_log_access = config_log_access
+  method config_tls_cert_props = config_tls_cert_props
+  method config_tls_remote_user = config_tls_remote_user
 end
 
 

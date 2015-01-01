@@ -1,6 +1,6 @@
 (* This example downloads a URL into a file *)
 
-open Http_client
+open Nethttp_client
 
 let download url =
   let pipeline = new pipeline in

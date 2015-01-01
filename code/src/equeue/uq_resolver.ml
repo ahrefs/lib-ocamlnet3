@@ -18,6 +18,7 @@ exception Host_not_found of string
 
 class type resolver =
 object
+  method ipv6 : bool
   method host_by_name : 
            string -> Unixqueue.event_system -> Unix.host_entry engine
 end
@@ -40,6 +41,7 @@ let host_by_addr host =
 
 let default_resolver() : resolver =
 object (self)
+  method ipv6 = false
   method host_by_name host esys =
     let state =
       try
@@ -62,6 +64,7 @@ end
 
 let gai_resolver ?(ipv4=true) ?(ipv6=true) () : resolver =
 object (self)
+  method ipv6 = ipv6
   method host_by_name host esys =
     let state =
       try
@@ -113,14 +116,26 @@ object (self)
 end
 
 
-let cur_resolver = ref(default_resolver())
-
-let current_resolver() = !cur_resolver
-
-let set_current_resolver r = cur_resolver := r
+let ipv4_resolver = default_resolver()
+let ipv6_resolver = gai_resolver()
 
 
-let get_host_by_name ?(resolver = !cur_resolver) host =
+let cur_resolver = ref None
+
+let current_resolver() =
+  match !cur_resolver with
+    | None ->
+        if Netsys.is_ipv6_system() then
+          ipv6_resolver
+        else
+          ipv4_resolver
+    | Some r ->
+        r
+
+let set_current_resolver r = cur_resolver := Some r
+
+
+let get_host_by_name ?(resolver = current_resolver()) host =
   let esys = Unixqueue.create_unix_event_system() in
   let eng = resolver # host_by_name host esys in
   let eng_final = ref false in

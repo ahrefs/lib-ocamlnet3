@@ -1,3 +1,81 @@
+2014-12-30  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netplex: the Netplex socket directory has a different default
+	  if not specified in the config file.
+
+	* Netshm: the POSIX specifier has now two args
+
+	* IPv6: automatically enabled if there is a global IPv6 address
+
+        * Unicode tables: Moved them to a separate netunidata library.
+	  This library needs to be linked in for getting access to the
+	  tables (this is no longer the default).
+
+	* Renamings: Http_client, Ftp_client etc. => Nethttp_client,
+	  Netftp_client
+          Mimestring => Netmime_string
+	  Xdr => Netxdr
+
+	* Netmime: moved functions to Netmime_header and Netmime_channels
+
+        * Netmech_scram: Removed the check that passwords only consist of
+	  ASCII chars. The user can now call Netsaslprep.saslprep.
+
+        * Removed: rpc-auth-dh, nethttpd-for-netcgi2
+
+2014-09-28  Gerd Stolpmann  <gerd@zotac>
+
+	* Http_client: the authentication mechanisms are now encapsulated
+	  in a first-class module HTTP_MECHANISM. So far, there is Digest
+	  authentication in this form. The signature of HTTP_MECHANISM
+	  is similar to SASL_MECHANISM.
+
+	  Another visible change is that the insecure Basic authentication
+	  is no longer enabled for non-TLS-secured connections. This can be
+	  changed back by setting flags, though.
+
+	  Some fixes in the design improve Digest authentication for proxy
+	  connections.
+
+2014-09-19  Gerd Stolpmann  <gerd@zotac>
+
+	* Netpop: implementating SASL authentication for POP3. Moved Netpop
+	  into netclient.
+	* Netsmtp: implementing SASL authentication for SMTP. Moved Netsmtp
+	  into netclient.
+	* Adding a framework for SASL, and a number of mechanisms
+	  (PLAIN, CRAM-MD5, DIGEST-MD5, SCRAM-SHA1).
+
+2014-08-31  Gerd Stolpmann  <gerd@e130>
+
+	* fcgi/scgi/ajp connectors: exporting a handle_connection function,
+	  and unifying existing such functions (Christopher Zimmermann)
+
+2014-08-20  Gerd Stolpmann  <gerd@zotac>
+
+        * adding support for modular cryptography (symmetric ciphers and
+	  digests)
+	* SCRAM is now implemented with the new crypto providers
+	* removing dependency on Cryptokit
+	* removed library netgssapi; now part of netsys/netstring
+	* removed library netmech-scram; now part of netstring
+
+Ocamlnet-4 adds:
+
+	- new library netgss-system
+	- new library nettls-gnutls
+	- removed equeue-ssl and rpc-ssl
+	- X.500 modules Netasn1, Netdn, Netx509
+	- Crypto definitions Netsys_crypto_types, Netsys_crypto
+	- TLS modules Netsys_tls, Nettls_support
+	- Support for SASL and GSSAPI
+	- Moved many functions from Uq_engines to new modules in
+	  the equeue library (Uq_client, Uq_server, Uq_multiplex,
+	  Uq_transfer)
+
+Development of Ocamlnet-4 starts
+======================================================================
+
 2014-10-27  Gerd Stolpmann  <gerd@thinkpad>
 
 	* Release ocamlnet-3.7.7

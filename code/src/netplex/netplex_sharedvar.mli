@@ -69,7 +69,8 @@ val plugin : plugin
     {!Netplex_cenv.Not_in_container_thread} is raised. 
  *)
 
-val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> string -> bool
+val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
+                 string -> bool
   (** Create the variable with the passed name with an empty string
       (or the exception [Sharedvar_null]) as
       initial value. If the creation is possible (i.e. the variable did
@@ -88,6 +89,9 @@ val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> string -> bool
       - [enc]: if true, the variable stores encapsulated values, otherwise
         strings
         (defaults to false)
+      - [timeout]: if passed, the variable will be automatically deleted
+        after this number of seconds. The timeout starts anew with every
+        read or write of the variable.
 
       Variable names are global to the whole netplex system. By convention,
       these names are formed like ["service_name.local_name"], i.e. they

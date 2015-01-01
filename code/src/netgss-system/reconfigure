@@ -1,0 +1,140 @@
+#! /bin/sh
+
+# Env:
+# GSSAPI_CFLAGS
+# GSSAPI_LIBS
+
+if [ -f config.sh ]; then
+  # configure wrote the env into this file:
+  . ./config.sh
+  export GSSAPI_CFLAGS GSSAPI_LIBS
+fi
+
+stdlib=`ocamlc -where`
+
+rm -f config.h
+ulimit -c 0          # no coredumps
+
+compiler="ocamlc -custom"
+if ocamlopt; then compiler=ocamlopt; fi
+
+log=`pwd`/"config.log"
+rm -f $log
+touch $log
+
+out="config.h"
+rm -f $out
+touch $out
+
+mkdir -p testdir
+
+######################################################################
+
+# Programs linked with ocamlc have more libraries linked in by default.
+# Because of this, we use ocamlopt if available.
+
+call_ocamlc () {
+    echo '$' $compiler -ccopt "$GSSAPI_CFLAGS" -cclib "$GSSAPI_LIBS" "$@" >>$log
+    ( cd testdir;
+      $compiler -ccopt "$GSSAPI_CFLAGS" -cclib "$GSSAPI_LIBS" "$@"
+    )  >>$log 2>&1
+    return $?
+}
+
+init_header() {
+    echo "Checking presence of $1"
+    echo "# HEADER $1" >> $log
+    cat <<EOF >testdir/test.c
+#include <gssapi.h>
+#include <$1>
+EOF
+    call_ocamlc -c test.c
+}
+
+check_enum () {
+    macro="$1"
+    enum="$2"
+
+    echo "Checking enum $enum"
+    echo "# ENUM $enum" >> $log
+
+    cat <<EOF >testdir/test.c
+#include <gssapi.h>
+$add_include
+int main (int argc, char *argv[], char *envp[]) {
+  int n;
+  n = $enum;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -c test.c; then
+        echo "#define $macro" >>$out
+    else
+        echo "#undef $macro" >>$out
+    fi
+}
+
+
+check_fun() {
+    macro="$1"
+    fun="$2"
+
+    echo "Checking function $fun"
+    echo "# FUN $fun" >> $log
+
+    cat <<EOF >testdir/main.ml
+let () = ()
+EOF
+
+    cat <<EOF >testdir/test.c
+#include <gssapi.h>
+$add_include
+int main (int argc, char *argv[], char *envp[]) {
+  (void) & $fun;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -o test test.c main.ml; then
+        echo "#define $macro" >>$out
+    else
+        echo "#undef $macro" >>$out
+    fi
+}
+
+check_type() {
+    macro="$1"
+    ty="$2"
+
+    echo "Checking type $ty"
+    echo "# TYPE $ty" >> $log
+
+    cat <<EOF >testdir/test.c
+#include <gssapi.h>
+$add_include
+int main (int argc, char *argv[], char *envp[]) {
+  $ty x;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -c test.c; then
+        echo "#define $macro" >>$out
+    else
+        echo "#undef $macro" >>$out
+    fi
+}
+
+
+######################################################################
+
+echo "Generating stubs"
+
+rm -f config_checks.sh
+echo "$ ocaml -I ../../tools gssapi.descr" >>$log
+ocaml -I ../../tools gssapi.descr || exit 1
+
+. ./config_checks.sh
+
+touch done_reconfigure

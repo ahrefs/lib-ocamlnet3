@@ -37,6 +37,7 @@ depend: $(SOURCES) *.mli
 .PHONY: clean
 clean:
 	rm -f *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa spider
+	rm -f scan.ml
 
 .PHONY: distclean
 distclean: clean

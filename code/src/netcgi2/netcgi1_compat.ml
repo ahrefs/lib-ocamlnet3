@@ -154,7 +154,7 @@ struct
     method cookies : (string * string) list
     method input_content_length : int
     method input_content_type_string : string
-    method input_content_type : (string * (string * Mimestring.s_param) list)
+    method input_content_type : (string * (string * Netmime_string.s_param) list)
     method input_ch : Netchannels.in_obj_channel
     method input_state : input_state
     method set_input_state : input_state -> unit
@@ -331,7 +331,7 @@ struct
     method ro : bool
     method store : store
     method content_type : string
-    method content_type_params : (string * Mimestring.s_param) list
+    method content_type_params : (string * Netmime_string.s_param) list
     method charset : string
     method filename : string option
     method representation : representation

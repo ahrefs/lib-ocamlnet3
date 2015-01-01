@@ -76,6 +76,17 @@ object
         environment whenever the properties are updated. This is done by
         all [Nethttpd] modules.
      *)
+
+  method config_tls_cert_props : bool
+    (** Whether to include certificate properties in the cgi environment.
+        (If set to false, the certificates needs not to be parsed again.)
+     *)
+
+  method config_tls_remote_user : bool
+    (* Whether to set the REMOTE_USER variable to the subject of the
+       client certificate.
+     *)
+
 end
 
 
@@ -89,6 +100,8 @@ val default_http_processor_config : http_processor_config
        - [config_log_error]: Uses {!Nethttpd_util.std_error_log_string}
          to write a log message via {!Netlog}.
        - [config_log_access]: is a no-op
+       - [config_tls_cert_props]: is true
+       - [config_tls_remote_user]: is true
    *)
 
 class modify_http_processor_config :
@@ -101,6 +114,8 @@ class modify_http_processor_config :
         ?config_error_response:(error_response_params -> string) ->
         ?config_log_error:(request_info -> string -> unit) ->
         ?config_log_access:(full_info -> unit) ->
+        ?config_tls_cert_props:bool ->
+        ?config_tls_remote_user:bool ->
         http_processor_config -> http_processor_config
   (** Modifies the passed config object as specified by the optional
       arguments.
@@ -196,6 +211,7 @@ class http_environment : #http_processor_config ->
                          Netchannels.out_obj_channel -> output_state ref -> 
                          Nethttpd_kernel.http_response -> (unit -> unit) ->
                          bool ref -> int64 ->
+                         Nettls_support.tls_session_props option ->
                            internal_environment
   (** For private use only *)
 
@@ -252,7 +268,8 @@ end
 (** The [http_reactor] allows one to pull the next request from a connected
   * client, and to deliver the response to the protocol engine.
  *)
-class http_reactor : #http_reactor_config -> Unix.file_descr ->
+class http_reactor : ?config_hooks:(Nethttpd_kernel.http_protocol_hooks -> unit) ->
+                     #http_reactor_config -> Unix.file_descr ->
 object
   method next_request : unit -> http_reactive_request option
     (** Tries to read the next request. When the header of the request is successfully
@@ -296,6 +313,7 @@ end
 
 
 val process_connection : 
+      ?config_hooks:(Nethttpd_kernel.http_protocol_hooks -> unit) ->
       #http_reactor_config -> Unix.file_descr -> 'a http_service -> unit
   (** Processes all HTTP requests in turn arriving at the file descriptor, and
     * calls the service provider for every request. Finally, the descriptor is

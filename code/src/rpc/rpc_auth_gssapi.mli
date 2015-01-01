@@ -2,7 +2,7 @@
 
 (** GSS-API for RPC authentication *)
 
-open Netgssapi
+open Netsys_gssapi
 
 type user_name_format =
     [ `Exported_name
@@ -19,36 +19,27 @@ type user_name_format =
    *)
 
 val server_auth_method : 
-      ?require_privacy:bool ->
-      ?require_integrity:bool ->
       ?shared_context:bool ->
-      ?acceptor_cred:credential ->
       ?user_name_format:user_name_format ->
       ?seq_number_window:int ->
-      gss_api -> oid -> Rpc_server.auth_method
+      ?max_age:float ->
+      (module Netsys_gssapi.GSSAPI) -> 
+      Netsys_gssapi.server_config -> Rpc_server.auth_method
   (** Creates an authentication method from a GSS-API interface.
-      The OID selects the desired authentication method.
 
       Options:
-      - [require_privacy]: Whether the messages must be
-        encrypted. If not enabled, the server also accepts non-encrypted
-        messages that are authenticated via GSS-API.
-      - [require_integrity]: Whether integrity checksums must be
-        included. If not enabled, the server also accepts non-signed
-        messages that are authenticated via GSS-API.
       - [shared_context]: Whether this method maintains only one
         security context for all connections. By default,
         each connection has a security context of its own. For UDP,
         this option needs to be set, because each UDP request is
         considered as creating a new connection.
-      - [acceptor_cred]: Overrides the credentials of the server. By
-        default, it is left to [gss_api] which credential is
-        assumed.
       - [user_name_format]: Defaults to [`Prefixed_name].
       - [seq_number_window]: If set, the server checks for replayed
         requests. The integer is the length of the check window (see
         RFC 2203 section 5.3.3.1). If omitted, no such checks are
         performed (the default). 
+      - [max_age]: The maximum lifetime for security contexts (in seconds).
+        If not specified, the time is taken from the GSSAPI credential.
    *)
 
 type support_level =
@@ -61,24 +52,13 @@ type user_name_interpretation =
     ]
 
 val client_auth_method :
-      ?privacy:support_level ->
-      ?integrity:support_level ->
       ?user_name_interpretation:user_name_interpretation ->
-      gss_api -> oid -> Rpc_client.auth_method
+      (module Netsys_gssapi.GSSAPI) -> 
+      Netsys_gssapi.client_config ->
+        Rpc_client.auth_method
   (** Creates an authentication method from a GSS-API interface.
-      The OID selects the desired authentication method.
 
       Options:
-      - [privacy]: Selects whether messages are encrypted. If [`Required],
-        the authentication method fails if the GSS-API does not support
-        encryption, and it enables encryption if GSS-API supports it.
-        If [`If_possible] encryption is enabled if GSS-API supports it
-        (the default). If [`None], the messages are not encrypted.
-      - [integrity]: Selects whether messages are signed. If [`Required],
-        the authentication method fails if the GSS-API does not support
-        integrity protection, and it enables this feature if GSS-API supports
-        it. If [`If_possible] integrity protection is enabled if GSS-API
-        supports it (the default). If [`None], the messages are not signed.
       - [user_name_format]: Defaults to [`Prefixed_name].
    *)
 

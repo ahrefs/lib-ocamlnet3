@@ -2,7 +2,7 @@ TOP_DIR = ../../..
 include $(TOP_DIR)/Makefile.rules
 
 AUTH_MODULE=auth_sys
-# one of: auth_sys auth_dh auth_ssl
+# one of: auth_sys auth_gssapi auth_ssl
 
 REQUIRES = rpc,unix
 OBJ = queues_aux.cmo queues_clnt.cmo queues_srv.cmo qserver.cmo qclient.cmo

@@ -1147,7 +1147,8 @@ object(self)
       if req_path <> "" && req_path.[ String.length req_path - 1 ] <> '/' then (
 	let h = new Netmime.basic_mime_header
 	  [ "Location", 
-	    sprintf "http://%s%s%s/"
+	    sprintf "%s://%s%s%s/"
+              (if env#cgi_https then "https" else "http")
 	      env#cgi_server_name
 	      ( match env#cgi_server_port with 
 		  | Some p -> ":" ^ string_of_int p

@@ -31,6 +31,18 @@ let blit_string_to_memory s soff mem memoff len =
     invalid_arg "Netsys_mem.blit_string_to_memory";
   blit_string_to_memory_unsafe s soff mem memoff len
 
+let memory_of_string s =
+  let n = String.length s in
+  let m = Bigarray.Array1.create Bigarray.char Bigarray.c_layout n in
+  blit_string_to_memory s 0 m 0 n;
+  m
+
+let string_of_memory m =
+  let n = Bigarray.Array1.dim m in
+  let s = String.create n in
+  blit_memory_to_string m 0 s 0 n;
+  s
+
 external memory_address : memory -> nativeint
   = "netsys_memory_address"
 

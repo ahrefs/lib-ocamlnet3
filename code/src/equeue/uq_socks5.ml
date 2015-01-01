@@ -419,7 +419,7 @@ object(self)
   val mutable socks_in = lazy (assert false)
 
   initializer
-    socks_out <- lazy(new output_async_descr 
+    socks_out <- lazy(new Uq_transfer.output_async_descr 
 			~close_dst:false ~dst:socks_socket ues);
     socks_in <- lazy(new message_receiver 
 		       socks_socket self#msg_received ues);
@@ -684,11 +684,11 @@ object(self)
     (* First connect to the SOCKS proxy; if connected, invoke
      * the SOCKS state automaton
      *)
-    let proxy_conn_eng = connector ?proxy socks_connaddr ues in
+    let proxy_conn_eng = Uq_client.connect_e ?proxy socks_connaddr ues in
     new seq_engine
       proxy_conn_eng
       (fun conn_stat ->
-	 let socks_socket = client_endpoint conn_stat in
+	 let socks_socket = Uq_client.client_endpoint conn_stat in
 	 let udp_socket = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
 	 Unix.set_nonblock udp_socket;
 	 Netsys.set_close_on_exec udp_socket;
@@ -737,7 +737,7 @@ end
 ;;
 
 
-class socks5_socket_connector ?proxy socks_connaddr : client_socket_connector =
+class socks5_socket_connector ?proxy socks_connaddr : client_endpoint_connector =
 object(self)
 
   method connect connaddr ues =
@@ -756,11 +756,11 @@ object(self)
 	  (* First connect to the SOCKS proxy; if connected, invoke
 	   * the SOCKS state automaton
 	   *)
-	  let proxy_conn_eng = connector ?proxy socks_connaddr ues in
+	  let proxy_conn_eng = Uq_client.connect_e ?proxy socks_connaddr ues in
 	  new seq_engine
 	    proxy_conn_eng
 	    (fun conn_stat ->
-	       let socks_socket = client_endpoint conn_stat in
+	       let socks_socket = Uq_client.client_endpoint conn_stat in
 	       let eng =
 		 new socks5_connect_automaton socks_socket sockspec ues in
 	       when_state
@@ -804,7 +804,7 @@ end
 
 
 class socks5_socket_acceptor socks_socket actual_bind_spec ues
-      : server_socket_acceptor =
+      : server_endpoint_acceptor =
   (* actual_bind_spec: The bind address the SOCKS proxy really uses *)
 object(self)
 
@@ -814,7 +814,7 @@ object(self)
   val mutable responsible_for_socks_socket = true
 
   method server_address = `Socket(actual_bind_spec,
-				  Uq_engines.default_connect_options)
+				  Uq_client.default_connect_options)
 
   method multiple_connections = false
 
@@ -847,7 +847,7 @@ end
 
 class socks5_listen_automaton socks_socket bind_spec ues =
 object(self)
-  inherit [server_socket_acceptor] automaton socks_socket ues
+  inherit [server_endpoint_acceptor] automaton socks_socket ues
 
   initializer
     let socks_in = Lazy.force socks_in in
@@ -876,7 +876,7 @@ end
 ;;
 
 
-class socks5_socket_listener ?proxy socks_connaddr : server_socket_listener =
+class socks5_socket_listener ?proxy socks_connaddr : server_endpoint_listener =
 object(self)
   method listen lstnaddr ues =
     match lstnaddr with
@@ -892,11 +892,11 @@ object(self)
 	  (* First connect to the SOCKS proxy; if connected, invoke
 	   * the SOCKS state automaton
 	   *)
-	  let proxy_conn_eng = connector ?proxy socks_connaddr ues in
+	  let proxy_conn_eng = Uq_client.connect_e ?proxy socks_connaddr ues in
 	  new seq_engine
 	    proxy_conn_eng
 	    (fun conn_stat ->
-	       let socks_socket = client_endpoint conn_stat in
+	       let socks_socket = Uq_client.client_endpoint conn_stat in
 	       let eng = new socks5_listen_automaton socks_socket sockspec ues
 	       in
 	       when_state

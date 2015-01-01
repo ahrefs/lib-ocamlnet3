@@ -62,6 +62,13 @@ type in_bdevice =
     [ `Buffer_in of in_buffer ]
   (** Devices with look-ahead *)
 
+type io_device =
+    [ `Polldescr of Netsys.fd_style * Unix.file_descr * Unixqueue.event_system
+    | `Multiplex of Uq_engines.multiplex_controller
+    ]
+  (** Bidirectional devices *)
+
+
 type string_like =
     [ `String of string
     | `Memory of Netsys_mem.memory
@@ -143,6 +150,13 @@ val eof_as_none :
       where [>>] is from {!Uq_engines.Operators}
    *)
 
+val in_obj_channel : [< in_device ] -> float -> Netchannels.in_obj_channel
+  (** [in_obj_channel d timeout]: Creates a synchronous channel from the
+      input device.
+
+      If the timeout is encountered, this function raises {!Uq_engines.Timeout}.
+   *)
+
 (** {2 Output} *)
 
 val output_e : [< out_device ] -> string_like -> int -> int ->
@@ -210,6 +224,20 @@ val flush_e : [< out_device ] -> unit Uq_engines.engine
       When done, the engine transitions to [`Done()].
    *)
 
+val out_obj_channel : [< out_device ] -> float -> Netchannels.out_obj_channel
+  (** [out_obj_channel d timeout]: Creates a synchronous channel from the
+      output device.
+
+      If the timeout is encountered, this function raises {!Uq_engines.Timeout}.
+   *)
+
+val io_obj_channel : ?start_pos_in:int -> ?start_pos_out:int ->
+                     [< io_device ] -> float -> 
+                       Netchannels.raw_io_channel
+  (** [io_obj_channel d timeout]: Creates a bidirectional synch channel
+      from [d]. This channel can be half-closed, and a [close_out] without
+      [close_in] triggers [write_eof_e] on the device.
+   *)
 
 (** {2 Shutdown} *)
 

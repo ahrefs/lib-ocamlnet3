@@ -34,6 +34,8 @@ f Makefile.rules
 f Makefile.xrules
 f configure
 f ChangeLog
+f _oasis
+f setup.ml
 
 d src
 
@@ -65,30 +67,24 @@ f tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.ml
 f tools/cppo-0.9.4/ocamlbuild_plugin/ocamlbuild_cppo.mli
 f tools/cppo-0.9.4/ocamlbuild_plugin/_tags
 
+d tools/unimap_to_ocaml
+f tools/unimap_to_ocaml/Makefile
+f tools/unimap_to_ocaml/unimap_to_ocaml.ml
+
+
 d src/netstring
 f src/netstring/META.in
 f src/netstring/Makefile
 f src/netstring/Makefile.pre
-f src/netstring/Makefile.def
+f src/netstring/netmappings_asn1.pmap
 # Include all .ml, .mli files, but not the modules currently being developed
+x src/netstring/netmappings_asn1.ml
 x src/netstring/nethtml_scanner.ml
 x src/netstring/netmessage.mli
 x src/netstring/netiso2022.ml
-# Make sure these exist:
-f src/netstring/netmappings_iso.pmap
-f src/netstring/netmappings_jp.pmap
-f src/netstring/netmappings_kr.pmap
-f src/netstring/netmappings_other.pmap
-x src/netstring/netmappings_iso.ml
-x src/netstring/netmappings_jp.ml
-x src/netstring/netmappings_kr.ml
-x src/netstring/netmappings_other.ml
-f src/netstring/netmappings_min.ml
 x src/netstring/netconst.ml
 f src/netstring/netconst.mlp
 f src/netstring/nethtml_scanner.mll
-f src/netstring/netdb.mlp
-x src/netstring/netdb.ml
 f src/netstring/netaccel_c.c
 x src/netstring/netglob_lex.ml
 f src/netstring/netglob_lex.mll
@@ -100,14 +96,24 @@ p src/netstring/.*\.ml
 p src/netstring/.*\.mli
 p src/netstring/.*\.txt
 
-# src/netstring/mappings: not necessary
-# src/netstring/tests: not necessary
+d src/netunidata
+f src/netunidata/META.in
+f src/netunidata/Makefile
+f src/netunidata/Makefile.pre
+# Make sure these exist:
+f src/netunidata/netmappings_iso.pmap
+f src/netunidata/netmappings_jp.pmap
+f src/netunidata/netmappings_kr.pmap
+f src/netunidata/netmappings_other.pmap
+x src/netunidata/netmappings_iso.ml
+x src/netunidata/netmappings_jp.ml
+x src/netunidata/netmappings_kr.ml
+x src/netunidata/netmappings_other.ml
+x src/netunidata/netuniconfig.ml
+p src/netunidata/.*\.ml
+p src/netunidata/.*\.mli
 
-d src/netstring/tools
-f src/netstring/tools/Makefile
-d src/netstring/tools/unimap_to_ocaml
-f src/netstring/tools/unimap_to_ocaml/Makefile
-f src/netstring/tools/unimap_to_ocaml/unimap_to_ocaml.ml
+# src/netunidata/mappings: not necessary
 
 d src/netstring-pcre
 f src/netstring-pcre/Makefile
@@ -149,7 +155,6 @@ p src/netcgi2/.*\.txt
 
 d src/netcgi2-apache
 f src/netcgi2-apache/Makefile
-f src/netcgi2-apache/Makefile.def
 f src/netcgi2-apache/Makefile.pre
 f src/netcgi2-apache/META.in
 f src/netcgi2-apache/config.h.in
@@ -172,20 +177,6 @@ f src/netcgi2-plex/META.in
 p src/netcgi2-plex/.*\.ml
 p src/netcgi2-plex/.*\.mli
 
-d src/pop
-f src/pop/META.in
-f src/pop/Makefile
-f src/pop/Makefile.pre
-p src/pop/.*\.ml
-p src/pop/.*\.mli
-
-d src/smtp
-f src/smtp/META.in
-f src/smtp/Makefile
-f src/smtp/Makefile.pre
-p src/smtp/.*\.ml
-p src/smtp/.*\.mli
-
 d src/nethttpd
 f src/nethttpd/META.in
 f src/nethttpd/Makefile
@@ -195,28 +186,6 @@ p src/nethttpd/.*\.ml
 p src/nethttpd/.*\.mli
 p src/nethttpd/.*\.txt
 
-d src/nethttpd-for-netcgi2
-f src/nethttpd-for-netcgi2/META.in
-f src/nethttpd-for-netcgi2/Makefile
-f src/nethttpd-for-netcgi2/Makefile.pre
-f src/nethttpd-for-netcgi2/LICENSE
-
-d src/netgssapi
-f src/netgssapi/META.in
-f src/netgssapi/Makefile
-f src/netgssapi/Makefile.pre
-p src/netgssapi/.*\.ml
-p src/netgssapi/.*\.mli
-p src/netgssapi/.*\.txt
-
-d src/netmech-scram
-f src/netmech-scram/META.in
-f src/netmech-scram/Makefile
-f src/netmech-scram/Makefile.pre
-p src/netmech-scram/.*\.ml
-p src/netmech-scram/.*\.mli
-p src/netmech-scram/.*\.txt
-
 d src/equeue
 f src/equeue/META.in
 f src/equeue/Makefile
@@ -225,6 +194,7 @@ p src/equeue/.*\.ml
 p src/equeue/.*\.mli
 p src/equeue/.*\.txt
 
+# needs to be distributed although it is not installed anymore
 d src/equeue-gtk1
 f src/equeue-gtk1/META.in
 f src/equeue-gtk1/Makefile
@@ -246,15 +216,6 @@ p src/equeue-tcl/.*\.ml
 p src/equeue-tcl/.*\.mli
 p src/equeue-tcl/.*\.c
 p src/equeue-tcl/.*\.h
-
-d src/equeue-ssl
-f src/equeue-ssl/META.in
-f src/equeue-ssl/Makefile
-f src/equeue-ssl/Makefile.pre
-p src/equeue-ssl/.*\.ml
-p src/equeue-ssl/.*\.mli
-p src/equeue-ssl/.*\.c
-p src/equeue-ssl/.*\.h
 
 d src/shell
 f src/shell/META.in
@@ -310,27 +271,10 @@ f src/rpc-generator/Makefile.pre
 x src/rpc-generator/lexer.ml
 x src/rpc-generator/parser.ml
 x src/rpc-generator/parser.mli
-x src/rpc-generator/rtypes.ml
-x src/rpc-generator/rtypes.mli
 p src/rpc-generator/.*\.ml
 p src/rpc-generator/.*\.mli
 p src/rpc-generator/.*\.mll
 p src/rpc-generator/.*\.mly
-
-d src/rpc-auth-dh
-f src/rpc-auth-dh/META.in
-f src/rpc-auth-dh/Makefile
-f src/rpc-auth-dh/Makefile.pre
-f src/rpc-auth-dh/rpc_key.x
-x src/rpc-auth-dh/rpc_key_aux.ml
-x src/rpc-auth-dh/rpc_key_aux.mli
-x src/rpc-auth-dh/rpc_key_clnt.ml
-x src/rpc-auth-dh/rpc_key_clnt.mli
-f src/rpc-auth-dh/rpc_key_service.mlp
-x src/rpc-auth-dh/rpc_key_service.ml
-f src/rpc-auth-dh/rpc_auth_dh.x
-p src/rpc-auth-dh/.*\.ml
-p src/rpc-auth-dh/.*\.mli
 
 d src/rpc-auth-local
 f src/rpc-auth-local/META.in
@@ -343,13 +287,6 @@ p src/rpc-auth-local/configtests/.*\.ml
 p src/rpc-auth-local/.*\.ml
 p src/rpc-auth-local/.*\.mli
 p src/rpc-auth-local/.*\.c
-
-d src/rpc-ssl
-f src/rpc-ssl/META.in
-f src/rpc-ssl/Makefile
-f src/rpc-ssl/Makefile.pre
-p src/rpc-ssl/.*\.ml
-p src/rpc-ssl/.*\.mli
 
 d src/rpc-xti
 f src/rpc-xti/META.in
@@ -381,6 +318,37 @@ f src/netmulticore/Makefile.pre
 p src/netmulticore/.*\.ml
 p src/netmulticore/.*\.mli
 p src/netmulticore/.*\.txt
+
+d src/nettls-gnutls
+f src/nettls-gnutls/META.in
+f src/nettls-gnutls/configure
+f src/nettls-gnutls/reconfigure
+f src/nettls-gnutls/Makefile
+f src/nettls-gnutls/Makefile.pre
+f src/nettls-gnutls/gnutls.c
+f src/nettls-gnutls/gnutls.descr
+f src/nettls-gnutls/gnutls.ml
+f src/nettls-gnutls/gnutls.mli
+f src/nettls-gnutls/nettle.c
+f src/nettls-gnutls/nettle.descr
+f src/nettls-gnutls/nettle.ml
+f src/nettls-gnutls/nettle.mli
+f src/nettls-gnutls/nettls_gnutls.ml
+f src/nettls-gnutls/nettls_gnutls.mli
+
+d src/netgss-system
+f src/netgss-system/configure
+f src/netgss-system/META.in
+f src/netgss-system/Makefile
+f src/netgss-system/Makefile.pre
+f src/netgss-system/reconfigure
+f src/netgss-system/gssapi.c
+f src/netgss-system/gssapi.ml
+f src/netgss-system/gssapi.mli
+f src/netgss-system/gssapi.descr
+f src/netgss-system/netgss.mli
+f src/netgss-system/netgss_util.ml
+
 
 d examples
 
@@ -427,6 +395,7 @@ f examples/nethttpd/file_mt_reactor.ml
 f examples/nethttpd/file_reactor.ml
 f examples/nethttpd/proxy_engine.ml
 f examples/nethttpd/netplex.conf
+f examples/nethttpd/netplex_tls.conf
 f examples/nethttpd/netplex.ml
 
 d examples/rpc
@@ -434,17 +403,17 @@ d examples/rpc
 d examples/rpc/queues
 f examples/rpc/queues/Makefile
 f examples/rpc/queues/Makefile.code
-f examples/rpc/queues/Makefile.auth_dh
+f examples/rpc/queues/Makefile.auth_gssapi
 f examples/rpc/queues/Makefile.auth_sys
 f examples/rpc/queues/Makefile.auth_ssl
 f examples/rpc/queues/README
 f examples/rpc/queues/qclient.ml
-f examples/rpc/queues/qclient_auth_dh.ml
+f examples/rpc/queues/qclient_auth_gssapi.ml
 f examples/rpc/queues/qclient_auth_ssl.ml
 f examples/rpc/queues/qclient_auth_sys.ml
 f examples/rpc/queues/qclient_main.ml
 f examples/rpc/queues/qserver.ml
-f examples/rpc/queues/qserver_auth_dh.ml
+f examples/rpc/queues/qserver_auth_gssapi.ml
 f examples/rpc/queues/qserver_auth_ssl.ml
 f examples/rpc/queues/qserver_auth_sys.ml
 f examples/rpc/queues/qserver_main.ml
@@ -490,6 +459,12 @@ f examples/rpc/sort/sort2_server.ml
 f examples/rpc/sort/sort2_worker.ml
 f examples/rpc/sort/sort2_server.conf
 f examples/rpc/sort/sort2_proto.x
+
+d examples/rpc/nfs4
+f examples/rpc/nfs4/Makefile
+f examples/rpc/nfs4/Makefile.code
+f examples/rpc/nfs4/rfc3530.x
+f examples/rpc/nfs4/demo.ml
 
 d examples/equeue
 d examples/equeue/engines
