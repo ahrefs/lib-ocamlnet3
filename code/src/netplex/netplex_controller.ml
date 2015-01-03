@@ -428,12 +428,17 @@ object(self)
       if not !Debug.enable then
 	Rpc_server.Debug.disable_for_server rpc;
       Rpc_server.set_exception_handler rpc
-	(fun err ->
+	(fun err bt ->
 	   controller # logger # log
 	     ~component:sockserv#name
 	     ~level:`Crit
 	     ~message:("Control server caught exception: " ^ 
-			 Netexn.to_string err));
+			 Netexn.to_string err);
+           if bt <> "" then
+	     controller # logger # log
+                ~component:sockserv#name
+                ~level:`Crit
+   	        ~message:("Backtrace: " ^ bt));
       dlogr
 	(fun () -> sprintf "Service %s: creating system server" name);
       let sys_rpc =
@@ -443,12 +448,17 @@ object(self)
       if not !Debug.enable then
 	Rpc_server.Debug.disable_for_server sys_rpc;
       Rpc_server.set_exception_handler sys_rpc
-	(fun err ->
+	(fun err bt ->
 	   controller # logger # log
 	     ~component:sockserv#name
 	     ~level:`Crit
 	     ~message:("System server caught exception: " ^ 
-			 Netexn.to_string err));
+			 Netexn.to_string err);
+           if bt <> "" then
+	     controller # logger # log
+                ~component:sockserv#name
+                ~level:`Crit
+   	        ~message:("Backtrace: " ^ bt));
       let c =
 	{ container = (container :> container_id);
 	  cont_state = `Starting (Unix.gettimeofday());
@@ -1207,12 +1217,17 @@ object(self)
     let rpc =
       Rpc_server.create2 (`Socket_endpoint(Rpc.Tcp, fd)) cont#event_system in
     Rpc_server.set_exception_handler rpc
-      (fun err ->
+      (fun err bt ->
 	 controller # logger # log
 	   ~component:"netplex.controller"
 	   ~level:`Crit
 	   ~message:("Admin server caught exception: " ^ 
-		       Netexn.to_string err));
+		       Netexn.to_string err);
+         if bt <> "" then
+	     controller # logger # log
+                ~component:"netplex.controller"
+                ~level:`Crit
+   	        ~message:("Backtrace: " ^ bt));
     Netplex_ctrl_srv.Admin.V2.bind
       ~proc_ping:(fun () -> ())
       ~proc_list:(fun () ->
@@ -1359,6 +1374,8 @@ class controller_sockserv setup controller : socket_service =
 	      method lstn_reuseaddr = true
 	      method so_keepalive = true
 	      method tcp_nodelay = false
+              method local_chmod = None
+              method local_chown = None
 	      method configure_slave_socket _ = ()
 	    end
 	  ]
@@ -1643,7 +1660,7 @@ object(self)
 	      let (_, arg_ty,res_ty) = 
 		Rpc_program.signature p#program name in
 	      let arg =
-		Xdr.unpack_xdr_value ~fast:true arg_str arg_ty [] in
+		Netxdr.unpack_xdr_value ~fast:true arg_str arg_ty [] in
 	      p # ctrl_receive_call (self :> controller) cid name arg 
 		(function
 		   | None ->
@@ -1651,7 +1668,7 @@ object(self)
 		   | Some res ->
 		       ( try
 			   let res_str =
-			     Xdr.pack_xdr_value_as_string res res_ty [] in
+			     Netxdr.pack_xdr_value_as_string res res_ty [] in
 			   reply res_str
 			 with 
 			   | error ->
@@ -1751,8 +1768,6 @@ let create_controller par config =
   create_controller_for_esys esys par config
 
 
-let default_socket_directory = "/tmp/.netplex"
-
 let default_create_logger _ = Netplex_log.channel_logger stderr
 
 let extract_logger ctrl loggers cf logaddr =
@@ -1793,13 +1808,16 @@ let compound_logger (llist:logger list) cur_max_level : logger =
 
 
 let extract_config (loggers : logger_factory list) (cf : config_file) =
+  let default_socket_dir = 
+    lazy ( Netplex_util.default_socket_dir cf#filename ) in
   match cf # resolve_section cf#root_addr "controller" with
     | [] ->
 	(* Create a default configuration: *)
 	let cur_max_level = ref `Info in
+        let socket_directory = Lazy.force default_socket_dir in
 	( object
 	    method socket_directory = 
-	      default_socket_directory
+              socket_directory
 	    method create_logger ctrl = 
 	      compound_logger 
 		[ default_create_logger ctrl ] 
@@ -1816,12 +1834,12 @@ let extract_config (loggers : logger_factory list) (cf : config_file) =
 	    cf # string_param 
 	      (cf # resolve_parameter ctrladdr "socket_directory")
 	  with
-	    | Not_found -> default_socket_directory in
+	    | Not_found -> Lazy.force default_socket_dir in
 	let socket_directory =
-	  if Netsys.is_absolute socket_directory0 then
-	    socket_directory0
-	  else
-	    Filename.concat (Unix.getcwd()) socket_directory0 in
+          if Netsys.is_absolute socket_directory0 then
+            socket_directory0
+          else
+            Filename.concat (Unix.getcwd()) socket_directory0 in
 	let create_logger cur_max_level ctrl =
 	  ( match cf # resolve_section ctrladdr "logging" with
 	      | [] ->

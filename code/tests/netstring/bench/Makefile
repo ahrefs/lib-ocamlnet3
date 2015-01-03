@@ -11,11 +11,14 @@ test:
 	ocaml test_nethtml.ml
 	ocaml test_neturl.ml
 	ocaml test_netdate.ml
+	ocaml test_netasn1.ml
+	ocaml test_netmech.ml
+	ocaml test_saslprep.ml
 	./test_recode
 
 test_recode: test_recode.ml
-	ocamlfind ocamlc -o test_recode -package netstring,threads -linkpkg \
-		-thread test_recode.ml
+	ocamlfind ocamlc -o test_recode -package netstring,threads,netunidata \
+		-linkpkg -thread test_recode.ml
 
 speed_conv: speed_conv.ml
 	ocamlfind ocamlopt -o speed_conv -package unix,str,pcre -linkpkg \

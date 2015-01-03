@@ -5,54 +5,44 @@ parts. Usually, it is not necessary to install all of ocamlnet,
 and there are configuration options allowing you to select what
 you want.
 
+There is now an oasis wrapper for the (custom) configure system.
+So "ocaml setup.ml -configure; ocaml setup.ml -build" should also
+work.
+
 The following table gives a rough overview. The libraries you
 must build at minimum are tagged as CORE. For the other libraries
 the configuration option is shown that will select them for build:
 
 Library 	Option		What it provides
 ----------------------------------------------------------------------
-cgi		CORE		This is an alias for netcgi1
 equeue		CORE		Event queues
-equeue-gtk1	-enable-gtk	Event queues - integration into lablgtk
 equeue-gtk2	-enable-gtk2	Event queues - integration into lablgtk2
-equeue-ssl	-enable-ssl	Event queues - SSL support
 equeue-tcl	-enable-tcl	Event queues - integration into labltk
 netcamlbox	CORE		Multiprocessing
 netcgi2		CORE		Web applications (revised lib)
 netcgi2-apache  -enable-apache  Web applications as Apache module
 netcgi2-plex	CORE		Web applications - support for netplex
-netclient	CORE		Clients for HTTP, FTP, Telnet
+netclient	CORE		Clients for HTTP, FTP, Telnet, POP, SMTP
+netgss-system   -enable-gssapi  GSSAPI bindings
 nethttpd	-with-nethttpd	Web server
-nethttpd-for-netcgi2 (same as nethttpd)
-netmech-scram   -enable-crypto  SCRAM authentication mechanism
 netmulticore    CORE 	        Multiprocessing
 netplex		CORE		Generic server framework
 netshm		CORE		Shared memory for IPC
 netstring	CORE		String routines (e.g. URLs, HTML, Mail)
 netstring-pcre  -enable[-full]-pcre   PCRE layer
 netsys		CORE		System interfaces missing in Unix
+nettls-gnutls   -enable-gnutls  TLS library
+netunidata      CORE            Unicode tables
 netzip	        -enable-zip     read/write gzip data using object channels
-pop		CORE		POP3 client
 rpc		CORE		Sophisticated SunRPC/ONCRPC implementation
-rpc-auth-dh	-with-rpc-auth-dh SunRPC/ONCRPC - Add-on for Diffie-Hellman auth
 rpc-auth-local	CORE (*)	SunRPC/ONCRPC - Add-on for local auth
 rpc-generator	CORE		SunRPC/ONCRPC - Stub generator
-rpc-ssl		-enable-ssl	SunRPC/ONCRPC - Add-on for SSL support
 rpc-xti		CORE (*)	SunRPC/ONCRPC - Add-on for XTI-only transports
 shell		CORE		Sophisticated version of Sys.command
-smtp		CORE		SMTP client
 ----------------------------------------------------------------------
 (*) If the operation system supports it
 
-You should know that before ocamlnet-2.2 these libraries were distributed
-as several software packages (called ocamlnet, equeue, rpc, netclient).
-If you want to upgrade, you must upgrade all libraries at once and
-replace them with the versions coming with ocamlnet-2.2.
-
-For your convenience, the configuration options allow you to select
-libraries by prerequisites, e.g. -enable-ssl installs all libraries that
-need SSL. The following matrix shows which prerequisites are needed
-for which libraries:
+List of prerequisites:
 
 Option		Prerequisite	Version/Where to get/What it is
 ----------------------------------------------------------------------
@@ -69,19 +59,16 @@ CORE		findlib		>= 1.0
 
                                 PLEASE READ doc/html-main/Regexp.html
 
--enable-gtk	lablgtk		>= 1.2 (*)
-				http://wwwfun.kurims.kyoto-u.ac.jp/soft/
-				  olabl/lablgtk.html
-				Bindings for gtk GUIs
+-enanle-gnutls  gnutls          2.8 or better
+                                http://www.gnutls.org
+
+-enable-gssapi  gssapi          Any standard-compliant GSSAPI version should
+                                do, e.g. MIT Kerberos or Heimdal
 
 -enable-gtk2	lablgtk2	probably any (*)
 				http://wwwfun.kurims.kyoto-u.ac.jp/soft/
 				  olabl/lablgtk.html
 				Bindings for gtk2 GUIs
-
--enable-ssl	ssl		probably any
-		  (ocaml-ssl)	http://savonet.sourceforge.net/
-				Bindings for openssl
 
 -enable-tcl	labltk		probably any
 				part of the O'Caml distribution
@@ -91,18 +78,11 @@ CORE		findlib		>= 1.0
 				http://pauillac.inria.fr/~xleroy/software.html
 	                        Bindings for zlib
 
--enable-crypto  cryptokit	probably any
-		                Xavier Leroy's crypto package
-
 -with-nethttpd	none		none
 
    Note: nethttpd must be explicitly selected because it is distributed
    under different license conditions than the other libraries. See
    the file LICENSE for more.
-
--with-auth-dh	cryptgps	probably any
-				http://www.ocaml-programming.de/packages
-				Cryptographic library
 
    Note: At runtime, -with-auth-dh needs further prerequisites,
    namely the so-called keyserv daemon.
@@ -148,18 +128,6 @@ Option			What it changes
 			tcl library is found. E.g.
 			-equeue-tcl-libs -ltcl8.4
 
--auth-dh-style <style>	Only if you have -with-rpc-auth-dh:
-			Overrides the auto-selected style to
-			connect to the keyserv daemon.
-			Possible styles are:
-			- keyenvoy: run the keyenvoy program
-			- unixdomain: contact using Unix Domain socket
-			- tirpc: contact using XTI transport
-			  (this is also known as TI-RPC)
-
--prefer-netcgi2		Only if you have -with-nethttpd:
-			Builds nethttpd against netcgi2 instead
-			of netcgi1
 ----------------------------------------------------------------------
 
 The directory where the library archives are installed can be
@@ -213,12 +181,11 @@ First, it is suggested to distribute ocamlnet as several packages
 in binary form:
 
 - ocamlnet		CORE only
-- ocamlnet-gtk		Add-on libraries needing gtk
+- ocamlnet-gnutls       Add-on libraries needing gnutls
+- ocamlnet-gssapi       Add-on libraries needing GSSAPI
 - ocamlnet-gtk2		Add-on libraries needing gtk2
-- ocamlnet-ssl		Add-on libraries needing ssl
 - ocamlnet-tcl		Add-on libraries needing tcl
 - ocamlnet-zip          Add-on libraries needing camlzip
-- ocamlnet-crypto	Add-on libraries needing cryptokit
 - ocamlnet-pcre         Add-on libraries needing pcre
 - ocamlnet-nethttpd	nethttpd (optional, if it makes the different
 			licensing conditions clearer)
@@ -234,7 +201,6 @@ extra variables:
    INC_NETSYS="-package netsys"
    INC_NETSTRING="-package netstring"
    INC_EQUEUE="-package equeue"
-   INC_EQUEUE_SSL="-package equeue-ssl"
    INC_NETCGI2="-package netcgi2"
    INC_NETCGI2_APACHE="-package netcgi2-apache"
    INC_NETPLEX="-package netplex"

@@ -12,7 +12,7 @@ let exec s =
 
 (* Install the printers: *)
 
-exec "#install_printer Mimestring.print_s_param;;";;
+exec "#install_printer Netmime_string.print_s_param;;";;
 exec "#install_printer Neturl.print_url;;";;
 exec "#install_printer Netbuffer.print_buffer;;";;
 exec "#install_printer Netstream.print_in_obj_stream;;";;

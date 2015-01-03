@@ -3,8 +3,8 @@
  *
  *)
 
-open Xdr
-open Rtypes
+open Netxdr
+open Netnumber
 open Rpc
 
 type identity =
@@ -116,6 +116,8 @@ object(self)
       | Some s -> `Done s
   method emit _ = assert false
   method receive _ = assert false
+  method gssapi_props = None
+  method destroy() = ()
   method auth_method = m
 end
 
@@ -144,7 +146,7 @@ type user_name_format =
 
 
 class server_auth_method
-        ?(lookup_hostname = true)
+        ?(lookup_hostname = false)
         ?(require_privileged_port = true)
         ?(user_name_as = (`Full : user_name_format))
 	()
@@ -157,7 +159,7 @@ object
            srv cnid details pass =
     (* Unpack cred_data: *)
     let cred_flavor, cred_data = details # credential in
-    let xdr = Xdr.unpack_xdr_value cred_data val_auth_params_type [] in
+    let xdr = Netxdr.unpack_xdr_value cred_data val_auth_params_type [] in
     match xdr with
 	XV_struct
 	  [ "stamp", _;
@@ -177,7 +179,7 @@ object
 		    let entry = Uq_resolver.get_host_by_name hostname in
 		    let l = Array.to_list entry.Unix.h_addr_list in
 		    if not(List.mem a l) then
-		      raise Not_found
+		      raise(Rpc_server Auth_bad_cred)
 		  with
 		      Uq_resolver.Host_not_found _ ->
 			raise(Rpc_server Auth_bad_cred)
@@ -194,13 +196,13 @@ object
 		  raise(Rpc_server Auth_bad_cred)
 	  end;
 	  let uid_gid_str =
-	    Int32.to_string(Rtypes.logical_int32_of_uint4 uid) ^ "." ^
-	    Int32.to_string(Rtypes.logical_int32_of_uint4 gid) in
+	    Int32.to_string(Netnumber.logical_int32_of_uint4 uid) ^ "." ^
+	    Int32.to_string(Netnumber.logical_int32_of_uint4 gid) in
 	  let gidlist_str =
 	    String.concat "."
 	      (Array.to_list
 		 (Array.map
-		    (fun u -> Int32.to_string(Rtypes.logical_int32_of_uint4 u))
+		    (fun u -> Int32.to_string(Netnumber.logical_int32_of_uint4 u))
 		    gids
 		 )
 	      )
@@ -212,18 +214,21 @@ object
 		    (if gidlist_str <> "" then "." ^ gidlist_str else "") ^ 
 		    "@" ^ hostname
 	      | `UID ->
-		  Int32.to_string(Rtypes.logical_int32_of_uint4 uid)
+		  Int32.to_string(Netnumber.logical_int32_of_uint4 uid)
 	      | `Custom f ->
 		  f 
-		    (Rtypes.logical_int32_of_uint4 uid)
-		    (Rtypes.logical_int32_of_uint4 gid) 
-		    (Array.map (fun u ->  Rtypes.logical_int32_of_uint4 u) gids)
+		    (Netnumber.logical_int32_of_uint4 uid)
+		    (Netnumber.logical_int32_of_uint4 gid) 
+		    (Array.map (fun u ->  Netnumber.logical_int32_of_uint4 u) gids)
 		    hostname
 	  in
-	  pass (Rpc_server.Auth_positive(username, "AUTH_NONE", "",None,None))
+	  pass (Rpc_server.Auth_positive(username, "AUTH_NONE", "",None,
+                                         None,None))
 
       | _ ->
 	  assert false
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 
 end
 

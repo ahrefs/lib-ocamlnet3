@@ -140,8 +140,8 @@ sig
 	  v.s. {!Netcgi.cgi.argument}. *)
     method input_content_length : int
     method input_content_type_string : string
-    method input_content_type : (string * (string * Mimestring.s_param) list)
-      (** Type now is [unit -> string * (string * Mimestring.s_param)
+    method input_content_type : (string * (string * Netmime_string.s_param) list)
+      (** Type now is [unit -> string * (string * Netmime_string.s_param)
 	  list] to be coherent with {!Netmime.mime_header_ro}. *)
 
     method input_ch : Netchannels.in_obj_channel
@@ -204,9 +204,9 @@ sig
       (** Irrelevant: there are no methods to mutate an argument. *)
     method store : store
     method content_type : string
-    method content_type_params : (string * Mimestring.s_param) list
+    method content_type_params : (string * Netmime_string.s_param) list
       (** Method [content_type : unit -> string * (string *
-	  Mimestring.s_param) list] defined instead of [content_type]
+	  Netmime_string.s_param) list] defined instead of [content_type]
 	  and [content_type_params] to be coherent with
 	  {!Netmime.mime_header_ro} -- yet as easy to use. *)
     method charset : string

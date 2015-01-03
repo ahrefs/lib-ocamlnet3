@@ -1,0 +1,35 @@
+description = "Ocamlnet - Unicode lookup tables"
+version = "@VERSION@"
+requires = "netstring"
+archive(byte) = "netunidata.cma netuniinit.cmo"
+archive(native) = "netunidata.cmxa netuniinit.cmx"
+archive(native,gprof) = "netunidata.p.cmxa netuniinit.cmx"
+
+package "iso" (
+  requires = "netunidata"
+  archive(byte) = "netmappings_iso.cmo"
+  archive(native) = "netmappings_iso.cmx"
+)
+
+package "jp" (
+  requires = "netunidata"
+  archive(byte) = "netmappings_jp.cmo"
+  archive(native) = "netmappings_jp.cmx"
+)
+
+package "kr" (
+  requires = "netunidata"
+  archive(byte) = "netmappings_kr.cmo"
+  archive(native) = "netmappings_kr.cmx"
+)
+
+package "other" (
+  requires = "netunidata"
+  archive(byte) = "netmappings_other.cmo"
+  archive(native) = "netmappings_other.cmx"
+)
+
+package "all" (
+  requires = "netunidata.iso netunidata.asn1 netunidata.jp netunidata.kr
+              netunidata.other"
+)

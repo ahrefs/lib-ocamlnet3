@@ -361,3 +361,6 @@ module Html :
 
   end
 
+
+(* TODO: module with hex routines *)
+val to_hex : ?lc:bool -> string -> string

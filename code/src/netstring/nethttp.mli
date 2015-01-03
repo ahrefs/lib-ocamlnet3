@@ -453,6 +453,32 @@ module Header : sig
     * exceptions is the function name.
     *)
 
+  type param_value =
+      [ `V of string | `Q of string ]
+    (** Parameters may occur quoted ([`Q]) or as already decoded values ([`V])
+     *)
+
+  type auth_challenge = string * (string * param_value) list
+    (** The type of a single challenge, used during authentication.
+        It is interpreted as [(mechanism_name, params)]. The headers
+        [www-authenticate] and [proxy-authenticate] use this.
+
+        See RFC 7235 for general information.
+     *)
+
+  type auth_credentials = string * (string * param_value) list
+    (** The type of a single credentials response, used during
+        authentication. It is interpreted as [(mechanism_name, params)].
+        The headers [authorize] and [proxy-authorize] use this.
+
+        See RFC 7235 for general information.
+     *)
+
+  val parse_quoted_parameters : string -> (string * string) list
+     (** A generic parser for comma-separated parameters in the form
+         key=value or key="value". Fails if the string cannot be parsed.
+      *)
+
   val get_accept : #http_header_ro -> (string *
 		                 (string * string) list *
 			        (string * string) list) list
@@ -576,17 +602,18 @@ module Header : sig
   val set_allow : #http_header -> string list -> unit
     (** Sets the [Allow] header *)
 
-  val get_authorization : #http_header_ro -> (string * (string * string) list)
+  val get_authorization : #http_header_ro -> auth_credentials
     (** Returns the [Authorization] header as pair [(auth_scheme,auth_params)],
       * or raises [Not_found] if not present.
       *
       * The "Basic" authentication scheme is represented specially as
       * [("basic", [ "credentials", creds ])] where [creds] are the
       * Base64-encoded credentials.
+      *
+      * At present, parameters are always decoded ([`V]).
       *)
 
-  val set_authorization : #http_header ->
-                               (string * (string * string) list) -> unit
+  val set_authorization : #http_header -> auth_credentials -> unit
     (** Sets the [Authorization] header.
       * The "Basic" authentication scheme is represented as explained for
       * [get_authorization].
@@ -807,21 +834,20 @@ module Header : sig
   val set_pragma : #http_header -> (string * string option) list -> unit
     (** Sets the [Pragma] header *)
 
-  val get_proxy_authenticate : #http_header_ro ->
-                                 (string * (string * string) list) list
+  val get_proxy_authenticate : #http_header_ro -> auth_challenge list
     (** Returns the [Proxy-authenticate] header as list of challenges
-      * [(auth_scheme,auth_params)].
+      * [(auth_scheme,auth_params)]. See also [get_www_authenticate].
       *
       * All present [Proxy-authenticate] headers are merged.
       * @raise Not_found when there is no [Proxy-authenticate] header.
+      *
+      * At present, parameters are always decoded ([`V]).
      *)
 
-  val set_proxy_authenticate : #http_header ->
-                                 (string * (string * string) list) list -> unit
+  val set_proxy_authenticate : #http_header -> auth_challenge list -> unit
     (** Sets the [Proxy-authenticate] header *)
 
-  val get_proxy_authorization : #http_header_ro ->
-                                 (string * (string * string) list)
+  val get_proxy_authorization : #http_header_ro -> auth_credentials
     (** Returns the [Proxy-authorization] header as pair
       * [(auth_scheme,auth_params)]. @raise Not_found when the header is
       * missing.
@@ -829,10 +855,11 @@ module Header : sig
       * The "Basic" authentication scheme is represented specially as
       * [("basic", [ "credentials", creds ])] where [creds] are the
       * Base64-encoded credentials.
+      *
+      * At present, parameters are always decoded ([`V]).
      *)
 
-  val set_proxy_authorization : #http_header ->
-                                   (string * (string * string) list)-> unit
+  val set_proxy_authorization : #http_header -> auth_credentials -> unit
     (** Sets the [Proxy-authorization] header
       * The "Basic" authentication scheme is represented as explained for
       * [get_proxy_authorization].
@@ -969,6 +996,7 @@ module Header : sig
   val get_warning : #http_header_ro -> (int * string * string * float option) list
     (** Returns the [Warning] header as list of tuples
       * [(code, agent, text, date)].
+
       *
       * All present [Warning] headers are merged.
       * @raise Not_found if the header is missing.
@@ -979,17 +1007,20 @@ module Header : sig
     (** Sets the [Warning] header *)
  *)
 
-  val get_www_authenticate : #http_header_ro ->
-                                 (string * (string * string) list) list
+  val get_www_authenticate : #http_header_ro -> auth_challenge list
     (** Returns the [WWW-Authenticate] header as list of challenges
       * [(auth_scheme,auth_params)].
       *
       * All present [WWW-Authenticate] headers are merged.
+      *
+      * The scheme "negotiate" uses a deviating header format.
+      * This data is returned as e.g. [("negotiate", ["credentials", data])].
+      *
+      * At present, parameters are always decoded ([`V]).
       * @raise Not_found if the header is missing.
      *)
 
-  val set_www_authenticate : #http_header ->
-                               (string * (string * string) list) list -> unit
+  val set_www_authenticate : #http_header -> auth_challenge list -> unit
     (** Sets the [WWW-Authenticate] header *)
 
   val get_cookie : #http_header_ro -> (string * string) list
@@ -1027,7 +1058,229 @@ module Header : sig
 
 end
 
+(** {2 HTTP transport registry} *)
+
+type transport_layer_id = int
+  (** see {!Nethttp_client.transport_layer_id} *)
+
+val new_trans_id : unit -> transport_layer_id
+  (** Allocates and returns a new ID *)
+
+val http_trans_id : transport_layer_id
+  (** Identifies the pure HTTP transport (without SSL), with or
+      without web proxies
+   *)
+
+val https_trans_id : transport_layer_id
+  (** Identifies anonymous HTTPS transport (i.e. no client
+      certificates), with or without web proxies.
+   *)
+
+val spnego_trans_id : transport_layer_id
+  (** Identifies an anonymous HTTPS transport that is additionally
+      authenticated via SPNEGO (as described in RFC 4559)
+   *)
+
+val proxy_only_trans_id : transport_layer_id
+  (** Identifies web proxy connections. Use this to
+      e.g. send an FTP URL to a web proxy via HTTP
+   *)
+
+(** {2 Types for authentication} *)
+
+(** See also {!Netsys_sasl_types.SASL_MECHANISM}. This is very similar,
+    only that
+     - the messages are encapsulated as HTTP headers, and
+     - the "realm" parameter is commonly supported by mechanisms
+
+    In SASL terms, HTTP authentication is normally "server first". There
+    is only one exception: re-authentication, which is "client first".
+ *)
+
+type match_result =
+    [ `Accept of string * string option
+    | `Reroute of string * transport_layer_id
+    | `Accept_reroute of string * string option * transport_layer_id
+    | `Reject
+    ]
+  (** See {!Nethttp.HTTP_MECHANISM.client_match} *)
+
+module type HTTP_MECHANISM =
+  sig
+    val mechanism_name : string
+
+    val available : unit -> bool
+      (** Whether the mechanism is available, in particular whether the
+          required crypto support is linked in
+       *)
+
+    val restart_supported : bool
+      (** Whether the mechanism supports quick restarts (re-authentication) *)
+
+    type credentials
+   
+    val init_credentials :
+          (string * string * (string * string) list) list ->
+            credentials
+      (** Supply the mechanism with credentials. These are given as list
+          [(type,value,params)]. The mechanism may pick any element
+          of this list which are considered as equivalent.
+
+          Types are defined per mechanism. All mechanisms understand the
+          "password" type, which is just the cleartext password, e.g.
+
+          {[
+            [ "password", "ThE sEcReT", [] ]
+          ]}
+
+          The password can have parameters:
+
+           - "realm": the password is only applicable to this realm. The
+             realm parameter should only occur once.
+           - "domain-uri": the password is only applicable to this URI space.
+             The URI must include the protocol scheme, the host name, and
+             "/" as path. The port number is optional. Example:
+             "http://localhost/". The domain-uri parameter can occur
+             several times.
+       *)
+
+    val client_match : params:(string * string * bool) list -> 
+                       Header.auth_challenge ->
+                         match_result
+      (** Checks whether this mechanism can accept the initial authentication
+          challenge (i.e. the first challenge sent from the server to the
+          client. The [params] are as for [create_client_session].
+          On success, returns [`Accept(realm,id_opt)]. On failure, returns 
+          [`Reject].
+          This function usually does not raise exceptions.
+
+          If the mechanism does not support the notion of realms, a
+          dummy realm should be returned.
+
+          The [id_opt] is the session ID (if supported). Session IDs can be
+          used to bind reauthentications to the original session.
+
+          The challenge is from a [www-authenticate] or a 
+          [proxy-authenticate] header.
+
+          There is also the result [`Reroute(realm, trans_id)], meaning that the
+          request would be acceptable if it came over the transport identified
+          by [trans_id]. [`Accept_reroute] is the combination of accepting
+          and rerouting, i.e. the auth protocol can start, but the second
+          request should go over the other transport. Both [`Reroute] and
+          [`Accept_reroute] are only allowed for initial challenges.
+       *)
+
+    type client_session
+
+    val client_state : client_session -> Netsys_sasl_types.client_state
+
+    val create_client_session :
+          user:string ->
+          creds:credentials ->
+          params:(string * string * bool) list -> 
+          unit ->
+            client_session
+      (** The new client session authenticate as [user]. The credentials are
+          [creds].
+
+          [user] must be encoded in UTF-8.
+
+          The parameters are given as list [(name,value,critical)]. 
+          Critical parameters must be interpreted by the mechanism, and
+          unknown critical parameters must be rejected by a [Failure]
+          exception. Non-critical parameters are ignored if they are unknown
+          to the mechanism.
+
+          Available parameters:
+           - "realm"
+           - "id" (if [client_match] returns a session ID)
+           - "trans_id": the {!Nethttp_client.transport_layer_id} of the
+             current HTTP request
+           - "conn_id": an identifier for the TCP connection
+           - "https": is set to "true" if the current connection is TLS-secured
+           - "target-host": the hostname from the HTTP request
+           - "target-uri": the URL from the HTTP request
+       *)
+
+    val client_configure_channel_binding : client_session -> 
+                                           Netsys_sasl_types.cb -> unit
+      (** Configure GS2-style channel binding *)
+
+    val client_restart : params:(string * string * bool) list -> 
+                         client_session -> unit
+      (** Restart the session for another authentication round. The session
+          must be in state [`OK]. After the restart the session will be in
+          state [`Emit].
+
+          The params are the same as for [create_client_session], but updated
+          where needed.
+       *)
+
+    val client_process_challenge :
+          client_session -> string -> string -> #http_header_ro ->
+          Header.auth_challenge -> unit
+      (** [client_process_challenge cs method uri header challenge]:
+
+          Process the challenge from the server. The state must be [`Wait].
+          As an exception, this function can also be called for the initial
+          challenge from the server, even if the state is [`Emit].
+
+          [method] is the request method. [uri] is the request URI
+       *)
+
+    val client_emit_response :
+          client_session -> string -> string -> #http_header_ro ->
+          Header.auth_credentials * (string * string) list
+      (** [let (creds,new_headers) = client_emit_response cs method uri header]:
+
+          Emit a new response as a pair [(creds,new_headers)]. 
+          The state must be [`Emit]. The [creds] either go into
+          the [authorization] or [proxy-authorization] header.
+          The [new_headers] are additional headers to modify.
+       *)
+
+    val client_channel_binding : client_session -> Netsys_sasl_types.cb
+      (** Whether the client suggests or demands channel binding *)
+
+    val client_user_name : client_session -> string
+      (** The user name *)
+
+    val client_stash_session :
+          client_session -> string
+      (** Serializes the session as string *)
+
+    val client_resume_session :
+          string -> 
+             client_session
+      (** Unserializes the session *)
+
+    val client_session_id : client_session -> string option
+      (** Optionally return a string that can be used to identify the
+          client session. Not all mechanisms support this.
+       *)
+
+    val client_domain : client_session -> string list
+      (** After successful authentication, this function may return the
+          URIs defining the authentication space.
+       *)
+
+    val client_prop : client_session -> string -> string
+      (** Get a mechanism-specific property of the session. Commonly supported
+          keys:
+           - "realm"
+           - "domain-uri"
+       *)
+
+    val client_gssapi_props : client_session -> Netsys_gssapi.client_props
+      (** Returns the GSSAPI props if available, or raise [Not_found] *)
+  end
+
+
 (**/**)
 
 val rev_split : (char -> bool) -> string -> string list
   (* See netcgi_common.mli *)
+
+val qstring_of_value : string -> string
+  (* quoted string *)

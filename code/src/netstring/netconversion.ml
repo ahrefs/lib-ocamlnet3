@@ -22,10 +22,14 @@ let big_slice = (* 3 *) 250;;
 
 type encoding =
   [  `Enc_utf8       (* UTF-8 *)
+  |  `Enc_utf8_opt_bom
   |  `Enc_java
   |  `Enc_utf16      (* UTF-16 with unspecified endianess (restricted usage) *)
   |  `Enc_utf16_le   (* UTF-16 little endian *)
   |  `Enc_utf16_be   (* UTF-16 big endian *)
+  |  `Enc_utf32      (* UTF-32 with unspecified endianess (restricted usage) *)
+  |  `Enc_utf32_le   (* UTF-32 little endian *)
+  |  `Enc_utf32_be   (* UTF-32 big endian *)
   |  `Enc_usascii    (* US-ASCII (only 7 bit) *)
   |  `Enc_iso88591   (* ISO-8859-1 *)
   |  `Enc_iso88592   (* ISO-8859-2 *)
@@ -57,6 +61,10 @@ type encoding =
   |  `Enc_iso2022 of iso2022_state
   |  `Enc_iso2022jp of iso2022jp_state
 *)
+    (* Older standards: *)
+  |  `Enc_asn1_iso646     (* only the language-neutral subset *)
+  |  `Enc_asn1_T61        (* ITU T.61 ("Teletex") *)
+  |  `Enc_asn1_printable
     (* Microsoft: *)
   |  `Enc_windows1250  (* WINDOWS-1250 *)
   |  `Enc_windows1251  (* WINDOWS-1251 *)
@@ -138,6 +146,9 @@ type charset =
   |  `Set_jis0208    (* JIS-X-0208 *)
   |  `Set_jis0212    (* JIS-X-0212 *)
   |  `Set_ks1001     (* KS-X-1001 *)
+  |  `Set_asn1_iso646
+  |  `Set_asn1_T61
+  |  `Set_asn1_printable
     (* Microsoft: *)
   |  `Set_windows1250  (* WINDOWS-1250 *)
   |  `Set_windows1251  (* WINDOWS-1251 *)
@@ -185,7 +196,7 @@ type charset =
 
 
 let ascii_compat_encodings =
-  [ `Enc_utf8; `Enc_java; `Enc_usascii;
+  [ `Enc_utf8;  `Enc_utf8_opt_bom; `Enc_java; `Enc_usascii;
     `Enc_iso88591; `Enc_iso88592; `Enc_iso88593; `Enc_iso88594; `Enc_iso88595;
     `Enc_iso88596; `Enc_iso88597; `Enc_iso88598; `Enc_iso88599; `Enc_iso885910;
     `Enc_iso885911; `Enc_iso885913; `Enc_iso885914; `Enc_iso885915;
@@ -213,10 +224,14 @@ let rec is_ascii_compatible =
 let rec is_single_byte =
   function
       `Enc_utf8
+    | `Enc_utf8_opt_bom
     | `Enc_java
     | `Enc_utf16
     | `Enc_utf16_le
-    | `Enc_utf16_be -> false
+    | `Enc_utf16_be
+    | `Enc_utf32
+    | `Enc_utf32_le
+    | `Enc_utf32_be -> false
     | `Enc_eucjp -> false
     | `Enc_euckr -> false
     | `Enc_subset(e,_) -> is_single_byte e
@@ -258,7 +273,11 @@ let names =
   [ `Enc_utf16,        [ "UTF-16"; "UTF16"; "UCS2"; "ISO10646UCS2" ];
     `Enc_utf16_be,     [ "UTF-16BE"; "UTF16BE" ];
     `Enc_utf16_le,     [ "UTF-16LE"; "UTF16LE" ];
+    `Enc_utf32,        [ "UTF-32"; "UTF32"; "UCS4"; "ISO10646UCS4" ];
+    `Enc_utf32_be,     [ "UTF-32BE"; "UTF32BE" ];
+    `Enc_utf32_le,     [ "UTF-32LE"; "UTF32LE" ];
     `Enc_utf8,         [ "UTF-8"; "UTF8" ];
+    `Enc_utf8_opt_bom, [ "UTF-8"; "UTF8" ];
     `Enc_java,         [ "UTF-8-JAVA"; "UTF8JAVA"; "JAVA" ];
     `Enc_usascii,      [ "US-ASCII"; "USASCII"; "ASCII"; "ISO646US"; "CP367"; 
 			 "ISOIR6"; "ANSIX341968" ];
@@ -336,6 +355,8 @@ let names =
 					  "ADOBEZAPFDINGBATSENCODING" ];
     `Enc_macroman,                      [ "MACINTOSH"; "MACINTOSH"; 
 					  "MACROMAN"; "MAC" ];
+
+    (* The ASN.1 encodings are intentionally not member of this list *)
   ]
 ;;
 
@@ -394,6 +415,9 @@ let internal_name (cs : charset) =
     | `Set_jis0208 -> "jis0208"
     | `Set_jis0212 -> "jis0212"
     | `Set_ks1001 -> "ks1001"
+    | `Set_asn1_iso646 -> "asn1_iso646"
+    | `Set_asn1_T61 -> "asn1_t61"
+    | `Set_asn1_printable -> "asn1_printable"
     | `Set_windows1250 -> "windows1250"
     | `Set_windows1251 -> "windows1251"
     | `Set_windows1252 -> "windows1252"
@@ -440,7 +464,9 @@ let rec required_charsets (e : encoding) =
    * encoding.
    *)
   match e with
-    | `Enc_utf8 | `Enc_java | `Enc_utf16 | `Enc_utf16_le | `Enc_utf16_be ->
+    | `Enc_utf8 | `Enc_utf8_opt_bom | `Enc_java 
+    | `Enc_utf16 | `Enc_utf16_le | `Enc_utf16_be
+    | `Enc_utf32 | `Enc_utf32_le | `Enc_utf32_be ->
 	[]
     | `Enc_usascii -> []
     | `Enc_iso88591 -> []
@@ -462,6 +488,9 @@ let rec required_charsets (e : encoding) =
     | `Enc_jis0201 -> [ `Set_jis0201 ]
     | `Enc_eucjp -> [ `Set_jis0201; `Set_jis0208; `Set_jis0212 ]
     | `Enc_euckr -> [ `Set_ks1001 ]
+    | `Enc_asn1_iso646 -> [ `Set_asn1_iso646 ]
+    | `Enc_asn1_T61 -> [ `Set_asn1_T61 ]
+    | `Enc_asn1_printable -> [ `Set_asn1_printable ]
     | `Enc_windows1250 -> [ `Set_windows1250 ]
     | `Enc_windows1251 -> [ `Set_windows1251 ]
     | `Enc_windows1252 -> [ `Set_windows1252 ]
@@ -517,6 +546,8 @@ let rec byte_order_mark =
   function
       `Enc_utf16_le -> "\255\254"
     | `Enc_utf16_be -> "\254\255"
+    | `Enc_utf32_le -> "\255\254\000\000"
+    | `Enc_utf32_be -> "\000\000\254\255"
     | `Enc_subset(e,_) -> byte_order_mark e
     | _ -> ""
 ;;
@@ -539,7 +570,7 @@ let available_input_encodings() =
 
 
 let available_output_encodings() =
-  let exclude = [ `Enc_utf16 ] in
+  let exclude = [ `Enc_utf16; `Enc_utf32 ] in
   let l = ref [] in
   List.iter
     (fun (e,_) ->
@@ -938,6 +969,44 @@ let read_utf8 is_java slice_char slice_blen s_in p_in l_in =
 let read_utf8_ref = ref read_utf8;;
 
 
+let have_utf8_bom s p =
+  let c0 = s.[p + 0] in
+  let c1 = s.[p + 1] in
+  let c2 = s.[p + 2] in
+  c0 = '\xEF' && c1 = '\xBB' && c2 = '\xBF'
+
+
+let read_utf8_opt_bom expose_bom slice_char slice_blen s_in p_in l_in =
+  assert(Array.length slice_char = Array.length slice_blen);
+  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+  (* Expect a BOM at the beginning of the text *)
+  if l_in >= 3 then (
+    if have_utf8_bom s_in p_in then (
+      let p_in1, l_in1 = 
+        if expose_bom then p_in, l_in else p_in+3, l_in-3 in
+      let (n_ret, p_ret, enc) = 
+        !read_utf8_ref false slice_char slice_blen s_in p_in1 l_in1 in
+      let p_ret1 =
+        if expose_bom then p_ret else p_ret+3 in
+      if expose_bom && n_ret >= 1 then
+        slice_char.(0) <- (-3); 
+      (n_ret, p_ret1, enc)
+    )
+    else
+      !read_utf8_ref false slice_char slice_blen s_in p_in l_in 
+  ) else (
+    let bom_possible =
+      l_in=0 || 
+        (l_in=1 && s_in.[0] = '\xEF') ||
+          (l_in=2 && s_in.[0] = '\xEF' && s_in.[1] = '\xBB') in
+    if bom_possible then
+      (0, 0, `Enc_utf8_opt_bom)
+    else
+      !read_utf8_ref false slice_char slice_blen s_in p_in l_in 
+  )
+;;
+
+
 let surrogate_offset = 0x10000 - (0xD800 lsl 10) - 0xDC00;;
 
 let read_utf16_lebe lo hi n_start enc slice_char slice_blen s_in p_in l_in =
@@ -1055,6 +1124,106 @@ let read_utf16 expose_bom slice_char slice_blen s_in p_in l_in =
   else (
     slice_char.(0) <- (-1);
     (0, 0, `Enc_utf16)
+  )
+;;
+
+
+let read_utf32_lebe little n_start enc slice_char slice_blen s_in p_in l_in =
+  (* little: whether little endian
+   * n_start: First cell in slice to use
+   *)
+  assert(Array.length slice_char = Array.length slice_blen);
+  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+
+  let malformed_code k n =
+    slice_char.(n) <- (-1);
+    raise(Malformed_code_read(n,k,enc))
+  in
+
+  let b0 = if little then 0 else 3 in
+  let b1 = if little then 1 else 2 in
+  let b2 = if little then 2 else 1 in
+  let b3 = if little then 3 else 0 in
+
+  (* k: counts the bytes
+   * n: counts the characters
+   *)
+  let rec put_loop k n =
+    if k+3 < l_in && n < Array.length slice_char then begin
+      let p3 = Char.code s_in.[p_in + k + b3] in
+      if p3 <> 0 then malformed_code k n;
+      let p = (Char.code s_in.[p_in + k + b0]) lor 
+	      ((Char.code s_in.[p_in + k + b1]) lsl 8) lor
+              ((Char.code s_in.[p_in + k + b2]) lsl 16) in
+      if (p >= 0xD800 && p <= 0xDFFF) || p >= 0x10FFFF then malformed_code k n;
+      if p = 0xfffe then 
+	(* Wrong byte order mark: It is illegal here *)
+	malformed_code k n;
+      slice_char.(n) <- p;
+      slice_blen.(n) <- 4;
+      put_loop (k+4) (n+1)
+    end
+    else
+      (n,k)
+  in
+  let (n,k) = put_loop 0 n_start in
+  if n < Array.length slice_char then (
+    (* EOF marker *)
+    slice_char.(n) <- (-1);
+  );
+  (n,k,enc)
+;;
+
+
+let get_endianess32 s_in p_in =
+  let c0 = s_in.[p_in + 0] in
+  let c1 = s_in.[p_in + 1] in
+  let c2 = s_in.[p_in + 2] in
+  let c3 = s_in.[p_in + 3] in
+  if c0 = '\000' && c1 = '\000' && c2 = '\254' && c3 = '\255' then
+    `Big_endian
+  else
+    if c0 = '\255' && c1 = '\254' && c2 = '\000' && c3 = '\000' then
+      `Little_endian
+    else
+      `No_BOM
+;;
+
+
+let read_utf32 expose_bom slice_char slice_blen s_in p_in l_in =
+  assert(Array.length slice_char = Array.length slice_blen);
+  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+  (* Expect a BOM at the beginning of the text *)
+  if l_in >= 4 then begin
+    if expose_bom then (
+      slice_char.(0) <- (-3); 
+      slice_blen.(0) <- 0;  (* Later corrected *)
+    );
+    match get_endianess32 s_in p_in with
+	`Big_endian ->
+	  let n_start = if expose_bom then 1 else 0 in
+	  let (n, k, enc') = 
+	    read_utf32_lebe
+	      false n_start `Enc_utf32_be 
+	      slice_char slice_blen s_in (p_in+4) (l_in-4) in
+	  if n > 0 then slice_blen.(0) <- slice_blen.(0) + 4;
+	  (n, k+4, enc')
+      | `Little_endian ->
+	  let n_start = if expose_bom then 1 else 0 in
+	  let (n, k, enc') = 
+	    read_utf32_lebe 
+	      true n_start `Enc_utf32_le 
+	      slice_char slice_blen s_in (p_in+4) (l_in-4) in
+	  if n > 0 then slice_blen.(0) <- slice_blen.(0) + 4;
+	  (n, k+4, enc')
+      | `No_BOM ->
+	  (* byte order mark missing *)
+	  slice_char.(0) <- (-1);
+	  raise(Malformed_code_read(0,0,`Enc_utf32))
+  end
+  else (
+    slice_char.(0) <- (-1);
+    (0, 0, `Enc_utf32)
   )
 ;;
 
@@ -1593,6 +1762,65 @@ let write_utf16_lebe lo hi
 ;;
 
 
+let write_utf32_lebe little 
+                     slice_char slice_pos slice_length s_out p_out l_out subst =
+  assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+  assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
+
+  let n = ref slice_pos in     (* index of slice *)
+  let n_max = slice_pos + slice_length in
+
+  let k = ref 0 in             (* written bytes *)
+  let n_ret = ref (-1) in      (* returned number of characters *)
+
+  let b0 = if little then 0 else 3 in
+  let b1 = if little then 1 else 2 in
+  let b2 = if little then 2 else 1 in
+  let b3 = if little then 3 else 0 in
+
+  while ( !n < n_max ) do
+    let p = slice_char.( !n ) in
+
+    let index = p_out + !k in
+
+    let k_inc =
+      if p <= 0x10ffff then (
+	if !k + 3 < l_out then (
+	  s_out.[index + b0 ] <- Char.unsafe_chr (p land 0xff);
+	  s_out.[index + b1 ] <- Char.unsafe_chr ((p lsr 8) land 0xff);
+	  s_out.[index + b2 ] <- Char.unsafe_chr ((p lsr 16) land 0xff);
+	  s_out.[index + b3 ] <- Char.unsafe_chr 0;
+	  4
+	)
+	else (-1)
+      ) else (
+	  (* Higher code points are not possible in XML; call subst *)
+	  let replacement = subst p in
+	  let l_repl =  String.length replacement in
+	  if l_repl > multibyte_limit then
+	    failwith "Netconversion.write_utf32: Substitution string too long";
+	  if !k + l_repl <= l_out then begin
+	    (* Enough space to store 'replacement': *)
+	    String.blit replacement 0 s_out (p_out + !k) l_repl;
+	    l_repl  (* may be 0! *)
+	  end
+	  else 
+	    (-1) (* Exit whole conversion *)
+      ) in
+    if k_inc >= 0 then (
+      k := !k + k_inc;
+      incr n
+    )
+    else (
+      n_ret := !n;
+      n := n_max
+    );
+  done;
+  if !n_ret >= 0 then (!n_ret - slice_pos, !k) 
+                 else (!n - slice_pos,     !k)
+;;
+
+
 let write_euc map enc =
   (* Code set 0 is US-ASCII.
    * let (set, byte1, byte2) = map unicode:
@@ -1853,6 +2081,14 @@ let back_utf16_lebe lo hi s_in range_in p_in n_char =
 ;;
 
 
+let back_utf32 s_in range_in p_in n_char =
+  let p_rel = p_in - range_in in
+  let n = min p_rel (n_char lsl 2) in
+  (n asr 2,n)
+;;
+
+
+
 let back_euc s_in range_in p_in n_char =
   (* Works for 1-byte and 2-byte encodings *)
   let n = ref 0 in
@@ -1961,9 +2197,9 @@ let rec from_unicode cs =
 
 
 type encoding1 =
-  [ encoding | `Enc_utf16_bom ] ;;
+  [ encoding | `Enc_utf16_bom | `Enc_utf32_bom | `Enc_utf8_bom ] ;;
 
-  (* `Enc_utf16_bom considers the BOM as a character with code point -3.
+  (* `Enc_*_bom considers the BOM as a character with code point -3.
    * This encoding is only internally used.
    *)
 
@@ -1978,10 +2214,16 @@ let rec get_reader1 (enc : encoding1) =
     | `Enc_empty    -> !read_iso88591_ref (-1) `Enc_empty
     | `Enc_utf8     -> !read_utf8_ref false
     | `Enc_java     -> !read_utf8_ref true
+    | `Enc_utf8_opt_bom -> read_utf8_opt_bom false
+    | `Enc_utf8_bom -> read_utf8_opt_bom true
     | `Enc_utf16    -> read_utf16 false
     | `Enc_utf16_bom  -> read_utf16 true
     | `Enc_utf16_le -> read_utf16_lebe 0 1 0 `Enc_utf16_le
     | `Enc_utf16_be -> read_utf16_lebe 1 0 0 `Enc_utf16_be
+    | `Enc_utf32    -> read_utf32 false
+    | `Enc_utf32_bom -> read_utf32 true
+    | `Enc_utf32_le  -> read_utf32_lebe true 0 `Enc_utf32_le
+    | `Enc_utf32_be  -> read_utf32_lebe false 0 `Enc_utf32_be
     | `Enc_eucjp    -> read_eucjp ()
     | `Enc_euckr    -> read_euckr ()
     | `Enc_subset(e,def) ->
@@ -2006,6 +2248,9 @@ let rec get_writer enc =
     | `Enc_utf16    -> failwith "Netconversion: Cannot output text as `Enc_utf16, use `Enc_utf16_le or `Enc_utf16_be"
     | `Enc_utf16_le -> write_utf16_lebe 0 1
     | `Enc_utf16_be -> write_utf16_lebe 1 0
+    | `Enc_utf32    -> failwith "Netconversion: Cannot output text as `Enc_utf32, use `Enc_utf32_le or `Enc_utf32_be"
+    | `Enc_utf32_le -> write_utf32_lebe true
+    | `Enc_utf32_be -> write_utf32_lebe false
     | `Enc_eucjp    -> write_eucjp ()
     | `Enc_euckr    -> write_euckr ()
     | `Enc_subset(e,def) ->
@@ -2023,6 +2268,9 @@ let rec get_back_fn enc =
     | `Enc_utf16    -> failwith "Netconversion: Cannot go back in text encoded as `Enc_utf16, use `Enc_utf16_le or `Enc_utf16_be"
     | `Enc_utf16_le -> back_utf16_lebe 0 1
     | `Enc_utf16_be -> back_utf16_lebe 1 0
+    | `Enc_utf32
+    | `Enc_utf32_le
+    | `Enc_utf32_be -> back_utf32
     | `Enc_eucjp    -> back_euc
     | `Enc_euckr    -> back_euc
     | `Enc_subset(e,def) ->
@@ -2149,12 +2397,16 @@ let rec ustring_of_uchar enc =
     | `Enc_usascii ->
 	(fun p ->if p > 127 then raise (Cannot_represent p);
 	   String.make 1 (Char.chr p))
-    | `Enc_utf8 -> multi_byte (write_utf8 false) 4
+    | `Enc_utf8 | `Enc_utf8_opt_bom -> multi_byte (write_utf8 false) 4
     | `Enc_java -> multi_byte (write_utf8 true) 4
     | `Enc_utf16_le -> multi_byte (write_utf16_lebe 0 1) 4
     | `Enc_utf16_be -> multi_byte (write_utf16_lebe 1 0) 4
     | `Enc_utf16 ->
 	invalid_arg "Netconversion.ustring_of_uchar: UTF-16 not possible"
+    | `Enc_utf32_le -> multi_byte (write_utf32_lebe true) 4
+    | `Enc_utf32_be -> multi_byte (write_utf32_lebe false) 4
+    | `Enc_utf32 ->
+	invalid_arg "Netconversion.ustring_of_uchar: UTF-32 not possible"
     | `Enc_eucjp -> multi_byte (write_eucjp()) 3
     | `Enc_euckr -> multi_byte (write_euckr()) 2
     | `Enc_subset(e,def) ->
@@ -2301,7 +2553,7 @@ class recoding_pipe ?(subst = (fun p -> raise Not_found))
  * is decreased to 1, so the exact position can be calculated.
  *)
 
-(* Notes UTF-16:
+(* Notes UTF-8/16/32 with BOM handling:
  * 
  * cursor_enc is updated after the first slice has been read. This
  * usually changes this field to either the big or little endian
@@ -2329,9 +2581,12 @@ type cursor =
         (* `Enc_utf16: Only used if the slice or string is too short to
          *    recognize the endianess. Otherwise, the encoding is set
          *    to the endian-aware variant.
+         * `Enc_utf32: same
          *)
       mutable cursor_has_bom : bool;
-        (* Whether there is a BOM. Only when initially cursor_enc=`Enc_utf16 *)
+      (* Whether there is a BOM. Only when initially cursor_enc=`Enc_utf16
+         or utf32
+       *)
       (* conversion: *)
       mutable cursor_slice_char : int array;
         (* Contains the characters of the slice. Special values:
@@ -2404,10 +2659,19 @@ let cursor_pos cs = cs.cursor_byte_pos;;
 let cursor_encoding cs = 
   let enc = cs.cursor_enc in
   match enc with
-    ( `Enc_utf16_le
-    | `Enc_utf16_be ) when cs.cursor_has_bom ->
+    ( `Enc_utf16_le | `Enc_utf16_be ) when cs.cursor_has_bom ->
 	if cs.cursor_byte_pos = cs.cursor_range_pos then
 	  `Enc_utf16
+	else
+	  enc
+    | ( `Enc_utf32_le | `Enc_utf32_be ) when cs.cursor_has_bom ->
+	if cs.cursor_byte_pos = cs.cursor_range_pos then
+	  `Enc_utf32
+	else
+	  enc
+    | (`Enc_utf8 | `Enc_utf8_opt_bom) when cs.cursor_has_bom ->
+	if cs.cursor_byte_pos = cs.cursor_range_pos then
+	  `Enc_utf8_opt_bom
 	else
 	  enc
     | _ ->
@@ -2552,9 +2816,7 @@ let init_load_slice cs enc =
 
   let reader() =
     match cs.cursor_enc with
-      ( `Enc_utf16
-      | `Enc_utf16_le
-      | `Enc_utf16_be ) when cs.cursor_has_bom ->
+      ( `Enc_utf16 | `Enc_utf16_le | `Enc_utf16_be ) when cs.cursor_has_bom ->
 	  (* Ensure we use `Enc_utf16_bom when we read the beginning
 	   * of the range
 	   *)
@@ -2564,15 +2826,34 @@ let init_load_slice cs enc =
 	     else
 	       get_reader cs.cursor_enc slice_char slice_blen s bp bl
 	  )
+      | ( `Enc_utf32 | `Enc_utf32_le | `Enc_utf32_be ) when cs.cursor_has_bom ->
+	  (* Ensure we use `Enc_utf32_bom when we read the beginning
+	   * of the range
+	   *)
+	  (fun slice_char slice_blen s bp bl ->
+	     if bp = cs.cursor_range_pos then
+	       get_reader1 `Enc_utf32_bom slice_char slice_blen s bp bl
+	     else
+	       get_reader cs.cursor_enc slice_char slice_blen s bp bl
+	  )
+      | ( `Enc_utf8 | `Enc_utf8_opt_bom ) when cs.cursor_has_bom ->
+	  (fun slice_char slice_blen s bp bl ->
+	     if bp = cs.cursor_range_pos then
+	       get_reader1 `Enc_utf8_bom slice_char slice_blen s bp bl
+	     else
+	       get_reader cs.cursor_enc slice_char slice_blen s bp bl
+	  )
       | _ ->
 	  reader0
   in
 
   let back() =
     match cs.cursor_enc with
-      ( `Enc_utf16
-      | `Enc_utf16_le
-      | `Enc_utf16_be ) when cs.cursor_has_bom ->
+      ( `Enc_utf16 | `Enc_utf16_le | `Enc_utf16_be ) when cs.cursor_has_bom ->
+	  get_back_fn cs.cursor_enc
+      | ( `Enc_utf32 | `Enc_utf32_le | `Enc_utf32_be ) when cs.cursor_has_bom ->
+	  get_back_fn cs.cursor_enc
+      | ( `Enc_utf8 | `Enc_utf8_opt_bom ) when cs.cursor_has_bom ->
 	  get_back_fn cs.cursor_enc
       | _ ->
 	  Lazy.force back0
@@ -2818,13 +3099,17 @@ let create_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) enc s =
   if enc = `Enc_utf16 && initial_rel_pos <> 0 then
     failwith "Netconversion.create_cursor: The encoding `Enc_utf16 only supported when initial_rel_pos=0";
 
+  if enc = `Enc_utf32 && initial_rel_pos <> 0 then
+    failwith "Netconversion.create_cursor: The encoding `Enc_utf32 only supported when initial_rel_pos=0";
+
   let cs =
     { cursor_target = s;
       cursor_range_pos = range_pos;
       cursor_range_len = range_len;
       cursor_offset = initial_rel_pos;
       cursor_enc = enc;
-      cursor_has_bom = (enc = `Enc_utf16);
+      cursor_has_bom =
+        (enc = `Enc_utf16 || enc = `Enc_utf32 || enc = `Enc_utf8_opt_bom);
       cursor_slice_char = [| 1 |];
       cursor_slice_blen = [| 1 |];
       cursor_imbchar_len = 0;
@@ -2871,6 +3156,8 @@ let reinit_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) ?enc s cs =
   in
   if enc = `Enc_utf16 && initial_rel_pos <> 0 then
     failwith "Netconversion.reinit_cursor: The encoding `Enc_utf16 only supported when initial_rel_pos=0";
+  if enc = `Enc_utf32 && initial_rel_pos <> 0 then
+    failwith "Netconversion.reinit_cursor: The encoding `Enc_utf32 only supported when initial_rel_pos=0";
 
   let old_enc = cs.cursor_enc in
 
@@ -2879,7 +3166,8 @@ let reinit_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) ?enc s cs =
   cs.cursor_range_len <- range_len;
   cs.cursor_offset <- initial_rel_pos;
   cs.cursor_enc <- enc;
-  cs.cursor_has_bom <- (enc = `Enc_utf16);
+  cs.cursor_has_bom <- 
+    (enc = `Enc_utf16 || enc = `Enc_utf32 || enc = `Enc_utf8_opt_bom);
   cs.cursor_imbchar_len <- 0;
   cs.cursor_slice_char_pos <- 0;
   cs.cursor_slice_byte_pos <- range_pos + initial_rel_pos;
@@ -2924,6 +3212,8 @@ let copy_cursor ?enc cs =
   else begin
     if enc = `Enc_utf16 then
       failwith "Netconversion.copy_cursor: The encoding `Enc_utf16 is not supported";
+    if enc = `Enc_utf32 then
+      failwith "Netconversion.copy_cursor: The encoding `Enc_utf32 is not supported";
     let cs' =
       { cs with
 	  cursor_enc = enc;

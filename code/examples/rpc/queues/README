@@ -21,14 +21,22 @@ Furthermore, you must set the authentication style:
 - auth_sys: Insecure "system authentication" (included only for purposes
   of an example). This is the default.
 
-- auth_dh: Secure RPC - needs the keyserv daemon, however, and Secure
-  RPC utilities.
+- auth_gssapi: authentication via GSSAPI (usually Kerberos)
 
 - auth_ssl: RPC over SSL.
 
-The Makefile variable AUTH_MODULE must be set accordingly (in Makefile.code).
+The Makefile variable AUTH_MODULE must be set accordingly, e.g.
+
+$ make AUTH_MODULE=auth_ssl
+
 
 See the comments on the authentication modules below.
+
+
+
+*** System requirements ***
+
+The program assumes that the portmapper (or rpcbind) runs!
 
 
 
@@ -100,40 +108,39 @@ This style of authentication does not use any verification, and is
 inscure because of this. However, it works out of the box.
 
 ======================================================================
-Authentication module auth_dh
+Authentication module auth_gssapi
 ======================================================================
 
-qserver and qclient authenticate each other by Secure RPC. I made this
-the default because the example profits from the existing authentication 
-infrastructure, and I don't have to reinvent the wheel. However, you
-have to make sure:
+This requires that the netgss-system library is available. For the
+normal case that Kerberos is active, the following applies:
 
-- That the keyserv daemon is running
-- For every user keylogin has been executed
+ - Kerberos must be configured on both the client and server machine
+ - The server needs a keytab. For MIT Kerberos you can create the keytab
+   as follows:
 
-You don't need a working NIS environment, though. (Linux users:
-Install the nis-utils package.)
+   * In kadmin, run the following (where FQDN is the fully-qualified host
+     name of the server, and REALM is the Kerberos realm):
 
-If you get errors from Rpc_key_service there is a problem with the key
-server. See also the file README.authdh.
+     addprinc -randkey ocamlnet_queues/FQDN@REALM
+     ktadd -k ocamlnet.keytab ocamlnet_queues/FQDN@REALM
 
-The environment variable QCLIENT_NETNAME should be set to the netname
-of the server, otherwise the client cannot authenticate. By default,
-the netname "unix.<host>@<domain>" is assumed, but this may be wrong,
-especially if the server is not run as root. In this case, try
-"unix.<uid>@<domain>" where <uid> is the numeric user ID of the server.
+     This puts a file ocamlnet.keytab into the working directory.
 
-Note that Secure RPC is not supported on all operating systems.
+   * Ensure that ocamlnet.keytab is readable by the user running qserver.
 
+ - When starting the server, you need to set the environment variable
+   KRB5_KTNAME to the absolute path of ocamlnet.keytab
+   so the keytab is found (otherwise the system-wide keytab is accessed,
+   and this can only do root).
 
-Checklist if not working:
+   env KRB5_KTNAME=... ./qserver
 
-- the domainname must be set (command "domainname")
-- keyserv must be running
-- qserver should run as root
-- qclient must run as non-privileged user
-- this user must be logged in at keyserv (using keylogin)
-- try host -host <hostname> option of qclient
+ - You need a client credential before you can run qclient (kinit command)
+ - On the client side, set the environment variable QCLIENT_HOST to the
+   FQDN of the server. The default ("localhost") will not work.
+
+   export QCLIENT_HOST=...
+   ./qclient queues
 
 ======================================================================
 Authentication module auth_ssl
@@ -153,7 +160,8 @@ You need the following files (all in PEM format):
 
 - client.key: The client private key (w/o password)
 
-Put these files into the current working directory.
+Put these files into the current working directory. The script create_certs.sh
+does this with some sample certificates.
 
 
 The DN of the client cert is the user name.

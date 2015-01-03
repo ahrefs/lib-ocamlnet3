@@ -33,7 +33,7 @@ let on_service_connection env (cgi : Netcgi.cgi_activation) host port finish ues
   (* The connection with the proxied service is established. Now just copy all data
    * from the descriptor to the asynchronous output channel in [env].
    *)
-  let fd = Uq_engines.client_socket conn in
+  let fd = Uq_client.client_endpoint conn in
   (* Some versions of Equeue have a bug in the service connector. So check first
    * whether we are really connected.
    *)
@@ -50,7 +50,7 @@ let on_service_connection env (cgi : Netcgi.cgi_activation) host port finish ues
       ~status: `Ok
       ~content_type:"text/plain"
       ();
-    let copy_engine = new Uq_engines.receiver ~src:fd ~dst:env#output_ch_async ues in
+    let copy_engine = new Uq_transfer.receiver ~src:fd ~dst:env#output_ch_async ues in
     (* When the [copy_engine] is done, call [finish]: *)
     Uq_engines.when_state ~is_done:(fun _ -> finish())
                           ~is_error:(fun _ -> finish())
@@ -82,7 +82,7 @@ let setup_file_service env (cgi : Netcgi.cgi_activation) filename finish ues =
       ~content_type:"text/plain"
       ();
     (* Then copy data from file to the output channel *)
-    let copy_engine = new Uq_engines.receiver ~src:fd ~dst:env#output_ch_async ues in
+    let copy_engine = new Uq_transfer.receiver ~src:fd ~dst:env#output_ch_async ues in
     (* When the [copy_engine] is done, call [finish]: *)
 (*
     let file_finish() =
@@ -130,8 +130,8 @@ let on_request ues notification =
 	      (* Now connect to this service *)
 	      let sockspec = `Sock_inet(Unix.SOCK_STREAM, 
 					Unix.inet_addr_of_string host, port) in
-	      let opts = Uq_engines.default_connect_options in
-	      let conn_engine = Uq_engines.connector (`Socket(sockspec,opts)) ues in
+	      let opts = Uq_client.default_connect_options in
+	      let conn_engine = Uq_client.connect_e (`Socket(sockspec,opts)) ues in
 	      let fin = notification # schedule_finish in
 	      Uq_engines.when_state 
 		~is_done:(on_service_connection env cgi host port fin ues)
@@ -205,11 +205,11 @@ let start() =
   flush stdout;
   let ues = Unixqueue.create_unix_event_system () in
   (* Unixqueue.set_debug_mode true; *)
-  let opts = { Uq_engines.default_listen_options with
-		 Uq_engines.lstn_backlog = 20;
-		 Uq_engines.lstn_reuseaddr = true } in
+  let opts = { Uq_server.default_listen_options with
+		 Uq_server.lstn_backlog = 20;
+		 Uq_server.lstn_reuseaddr = true } in
   let lstn_engine =
-    Uq_engines.listener
+    Uq_server.listener
       (`Socket(`Sock_inet(Unix.SOCK_STREAM, Unix.inet_addr_any, 8765) ,opts)) ues in
   Uq_engines.when_state ~is_done:(accept ues) lstn_engine;
   (* Start the main event loop. *)

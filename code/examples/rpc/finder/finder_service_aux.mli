@@ -9,72 +9,72 @@
 (* Type definitions *)
 
 type longstring = 
-      string
+     string
 and location_enum = 
-      Rtypes.int4
+     Netnumber.int4
 and location = 
-      [ | `not_found | `found of (longstring) ]
+     [ | `not_found | `found of (longstring) ]
 and t_Finder'V1'ping'arg = 
-      unit
+     unit
 and t_Finder'V1'ping'res = 
-      unit
+     unit
 and t_Finder'V1'find'arg = 
-      longstring
+     longstring
 and t_Finder'V1'find'res = 
-      location
+     location
 and t_Finder'V1'lastquery'arg = 
-      unit
+     unit
 and t_Finder'V1'lastquery'res = 
-      longstring
+     longstring
 and t_Finder'V1'shutdown'arg = 
-      unit
+     unit
 and t_Finder'V1'shutdown'res = 
-      unit
+     unit
 ;;
 
 (* Constant definitions *)
 
-val not_found : Rtypes.int4;;
-val found : Rtypes.int4;;
+val not_found : Netnumber.int4;;
+val found : Netnumber.int4;;
 
 (* Conversion functions *)
 
-val _to_longstring : Xdr.xdr_value -> longstring;;
-val _of_longstring : longstring -> Xdr.xdr_value;;
-val _to_location_enum : Xdr.xdr_value -> location_enum;;
-val _of_location_enum : location_enum -> Xdr.xdr_value;;
-val _to_location : Xdr.xdr_value -> location;;
-val _of_location : location -> Xdr.xdr_value;;
-val _to_Finder'V1'ping'arg : Xdr.xdr_value -> t_Finder'V1'ping'arg;;
-val _of_Finder'V1'ping'arg : t_Finder'V1'ping'arg -> Xdr.xdr_value;;
-val _to_Finder'V1'ping'res : Xdr.xdr_value -> t_Finder'V1'ping'res;;
-val _of_Finder'V1'ping'res : t_Finder'V1'ping'res -> Xdr.xdr_value;;
-val _to_Finder'V1'find'arg : Xdr.xdr_value -> t_Finder'V1'find'arg;;
-val _of_Finder'V1'find'arg : t_Finder'V1'find'arg -> Xdr.xdr_value;;
-val _to_Finder'V1'find'res : Xdr.xdr_value -> t_Finder'V1'find'res;;
-val _of_Finder'V1'find'res : t_Finder'V1'find'res -> Xdr.xdr_value;;
-val _to_Finder'V1'lastquery'arg : Xdr.xdr_value -> t_Finder'V1'lastquery'arg;;
-val _of_Finder'V1'lastquery'arg : t_Finder'V1'lastquery'arg -> Xdr.xdr_value;;
-val _to_Finder'V1'lastquery'res : Xdr.xdr_value -> t_Finder'V1'lastquery'res;;
-val _of_Finder'V1'lastquery'res : t_Finder'V1'lastquery'res -> Xdr.xdr_value;;
-val _to_Finder'V1'shutdown'arg : Xdr.xdr_value -> t_Finder'V1'shutdown'arg;;
-val _of_Finder'V1'shutdown'arg : t_Finder'V1'shutdown'arg -> Xdr.xdr_value;;
-val _to_Finder'V1'shutdown'res : Xdr.xdr_value -> t_Finder'V1'shutdown'res;;
-val _of_Finder'V1'shutdown'res : t_Finder'V1'shutdown'res -> Xdr.xdr_value;;
+val _to_longstring : Netxdr.xdr_value -> longstring;;
+val _of_longstring : longstring -> Netxdr.xdr_value;;
+val _to_location_enum : Netxdr.xdr_value -> location_enum;;
+val _of_location_enum : location_enum -> Netxdr.xdr_value;;
+val _to_location : Netxdr.xdr_value -> location;;
+val _of_location : location -> Netxdr.xdr_value;;
+val _to_Finder'V1'ping'arg : Netxdr.xdr_value -> t_Finder'V1'ping'arg;;
+val _of_Finder'V1'ping'arg : t_Finder'V1'ping'arg -> Netxdr.xdr_value;;
+val _to_Finder'V1'ping'res : Netxdr.xdr_value -> t_Finder'V1'ping'res;;
+val _of_Finder'V1'ping'res : t_Finder'V1'ping'res -> Netxdr.xdr_value;;
+val _to_Finder'V1'find'arg : Netxdr.xdr_value -> t_Finder'V1'find'arg;;
+val _of_Finder'V1'find'arg : t_Finder'V1'find'arg -> Netxdr.xdr_value;;
+val _to_Finder'V1'find'res : Netxdr.xdr_value -> t_Finder'V1'find'res;;
+val _of_Finder'V1'find'res : t_Finder'V1'find'res -> Netxdr.xdr_value;;
+val _to_Finder'V1'lastquery'arg : Netxdr.xdr_value -> t_Finder'V1'lastquery'arg;;
+val _of_Finder'V1'lastquery'arg : t_Finder'V1'lastquery'arg -> Netxdr.xdr_value;;
+val _to_Finder'V1'lastquery'res : Netxdr.xdr_value -> t_Finder'V1'lastquery'res;;
+val _of_Finder'V1'lastquery'res : t_Finder'V1'lastquery'res -> Netxdr.xdr_value;;
+val _to_Finder'V1'shutdown'arg : Netxdr.xdr_value -> t_Finder'V1'shutdown'arg;;
+val _of_Finder'V1'shutdown'arg : t_Finder'V1'shutdown'arg -> Netxdr.xdr_value;;
+val _to_Finder'V1'shutdown'res : Netxdr.xdr_value -> t_Finder'V1'shutdown'res;;
+val _of_Finder'V1'shutdown'res : t_Finder'V1'shutdown'res -> Netxdr.xdr_value;;
 
 (* XDR definitions *)
 
-val xdrt_longstring : Xdr.xdr_type_term;;
-val xdrt_location_enum : Xdr.xdr_type_term;;
-val xdrt_location : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'ping'arg : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'ping'res : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'find'arg : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'find'res : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'lastquery'arg : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'lastquery'res : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'shutdown'arg : Xdr.xdr_type_term;;
-val xdrt_Finder'V1'shutdown'res : Xdr.xdr_type_term;;
+val xdrt_longstring : Netxdr.xdr_type_term;;
+val xdrt_location_enum : Netxdr.xdr_type_term;;
+val xdrt_location : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'ping'arg : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'ping'res : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'find'arg : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'find'res : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'lastquery'arg : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'lastquery'res : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'shutdown'arg : Netxdr.xdr_type_term;;
+val xdrt_Finder'V1'shutdown'res : Netxdr.xdr_type_term;;
 
 (* Program definitions *)
 

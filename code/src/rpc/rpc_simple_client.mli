@@ -9,7 +9,7 @@
  * of RPC.
  *)
 
-open Xdr
+open Netxdr
 
 type t
   (** The type of simple clients *)

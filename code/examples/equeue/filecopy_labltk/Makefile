@@ -9,7 +9,7 @@ NAME     = filecopy
 REQUIRES = equeue-tcl labltk
 
 all: $(OBJECTS)
-	$(OCAMLC) -o filecopy filecopy.cmo  -linkpkg 
+	$(OCAMLC) -o filecopy filecopy.cmo  -linkpkg -custom
 
 
 #----------------------------------------------------------------------

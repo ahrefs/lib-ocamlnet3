@@ -1,4 +1,5 @@
-open Rtypes;;
+open Netnumber;;
+open Netnumber.BE;;
 open Convtest3_aux;;
 
 
@@ -7,18 +8,18 @@ let id_b2 x  = _to_b2 (_of_b2 x);;
 let id_b3 x  = _to_b3 (_of_b3 x);;
 let id_f x   = _to_B'B'f'arg (_of_B'B'f'arg x);;
 
-let xdrt = Xdr.validate_xdr_type xdrt_B'B'f'arg;;
+let xdrt = Netxdr.validate_xdr_type xdrt_B'B'f'arg;;
 
 let matched_id_f x =
   let y = _of_B'B'f'arg x in
-  assert(Xdr.value_matches_type y xdrt []);
+  assert(Netxdr.value_matches_type y xdrt []);
   _to_B'B'f'arg y
 ;;
 
 let packed_id_f x =
   let y = _of_B'B'f'arg x in
-  let z = Xdr.pack_xdr_value_as_string y xdrt [] in
-  let y' = Xdr.unpack_xdr_value ~fast:true z xdrt [] in
+  let z = Netxdr.pack_xdr_value_as_string y xdrt [] in
+  let y' = Netxdr.unpack_xdr_value ~fast:true z xdrt [] in
   _to_B'B'f'arg y'
 ;;
 

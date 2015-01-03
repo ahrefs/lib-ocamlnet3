@@ -8,7 +8,8 @@ RPCGEN_AUX_OPTIONS    = -int int32 -hyper int64
 RPCGEN_CLIENT_OPTIONS = -int int32 -hyper int64
 RPCGEN_SERVER_OPTIONS = -int int32 -hyper int64
 
-CLEAN_LIST += qclient qserver *.astamp *.cstamp *.s2stamp
+CLEAN_LIST += qclient qserver *.astamp *.cstamp *.s2stamp \
+	      *.crt *.key *.templ
 
 all:
 	$(MAKE) gen

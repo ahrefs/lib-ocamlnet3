@@ -35,3 +35,17 @@ val read_netplex_config :
     * complete example of a config file. See {!Netplex_intro.crsock}
     * for explanations how to specify sockets in the config file.
    *)
+
+
+val read_tls_config :
+      ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
+      ?peer_name_unchecked : bool ->
+      config_file ->
+      address ->
+      (module Netsys_crypto_types.TLS_PROVIDER) option ->
+        (module Netsys_crypto_types.TLS_CONFIG) option
+  (** Reads the TLS section of a configuration file: At the passed location
+      there must be [tls] section (or [None] is returned).
+
+      The TLS options are now documented in {!Nethttpd_plex.tls}.
+   *)

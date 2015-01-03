@@ -1,0 +1,668 @@
+(* -*- tuareg -*- *)
+
+open Printf
+
+#use "stubgen.ml"
+
+let types =
+  [ "gss_buffer_t",    tagged_abstract_ptr "netgss_free_buffer";
+    "gss_OID",         tagged_abstract_ptr ~nullok:true "netgss_free_oid";
+    "gss_OID_set",     tagged_abstract_ptr ~nullok:true "netgss_free_oid_set";
+    "gss_cred_id_t",   tagged_abstract_ptr ~nullok:true "netgss_free_cred_id";
+    "gss_ctx_id_t",    tagged_abstract_ptr ~nullok:true ~gen_set:true "netgss_free_ctx_id";
+    "gss_name_t",      tagged_abstract_ptr ~nullok:true "netgss_free_name";
+    "gss_channel_bindings_t", abstract_ptr ~nullok:true "netgss_free_cb";
+
+    "gss_cred_usage_t", `Enum [ "GSS_C_|BOTH";
+                                "GSS_C_|INITIATE";
+                                "GSS_C_|ACCEPT"
+                              ];
+    "flags",            `Flags [ "GSS_C_|DELEG_FLAG";
+                                 "GSS_C_|MUTUAL_FLAG";
+                                 "GSS_C_|REPLAY_FLAG";
+                                 "GSS_C_|SEQUENCE_FLAG";
+                                 "GSS_C_|CONF_FLAG";
+                                 "GSS_C_|INTEG_FLAG";
+                                 "GSS_C_|ANON_FLAG";
+                                 "GSS_C_|PROT_READY_FLAG";
+                                 "GSS_C_|TRANS_FLAG";
+                               ];
+    "gss_qop_t",        `Enum [ "GSS_C_|QOP_DEFAULT" ];
+    "status_type_t",    `Enum [ "GSS_C_|GSS_CODE";
+                                "GSS_C_|MECH_CODE";
+                              ];
+  ]
+
+(* OM_uint32: refer to this as "OM_uint32/int32" *)
+
+let standard ?(optional=false) ?(options=[]) decl =
+  let (name, result, params) = parse decl in
+  (name,
+   params @ [ "result",
+              (if result = "void" then `Return_ignore else `Return),
+              result
+            ],
+   (if optional then [ `Optional ] else []) @
+     options
+  )
+
+let functions =
+  [ standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_accept_sec_context( \
+               OUT OM_uint32/int32  minor_status, \
+               IN_OUT gss_ctx_id_t  context, \
+               gss_cred_id_t        acceptor_cred, \
+               gss_buffer_t         input_token, \
+               gss_channel_bindings_t chan_bindings, \
+               OUT gss_name_t       src_name, \
+               OUT gss_OID          mech_type, \
+               OUT_NOPTR gss_buffer_t output_token, \
+               OUT flags            ret_flags, \
+               OUT OM_uint32/int32  time_rec, \
+               OUT gss_cred_id_t    delegated_cred)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_acquire_cred( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           desired_name, \
+               OM_uint32/int32      time_req, \
+               gss_OID_set          desired_mechs, \
+               gss_cred_usage_t     cred_usage, \
+               OUT gss_cred_id_t    cred, \
+               OUT gss_OID_set      actual_mechs, \
+               OUT OM_uint32/int32  time_rec)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_init_sec_context( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_cred_id_t        initiator_cred, \
+               IN_OUT gss_ctx_id_t  context, \
+               gss_name_t           target_name, \
+               gss_OID              mech_type, \
+               flags                req_flags, \
+               OM_uint32/int32      time_req, \
+               gss_channel_bindings_t chan_bindings, \
+               gss_buffer_t         input_token, \
+               OUT gss_OID          actual_mech_type, \
+               OUT_NOPTR gss_buffer_t output_token, \
+               OUT flags            ret_flags, \
+               OUT OM_uint32/int32  time_rec)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_process_context_token( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               gss_buffer_t         token)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_context_time( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               OUT OM_uint32/int32  time_rec)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_get_mic( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               OM_uint32/int32      qop_req, \
+               gss_buffer_t         message, \
+               OUT_NOPTR gss_buffer_t msg_token)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_verify_mic( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               gss_buffer_t         message, \
+               gss_buffer_t         token, \
+               OUT OM_uint32/int32  qop_state)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_wrap( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               bool                 conf_req, \
+               OM_uint32/int32      qop_req, \
+               gss_buffer_t         input_message, \
+               OUT bool             conf_state, \
+               OUT_NOPTR gss_buffer_t output_message)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_unwrap( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               gss_buffer_t         input_message, \
+               OUT_NOPTR gss_buffer_t output_message, \
+               OUT bool             conf_state, \
+               OUT OM_uint32/int32  qop_state)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_display_status( \
+               OUT OM_uint32/int32  minor_status, \
+               OM_uint32/int32      status_value, \
+               status_type_t        status_type, \
+               gss_OID              mech_type, \
+               IN_OUT OM_uint32/int32 message_context, \
+               OUT_NOPTR gss_buffer_t status_string)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_indicate_mechs( \
+               OUT OM_uint32/int32  minor_status, \
+               OUT gss_OID_set      mech_set)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_compare_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           name1, \
+               gss_name_t           name2, \
+               OUT bool             name_equal)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_display_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           input_name, \
+               OUT_NOPTR gss_buffer_t output_name, \
+               OUT gss_OID          output_name_type)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_import_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_buffer_t         input_name, \
+               gss_OID              input_name_type, \
+               OUT gss_name_t       output_name)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_inquire_cred( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_cred_id_t        cred, \
+               OUT gss_name_t       name, \
+               OUT OM_uint32/int32  lifetime, \
+               OUT gss_cred_usage_t cred_usage, \
+               OUT gss_OID_set      mechanisms)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_inquire_context( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               OUT gss_name_t       src_name, \
+               OUT gss_name_t       targ_name, \
+               OUT OM_uint32/int32  lifetime_req, \
+               OUT gss_OID          mech_type, \
+               OUT flags            ctx_flags, \
+               OUT bool             locally_initiated, \
+               OUT bool             is_open)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_wrap_size_limit( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_ctx_id_t         context, \
+               bool                 conf_req, \
+               OM_uint32/int32      qop_req, \
+               OM_uint32/int32      req_output_size, \
+               OUT OM_uint32/int32  max_input_size)";
+
+    standard
+      ~options:[`Blocking]
+      "OM_uint32/int32 \
+           gss_add_cred( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_cred_id_t        input_cred, \
+               gss_name_t           desired_name, \
+               gss_OID              desired_mech, \
+               gss_cred_usage_t     cred_usage, \
+               OM_uint32/int32      initiator_time_req, \
+               OM_uint32/int32      acceptor_time_req, \
+               OUT gss_cred_id_t    output_cred, \
+               OUT gss_OID_set      actual_mechs, \
+               OUT OM_uint32/int32  initiator_time_rec, \
+               OUT OM_uint32/int32  acceptor_time_rec)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_inquire_cred_by_mech( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_cred_id_t        cred, \
+               gss_OID              mech_type, \
+               OUT gss_name_t       name, \
+               OUT OM_uint32/int32  initiator_lifetime, \
+               OUT OM_uint32/int32  acceptor_lifetime, \
+               OUT gss_cred_usage_t cred_usage)";
+
+    standard
+      ~options: [ `Post "if (context__c == GSS_C_NO_CONTEXT) set_gss_ctx_id_t(context, GSS_C_NO_CONTEXT);"; ]
+      "OM_uint32/int32 \
+           gss_export_sec_context( \
+               OUT OM_uint32/int32  minor_status, \
+               IN_PTR gss_ctx_id_t  context, \
+               OUT_NOPTR gss_buffer_t interprocess_token)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_import_sec_context( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_buffer_t         interprocess_token, \
+               OUT gss_ctx_id_t     context)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_inquire_names_for_mech( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_OID              mechanism, \
+               OUT gss_OID_set      name_types)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_inquire_mechs_for_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           name, \
+               OUT gss_OID_set      mech_types)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_export_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           name, \
+               OUT_NOPTR gss_buffer_t  exported_name)";
+
+    standard
+      "OM_uint32/int32 \
+           gss_duplicate_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           name, \
+               OUT gss_name_t       dest_name)";
+    
+    standard
+      "OM_uint32/int32 \
+           gss_canonicalize_name( \
+               OUT OM_uint32/int32  minor_status, \
+               gss_name_t           input_name, \
+               gss_OID              mech_type, \
+               OUT gss_name_t       output_name)";
+
+    standard
+      ~options:[ `Pre "output_token__c = GSS_C_NO_BUFFER;";
+                 `Post "if ((result__c & 0xffff0000) == 0) set_gss_ctx_id_t(context, GSS_C_NO_CONTEXT);";
+               ]
+      "OM_uint32/int32 \
+           gss_delete_sec_context( \
+               OUT OM_uint32/int32  minor_status, \
+               IN_PTR gss_ctx_id_t  context, \
+               IN_IGNORE gss_buffer_t output_token)";
+
+  ]
+
+
+let optional_types = []
+let optional_functions = []
+
+(* Generate the module Netgss_bindings *)
+
+let () =
+  generate 
+    ~c_file:"gssapi.c"
+    ~ml_file:"gssapi.ml"
+    ~mli_file:"gssapi.mli"
+    ~modname:"netgss_bindings"
+    ~types
+    ~functions
+    ~optional_functions
+    ~optional_types
+    ~free: []
+    ~init: [ "gss_buffer_t" ]
+    ~hashes:[]
+    ~enum_of_string:[]
+    ()
+
+
+(* Generate the implementation of Netgss: *)
+
+let mapping =
+  (* (c_type, fn_name, arg_name, ocaml_type). "*" is a wildcard *)
+  [ "gss_buffer_t",     "*", "message",            "message";
+    "gss_buffer_t",     "*", "input_message",      "message";
+    "gss_buffer_t",     "*", "output_message",     "message";
+    "gss_buffer_t",     "gss_init_sec_context", "input_token", "token_option";
+    "gss_buffer_t",     "*", "*",                  "token";
+
+    "gss_ctx_id_t",     "gss_accept_sec_context", "*", "context_option";
+    "gss_ctx_id_t",     "gss_import_sec_context", "*", "context_option";
+    "gss_ctx_id_t",     "gss_init_sec_context",  "*", "context_option";
+
+    "flags",            "gss_init_sec_context",  "req_flags", "req_flags";
+
+    "gss_channel_bindings_t","*",  "*",            "cb_option";
+    "gss_OID",          "*", "*",                  "oid";
+    "gss_OID_set",      "*", "*",                  "oid_set";
+
+    "OM_uint32/int32",  "gss_wrap_size_limit", "req_output_size", "wrap_size";
+    "OM_uint32/int32",  "gss_wrap_size_limit", "max_input_size", "wrap_size";
+    "OM_uint32/int32",  "gss_init_sec_context", "time_req", "time_opt";
+    
+    "OM_uint32/int32",  "*", "time_req",            "time";
+    "OM_uint32/int32",  "*", "initiator_time_req",  "time";
+    "OM_uint32/int32",  "*", "acceptor_time_req",   "time";
+    "OM_uint32/int32",  "*", "time_rec",            "time";
+    "OM_uint32/int32",  "*", "initiator_time_rec",  "time";
+    "OM_uint32/int32",  "*", "acceptor_time_rec",   "time";
+    "OM_uint32/int32",  "*", "lifetime",            "time";
+    "OM_uint32/int32",  "*", "lifetime_req",        "time";
+    "OM_uint32/int32",  "*", "initiator_lifetime",  "time";
+    "OM_uint32/int32",  "*", "acceptor_lifetime",   "time";
+
+    "OM_uint32/int32",  "*", "*",                   "int32";
+  ]
+
+let map_name fn_name arg_name ty_name =
+  try
+    let (_, _, _, oname) =
+      List.find
+        (fun (n1, n2, n3, n4) ->
+           n1 = ty_name &&
+             (n2 = fn_name || n2 = "*") &&
+             (n3 = arg_name || n3 = "*")
+        )
+        mapping in
+    oname
+  with
+    | Not_found ->
+         ty_name
+
+let prep_ty_name ty_name =
+  try
+    let p = String.index ty_name '/' in
+    String.sub ty_name 0 p
+  with Not_found ->
+    ty_name
+
+
+let strip_gss name =
+  if String.length name >= 4 && String.sub name 0 4 = "gss_" then
+    String.sub name 4 (String.length name - 4)
+  else
+    name
+
+(*
+delete_sec_context:
+ - missing
+
+ *)
+
+let fixup_accept_sec_context =
+  (* the output args for the method: pairs (new_name, old_name) *)
+  [ "src_name",         "src_name";
+    "mech_type",        "mech_type";
+    "output_context",   "context";      (* ! *)
+    "output_token",     "output_token";
+    "ret_flags",        "ret_flags";
+    "time_rec",         "time_rec";
+    "delegated_cred",   "delegated_cred";
+  ]
+
+let fixup_export_sec_context =
+  (* delete the output context *)
+  [ "interprocess_token",  "interprocess_token"; 
+  ]
+
+let fixup_init_sec_context =
+  [ "actual_mech_type",   "actual_mech_type";
+    "output_context",     "context";    (* ! *)
+    "output_token",       "output_token";
+    "ret_flags",          "ret_flags";
+    "time_rec",           "time_rec";
+  ]
+
+let fixups = 
+  [ "gss_accept_sec_context", fixup_accept_sec_context;
+    "gss_export_sec_context", fixup_export_sec_context;
+    "gss_init_sec_context",   fixup_init_sec_context
+  ]
+
+let fixup fn_name out_params =
+  try
+    let fixup_list = List.assoc fn_name fixups in
+    List.map
+      (fun (ocaml_name, c_name) ->
+         let (_, p_kind, p_type) =
+           try
+             List.find (fun (n,_,_) -> n = c_name) out_params
+           with Not_found ->
+             failwith (sprintf "Not found: fn=%s c_name=%s" fn_name c_name) in
+         (ocaml_name, c_name, p_kind, p_type)
+      )
+      fixup_list
+  with
+    | Not_found -> 
+         List.map
+           (fun (n, p_kind, p_type) -> (n,n,p_kind,p_type))
+           out_params
+
+
+let functions =
+  List.filter (fun (n, _, _) -> n <> "gss_display_status") functions
+  @ [ "gss_display_minor_status",
+      [ "status_value", `In, "int32";
+        "mech_type", `In, "gss_OID";
+        "status_strings", `Out, "string list";
+      ],
+      []
+    ]
+
+
+let () =
+  let f = open_out "netgss.ml" in
+  fprintf f "(* generated file, do not edit *)\n";
+  fprintf f "module System : Netsys_gssapi.GSSAPI = struct\n";
+  fprintf f "  open Netsys_gssapi\n";
+  fprintf f "  open Netgss_bindings\n";
+  fprintf f "  include Netgss_util\n";
+  fprintf f "\n";
+  fprintf f "  type credential = gss_cred_id_t\n";
+  fprintf f "  type context = gss_ctx_id_t\n";
+  fprintf f "  type name = gss_name_t\n";
+  fprintf f "  type context_option = context option\n";
+  fprintf f "  type cb_option = channel_bindings option\n";
+  fprintf f "  type ret_flags = ret_flag list\n";
+  fprintf f "  type time_opt = float option\n";
+  fprintf f "  type wrap_size = int\n";
+  fprintf f "  type req_flags = req_flag list\n";
+  fprintf f "  type token_option = token option\n";
+  fprintf f "\n";
+  fprintf f "  exception Credential of credential\n";
+  fprintf f "  exception Context of context\n";
+  fprintf f "  exception Name of name\n";
+  fprintf f "\n";
+  fprintf f "  class type gss_api = \
+                 [ credential, name, context ] Netsys_gssapi.poly_gss_api\n";
+  fprintf f "\n";
+
+  fprintf f "  let interface : gss_api =\n";
+  fprintf f "    ( object\n";
+
+  fprintf f "        method provider = \"Netsys_gssapi.System\"\n";
+  fprintf f "        method no_credential = no_credential()\n";
+  fprintf f "        method no_name = no_name()\n";
+  fprintf f "        method is_no_credential = is_no_credential\n";
+  fprintf f "        method is_no_name = is_no_name\n";
+
+  let indent = "        " in
+
+  List.iter
+    (fun (fn_name, params, _) ->
+       fprintf f "%smethod %s :\n" indent (strip_gss fn_name);
+
+       (* First generate the (polymorphic) method type: *)
+
+       fprintf f "%s  't .\n" indent;
+
+       let input_params =
+         List.filter
+           (fun (p_name, p_kind, _) ->
+              (p_kind = `In || p_kind = `In_out || p_kind = `In_ptr) &&
+                p_name <> "minor_status"
+           )
+           params in
+
+       let output_params =
+         List.filter
+           (fun (p_name, p_kind, _) ->
+              (p_kind = `Out || p_kind = `Out_noptr || p_kind = `In_out) &&
+                p_name <> "minor_status"
+           )
+           params in
+
+       let output_params_fixed = fixup fn_name output_params in
+
+       List.iter
+         (fun (p_name, p_kind, p_type) ->
+            let ocaml_type = map_name fn_name p_name p_type in
+            fprintf f "%s    %s:%s ->\n" indent p_name ocaml_type;
+         )
+         input_params;
+
+       (* HACK for wrap/unwrap: *)
+       if fn_name = "gss_unwrap" || fn_name = "gss_wrap" then (
+         fprintf f "%s    output_message_preferred_type:[`String|`Memory] ->\n"
+                 indent
+       );
+
+       fprintf f "%s    out:(\n" indent;
+
+       List.iter
+         (fun (p_name_ocaml, p_name, p_kind, p_type) ->
+            let ocaml_type = map_name fn_name p_name p_type in
+            fprintf f "%s      %s:%s ->\n" indent p_name_ocaml ocaml_type;
+         )
+         output_params_fixed;
+
+       fprintf f "%s      minor_status:minor_status ->\n" indent;
+       fprintf f "%s      major_status:major_status ->\n" indent;
+       fprintf f "%s      unit ->\n" indent;
+       fprintf f "%s      't\n" indent;
+       fprintf f "%s    ) -> unit -> 't =\n" indent;
+
+       (* Now generate the method body: *)
+
+       fprintf f "%s  fun" indent;
+       List.iter
+         (fun (p_name, p_kind, p_type) ->
+            fprintf f " ~%s" p_name
+         )
+         input_params;
+
+       (* HACK for wrap/unwrap: *)
+       if fn_name = "gss_unwrap" || fn_name = "gss_wrap" then (
+         fprintf f " ~output_message_preferred_type"
+       );
+
+       fprintf f " ~out () ->\n";
+       
+       (* Buffer management: *)
+       let have_buffers =
+         List.exists
+           (fun (_, _, p_type) -> p_type = "gss_buffer_t")
+           input_params in
+       if have_buffers then (
+         fprintf f "%s    let buffers = ref [] in\n" indent;
+         fprintf f "%s    let release_soon f arg = \
+                            let buf = f arg in \
+                            buffers := buf :: !buffers; \
+                            buf in\n" indent;
+       );
+
+       (* Catching call results: *)
+       fprintf f "%s    let major_status, minor_status" indent;
+       List.iter
+         (fun (p_name, p_kind, p_type) ->
+            fprintf f ", %s" p_name
+         )
+         output_params;
+       fprintf f " = \n";
+
+       (* Call: *)
+       fprintf f "%s      %s" indent fn_name;
+
+       (* Arguments: *)
+       List.iter
+         (fun (p_name, p_kind, p_type) ->
+            let ocaml_type = map_name fn_name  p_name p_type in
+            let in_convert0 =
+              if p_type = ocaml_type then
+                "identity"
+              else
+                sprintf "_%s_of_%s" (prep_ty_name p_type) ocaml_type in
+            let in_convert =
+              if p_type = "gss_buffer_t" then
+                "release_soon " ^ in_convert0
+              else
+            in_convert0 in
+            fprintf f "\n%s        (%s %s)" indent in_convert p_name
+         )
+         input_params;
+       if input_params = [] then
+         fprintf f "\n%s        ()" indent;
+
+       fprintf f " in\n";
+
+       (* Buffer management: *)
+       if have_buffers then
+         fprintf f "%s    List.iter release_buffer !buffers;\n" indent;
+
+       (* Invoke the "out" function: *)
+       fprintf f "%s    out" indent;
+
+       (* Out arguments: *)
+       List.iter
+         (fun (p_name_ocaml, p_name, p_kind, p_type) ->
+            let ocaml_type = map_name fn_name p_name p_type in
+            let out_convert =
+              if p_type = ocaml_type then
+                "identity"
+              else
+                if ocaml_type = "message" then
+                  "(_message_of_gss_buffer_t output_message_preferred_type)"
+                else
+                  sprintf "_%s_of_%s" ocaml_type (prep_ty_name p_type) in
+            fprintf f "\n%s      ~%s:(%s %s)" 
+                    indent p_name_ocaml out_convert p_name
+         )
+         output_params_fixed;
+
+       (* Standard out arguments: *)
+       fprintf f "\n%s      ~minor_status" indent;
+       fprintf f "\n%s      ~major_status:(decode_status major_status)" indent;
+       fprintf f "\n%s      ()\n" indent;
+    )
+    functions;
+
+  fprintf f "      end\n";
+  fprintf f "    )\n";
+  fprintf f "end\n";
+  close_out f
+
+
+
+

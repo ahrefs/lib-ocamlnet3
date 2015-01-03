@@ -8,7 +8,8 @@
 #load "rtypes.cmo";;
 *)
 
-open Rtypes;;
+open Netnumber;;
+open Netnumber.BE;;
 
 let test name f =
   print_string ("Test " ^ name ^ ": ");

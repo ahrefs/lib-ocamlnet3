@@ -109,11 +109,11 @@ let start() =
   flush stdout;
   let ues = Unixqueue.create_unix_event_system () in
   (* Unixqueue.set_debug_mode true; *)
-  let opts = { Uq_engines.default_listen_options with
-		 Uq_engines.lstn_backlog = 20;
-		 Uq_engines.lstn_reuseaddr = true } in
+  let opts = { Uq_server.default_listen_options with
+		 Uq_server.lstn_backlog = 20;
+		 Uq_server.lstn_reuseaddr = true } in
   let lstn_engine =
-    Uq_engines.listener
+    Uq_server.listener
       (`Socket(`Sock_inet(Unix.SOCK_STREAM, Unix.inet_addr_any, 8765) ,opts)) ues in
   Uq_engines.when_state ~is_done:(accept ues) lstn_engine;
   (* Start the main event loop. *)

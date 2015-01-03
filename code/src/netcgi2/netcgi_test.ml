@@ -71,10 +71,10 @@ let arg_of_file (name, file, mimetype, filename) =
     let cd = Buffer.create 80 in
     let cd_ch = new Netchannels.output_buffer cd in
     cd_ch#output_string "form-data";
-    Mimestring.write_value cd_ch
-      (Mimestring.param_tokens [
-	 ("name", Mimestring.mk_param name);
-	 ("filename", Mimestring.mk_param filename) ]);
+    Netmime_string.write_value cd_ch
+      (Netmime_string.param_tokens [
+	 ("name", Netmime_string.mk_param name);
+	 ("filename", Netmime_string.mk_param filename) ]);
     let hdr = new Netmime.basic_mime_header
       [ "content-disposition", Buffer.contents cd;
 	"content-type", mimetype; ] in

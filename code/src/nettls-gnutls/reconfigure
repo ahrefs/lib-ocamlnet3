@@ -1,0 +1,231 @@
+#! /bin/sh
+
+# Env:
+# GNUTLS_CFLAGS
+# GNUTLS_LIBS
+# PKG_CONFIG
+
+if [ -f config.sh ]; then
+  # configure wrote the env into this file:
+  . ./config.sh
+  export GNUTLS_CFLAGS GNUTLS_LIBS PKG_CONFIG
+fi
+
+stdlib=`ocamlc -where`
+
+rm -f config.h
+ulimit -c 0          # no coredumps
+
+compiler="ocamlc -custom"
+if ocamlopt; then compiler=ocamlopt; fi
+
+log=`pwd`/"config.log"
+rm -f $log
+touch $log
+
+out="config.h"
+rm -f $out
+touch $out
+
+mkdir -p testdir
+
+######################################################################
+
+# Programs linked with ocamlc have more libraries linked in by default.
+# Because of this, we use ocamlopt if available.
+
+call_ocamlc () {
+    echo '$' $compiler -ccopt "$GNUTLS_CFLAGS" -cclib "$GNUTLS_LIBS" "$@" >>$log
+    ( cd testdir;
+      $compiler -ccopt "$GNUTLS_CFLAGS" -cclib "$GNUTLS_LIBS" "$@"
+    )  >>$log 2>&1
+    return $?
+}
+
+have_gnutls_crypto_h=0
+have_nettle_gcm_h=0
+have_nettle_camellia_h=0
+add_include=""
+
+init_header() {
+    echo "Checking presence of $1"
+    echo "# HEADER $1" >> $log
+    cat <<EOF >testdir/test.c
+#include <gnutls/gnutls.h>
+#include <$1>
+EOF
+    call_ocamlc -c test.c
+}
+
+init_checks() {
+    if init_header "gnutls/crypto.h"; then
+        have_gnutls_crypto_h=1
+        add_include="$add_include
+#include <gnutls/crypto.h>"
+        echo "#define HAVE_GNUTLS_CRYPTO_H" >>$out
+    else
+        echo "#undef HAVE_GNUTLS_CRYPTO_H" >>$out
+    fi
+    if init_header "nettle/camellia.h"; then
+        have_nettle_camellia_h=1
+        add_include="$add_include
+#include <nettle/camellia.h>"
+        echo "#define HAVE_NETTLE_CAMELLIA_H" >>$out
+    else
+        echo "#undef HAVE_NETTLE_CAMELLIA_H" >>$out
+    fi
+    if init_header "nettle/gcm.h"; then
+        have_nettle_gcm_h=1
+        add_include="$add_include
+#include <nettle/gcm.h>"
+        echo "#define HAVE_NETTLE_GCM_H" >>$out
+    else
+        echo "#undef HAVE_NETTLE_GCM_H" >>$out
+    fi
+}
+
+
+check_enum () {
+    macro="$1"
+    enum="$2"
+
+    echo "Checking enum $enum"
+    echo "# ENUM $enum" >> $log
+
+    cat <<EOF >testdir/test.c
+#include <gnutls/gnutls.h>
+#include <gnutls/openpgp.h>
+#include <gnutls/x509.h>
+#include <nettle/nettle-meta.h>
+$add_include
+int main (int argc, char *argv[], char *envp[]) {
+  int n;
+  n = $enum;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -c test.c; then
+        echo "#define $macro" >>$out
+    else
+        echo "#undef $macro" >>$out
+    fi
+}
+
+
+check_fun() {
+    macro="$1"
+    fun="$2"
+
+    echo "Checking function $fun"
+    echo "# FUN $fun" >> $log
+
+    cat <<EOF >testdir/main.ml
+external test : unit -> unit = "do_test"
+let () = test()
+EOF
+
+    cat <<EOF >testdir/test.c
+#include <gnutls/gnutls.h>
+#include <gnutls/openpgp.h>
+#include <gnutls/x509.h>
+#include <nettle/nettle-meta.h>
+#include "caml/mlvalues.h"
+$add_include
+value do_test(value dummy) {
+  (void) & $fun;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -o test test.c main.ml; then
+        echo "#define $macro" >>$out
+    else
+        echo "#undef $macro" >>$out
+    fi
+}
+
+check_type() {
+    macro="$1"
+    ty="$2"
+
+    echo "Checking type $ty"
+    echo "# TYPE $ty" >> $log
+
+    cat <<EOF >testdir/test.c
+#include <gnutls/gnutls.h>
+#include <gnutls/openpgp.h>
+#include <gnutls/x509.h>
+#include <nettle/nettle-meta.h>
+$add_include
+int main (int argc, char *argv[], char *envp[]) {
+  $ty x;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -c test.c; then
+        echo "#define $macro" >>$out
+    else
+        echo "#undef $macro" >>$out
+    fi
+}
+
+
+######################################################################
+
+echo "Generating stubs"
+
+rm -f config_checks.sh
+echo "$ ocaml -I ../../tools gnutls.descr" >>$log
+ocaml -I ../../tools gnutls.descr || exit 1
+
+echo "$ ocaml -I ../../tools nettle.descr" >>$log
+ocaml -I ../../tools nettle.descr || exit 1
+
+init_checks
+. ./config_checks.sh
+
+if [ -n "$GNUTLS_SYSTEM_TRUST_FILE" ]; then
+    echo "System certificates: $GNUTLS_SYSTEM_TRUST_FILE"
+    cat <<EOF >nettls_gnutls_config.ml
+let system_trust = \`File "$GNUTLS_SYSTEM_TRUST_FILE"
+EOF
+else
+    if grep '#define HAVE_FUN_gnutls_certificate_set_x509_system_trust' \
+        config.h >/dev/null 2>/dev/null; then
+        echo "System certificates: from GnuTLS"
+        cat <<EOF >nettls_gnutls_config.ml
+let system_trust = \`Gnutls
+EOF
+    else
+        path=""
+        for p in \
+            /etc/ssl/ca-bundle.pem \
+            /etc/ssl/certs/ca-certificates.crt \
+            /etc/pki/tls/cert.pem \
+            /usr/local/share/certs/ca-root-nss.crt \
+            /etc/ssl/cert.pem; \
+        do
+            if [ -f "$p" ]; then 
+                path="$p"
+                break
+            fi
+        done
+        if [ -n "$path" ]; then
+            echo "System certificates: $path"
+            cat <<EOF >nettls_gnutls_config.ml
+let system_trust = \`File "$path"
+EOF
+        else
+            echo "System certificates: NOT FOUND"
+            echo "This is an error. Without system certificates, clients"
+            echo "will not be able to make TLS-secured connections."
+            echo "Set the -gnutls-system-trust-file configuration option manually!"
+            echo "ERROR"
+            exit 1
+        fi
+    fi
+fi
+
+touch done_reconfigure

@@ -12,15 +12,15 @@ type verbosity =
     *)
 
 val string_of_request : 
-      verbosity -> Rpc_program.t -> string -> Xdr.xdr_value -> string
+      verbosity -> Rpc_program.t -> string -> Netxdr.xdr_value -> string
    (** Return the string representation of this call request *)
 
 val string_of_response :
-      verbosity -> Rpc_program.t -> string -> Xdr.xdr_value -> string
+      verbosity -> Rpc_program.t -> string -> Netxdr.xdr_value -> string
    (** Return the string representation of this call response *)
 
 val string_of_value :
-      Xdr.xdr_type_term -> Xdr.xdr_value -> string
+      Netxdr.xdr_type_term -> Netxdr.xdr_value -> string
    (** Return a string representation of the value which must have the
        passed type
     *)

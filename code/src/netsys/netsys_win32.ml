@@ -10,6 +10,8 @@ open Printf
 
 external fill_random : string -> unit = "netsys_fill_random"
 
+external get_full_path_name : string -> string = "netsys_get_full_path_name"
+external get_long_path_name : string -> string = "netsys_get_long_path_name"
 
 type c_event
 type c_pipe_helper

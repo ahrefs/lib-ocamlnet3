@@ -269,7 +269,9 @@ object
 end
 
 
-class http_engine : on_request_header:(http_request_header_notification -> unit) ->
+class http_engine : 
+                 ?config_hooks:(Nethttpd_kernel.http_protocol_hooks -> unit) ->
+                 on_request_header:(http_request_header_notification -> unit) ->
                     unit -> 
                     #http_engine_config -> Unix.file_descr -> 
                     Unixqueue.unix_event_system ->
@@ -354,6 +356,7 @@ object
 end
 
 val process_connection :
+      ?config_hooks:(Nethttpd_kernel.http_protocol_hooks -> unit) ->
       #Nethttpd_reactor.http_processor_config ->
       #http_engine_processing_config ->
       Unix.file_descr ->

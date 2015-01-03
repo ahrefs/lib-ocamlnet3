@@ -2,6 +2,14 @@
 
 (** Primitives for Win32 *)
 
+(** {1 Files} *)
+
+val get_full_path_name : string -> string
+  (** Calls GetFullPathName *)
+
+val get_long_path_name : string -> string
+  (** Calls GetLongPathName *)
+
 (** {1 Event objects} *)
 
 type w32_event

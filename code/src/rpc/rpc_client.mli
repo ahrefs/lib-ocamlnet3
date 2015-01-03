@@ -51,8 +51,8 @@
  *)
 
 open Rpc
-open Xdr
-open Rtypes
+open Netxdr
+open Netnumber
 
 (* The following exceptions are delivered to the callback function: *)
 
@@ -145,6 +145,7 @@ object
     *)
   method multiplexing :
     close_inactive_descr:bool ->
+    peer_name:string option ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller Uq_engines.engine
     (* close_inactive_descr: also implies that release_fd is called *)
@@ -163,6 +164,16 @@ val blocking_socket_config : socket_config
 
 class blocking_socket_config : socket_config
   (** blocking [connect] configuration as class *)
+
+val tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                        socket_config
+  (** This configuration establishes TLS when connecting with the server.
+      It is (so far) only compatible with {!Rpc.Tcp}.
+   *)
+
+class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                          socket_config
+  (** TLS configuration as class *)
 
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
@@ -183,6 +194,8 @@ type mode2 =
     *   socket according to [conn]. [proto] determines the
     *   encapsulation; should be [Tcp] for stream sockets and [Udp] for
     *   datagram sockets. [config] specifies configuration details.
+    *   {b In particular, use this option to enable TLS for the socket:
+    *   Get a [tls_socket_config] and pass this as [config] here.}
    *)
 
 val create2 :
@@ -362,7 +375,7 @@ val set_exception_handler : t -> (exn -> unit) -> unit
    * fall through.
    *)
 
-val set_mstring_factories : t -> Xdr_mstring.named_mstring_factories -> unit
+val set_mstring_factories : t -> Netxdr_mstring.named_mstring_factories -> unit
   (** Sets the mstring factory configuration that is used for decoding
       responses containing managed strings.
    *)
@@ -384,13 +397,19 @@ val get_peer_name : t -> Unix.sockaddr
 val get_sender_of_last_response : t -> Unix.sockaddr
   (** Return the address of the sender of the last received response. *)
 
-val get_xid_of_last_call : t -> Rtypes.uint4
+val get_xid_of_last_call : t -> Netnumber.uint4
   (** Returns the session identifier used in the just made call *)
 
 val get_protocol : t -> Rpc.protocol
   (** Get the protocol flavour *)
 
-val abandon_call : t -> Rtypes.uint4 -> unit
+val get_tls_session_props : t -> Nettls_support.tls_session_props option
+  (** Get the TLS properties so far TLS is enabled *)
+
+val get_gssapi_props : t -> Netsys_gssapi.client_props option
+  (** Get the GSSAPI properties of the last call (so far available) *)
+
+val abandon_call : t -> Netnumber.uint4 -> unit
   (** To be used in conjunction with {!Rpc_client.Keep_call}: The call
       with this session identifier is no longer expected, and removed
       from the internal data structures.
@@ -504,8 +523,8 @@ object
                             string ->
                             uint4 ->
                             (string * string * string * string *
-			       Xdr.encoder option *
-			       Xdr.decoder option
+			       Netxdr.encoder option *
+			       Netxdr.decoder option
 			    )
          (** Called with [client prog proc xid].
 	     Returns [(cred_flavour, cred_data, verifier_flavor, verifier_data,
@@ -584,6 +603,12 @@ object
 	Design limitation: there is right now no way to indicate that the
 	next authentication method should be used instead.
      *)
+
+  method gssapi_props : Netsys_gssapi.client_props option
+    (** Properties of the GSSAPI session (if existing) *)
+
+  method destroy : unit -> unit
+    (** Destroys the session (e.g. delete the GSSAPI context) *)
 
   method auth_method : auth_method
 

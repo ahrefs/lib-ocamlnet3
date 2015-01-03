@@ -1,0 +1,110 @@
+#! /bin/sh
+
+# Env:
+# GNUTLS_CFLAGS
+# GNUTLS_LIBS
+# PKG_CONFIG
+# GNUTLS_SYSTEM_TRUST_FILE
+
+have_gnutls=0
+
+if [ -z "$PKG_CONFIG" ]; then
+    PKG_CONFIG="pkg-config"
+fi
+
+if [ -z "$GNUTLS_LIBS" ]; then
+   GNUTLS_CFLAGS1=`$PKG_CONFIG --cflags gnutls`
+   GNUTLS_CFLAGS2=`$PKG_CONFIG --cflags nettle`
+   GNUTLS_LIBS1=`$PKG_CONFIG --libs gnutls`
+   GNUTLS_LIBS2=`$PKG_CONFIG --libs nettle`
+   if [ -z "$GNUTLS_LIBS2" ]; then GNUTLS_LIBS2="-lnettle"; fi
+   GNUTLS_CFLAGS="$GNUTLS_CFLAGS1 $GNUTLS_CFLAGS2"
+   GNUTLS_LIBS="$GNUTLS_LIBS1 $GNUTLS_LIBS2"
+fi
+
+
+stdlib=`ocamlc -where`
+
+rm -f config.h config.sh config.mk
+ulimit -c 0          # no coredumps
+
+compiler="ocamlc -custom"
+if ocamlopt; then compiler=ocamlopt; fi
+
+log="config.log"
+rm -f $log
+touch $log
+
+out="config.h"
+rm -f $out
+touch $out
+
+mkdir -p testdir
+
+######################################################################
+
+# Programs linked with ocamlc have more libraries linked in by default.
+# Because of this, we use ocamlopt if available.
+
+call_ocamlc () {
+    echo '$' $compiler -ccopt "$GNUTLS_CFLAGS" -cclib "$GNUTLS_LIBS" "$@" >>$log
+    ( cd testdir;
+      $compiler -ccopt "$GNUTLS_CFLAGS" -cclib "$GNUTLS_LIBS" "$@"
+    )  >>$log 2>&1
+    return $?
+}
+
+
+check_fun() {
+    macro="$1"
+    fun="$2"
+
+}
+
+######################################################################
+
+
+printf "Checking for GnuTLS... "
+fun=gnutls_global_init
+echo "# FUN $fun" >> $log
+
+cat <<EOF >testdir/main.ml
+external test : unit -> unit = "do_test"
+let () = ()
+EOF
+
+cat <<EOF >testdir/test.c
+#include <gnutls/gnutls.h>
+#include <gnutls/openpgp.h>
+#include <gnutls/x509.h>
+#include "caml/mlvalues.h"
+value do_test(value dummy) {
+  (void) & $fun;
+  return 0;
+}
+EOF
+
+if call_ocamlc -o test test.c main.ml; then
+    echo "found"
+    have_gnutls=1    
+else
+    echo "not found"
+    have_gnutls=0
+    exit 1
+fi
+
+
+if [ $have_gnutls -gt 0 ]; then
+    # The vars in config.sh are picked up by reconfigure
+    echo "PKG_CONFIG='$PKG_CONFIG'" >>config.sh
+    echo "GNUTLS_CFLAGS='$GNUTLS_CFLAGS'" >>config.sh
+    echo "GNUTLS_LIBS='$GNUTLS_LIBS'" >>config.sh
+    echo "GNUTLS_SYSTEM_TRUST_FILE='$GNUTLS_SYSTEM_TRUST_FILE'" >>config.sh
+
+    # The vars in config.mk are appended to Makefile.conf
+    echo "# GnuTLS" >>config.mk
+    echo "NETTLS_GNUTLS_CFLAGS = $GNUTLS_CFLAGS" >>config.mk
+    echo "NETTLS_GNUTLS_LINK_OPTIONS = $GNUTLS_LIBS" >>config.mk
+
+    ./reconfigure
+fi

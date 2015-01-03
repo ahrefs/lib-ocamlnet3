@@ -237,6 +237,8 @@ let create_protocol ?(lstn_backlog=20)
                     ?(lstn_reuseaddr=true) 
                     ?(so_keepalive=true)
 		    ?(tcp_nodelay=false)
+                    ?local_chmod
+                    ?local_chown
                     ?(configure_slave_socket=fun _ -> ())
 		    name addrs : protocol =
   ( object
@@ -246,6 +248,8 @@ let create_protocol ?(lstn_backlog=20)
       method lstn_reuseaddr = lstn_reuseaddr
       method so_keepalive = so_keepalive
       method tcp_nodelay = tcp_nodelay
+      method local_chmod = local_chmod
+      method local_chown = local_chown
       method configure_slave_socket = configure_slave_socket
     end
   ) 

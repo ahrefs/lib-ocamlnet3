@@ -1,7 +1,7 @@
 #use "topfind";;
 #require "netstring";;
 
-open Mimestring;;
+open Netmime_string;;
 
 (**********************************************************************)
 (* scan_structured_value                                              *)

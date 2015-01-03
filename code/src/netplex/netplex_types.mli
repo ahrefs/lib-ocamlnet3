@@ -381,6 +381,10 @@ object
     (** Whether to set the keep-alive socket option *)
   method tcp_nodelay : bool
     (** Whether to set the TCP_NODELAY option *)
+  method local_chmod : int option
+    (** Whether to chmod Unix Domain sockets *)
+  method local_chown : (int * int) option
+    (** Whether to chown (user,group) Unix Domain sockets *)
   method configure_slave_socket : Unix.file_descr -> unit
     (** A user-supplied function to configure slave sockets (after [accept]).
       * The function is called from the process/thread of the container.
@@ -666,7 +670,7 @@ object
   method set_var : string -> param_value_or_any -> unit
     (** Sets the value of a container variable *)
 
-  method call_plugin : plugin -> string -> Xdr.xdr_value-> Xdr.xdr_value
+  method call_plugin : plugin -> string -> Netxdr.xdr_value-> Netxdr.xdr_value
     (** [call_plugin p procname procarg]: This method can be called
         from the container context to invoke the plugin [p] procedure
         [procname]. This means that the [ctrl_receive_call] of the
@@ -738,8 +742,8 @@ object
     (** The plugin has been unplugged from this controller *)
 
   method ctrl_receive_call : 
-            controller -> container_id -> string -> Xdr.xdr_value -> 
-            (Xdr.xdr_value option -> unit) ->
+            controller -> container_id -> string -> Netxdr.xdr_value -> 
+            (Netxdr.xdr_value option -> unit) ->
               unit
     (** [ctrl_receive_call ctrl cid procname procarg emit]:
         This method is called in the controller context [ctrl] when a procedure

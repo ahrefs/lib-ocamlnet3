@@ -373,7 +373,7 @@ class http_async_environment config ues group
                              fd_addr peer_addr
 
                              in_ch_async in_cnt out_ch_async output_state
-                             resp reqrej fdi =
+                             resp reqrej fdi tls_props =
   let in_ch = 
     Netchannels.lift_in ~buffered:false 
                         (`Raw (in_ch_async :> Netchannels.raw_in_channel)) in
@@ -396,6 +396,7 @@ object (self)
   			     fd_addr peer_addr
                              in_ch in_cnt out_ch output_state resp 
 			     out_ch_async#close_after_send_file reqrej fdi
+                             tls_props
 			     as super
 
   method input_ch_async = (in_ch_async :> Uq_engines.async_in_channel)
@@ -417,7 +418,7 @@ end
 
 
 class http_request_manager config ues group req_line req_hdr expect_100_continue 
-                           fd_addr peer_addr resp fdi =
+                           fd_addr peer_addr resp fdi tls_props =
   let f_access = ref (fun () -> ()) in  (* set below *)
   let in_cnt = ref 0L in
   let reqrej = ref false in
@@ -431,7 +432,7 @@ class http_request_manager config ues group req_line req_hdr expect_100_continue
   let env = new http_async_environment 
 	      config ues group req_line req_hdr fd_addr peer_addr 
 	      in_ch in_cnt
-	      out_ch output_state resp reqrej fdi in
+	      out_ch output_state resp reqrej fdi tls_props in
      (* may raise Standard_response! *)
 
   let () =
@@ -550,11 +551,13 @@ let ensure_not_reentrant name lock f arg =
     raise err
 
 
-class http_engine ~on_request_header () config fd ues =
+class http_engine ?(config_hooks = fun _ -> ())
+                  ~on_request_header () config fd ues =
   (* note that "new http_engine" can already raise exceptions, e.g.
      Unix.ENOTCONN
    *)
   let _proto = new http_protocol config fd in
+  let () = config_hooks _proto#hooks in
   let handle_event_lock = ref false in
   let fdi = Netsys.int64_of_file_descr fd in
 object(self)
@@ -725,7 +728,7 @@ object(self)
     self # enable_input (enabled_input_flow && proto#do_input);
     self # enable_output proto#do_output;
     (* Check whether the HTTP connection is processed and can be closed: *)
-    if eof_seen && not proto#do_output then (
+    if eof_seen && not proto#resp_queue_filled then (
       if proto # need_linger then (
 	(* FIXME: It is strange to check here for a lingering close. This
 	   should never be necessary after getting an EOF from the client
@@ -779,11 +782,13 @@ object(self)
 
 	    let f_access = ref (fun () -> ()) in
 
+            let tls_props = proto # tls_session_props in
+
 	    ( try
 		let rm = new http_request_manager    (* or Standard_response *)
 			   config ues group
 			   req_line req_hdr expect_100_continue 
-			   fd_addr peer_addr resp fdi in
+			   fd_addr peer_addr resp fdi tls_props in
 		
 		f_access := rm # log_access;
 		cur_request_manager <- Some rm;
@@ -1148,7 +1153,8 @@ object
 end
 
 
-let process_connection config pconfig fd ues (stage1 : _ http_service)
+let process_connection ?config_hooks
+                       config pconfig fd ues (stage1 : _ http_service)
                        : http_engine_processing_context =
   let fd_addr = Unix.getsockname fd in
   let peer_addr = Netsys.getpeername fd in
@@ -1194,23 +1200,25 @@ object(self)
   initializer (
     on_req_hdr := self # on_request_header;
     (* Create the http_engine, but be careful in case of errors: *)
-    try
-      let eng = 
-	new http_engine 
-	  ~on_request_header:(fun req -> !on_req_hdr req) ()
-	  eng_config fd ues in
-      Uq_engines.when_state 
-	~is_aborted:(fun _ -> 
-		       List.iter (Unixqueue.clear ues) watched_groups;
-		       watched_groups <- []
-		    )
-	eng;
-      engine <- lazy eng
-    with
-      | error ->
-	  Unix.close fd;  (* fd is not yet tracked here *)
-	  let eng = new Uq_engines.epsilon_engine (`Error error) ues in
-	  engine <- lazy eng
+    ( try
+        let eng = 
+	  new http_engine 
+              ?config_hooks
+	      ~on_request_header:(fun req -> !on_req_hdr req) ()
+	      eng_config fd ues in
+        Uq_engines.when_state 
+	  ~is_aborted:(fun _ -> 
+	  	         List.iter (Unixqueue.clear ues) watched_groups;
+		         watched_groups <- []
+		      )
+	  eng;
+        engine <- lazy eng;
+      with
+        | error ->
+	     Unix.close fd;  (* fd is not yet tracked here *)
+	     let eng = new Uq_engines.epsilon_engine (`Error error) ues in
+	     engine <- lazy eng
+    )
   )
 
 

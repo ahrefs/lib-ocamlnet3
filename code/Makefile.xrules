@@ -1,6 +1,6 @@
 # Additional rules for the examples:
 
-OCAMLRPCGEN = ocamlrpcgen
+OCAMLRPCGEN = ocamlfind rpc-generator/ocamlrpcgen
 
 .SUFFIXES: .x .astamp .cstamp .sstamp .s2stamp
 

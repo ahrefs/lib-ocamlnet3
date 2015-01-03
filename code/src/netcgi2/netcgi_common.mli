@@ -69,7 +69,7 @@ object
   method value : string
   method open_value_rd : unit -> Netchannels.in_obj_channel
   method store : store
-  method content_type : unit -> string * (string * Mimestring.s_param) list
+  method content_type : unit -> string * (string * Netmime_string.s_param) list
   method charset : string
   method filename : string option
   method representation : representation
@@ -319,7 +319,7 @@ object
   method input_content_length : int
   method input_content_type_string : string
   method input_content_type :
-    unit -> string * (string * Mimestring.s_param) list
+    unit -> string * (string * Netmime_string.s_param) list
 
   method output_header : Netmime.mime_header
     (** For special header structures, override this method and

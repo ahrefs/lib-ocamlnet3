@@ -1,0 +1,16 @@
+TOP_DIR=../..
+
+PKGNAME  = netunidata
+OBJECTS  = netuniconfig.cmo netunidata.cmo netunichecksums.cmo
+DOBJECTS = netunidata.mli
+
+INCLUDES += $(INC_NETSTRING)
+
+MAPPINGS = netmappings_iso.ml \
+	   netmappings_other.ml \
+	   netmappings_jp.ml \
+	   netmappings_kr.ml
+
+include $(TOP_DIR)/Makefile.rules
+
+include depend

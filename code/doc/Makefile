@@ -16,11 +16,13 @@ html-doc:
 		[ "$$p" != "equeue-gtk1" ] || continue; \
 		echo "-load ../src/$$p/ocamldoc.dump" >>loadopts.tmp; \
 	done
-	$(OCAMLDOC) -d html-main -stars -t "Ocamlnet 3 Reference Manual" \
+	$(OCAMLDOC) -d html-main -stars -t "Ocamlnet 4 Reference Manual" \
 		-g odoc/chtml.cmo \
 		-css-style style.css \
 		-intro intro.txt intro.txt \
-		platform.txt foreword.txt ipv6.txt regexp.txt \
+		platform.txt foreword.txt ipv6.txt regexp.txt tls.txt \
+		crypto.txt authentication.txt credentials.txt gssapi.txt \
+		ocamlnet4.txt \
                `cat loadopts.tmp`
 	cp style.css html-main
 	cp html-main/index.html html-main/Intro.html

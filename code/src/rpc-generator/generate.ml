@@ -314,7 +314,7 @@ let output_type_declarations (f:formatter) (dl:xdr_def list) =
 	  fprintf f "string"
       | T_mstring(_,_)
       | T_mstring_unlimited _ ->
-	  fprintf f "Xdr_mstring.mstring"
+	  fprintf f "Netxdr_mstring.mstring"
       | T_option t' ->
           fprintf f "@[<hv 2>";
 	  output_type t';
@@ -616,65 +616,65 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
   let rec output_type rectypes direct t = (
     match t with
 	T_opaque_fixed n ->
-	  fprintf f "@[<hv 2>Xdr.X_opaque_fixed@ ";
+	  fprintf f "@[<hv 2>Netxdr.X_opaque_fixed@ ";
 	  output_uint4 f (constant !n);
 	  fprintf f "@]";
       | T_opaque n ->
-	  fprintf f "@[<hv 2>Xdr.X_opaque@ ";
+	  fprintf f "@[<hv 2>Netxdr.X_opaque@ ";
 	  output_uint4 f (constant !n);
 	  fprintf f "@]";
       | T_opaque_unlimited ->
-	  fprintf f "Xdr.x_opaque_max"
+	  fprintf f "Netxdr.x_opaque_max"
       | T_string n ->
-	  fprintf f "@[<hv 2>Xdr.X_string@ ";
+	  fprintf f "@[<hv 2>Netxdr.X_string@ ";
 	  output_uint4 f (constant !n);
 	  fprintf f "@]";
       | T_string_unlimited ->
-	  fprintf f "Xdr.x_string_max"
+	  fprintf f "Netxdr.x_string_max"
       | T_mstring(name,n) ->
-	  fprintf f "@[<hv 2>Xdr.X_mstring(@,";
+	  fprintf f "@[<hv 2>Netxdr.X_mstring(@,";
 	  fprintf f "%S" name;
 	  fprintf f ",@ ";
 	  output_uint4 f (constant !n);
 	  fprintf f ")@]";
       | T_mstring_unlimited name ->
-	  fprintf f "(Xdr.x_mstring_max %S)" name
+	  fprintf f "(Netxdr.x_mstring_max %S)" name
       | T_option t' ->
-	  fprintf f "@[<hv 2>Xdr.x_optional@ (";
+	  fprintf f "@[<hv 2>Netxdr.x_optional@ (";
 	  output_type rectypes false t';
 	  fprintf f ")@]";
       | T_array_fixed(n,t') ->
-	  fprintf f "@[<hv 2>Xdr.X_array_fixed(@,";
+	  fprintf f "@[<hv 2>Netxdr.X_array_fixed(@,";
 	  output_type rectypes false t';
 	  fprintf f ",@ ";
 	  output_uint4 f (constant !n);
 	  fprintf f ")@]";
       | T_array(n,t') ->
-	  fprintf f "@[<hv 2>Xdr.X_array(@,";
+	  fprintf f "@[<hv 2>Netxdr.X_array(@,";
 	  output_type rectypes false t';
 	  fprintf f ",@ ";
 	  output_uint4 f (constant !n);
 	  fprintf f ")@]";
       | T_array_unlimited t' ->
-	  fprintf f "@[<hv>Xdr.x_array_max@ (";
+	  fprintf f "@[<hv>Netxdr.x_array_max@ (";
 	  output_type rectypes false t';
 	  fprintf f ")@]";
       | T_int _ ->
-	  fprintf f "Xdr.X_int"
+	  fprintf f "Netxdr.X_int"
       | T_uint _ ->
-	  fprintf f "Xdr.X_uint"
+	  fprintf f "Netxdr.X_uint"
       | T_hyper _ ->
-	  fprintf f "Xdr.X_hyper"
+	  fprintf f "Netxdr.X_hyper"
       | T_uhyper _ ->
-	  fprintf f "Xdr.X_uhyper"
+	  fprintf f "Netxdr.X_uhyper"
       | T_double ->
-	  fprintf f "Xdr.X_double"
+	  fprintf f "Netxdr.X_double"
       | T_float ->
-	  fprintf f "Xdr.X_float"
+	  fprintf f "Netxdr.X_float"
       | T_bool ->
-	  fprintf f "Xdr.x_bool"
+	  fprintf f "Netxdr.x_bool"
       | T_void ->
-	  fprintf f "Xdr.X_void"
+	  fprintf f "Netxdr.X_void"
       | T_refer_to (_,s) ->
 	  if List.mem !s !generated_types then begin
 	    (* There was already a complete definition for this type *)
@@ -686,20 +686,20 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	  end
 	  else if List.mem !s rectypes then begin
 	    (* There was already the beginning of a definition for this type: *)
-	    fprintf f "Xdr.X_refer \"%s\"" !s
+	    fprintf f "Netxdr.X_refer \"%s\"" !s
 	  end
 	  else begin
 	    let t' = get_type t in
-	    fprintf f "@[<hv 2>Xdr.X_rec(\"%s\",@ " !s;
+	    fprintf f "@[<hv 2>Netxdr.X_rec(\"%s\",@ " !s;
 	    if direct then
-	      fprintf f "@[<hv 2>Xdr.X_direct(";
+	      fprintf f "@[<hv 2>Netxdr.X_direct(";
 	    output_type (!s :: rectypes) false t';
 	    if direct then
 	      fprintf f ",@ _read_%s,@ _write_%s,@ _size_%s)@]" !s !s !s;
 	    fprintf f ")@]";
 	  end
       | T_enum l ->
-	  fprintf f "@[<hv 2>Xdr.X_enum@ [@ ";
+	  fprintf f "@[<hv 2>Netxdr.X_enum@ [@ ";
 	  List.iter
 	    (fun (id,c) ->
 	       fprintf f "  (\"%s\", " id.xdr_name;
@@ -709,7 +709,7 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	    (strip_enum_list l);
 	  fprintf f "]@]";
       | T_struct(_,tdl) ->
-	  fprintf f "@[<hv 2>Xdr.X_struct@ @[<hv>[@ ";
+	  fprintf f "@[<hv 2>Netxdr.X_struct@ @[<hv>[@ ";
 	  List.iter
 	    (fun d ->
 	       if d.decl_type <> T_void then begin
@@ -728,8 +728,8 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	      (* Unions of integers *)
 	      let constr, printint =
 		match discr_type with
-		    T_int _  -> "Xdr.X_union_over_int",  output_int4
-		  | T_uint _ -> "Xdr.X_union_over_uint", output_uint4
+		    T_int _  -> "Netxdr.X_union_over_int",  output_int4
+		  | T_uint _ -> "Netxdr.X_union_over_uint", output_uint4
 		  | _        -> assert false
 	      in
 	      fprintf f "@[<hv 2>";
@@ -758,7 +758,7 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	    else begin
 	      (* Unions of enumerators (and bools) *)
 	      fprintf f "@[<hv 2>";
-	      fprintf f "Xdr.X_union_over_enum(@,(";
+	      fprintf f "Netxdr.X_union_over_enum(@,(";
 	      output_type rectypes false discr_type;
 	      fprintf f "),@ [@ ";
 	      let l = enum_type discr_type in
@@ -792,21 +792,21 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 
   and output_xdr_declaration n direct t =
     (* MLI: *)
-    fprintf mli "val %s : Xdr.xdr_type_term;;@\n" n;
+    fprintf mli "val %s : Netxdr.xdr_type_term;;@\n" n;
     (* ML: *)
     fprintf f "@[<hv 2>let %s =@ " n;
-    (* fprintf f "@[<hv 2>Xdr.validate_xdr_type@ ("; *)
+    (* fprintf f "@[<hv 2>Netxdr.validate_xdr_type@ ("; *)
     output_type [] direct t;
     (* fprintf f ")@]"; *)
     fprintf f "@]@\n;;@\n"
 
   and output_xdr_tuple_declaration n tl =
     (* MLI: *)
-    fprintf mli "val %s : Xdr.xdr_type_term;;@\n" n;
+    fprintf mli "val %s : Netxdr.xdr_type_term;;@\n" n;
     (* ML: *)
     fprintf f "@[<hv 2>let %s =@ " n;
-    (* fprintf f "@[<hv 2>Xdr.validate_xdr_type@ ("; *)
-    fprintf f "@[<hv 2>Xdr.X_struct@ @[<hv>[@ ";
+    (* fprintf f "@[<hv 2>Netxdr.validate_xdr_type@ ("; *)
+    fprintf f "@[<hv 2>Netxdr.X_struct@ @[<hv>[@ ";
     let k = ref 0 in
     List.iter
       (fun t ->
@@ -875,7 +875,7 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 (* Get min size                                                       *)
 (**********************************************************************)
 
-(* Simplified so far. Look also into Xdr.calc_min_size *)
+(* Simplified so far. Look also into Netxdr.calc_min_size *)
 
 let calc_min_size dl =
   let (typenames,typemap) = extract_type_info dl in
@@ -1246,7 +1246,7 @@ let output_match_union_by_number f u discr_type var by_k get_type_of_decl
 	( match u.default with
 	    | None ->
 		fprintf f
-		  "@ | _ -> Xdr.raise_xdr_format_undefined_descriminator()"
+		  "@ | _ -> Netxdr.raise_xdr_format_undefined_descriminator()"
 	    | Some d ->
 		fprintf f "@ @[<hv 4>";
 		fprintf f "| discriminant ->@ ";
@@ -1297,7 +1297,7 @@ let output_match_union_by_number f u discr_type var by_k get_type_of_decl
 	  )
 	  l;
 	fprintf f
-	  "@ | _ -> Xdr.raise_xdr_format_undefined_descriminator()";
+	  "@ | _ -> Netxdr.raise_xdr_format_undefined_descriminator()";
 	f_coerce();
 	fprintf f "@]@ )"
 
@@ -1418,14 +1418,14 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     match direct_opt with
       | None -> ()
       | Some n -> 
-	  fprintf f "| Xdr.XV_direct(X_%s x, _) -> x@ " n in
+	  fprintf f "| Netxdr.XV_direct(X_%s x, _) -> x@ " n in
 
   let generate_dest direct_opt var regname regconv =
     fprintf f "@[<hv 2>( match %s with@ " var;
-    fprintf f "| Xdr.%s x -> %sx@ " 
+    fprintf f "| Netxdr.%s x -> %sx@ " 
       regname (if regconv <> "" then regconv ^ " " else "");
     generate_direct_case direct_opt;
-    fprintf f "| _ -> raise Xdr.Dest_failure";
+    fprintf f "| _ -> raise Netxdr.Dest_failure";
     fprintf f "@]@ )" in
 
 
@@ -1451,13 +1451,13 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	| T_option t' ->
 	    fprintf f "@[<hv>";
 	    fprintf f "( match %s with@ " var;
-	    fprintf f "| Xdr.XV_union_over_enum_fast (0, _) -> None@ ";
-	    fprintf f "@[<hv 4>| Xdr.XV_union_over_enum_fast (1, x) ->@ Some ";
+	    fprintf f "| Netxdr.XV_union_over_enum_fast (0, _) -> None@ ";
+	    fprintf f "@[<hv 4>| Netxdr.XV_union_over_enum_fast (1, x) ->@ Some ";
 	    output_toconv_for_type "x" t' None;
 	    fprintf f "@]";
 	    fprintf f "@ ";
 	    generate_direct_case direct_opt;
-	    fprintf f "| _ -> raise Xdr.Dest_failure@]@ )";
+	    fprintf f "| _ -> raise Netxdr.Dest_failure@]@ )";
 	| T_array_fixed(_,t') ->
 	    output_toconv_for_array var t' direct_opt
 	| T_array(_,t') ->
@@ -1490,7 +1490,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	    List.iter
 	      (fun (id,c) ->
 		 fprintf f "@[<hv>";
-		 fprintf f "| Xdr.XV_enum_fast %d ->@;<1 4>" !k;
+		 fprintf f "| Netxdr.XV_enum_fast %d ->@;<1 4>" !k;
 		 output_int4 f (constant !c);
 		 fprintf f "@]";
 		 fprintf f "@ ";
@@ -1498,7 +1498,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	      )
 	      (strip_enum_list l);
 	    generate_direct_case direct_opt;
-	    fprintf f "| _ -> raise Xdr.Dest_failure@ ";
+	    fprintf f "| _ -> raise Netxdr.Dest_failure@ ";
 	    fprintf f "@]@ )";
 	| T_struct(opts,tl) when List.mem `Tuple opts ->
 	    fprintf f "@[<hv 2>";
@@ -1590,8 +1590,8 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		   (* f_let *)
 		   fprintf f "let discriminant0, x = %s %s in@ "
 		     (match discr_type with
-			| T_int _  -> "Xdr.dest_xv_union_over_int"
-			| T_uint _ -> "Xdr.dest_xv_union_over_uint"
+			| T_int _  -> "Netxdr.dest_xv_union_over_int"
+			| T_uint _ -> "Netxdr.dest_xv_union_over_uint"
 			| _ -> assert false
 		     )
 		     var;
@@ -1630,7 +1630,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		(fun () ->
 		   (* f_let *)
 		   fprintf f 
-		     "let k, x = Xdr.dest_xv_union_over_enum_fast %s in@ "
+		     "let k, x = Netxdr.dest_xv_union_over_enum_fast %s in@ "
 		     var;
 		   ( match u.default with
 			 None ->
@@ -1661,7 +1661,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     let t1 = get_type_from_map typemap t' in
     fprintf f "@[<hv 2>";
     fprintf f "( match %s with@ " var;
-    fprintf f "@[<hv 4>| Xdr.XV_array x ->@ ";
+    fprintf f "@[<hv 4>| Netxdr.XV_array x ->@ ";
     fprintf f "@[<hv 2>Array.map@ ";
     fprintf f "@[<hv 2>(fun x -> ";
     output_toconv_for_type "x" t' None;
@@ -1669,17 +1669,17 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     ( match t1 with
 	| T_string _
 	| T_string_unlimited ->
-	    fprintf f "@[<hv 4>| Xdr.XV_array_of_string_fast x ->@ ";
+	    fprintf f "@[<hv 4>| Netxdr.XV_array_of_string_fast x ->@ ";
 	    fprintf f "x@]@ ";
 	| _ -> ()
     );
     generate_direct_case direct_opt;
-    fprintf f "| _ -> raise Xdr.Dest_failure";
+    fprintf f "| _ -> raise Netxdr.Dest_failure";
     fprintf f "@]@ )";
 
   and output_toconv_for_tuple var tl =
     fprintf f "@[<hv>";
-    fprintf f "(let s = Xdr.dest_xv_struct_fast %s in@;<1 3>" var;
+    fprintf f "(let s = Netxdr.dest_xv_struct_fast %s in@;<1 3>" var;
     fprintf f "( @[<hv>";
     let isfirst = ref true in
     let n = ref 0 in
@@ -1711,11 +1711,11 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 
   let output_toconv_declaration n t tname direct =
     (* MLI: *)
-    fprintf mli "val _to_%s : Xdr.xdr_value -> %s;;@\n" n tname;
+    fprintf mli "val _to_%s : Netxdr.xdr_value -> %s;;@\n" n tname;
     (* ML: *)
     fprintf f "@[<hv>";
     begin_decl();
-    fprintf f "_to_%s (x:Xdr.xdr_value) : %s =@;<1 2>"
+    fprintf f "_to_%s (x:Netxdr.xdr_value) : %s =@;<1 2>"
       n
       tname;
     let direct_opt =
@@ -1729,11 +1729,11 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 
   let output_toconv_tuple_declaration n tl tname =
     (* MLI: *)
-    fprintf mli "val _to_%s : Xdr.xdr_value -> %s;;@\n" n tname;
+    fprintf mli "val _to_%s : Netxdr.xdr_value -> %s;;@\n" n tname;
     (* ML: *)
     fprintf f "@[<hv>";
     begin_decl();
-    fprintf f "_to_%s (x:Xdr.xdr_value) : %s =@;<1 2>"
+    fprintf f "_to_%s (x:Netxdr.xdr_value) : %s =@;<1 2>"
       n
       tname;
     output_toconv_for_tuple "x" tl;
@@ -1747,22 +1747,22 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     fprintf f "@[<hv>";
     ( match t with
 	| T_void ->
-	    fprintf f "Xdr.XV_void"
+	    fprintf f "Netxdr.XV_void"
 	| T_opaque_fixed _
 	| T_opaque _
 	| T_opaque_unlimited ->
-	    fprintf f "(Xdr.XV_opaque %s)" var
+	    fprintf f "(Netxdr.XV_opaque %s)" var
 	| T_string _
 	| T_string_unlimited ->
-	    fprintf f "(Xdr.XV_string %s)" var
+	    fprintf f "(Netxdr.XV_string %s)" var
 	| T_mstring(_,_)
 	| T_mstring_unlimited _ ->
-	    fprintf f "(Xdr.XV_mstring %s)" var
+	    fprintf f "(Netxdr.XV_mstring %s)" var
 	| T_option t' ->
 	    fprintf f "@[<hv 2>";
 	    fprintf f "( match %s with@ " var;
-	    fprintf f "| None   -> Xdr.xv_none@ ";
-	    fprintf f "| Some x -> @[<hv 2>Xdr.xv_some@ ";
+	    fprintf f "| None   -> Netxdr.xv_none@ ";
+	    fprintf f "| Some x -> @[<hv 2>Netxdr.xv_some@ ";
 	    output_ofconv_for_type name "x" t';
 	    fprintf f "@]@]@ )";
 	| T_array_fixed(_,t') ->
@@ -1777,13 +1777,13 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	| T_uhyper _ ->
 	    let xv_name = xv_name_of_int t in
 	    let conv = conversion_netnumber_of_custom_int t in
-	    fprintf f "(Xdr.%s (%s %s))" xv_name conv var
+	    fprintf f "(Netxdr.%s (%s %s))" xv_name conv var
 	| T_double ->
-	    fprintf f "(Xdr.XV_double (Netnumber.fp8_of_float %s))" var
+	    fprintf f "(Netxdr.XV_double (Netnumber.fp8_of_float %s))" var
 	| T_float ->
-	    fprintf f "(Xdr.XV_float (Netnumber.fp4_of_float %s))" var
+	    fprintf f "(Netxdr.XV_float (Netnumber.fp4_of_float %s))" var
 	| T_bool ->
-	    fprintf f "(if %s then Xdr.xv_true else Xdr.xv_false)" var
+	    fprintf f "(if %s then Netxdr.xv_true else Netxdr.xv_false)" var
 	| T_refer_to (_,n) ->
 	    let ocaml_n =
 	      try Hashtbl.find typenames !n
@@ -1799,7 +1799,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		 fprintf f "@[<hv>";
 		 fprintf f "| ";
 		 output_int4_pattern f (constant !c);
-		 fprintf f "@ -> Xdr.XV_enum_fast %d" !k;
+		 fprintf f "@ -> Netxdr.XV_enum_fast %d" !k;
 		 fprintf f "@]";
 		 fprintf f "@ ";
 		 incr k;
@@ -1829,13 +1829,13 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
                  fprintf f " in@;"
 	      )
 	      tdl;
-	    fprintf f "Xdr.XV_struct_fast@ ";
+	    fprintf f "Netxdr.XV_struct_fast@ ";
 	    fprintf f "[| %s |]"
               (String.concat ";"
                 (List.map (fun (i,_) -> sprintf "x%d" i) tdl));
             fprintf f "@])@]"
 	| T_struct(_,tdl) ->
-	    fprintf f "@[<hv>(@[<hv 2>Xdr.XV_struct_fast@ ";
+	    fprintf f "@[<hv>(@[<hv 2>Netxdr.XV_struct_fast@ ";
 	    fprintf f "[|@ ";
 	    List.iter
 	      (fun d ->
@@ -1864,30 +1864,30 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		 (* f_case *)
 		 match discr_type with
 		   | T_int _ | T_uint _ ->
-		       fprintf f "Xdr.XV_union_over_%s(@[<hv>"
+		       fprintf f "Netxdr.XV_union_over_%s(@[<hv>"
 			 (name_of_int discr_type);
 		       output_any_int f discr_type (sign,n);
 		       fprintf f ",@ ";
 		       if have_x then
 			 output_ofconv_for_type name "x" d.decl_type
 		       else
-			 fprintf f "Xdr.XV_void";
+			 fprintf f "Netxdr.XV_void";
 		       fprintf f "@])";
 		   | _ ->
-		       fprintf f "@[<hv 2>Xdr.XV_union_over_enum_fast@ (%d," k;
+		       fprintf f "@[<hv 2>Netxdr.XV_union_over_enum_fast@ (%d," k;
 		       if is_default then (
 			 if have_x then (
 			   assert(have_mkdefault);
 			   fprintf f "(mkdefault x)"
 			 )
 			 else
-			   fprintf f "Xdr.XV_void"
+			   fprintf f "Netxdr.XV_void"
 		       )
 		       else (
 			 if have_x then
 			   output_ofconv_for_type name "x" d.decl_type
 			 else
-			   fprintf f "Xdr.XV_void"
+			   fprintf f "Netxdr.XV_void"
 		       );
 		       fprintf f ")@]"
 	      )
@@ -1895,7 +1895,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		 (* f_default *)
 		 let constr =
 		   sprintf 
-		     "Xdr.XV_union_over_%s"
+		     "Netxdr.XV_union_over_%s"
 		     (name_of_int discr_type) in
 		 let int_conversion =
 		   conversion_netnumber_of_custom_int discr_type in
@@ -1906,7 +1906,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		   fprintf f "%s(%s discriminant, x)@]" 
 		     constr int_conversion;
 		 ) else
-		   fprintf f "%s(%s discriminant, Xdr.XV_void)@]" 
+		   fprintf f "%s(%s discriminant, Netxdr.XV_void)@]" 
 		     constr int_conversion
 	      )
 	      (fun () ->
@@ -1930,9 +1930,9 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     match t1 with
       | T_string _
       | T_string_unlimited ->
-	  fprintf f "@[<hv 2>(Xdr.XV_array_of_string_fast %s)@]" var
+	  fprintf f "@[<hv 2>(Netxdr.XV_array_of_string_fast %s)@]" var
       | _ ->
-	  fprintf f "@[<hv 2>Xdr.XV_array@ ";
+	  fprintf f "@[<hv 2>Netxdr.XV_array@ ";
 	  fprintf f "@[<hv 2>(Array.map@ ";
 	  fprintf f "(fun x -> ";
 	  output_ofconv_for_type name "x" t';
@@ -1952,7 +1952,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
       )
       tl;
     fprintf f ") = %s in@ " var;
-    fprintf f "@[<hv 2>Xdr.XV_struct_fast@ [|@ ";
+    fprintf f "@[<hv 2>Netxdr.XV_struct_fast@ [|@ ";
     n := 0;
     List.iter
       (fun t ->
@@ -1980,7 +1980,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     fprintf f "_size_%s (x:exn) : int =@ " name;
     fprintf f "match x with@ ";
     fprintf f "| X_%s y -> _sizeexpr_%s y@ " tname name;
-    fprintf f "| _ -> raise Xdr.Dest_failure";
+    fprintf f "| _ -> raise Netxdr.Dest_failure";
     fprintf f "@]@\n"
 
   and output_sizeexpr_for_type name calcexpr =
@@ -2027,12 +2027,12 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 		  fprintf f "@[<hv 2>( ";
 		  fprintf f "if Array.length x <> %d then@ " n;
 		  fprintf f 
-		    "  raise(Xdr.Xdr_failure \"array length mismatch\");@ ";
+		    "  raise(Netxdr.Xdr_failure \"array length mismatch\");@ ";
 	      | Some (`Limit n) ->
 		  fprintf f "@[<hv 2>( ";
 		  fprintf f "if Array.length x > %d then@ " n;
 		  fprintf f 
-		    "  raise(Xdr.Xdr_failure \"array length mismatch\");@ ";
+		    "  raise(Netxdr.Xdr_failure \"array length mismatch\");@ ";
 	  );
 	  ( match calcexpr1 with
 	      | `Size_const n ->
@@ -2112,13 +2112,13 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
       | T_string n ->
 	  `Size_fun 
 	    (sprintf 
-	       "(Xdr.sizefn_string (Netnumber.logical_uint4_of_int32 (%ldl)))"
+	       "(Netxdr.sizefn_string (Netnumber.logical_uint4_of_int32 (%ldl)))"
 	       (Int64.to_int32 (int64_of_const (constant !n)))
 	    )
       | T_opaque_unlimited
       | T_string_unlimited ->
 	  `Size_fun 
-	    "(Xdr.sizefn_string (Netnumber.logical_uint4_of_int32 (-1l)))"
+	    "(Netxdr.sizefn_string (Netnumber.logical_uint4_of_int32 (-1l)))"
       | T_option t' ->
 	  `Size_opt(4L, calc_sizefn_for_type name t')
       | T_int _ | T_uint _ | T_float | T_bool | T_enum _  ->
@@ -2231,7 +2231,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     fprintf f "_write_%s (x:exn) s p : unit =@ " name;
     fprintf f "match x with@ ";
     fprintf f "| X_%s y -> _writeexpr_%s y s p@ " tname name;
-    fprintf f "| _ -> raise Xdr.Dest_failure";
+    fprintf f "| _ -> raise Netxdr.Dest_failure";
     fprintf f "@]@\n"
 
   and output_writeexpr_for_type name t =
@@ -2244,14 +2244,14 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	    try Netnumber.int_of_uint4 n_uint4
 	    with _ -> assert false in (* already checked in Syntax *)
 	  fprintf f
-	    "Xdr.write_string_fixed %d x s p;@ "
+	    "Netxdr.write_string_fixed %d x s p;@ "
 	    n
       | T_opaque _
       | T_opaque_unlimited
       | T_string _
       | T_string_unlimited ->
 	  (* The size constraint has already been checked by sizefn *)
-	  fprintf f "Xdr.write_string x s p;@ ";
+	  fprintf f "Netxdr.write_string x s p;@ ";
       | T_option t' ->
 	  fprintf f "@[<hv>( match x with@ ";
 
@@ -2304,7 +2304,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	  fprintf f
 	    "@[<hv 2>if not(List.mem (Netnumber.int32_of_int4 x) [ %s ]) \
                then@ " cases;
-	  fprintf f "raise(Xdr.Xdr_failure \"invalid enum\");@]@ ";
+	  fprintf f "raise(Netxdr.Xdr_failure \"invalid enum\");@]@ ";
 	  fprintf f "Netnumber.BE.write_int4_unsafe s !p x;@ ";
 	  fprintf f "p := !p + 4;@ "
       | T_struct(opts,tdl) when List.mem `Tuple opts ->
@@ -2445,17 +2445,17 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	    try Netnumber.int_of_uint4 n_uint4
 	    with _ -> assert false in (* already checked in Syntax *)
 	  fprintf f
-	    "Xdr.read_string_fixed %d s p p_end@ "
+	    "Netxdr.read_string_fixed %d s p p_end@ "
 	    n
       | T_opaque n
       | T_string n ->
 	  let n32 =
 	    Int64.to_int32 (int64_of_const (constant !n)) in
-	  fprintf f "Xdr.read_string (Netnumber.logical_uint4_of_int32 (%ldl)) \
+	  fprintf f "Netxdr.read_string (Netnumber.logical_uint4_of_int32 (%ldl)) \
                      s p p_end@ " n32
       | T_opaque_unlimited
       | T_string_unlimited ->
-	  fprintf f "Xdr.read_string Netnumber.max_uint4 s p p_end@ ";
+	  fprintf f "Netxdr.read_string Netnumber.max_uint4 s p p_end@ ";
       | T_option t' ->
 	  fprintf f "( @[<hv>";
 	  fprintf f "if !p > p_end-4 then raise Netnumber.Out_of_range;@ ";
@@ -2467,7 +2467,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	  fprintf f "@[<hv 2>Some(@ ";
 	  output_readexpr_for_type name t';
 	  fprintf f ")@]@]@ ";
-	  fprintf f "| _ -> raise Xdr.Dest_failure";
+	  fprintf f "| _ -> raise Netxdr.Dest_failure";
 	  fprintf f "@]@ )";
       | T_int _
       | T_uint _
@@ -2519,7 +2519,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	  fprintf f
 	    "@[<hv 2>if not(List.mem (Netnumber.int32_of_int4 x) [ %s ]) \
              then@ " cases;
-	  fprintf f "raise(Xdr.Xdr_format \"invalid enum\");@]@ ";
+	  fprintf f "raise(Netxdr.Xdr_format \"invalid enum\");@]@ ";
 	  fprintf f "x";
 	  fprintf f "@]@ )"
       | T_struct(opts,tdl) ->
@@ -2664,11 +2664,11 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	    fprintf f "p := !p + 4;@ ";
 	    fprintf f "let len =@ ";
 	    fprintf f "  try Netnumber.int_of_uint4 ulen@ ";
-	    fprintf f "  with _ -> Xdr.raise_xdr_format_maximum_length() in@ ";
+	    fprintf f "  with _ -> Netxdr.raise_xdr_format_maximum_length() in@ ";
 	    ( match cond with
 		| Some (`Limit n) ->
 		    fprintf f "if len > %d then@ " n;
-		    fprintf f "  Xdr.raise_xdr_format_maximum_length();@ "
+		    fprintf f "  Netxdr.raise_xdr_format_maximum_length();@ "
 		| _ -> ()
 	    )
 	| Some (`Fixed n) ->
@@ -2676,7 +2676,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     );
     fprintf f "let m = (p_end - !p) / %d in@ " ms;
     fprintf f "if len > m then@ ";
-    fprintf f "  Xdr.raise_xdr_format_too_short();@ ";
+    fprintf f "  Netxdr.raise_xdr_format_too_short();@ ";
     fprintf f "Array.init@ ";
     fprintf f "  len@ ";
     fprintf f "@[<hv 4>  (fun _ ->@ ";
@@ -2699,16 +2699,16 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 
   let output_ofconv_declaration n t tname direct =
     (* MLI: *)
-    fprintf mli "val _of_%s : %s -> Xdr.xdr_value;;@\n" n tname;
+    fprintf mli "val _of_%s : %s -> Netxdr.xdr_value;;@\n" n tname;
     (* ML: *)
     fprintf f "@[<hv>";
     begin_decl();
-    fprintf f "_of_%s (x:%s) : Xdr.xdr_value =@;<1 2>"
+    fprintf f "_of_%s (x:%s) : Netxdr.xdr_value =@;<1 2>"
       n
       tname;
     if !Options.enable_direct && direct && permit_direct t then (
       fprintf f
-	"@[<hv>Xdr.XV_direct(X_%s x, _sizeexpr_%s x)@]" tname n
+	"@[<hv>Netxdr.XV_direct(X_%s x, _sizeexpr_%s x)@]" tname n
     )
     else
       output_ofconv_for_type n "x" t;
@@ -2717,11 +2717,11 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 
   let output_ofconv_tuple_declaration n tl tname =
     (* MLI: *)
-    fprintf mli "val _of_%s : %s -> Xdr.xdr_value;;@\n" n tname;
+    fprintf mli "val _of_%s : %s -> Netxdr.xdr_value;;@\n" n tname;
     (* ML: *)
     fprintf f "@[<hv>";
     begin_decl();
-    fprintf f "_of_%s (x:%s) : Xdr.xdr_value =@;<1 2>"
+    fprintf f "_of_%s (x:%s) : Netxdr.xdr_value =@;<1 2>"
       n
       tname;
     output_ofconv_for_tuple n "x" tl;
@@ -2777,8 +2777,8 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
   fprintf mli "@[<v>";
   fprintf f "@[<v>";
 
-  fprintf f "let ( +! ) = Xdr.safe_add@\n";
-  fprintf f "let ( *! ) = Xdr.safe_mul@\n;;@\n";
+  fprintf f "let ( +! ) = Netxdr.safe_add@\n";
+  fprintf f "let ( *! ) = Netxdr.safe_mul@\n;;@\n";
 
 
   List.iter
@@ -2840,7 +2840,7 @@ let output_progdefs (mli:formatter) (f:formatter) (dl:xdr_def list) =
     fprintf f "@ ";
     output_uint4 f (false, vers.version_number);
     fprintf f "@ ";
-    fprintf f "(Xdr.validate_xdr_type_system [])@ ";
+    fprintf f "(Netxdr.validate_xdr_type_system [])@ ";
     fprintf f "@[<hv 2>[";
     List.iter (declare_procedure prog vers) vers.version_def;
     fprintf f "@]@ ]";
@@ -2876,18 +2876,20 @@ let output_progdefs (mli:formatter) (f:formatter) (dl:xdr_def list) =
 (* Output clients                                                     *)
 (**********************************************************************)
 
-let output_client (mli:formatter) (f:formatter) (dl:xdr_def list) auxname =
+let output_client (mli:formatter) (f:formatter) (dl:xdr_def list) 
+                  only_functor
+                  auxname =
 
   let rec check_program prog =
     (* Make functor: *)
     
     (* MLI: *)
     fprintf mli "@[<v>";
-    fprintf mli "@[<v 2>module Make'%s(U'C:Rpc_client.USE_CLIENT) : sig@ "
+    fprintf mli "@[<v 2>module Make'%s(U'C:Rpc_client_pre.USE_CLIENT) : sig@ "
       prog.prog_symbol.ocaml_name;
     (* ML: *)
     fprintf f "@[<v>";
-    fprintf f "@[<v 2>module Make'%s(U'C:Rpc_client.USE_CLIENT) = struct@ " 
+    fprintf f "@[<v 2>module Make'%s(U'C:Rpc_client_pre.USE_CLIENT) = struct@ " 
       prog.prog_symbol.ocaml_name;
     (* Both: *)
     List.iter (check_version `Make prog) prog.prog_def;
@@ -2902,24 +2904,26 @@ let output_client (mli:formatter) (f:formatter) (dl:xdr_def list) auxname =
 
     (* Mapping with U'C=Rpc_client: *)
 
-    (* MLI: *)
-    fprintf mli "@[<v>";
-    fprintf mli "@[<v 2>module %s : sig@ "
-      prog.prog_symbol.ocaml_name;
-    (* ML: *)
-    fprintf f "@[<v>";
-    fprintf f "@[<v 2>module %s = struct@ " 
-      prog.prog_symbol.ocaml_name;
-    (* Both: *)
-    List.iter (check_version `Client prog) prog.prog_def;
-    (* MLI: *)
-    fprintf mli "@]@ ";
-    fprintf mli "end@ ";
-    fprintf mli "@]@\n";
-    (* ML: *)
-    fprintf f "@]@ ";
-    fprintf f "end@ ";
-    fprintf f "@]@\n";
+    if not only_functor then (
+      (* MLI: *)
+      fprintf mli "@[<v>";
+      fprintf mli "@[<v 2>module %s : sig@ "
+        prog.prog_symbol.ocaml_name;
+      (* ML: *)
+      fprintf f "@[<v>";
+      fprintf f "@[<v 2>module %s = struct@ " 
+        prog.prog_symbol.ocaml_name;
+      (* Both: *)
+      List.iter (check_version `Client prog) prog.prog_def;
+      (* MLI: *)
+      fprintf mli "@]@ ";
+      fprintf mli "end@ ";
+      fprintf mli "@]@\n";
+      (* ML: *)
+      fprintf f "@]@ ";
+      fprintf f "end@ ";
+      fprintf f "@]@\n";
+    )
     
 
   and check_version inst prog vers =

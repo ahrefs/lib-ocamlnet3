@@ -363,14 +363,16 @@ object (self)
 
   (* Access methods for frequent standard fields *)
 
+(*
   method content_length() =
     int_of_string(rm_htspace(self#field "content-length"))
   method content_type() =
-    Mimestring.scan_mime_type_ep (self#field "content-type") []
+    Netmime_string.scan_mime_type_ep (self#field "content-type") []
   method content_disposition() =
-    Mimestring.scan_mime_type_ep (self#field "content-disposition") []
+    Netmime_string.scan_mime_type_ep (self#field "content-disposition") []
   method content_transfer_encoding() =
     String.lowercase(self#field "content-transfer-encoding")
+ *)
 end
 
 
@@ -415,7 +417,7 @@ object(self)
 	&& (try is_MSIE(self#user_agent) with Not_found -> false) in
       let ct = self#input_header_field "content-type" in
       let ct = if work_around then fix_MSIE_Content_type_bug ct else ct in
-      Mimestring.scan_mime_type_ep ct []
+      Netmime_string.scan_mime_type_ep ct []
     );
     (* We probably do not want the list of all properties, so compute
        it on demand only. *)

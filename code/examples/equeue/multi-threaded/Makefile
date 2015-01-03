@@ -9,7 +9,7 @@ NAME     = sample
 REQUIRES = equeue,threads
 
 all: $(OBJECTS)
-	$(OCAMLC) -o sample sample.cmo -linkpkg
+	$(OCAMLC) -o sample sample.cmo -linkpkg -custom
 
 #----------------------------------------------------------------------
 # general rules:

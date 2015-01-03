@@ -1,63 +1,57 @@
-{1:intro Securing RPC with the GSS-API}
+{1:intro Securing RPC with the GSSAPI}
 
 This text explains how to enable strong authentication and strong
 encryption on RPC connections.
 
-{2 The GSS-API}
+{2 The GSSAPI}
 
-The GSS-API (Generic Security Service API) is an interface between
+The GSSAPI (Generic Security Service API) is an interface between
 the security provider (i.e. the authentication/encryption provider)
-and the application needing security features. The GSS-API is a
-standard (RFC 2743). The GSS-API is often already implemented by
+and the application needing security features. The GSSAPI is a
+standard (RFC 2743). The GSSAPI is often already implemented by
 operating systems or by security systems like Kerberos. This means,
 there is usually a library on the C level containing the C functions
-defining GSS-API.
+defining GSSAPI.
 
-The nice thing about GSS-API is the mechanism genericy: The API can
+The nice thing about GSSAPI is the mechanism genericy: The API can
 provide access to multiple security mechanisms, and it is possible
-to wrap almost every security mechanism in the form of GSS-API.
+to wrap almost every security mechanism in the form of GSSAPI.
 
-There is a "competitor" to GSS-API, namely SASL. The feature set is
-not identical, though. Both APIs allow strong authentication.  GSS-API
-additionally includes encryption and integrity protection for
-message-oriented communication (but not for continuous data streams),
-whereas SASL does not have such a feature and has to rely on external
-layers to do so (which is often SSL). There is a bridge between GSS-API
-and SASL called GS2 - it translates the authentication part of GSS-API
-into SASL.
-
-As mentioned, GSS-API only covers the encryption and integrity
+As mentioned, GSSAPI only covers the encryption and integrity
 protection of messages, not of continuous streams. In so far there is
 not much intersection with SSL, which only handles such streams.  For
-message-oriented protocols such as RPC the feature set of GSS-API is
+message-oriented protocols such as RPC the feature set of GSSAPI is
 naturally the better choice. There is a standard called RPCSEC-GSS
-defining the details of how GSS-API is to be used for ONCRPC (RFC
+defining the details of how GSSAPI is to be used for ONCRPC (RFC
 2203).
 
+There is a more general introduction to the GSSAPI in this chapter:
+{!Gssapi}.
 
-{2 The GSS-API in Ocaml}
 
-The GSS-API is defined as a class type {!Netgssapi.gss_api}. We do not
-want to go much into detail - for {b using} the GSS-API it is not
+{2 The GSSAPI in Ocaml}
+
+The GSSAPI is defined as a class type {!Netsys_gssapi.gss_api}. We do not
+want to go much into detail - for {b using} the GSSAPI it is not
 required to understand everything. The class type is "feature
 compatible" with the standard C version of the API (RFC 2744)
-allowing it to interface with implementations of GSS-API available
+allowing it to interface with implementations of GSSAPI available
 in C. (Note that this has not been done when this text is written.)
 
 A class type has been chosen because this allows it that each
 security provider can define an independent class implementing
-the GSS-API. This is different than in the C bindings of GSS-API
+the GSSAPI. This is different than in the C bindings of GSSAPI
 where only one provider can exist at a time (linked into the program),
 although the provider can manage several mechanisms.
 
-When using GSS-API you will be confronted with OIDs, names, and
-credentials. These concepts are defined in the {!Netgssapi} module:
+When using GSSAPI you will be confronted with OIDs, names, and
+credentials. These concepts are defined in the {!Netsys_gssapi} module:
 
 - An OID (object identifier) is a IANA-registered number helping
   to identify especially security mechanisms, and styles of
   naming principals (user and system identities). OIDs are also
   used in other contexts (e.g. ASN-1, X500).
-- Names come in various forms, and because of this, GSS-API uses
+- Names come in various forms, and because of this, GSSAPI uses
   opaque objects for names, not strings. Names can e.g. identify
   users. There are various styles (name types). For example, users
   are often identified by a simple string ("guest") whereas
@@ -72,9 +66,9 @@ credentials. These concepts are defined in the {!Netgssapi} module:
 OIDs are represented as [oid = int array]. There are a number of predefined
 OIDs, e.g.
 
-- {!Netgssapi.nt_user_name} is the OID of the name type identifying
+- {!Netsys_gssapi.nt_user_name} is the OID of the name type identifying
   users by name
-- {!Netgssapi.nt_hostbased_service} is the OID of the name type
+- {!Netsys_gssapi.nt_hostbased_service} is the OID of the name type
   identifying services relative to hosts
 - {!Netmech_scram_gssapi.scram_mech} is the OID of the SCRAM
   security mechanism
@@ -82,17 +76,17 @@ OIDs, e.g.
 An empty array is often used to mean the default (e.g. default
 mechanism).
 
-Names are represented as {!Netgssapi.name}. This object has almost
+Names are represented as {!Netsys_gssapi.name}. This object has almost
 no methods - which is intended because names are opaque to users
-outside the GSS-API implementation. The GSS-API defines methods
+outside the GSSAPI implementation. The GSSAPI defines methods
 to import and export names:
 
-- {!Netgssapi.gss_api.import_name} allows one to convert a pair
-  of a name type and a string to the opaque {!Netgssapi.name}
+- {!Netsys_gssapi.gss_api.import_name} allows one to convert a pair
+  of a name type and a string to the opaque {!Netsys_gssapi.name}
   object. The name type is an OID.
-- {!Netgssapi.gss_api.display_name} is roughly the reverse operation
+- {!Netsys_gssapi.gss_api.display_name} is roughly the reverse operation
   (but see below).
-- {!Netgssapi.gss_api.export_name} converts an opaque name to
+- {!Netsys_gssapi.gss_api.export_name} converts an opaque name to
   a binary string. It is ensured that another call of [import_name]
   with the same string restores the opaque name.
 
@@ -102,17 +96,17 @@ naming elements spanning several mechanisms. This is an issue when
 names need to be compared. Generally, it may lead to wrong results
 when names are compared by displaying or exporting them, and then
 comparing the resulting strings. There is a special
-{!Netgssapi.gss_api.compare_name} method for comparisons, and
-{!Netgssapi.gss_api.canonicalize_name} may also be useful in this
+{!Netsys_gssapi.gss_api.compare_name} method for comparisons, and
+{!Netsys_gssapi.gss_api.canonicalize_name} may also be useful in this
 context.
 
 For RPC, the ways of referring to names have been simplified - more on
 that below.
 
-Credentials are also opaque objects - {!Netgssapi.credential}. It is
-generally assumed that a GSS-API implementation can look up the right
+Credentials are also opaque objects - {!Netsys_gssapi.credential}. It is
+generally assumed that a GSSAPI implementation can look up the right
 credentials for a principal that is identified by name. For example,
-the GSS-API provider for SCRAM can be equipped with a "keyring", i.e.
+the GSSAPI provider for SCRAM can be equipped with a "keyring", i.e.
 a callback that maps user names to passwords.
 
 
@@ -136,9 +130,9 @@ properties:
 - The server does not have a name
 
 There is an extension for SCRAM so that AES-128 encryption and 
-SHA-1 integrity protection become available in GSS-API context.
+SHA-1 integrity protection become available in GSSAPI context.
 
-SCRAM is implemented in {!Netmech_scram}. The GSS-API encapsulation
+SCRAM is implemented in {!Netmech_scram}. The GSSAPI encapsulation
 is done in {!Netmech_scram_gssapi}.
 
 Some more words on names and credentials: Clients have to impersonate
@@ -160,7 +154,7 @@ database. The function {!Netmech_scram.create_salt} can be used
 for this. The [salted_password] can be computed from the two other
 parameters and the password with {!Netmech_scram.salt_password}.
 
-The GSS-API encapsulation of SCRAM is {!Netmech_scram_gssapi.scram_gss_api}.
+The GSSAPI encapsulation of SCRAM is {!Netmech_scram_gssapi.scram_gss_api}.
 This class
 
 {[
@@ -168,7 +162,7 @@ class scram_gss_api :
         ?client_key_ring:client_key_ring ->
         ?server_key_verifier:server_key_verifier ->
         Netmech_scram.profile ->
-          Netgssapi.gss_api
+          Netsys_gssapi.gss_api
 ]}
 
 takes a few arguments. The [profile] can be just obtained by calling
@@ -236,11 +230,13 @@ Assumed we already created the [gss_api] object by instantiating the
 class {!Netmech_scram_gssapi.scram_gss_api} this is done in two steps:
 
 - Create the authentication method on RPC level:
-  {[ 
+  {[
+  let cconf = Netsys_gssapi.create_client_config
+                ~mech_type:Netmech_scram.scram_mech () in
   let am = 
     Rpc_auth_gssapi.client_auth_method
-      ~user_name_interpretation:(`Plain_name Netgssapi.nt_user_name)
-      gss_api Netmech_scram.scram_mech
+      ~user_name_interpretation:(`Plain_name Netsys_gssapi.nt_user_name)
+      gss_api cconf
   ]}
 - Add this method to the client:
   {[
@@ -269,9 +265,9 @@ because of this the client can only accept a response when it is the
 response to the latest retransmission. This makes the retransmission
 feature less reliable. Best is to avoid UDP.
 
-The function {!Rpc_auth_gssapi.client_auth_method} has a few optional
-arguments controlling whether encryption or integrity protection are
-enabled:
+The function {!Rpc_auth_gssapi.client_auth_method} takes a [cconf]
+object controlling details of the security context creation. This
+object is returned by {!Netsys_gssapi.create_client_config}:
 
 - By setting [~privacy:`Required] it is ensured that encryption and
   integrity protection are both enabled. If the security mechanism
@@ -293,16 +289,20 @@ enabled:
 - Of course, the RPC server has the last word which protection level is
   acceptable.
 
+SCRAM is a simple security mechanism, and for advanced ones you may need
+to set more objects in [cconf]. In particular {b for Kerberos,} it is
+required to set [target_name] to the server principal.
+
 You might have wondered why we pass
 
 {[
-~user_name_interpretation:(`Plain_name Netgssapi.nt_user_name)
+~user_name_interpretation:(`Plain_name Netsys_gssapi.nt_user_name)
 ]}
 
 to [client_auth_method]. As described above, there are various ways
 how to represent names. In the RPC context we need a simple string.
 The [user_name_interpretation] argument selects how the opaque
-GSS-API names are converted to strings.
+GSSAPI names are converted to strings.
 
 {2 Enabling SCRAM for RPC proxies}
 
@@ -338,10 +338,12 @@ in client context:
 
 - Create the authentication method on RPC level:
   {[ 
+  let sconf = Netsys_gssapi.create_server_config 
+                ~each_types:[Netmech_scram.scram_mech] () in
   let am = 
     Rpc_auth_gssapi.server_auth_method
       ~user_name_format:`Plain_name
-      gss_api Netmech_scram.scram_mech
+      gss_api sconf
   ]}
 - Add this method to the server:
   {[
@@ -363,13 +365,18 @@ pair is considered as a new connection by the RPC server (in some
 sense this is a peculiarity of the implementation).
 
 You can get the name of the authenticated user with the function
-{!Rpc_server.get_user}. The way of translating opaque GSS-API names
+{!Rpc_server.get_user}. The way of translating opaque GSSAPI names
 to strings can be selected with the [~user_name_format] argument
 of {!Rpc_auth_gssapi.server_auth_method}.
 
-By setting [~require_privacy] one can demand that only privacy-protected
-messages are accepted. [~require_integrity] demands that at least
-integrity-protected messages are used.
+The [sconf] object has, like in the client case, a number of additional
+options. By setting [~privacy:`Required] one can demand that only
+privacy-protected
+messages are accepted. [~integrity:`Required] demands that at least
+integrity-protected messages are used. For more advanced mechanisms 
+than SCRAM more options may be needed. In particular, {b for Kerberos}
+you need at least to set the [acceptor_name] to the name of the
+Kerberos principal of the server.
 
 
 {2 Enabling SCRAM in Netplex context}

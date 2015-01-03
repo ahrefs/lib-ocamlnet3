@@ -13,6 +13,7 @@ with the expected results.
 -init:            Initializes the file containing the expected result with the
 	          actual result.
 -ssl:             Run with SSL enabled
+-trace:           tracing
 -help:            Print this message
 EOF
 }
@@ -21,6 +22,7 @@ EOF
 
 
 failed=""
+trace=""
 
 run_test () {
     if [ ! -f specs/helpers.sh ]; then
@@ -34,7 +36,7 @@ run_test () {
 	rm -f server.out
 	touch client.out
 	touch server.out
-	h=`sh specs/$1.sh`
+	h=`sh $trace specs/$1.sh`
 	if [ -f specs/$1.out ]; then
 	    g=`cat specs/$1.out`
 	    if [ "x$h" = "x$g" ]; then
@@ -69,7 +71,11 @@ while [ -n "$x" ]; do
 	           shift
 	           ;;
 	-ssl)      SSL=1
+		   export SSL
 	           shift
+		   ;;
+	-trace)	   trace="-x"
+		   shift
 		   ;;
 	-h|-help)  usage
 		   exit 0
@@ -130,7 +136,6 @@ if [ "$#" = "0" ]; then
     run_test three-continued-messages
     run_test three-very-continued-messages
     run_test three-big-messages
-    run_test quick-200
     run_test early-error
     run_test pipeline-phantasy
     run_test nopersistency-1.0
@@ -155,6 +160,7 @@ if [ "$#" = "0" ]; then
     run_test chreq-continue
     run_test chreq-continue-error
     if [ -z "$SSL" ]; then     # does not work with ssl
+        run_test quick-200     # this test blocks
 	run_test framed-proxyauth
 	run_test framed-proxy+basicauth
 	run_test framed-proxyauth-digest

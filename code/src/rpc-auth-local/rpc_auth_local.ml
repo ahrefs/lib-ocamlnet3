@@ -49,7 +49,8 @@ object
       )
 
   method authenticate _ _ _ _ = ()
-
+  method invalidate() = ()
+  method invalidate_connection _ = ()
 end
 
 

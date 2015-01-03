@@ -1,0 +1,163 @@
+(* -*- tuareg -*- *)
+
+(* Minimum expected version: nettle-2.0 (as in Debian Squeeze) *)
+
+#use "stubgen.ml"
+
+let types =
+  [ "net_nettle_cipher_t",          abstract_ptr "net_nettle_destroy_cipher";
+    "net_nettle_cipher_ctx_t",      abstract_ptr "net_nettle_free";
+    "net_nettle_gcm_aes_ctx_t",     abstract_ptr "net_nettle_free";
+    "net_nettle_hash_t",            abstract_ptr "net_nettle_destroy_hash";
+    "net_nettle_hash_ctx_t",        abstract_ptr "net_nettle_free";
+  ]
+
+
+let standard ?(optional=false) ?(options=[]) decl =
+  let (name, result, params) = parse decl in
+  (name,
+   params @ [ "result",
+              (if result = "void" then `Return_ignore else `Return),
+              result
+            ],
+   (if optional then [ `Optional ] else []) @
+     options
+  )
+
+let functions =
+  [ standard
+      "void net_nettle_ciphers \
+         (OUT net_nettle_cipher_t array cipher_list, \
+          OUT_IGNORE cipher_list array_size cipher_list_size)";
+    standard
+      "void net_ext_ciphers \
+         (OUT net_nettle_cipher_t array cipher_list, \
+          OUT_IGNORE cipher_list array_size cipher_list_size)";
+    standard
+      "const ztstr net_nettle_cipher_name \
+         (net_nettle_cipher_t cipher)";
+    standard
+      "net_nettle_cipher_ctx_t net_nettle_create_cipher_ctx \
+         (net_nettle_cipher_t cipher)";
+    standard
+      "void net_nettle_set_encrypt_key \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          1 stringbuf_size key_length, \
+          1 stringbuf key)";
+    standard
+      "void net_nettle_set_decrypt_key \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          1 stringbuf_size key_length, \
+          1 stringbuf key)";
+    standard
+      "void net_nettle_encrypt \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard
+      "void net_nettle_decrypt \
+         (net_nettle_cipher_t cipher, \
+          net_nettle_cipher_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard
+      "net_nettle_gcm_aes_ctx_t net_nettle_gcm_aes_init \
+         ()";
+    standard ~optional:true
+      "void nettle_gcm_aes_set_key \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size key_length, \
+          1 stringbuf key)";
+    standard ~optional:true
+      "void nettle_gcm_aes_set_iv \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size iv_length, \
+          1 stringbuf iv)";
+    standard ~optional:true
+      "void nettle_gcm_aes_update \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size data_length, \
+          1 stringbuf data)";
+    standard ~optional:true
+      "void nettle_gcm_aes_encrypt \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard ~optional:true
+      "void nettle_gcm_aes_decrypt \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          uint length, \
+          1 bigarray dst, \
+          1 bigarray src)";
+    standard ~optional:true
+      "void nettle_gcm_aes_digest \
+         (net_nettle_gcm_aes_ctx_t ctx, \
+          1 stringbuf_size length, \
+          1 stringbuf mac)";
+    standard
+      "bool net_have_gcm_aes()";
+    standard
+      "void net_nettle_hashes \
+         (OUT net_nettle_hash_t array hash_list, \
+          OUT_IGNORE hash_list array_size hash_list_size)";
+    standard
+      "const ztstr net_nettle_hash_name \
+         (net_nettle_hash_t hash)";
+    standard
+      "net_nettle_hash_ctx_t net_nettle_create_hash_ctx \
+         (net_nettle_hash_t hash)";
+    standard
+      "void net_nettle_hash_init \
+         (net_nettle_hash_t hash, \
+          net_nettle_hash_ctx_t ctx)";
+    standard
+      "void net_nettle_hash_update \
+         (net_nettle_hash_t hash, \
+          net_nettle_hash_ctx_t ctx, \
+          1 bigarray_size length, \
+          1 bigarray src)";
+    standard
+      "void net_nettle_hash_digest \
+         (net_nettle_hash_t hash, \
+          net_nettle_hash_ctx_t ctx, \
+          1 stringbuf_size length, \
+          1 stringbuf src)";
+    
+  ]
+
+
+let optional_types =
+  [ ]
+let optional_functions =
+  [ "nettle_gcm_aes_set_key";
+    "nettle_gcm_aes_set_iv";
+    "nettle_gcm_aes_update";
+    "nettle_gcm_aes_encrypt";
+    "nettle_gcm_aes_decrypt";
+    "nettle_gcm_aes_digest";
+    "nettle_ciphers";   (* actually a variable *)
+    "nettle_hashes";    (* actually a variable *)
+  ]
+
+
+let () =
+  generate
+    ~c_file:"nettle.c"
+    ~ml_file:"nettle.ml"
+    ~mli_file:"nettle.mli"
+    ~modname:"nettls_nettle_bindings"
+    ~types
+    ~functions
+    ~optional_functions
+    ~optional_types
+    ~free:[]
+    ~init:[]
+    ~hashes:[]
+    ~enum_of_string:[]
+    ()

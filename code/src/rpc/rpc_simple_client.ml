@@ -7,7 +7,7 @@
  * in a relatively simple way.
  *)
 
-open Xdr;;
+open Netxdr;;
 open Rpc;;
 
 type t =

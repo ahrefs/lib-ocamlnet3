@@ -60,6 +60,7 @@ class type rpc_multiplex_controller =
 object
   method alive : bool
   method event_system : Unixqueue.event_system
+  method tls_session_props : Nettls_support.tls_session_props option
   method getsockname : sockaddr
   method getpeername : sockaddr
   method peer_user_name : string option
@@ -111,11 +112,33 @@ let mem_dummy() =
     Bigarray.char Bigarray.c_layout 0
   
 
+let get_user_name tls_props name =
+  match name with
+    | Some n -> name
+    | None ->
+         match tls_props with
+           | Some p ->
+                ( try Some(Nettls_support.get_tls_user_name p)
+                  with Not_found -> None
+                )
+           | None -> None
 
-class datagram_rpc_multiplex_controller 
-        sockname peername_opt peer_user_name_opt file_descr_opt
-        (mplex : Uq_engines.datagram_multiplex_controller) esys 
+
+class datagram_rpc_multiplex_controller
+        role
+        sockname peername_opt peername_dns_opt peer_user_name_opt file_descr_opt
+        (mplex : Uq_engines.datagram_multiplex_controller) esys
       : rpc_multiplex_controller =
+(*
+  let mplex =
+    match tls_config_opt with
+      | None -> 
+           (mplex0 :> Uq_multiplex.multiplex_controller)
+      | Some tls_config ->
+           Uq_multiplex.tls_multiplex_controller
+             ~role ~peer_name:peername_dns_opt tls_config
+             (mplex0 :> Uq_multiplex.multiplex_controller) in
+ *)
   let rd_buffer, free_rd_buffer = 
     if mplex#mem_supported then (
       let (m, f) = mem_alloc2() in
@@ -150,8 +173,10 @@ object(self)
     match peername_opt with
       | None -> failwith "#getpeername: not connected"
       | Some a -> a
+  method tls_session_props = mplex#tls_session_props
   method protocol = Udp
-  method peer_user_name = peer_user_name_opt
+  method peer_user_name =
+    get_user_name mplex#tls_session_props peer_user_name_opt
   method file_descr = file_descr_opt
   method reading = mplex # reading
   method read_eof = mplex # read_eof
@@ -246,19 +271,19 @@ object(self)
 	    when_done (`Error error) in
 
     let mstrings = mstrings_of_packed_value pv in
-    let len = Xdr_mstring.length_mstrings mstrings in
+    let len = Netxdr_mstring.length_mstrings mstrings in
 
     if len > fallback_size && len <= mem_size && mplex#mem_supported then (
       let m =
 	match !wr_buffer with
 	  | `Mem m -> m
 	  | `None -> failwith "Rpc_transport: read/write not possible" in
-      Xdr_mstring.blit_mstrings_to_memory mstrings m;
+      Netxdr_mstring.blit_mstrings_to_memory mstrings m;
       mplex # start_mem_writing
 	~when_done:(mplex_when_done len) m 0 len
     )
     else
-      let s = Xdr_mstring.concat_mstrings mstrings in
+      let s = Netxdr_mstring.concat_mstrings mstrings in
       mplex # start_writing
 	~when_done:(mplex_when_done len) s 0 len;
     self # timer_event `Start `W
@@ -347,7 +372,8 @@ end
 
 
 let datagram_rpc_multiplex_controller ?(close_inactive_descr=true)
-                                      ?(preclose=fun() -> ()) fd esys =
+                                      ?(preclose=fun() -> ()) 
+                                      ~role fd esys =
   let sockname, peername_opt = 
     match Netsys.get_fd_style fd with
       | `Recv_send(sockaddr,peeraddr) ->
@@ -360,24 +386,40 @@ let datagram_rpc_multiplex_controller ?(close_inactive_descr=true)
 	  (sockname, None)
       | _ ->
 	  (`Implied, Some `Implied) in
+(*
+  let peername_dns_opt, tls_config_opt =
+    match tls with
+      | Some(tls_config, peername_dns_opt) -> (peername_dns_opt,Some tls_config)
+      | None -> (None, None) in
+ *)
   let mplex = 
-    Uq_engines.create_multiplex_controller_for_datagram_socket
+    Uq_multiplex.create_multiplex_controller_for_datagram_socket
       ~close_inactive_descr ~preclose
       fd esys in
   new datagram_rpc_multiplex_controller 
-    sockname peername_opt None (Some fd) mplex esys
+    role sockname peername_opt None None (Some fd) mplex 
+    esys
 ;;
 
 
 class stream_rpc_multiplex_controller 
-        sockname peername peer_user_name_opt file_descr_opt
-        (mplex : Uq_engines.multiplex_controller) esys 
+        role
+        sockname peername peername_dns_opt peer_user_name_opt file_descr_opt
+        (mplex0 : Uq_engines.multiplex_controller) esys
+        tls_config_opt
       : rpc_multiplex_controller =
   let () = 
     dlogr (fun () ->
 	     sprintf "new stream_rpc_multiplex_controller mplex=%d"
-	       (Oo.id mplex))
+	       (Oo.id mplex0))
   in
+
+  let mplex =
+    match tls_config_opt with
+      | None -> mplex0
+      | Some tls_config ->
+           Uq_multiplex.tls_multiplex_controller
+             ~role ~peer_name:peername_dns_opt tls_config mplex0 in
 
 (*
   let wr_buffer, free_wr_buffer =
@@ -411,8 +453,10 @@ object(self)
   method event_system = esys
   method getsockname = sockname
   method getpeername = peername
+  method tls_session_props = mplex#tls_session_props
   method protocol = Tcp
-  method peer_user_name = peer_user_name_opt
+  method peer_user_name =
+    get_user_name mplex#tls_session_props peer_user_name_opt
   method file_descr = file_descr_opt
   method reading = mplex # reading
   method read_eof = mplex # read_eof
@@ -500,16 +544,16 @@ object(self)
 		let rm_opt =
 		  try
 		    let rm =
-		      Rtypes.int_of_uint4
-			(Rtypes.mk_uint4 
+		      Netnumber.int_of_uint4
+			(Netnumber.mk_uint4 
 			   (rm_0,rm_buffer.[1],rm_buffer.[2],rm_buffer.[3])) in
 		    if rm > Sys.max_string_length then
-		      raise(Rtypes.Cannot_represent "");
+		      raise(Netnumber.Cannot_represent "");
 		    if rd_queue_len > Sys.max_string_length - rm then
-		      raise(Rtypes.Cannot_represent "");
+		      raise(Netnumber.Cannot_represent "");
 		    Some(rm,rm_last)
 		  with
-		    | Rtypes.Cannot_represent _ -> None in
+		    | Netnumber.Cannot_represent _ -> None in
 		( match rm_opt with
 		    | Some(rm,rm_last) ->
 (*eprintf "got RM n=%d last=%b\n%!" rm rm_last; *)
@@ -779,14 +823,14 @@ object(self)
                         cannot send to this address"
     );
     let mstrings0 = mstrings_of_packed_value pv in
-    let payload_len = Xdr_mstring.length_mstrings mstrings0 in
+    let payload_len = Netxdr_mstring.length_mstrings mstrings0 in
     (* Prepend record marker *)
     let s = String.create 4 in
-    let rm = Rtypes.uint4_of_int payload_len in
-    Rtypes.write_uint4 s 0 rm;
+    let rm = Netnumber.uint4_of_int payload_len in
+    Netnumber.BE.write_uint4 s 0 rm;
     s.[0] <- Char.chr (Char.code s.[0] lor 0x80);
     let ms = 
-      Xdr_mstring.string_based_mstrings # create_from_string 
+      Netxdr_mstring.string_based_mstrings # create_from_string 
 	s 0 4 false in
     let mstrings = ms :: mstrings0 in
     let items = items_of_mstrings [] [] 0 mstrings in
@@ -879,7 +923,9 @@ end
 
 
 let stream_rpc_multiplex_controller ?(close_inactive_descr=true)
-                                    ?(preclose=fun()->()) fd esys =
+                                    ?(preclose=fun()->()) 
+                                    ?tls
+                                    ~role fd esys =
   let sockname = 
     try
       `Sockaddr(Unix.getsockname fd) 
@@ -890,10 +936,15 @@ let stream_rpc_multiplex_controller ?(close_inactive_descr=true)
       `Sockaddr(Netsys.getpeername fd)
     with
       | Unix.Unix_error(_,_,_) -> `Implied in
+  let peername_dns_opt, tls_config_opt =
+    match tls with
+      | Some(tls_config, peername_dns_opt) -> (peername_dns_opt,Some tls_config)
+      | None -> (None, None) in
   let mplex = 
-    Uq_engines.create_multiplex_controller_for_connected_socket
+    Uq_multiplex.create_multiplex_controller_for_connected_socket
       ~close_inactive_descr ~preclose
       fd esys in
   new stream_rpc_multiplex_controller 
-    sockname peername None (Some fd) mplex esys
+    role sockname peername peername_dns_opt None (Some fd) mplex esys 
+    tls_config_opt
 ;;

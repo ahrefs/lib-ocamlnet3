@@ -699,7 +699,8 @@ let run_post_fork_handlers() =
 
 (* "at" *)
 
-type at_flag = AT_EACCESS | AT_SYMLINK_NOFOLLOW | AT_REMOVEDIR
+type at_flag = AT_EACCESS | AT_SYMLINK_NOFOLLOW | AT_SYMLINK_FOLLOW | 
+               AT_REMOVEDIR
 
 (* The stubs assume these type definitions: *)
 #ifdef HAVE_O_CLOEXEC

@@ -9,8 +9,8 @@ module Finder : sig
   module V1 : sig
     open Finder_service_aux
     val bind :
-            ?program_number:Rtypes.uint4 ->
-            ?version_number:Rtypes.uint4 ->
+            ?program_number:Netnumber.uint4 ->
+            ?version_number:Netnumber.uint4 ->
             proc_ping : (t_Finder'V1'ping'arg -> t_Finder'V1'ping'res) ->
             proc_find : (t_Finder'V1'find'arg -> t_Finder'V1'find'res) ->
             proc_lastquery : (t_Finder'V1'lastquery'arg ->
@@ -20,8 +20,8 @@ module Finder : sig
             Rpc_server.t ->
             unit
     val bind_async :
-            ?program_number:Rtypes.uint4 ->
-            ?version_number:Rtypes.uint4 ->
+            ?program_number:Netnumber.uint4 ->
+            ?version_number:Netnumber.uint4 ->
             proc_ping : (Rpc_server.session ->
                          t_Finder'V1'ping'arg ->
                          (t_Finder'V1'ping'res -> unit) ->

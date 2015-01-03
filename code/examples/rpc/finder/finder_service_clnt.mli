@@ -5,29 +5,71 @@
  * finder_service.x
  *
  ************************************************************)
+module Make'Finder(U'C:Rpc_client_pre.USE_CLIENT) : sig
+  module V1 : sig
+    open Finder_service_aux
+    type t = U'C.t
+    val _program : Rpc_program.t
+    val ping : U'C.t -> t_Finder'V1'ping'arg -> t_Finder'V1'ping'res
+    val ping'async :
+            U'C.t ->
+            t_Finder'V1'ping'arg ->
+            ((unit -> t_Finder'V1'ping'res) -> unit) ->
+            unit
+    val find : U'C.t -> t_Finder'V1'find'arg -> t_Finder'V1'find'res
+    val find'async :
+            U'C.t ->
+            t_Finder'V1'find'arg ->
+            ((unit -> t_Finder'V1'find'res) -> unit) ->
+            unit
+    val lastquery :
+            U'C.t ->
+            t_Finder'V1'lastquery'arg ->
+            t_Finder'V1'lastquery'res
+    val lastquery'async :
+            U'C.t ->
+            t_Finder'V1'lastquery'arg ->
+            ((unit -> t_Finder'V1'lastquery'res) -> unit) ->
+            unit
+    val shutdown :
+            U'C.t ->
+            t_Finder'V1'shutdown'arg ->
+            t_Finder'V1'shutdown'res
+    val shutdown'async :
+            U'C.t ->
+            t_Finder'V1'shutdown'arg ->
+            ((unit -> t_Finder'V1'shutdown'res) -> unit) ->
+            unit
+    
+  end
+  
+end
+
 module Finder : sig
   module V1 : sig
     open Finder_service_aux
+    type t = Rpc_client.t
     val create_client :
             ?esys:Unixqueue.event_system ->
-            ?program_number:Rtypes.uint4 -> 
-            ?version_number:Rtypes.uint4 -> 
+            ?program_number:Netnumber.uint4 -> 
+            ?version_number:Netnumber.uint4 -> 
             Rpc_client.connector ->
             Rpc.protocol ->
             Rpc_client.t
     val create_portmapped_client :
             ?esys:Unixqueue.event_system ->
-            ?program_number:Rtypes.uint4 -> 
-            ?version_number:Rtypes.uint4 -> 
+            ?program_number:Netnumber.uint4 -> 
+            ?version_number:Netnumber.uint4 -> 
             string ->
             Rpc.protocol ->
             Rpc_client.t
     val create_client2 :
             ?esys:Unixqueue.event_system ->
-            ?program_number:Rtypes.uint4 -> 
-            ?version_number:Rtypes.uint4 -> 
+            ?program_number:Netnumber.uint4 -> 
+            ?version_number:Netnumber.uint4 -> 
             Rpc_client.mode2 ->
             Rpc_client.t
+    val _program : Rpc_program.t
     val ping : Rpc_client.t -> t_Finder'V1'ping'arg -> t_Finder'V1'ping'res
     val ping'async :
             Rpc_client.t ->

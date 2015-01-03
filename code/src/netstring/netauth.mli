@@ -18,6 +18,8 @@ val hmac : h:(string->string) ->
       Common values of [b] and [l]:
       - For [h=MD5]: [b=64], [l=16]
       - For [h=SHA-1]: [b=64], [l=20]
+
+      See also {!Netsys_digests.hmac} for a better implementation.
    *)
 
 type key_type =

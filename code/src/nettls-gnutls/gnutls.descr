@@ -1,0 +1,1629 @@
+(* -*- tuareg -*- *)
+
+(* The minimum tested version is gnutls-2.8.6, as found in Debian Squeeze *)
+
+#use "stubgen.ml"
+
+let types =
+  [ "gnutls_cipher_algorithm_t", `Abstract_enum;
+    "gnutls_kx_algorithm_t",     `Abstract_enum;
+    "gnutls_mac_algorithm_t",    `Abstract_enum;
+    "gnutls_compression_method_t", `Abstract_enum;
+    "gnutls_pk_algorithm_t",     `Abstract_enum;
+    "gnutls_sign_algorithm_t",   `Abstract_enum;
+    "gnutls_certificate_type_t", `Abstract_enum;
+
+    "gnutls_digest_algorithm_t", `Same_as "gnutls_mac_algorithm_t";
+
+    "gnutls_session_t",          abstract_ptr "b_free_session";
+    "gnutls_dh_params_t",        abstract_ptr "gnutls_dh_params_deinit";
+
+    (* "gnutls_ecdh_params_t",      `Abstract_ptr; *)
+    (* "gnutls_rsa_params_t",       `Abstract_ptr; *)
+
+    "gnutls_priority_t",         abstract_ptr "gnutls_priority_deinit";
+
+    "gnutls_cipher_hd_t",        abstract_ptr "gnutls_cipher_deinit";
+
+    "gnutls_x509_privkey_t",     abstract_ptr "gnutls_x509_privkey_deinit"; 
+    "gnutls_x509_crl_t",         abstract_ptr "gnutls_x509_crl_deinit";
+    "gnutls_x509_crt_t",         abstract_ptr "gnutls_x509_crt_deinit";
+    (* "gnutls_x509_crq_t",         `Abstract_ptr; (* in x509.h *) *)
+    "gnutls_openpgp_keyring_t",  abstract_ptr "gnutls_openpgp_keyring_deinit";
+    "gnutls_certificate_credentials_t",  abstract_ptr "gnutls_certificate_free_credentials";
+    "gnutls_anon_server_credentials_t", abstract_ptr "gnutls_anon_free_server_credentials";
+    "gnutls_anon_client_credentials_t", abstract_ptr "gnutls_anon_free_client_credentials";
+    "gnutls_srp_server_credentials_t", abstract_ptr "gnutls_srp_free_server_credentials";
+    "gnutls_srp_client_credentials_t", abstract_ptr "gnutls_srp_free_client_credentials";
+    "gnutls_psk_server_credentials_t", abstract_ptr "gnutls_psk_free_server_credentials";
+    "gnutls_psk_client_credentials_t", abstract_ptr "gnutls_psk_free_client_credentials";
+    (* "gnutls_openpgp_crt_t",            `Abstract_ptr; *)
+    (* "gnutls_openpgp_privkey_t",        `Abstract_ptr; *)
+    (* "gnutls_pkcs11_privkey_t",         `Abstract_ptr; *)
+
+    (* "gnutls_datum_t",            `Abstract_ptr; *)
+    (* "gnutls_params_function",    `Abstract_val;  (* CHECK *)*)
+
+    "gnutls_params_type_t",      `Enum [ "GNUTLS_PARAMS_|RSA_EXPORT";
+                                         "GNUTLS_PARAMS_|DH";
+                                         "?GNUTLS_PARAMS_|ECDH"
+                                       ];
+    "gnutls_credentials_type_t", `Enum [ "GNUTLS_CRD_|CERTIFICATE";
+                                         "GNUTLS_CRD_|ANON";
+                                         "GNUTLS_CRD_|SRP";
+                                         "GNUTLS_CRD_|PSK";
+                                         "GNUTLS_CRD_|IA"
+                                       ];
+    "gnutls_alert_level_t",      `Enum [ "GNUTLS_AL_|WARNING";
+                                         "GNUTLS_AL_|FATAL"
+                                       ];
+    "gnutls_alert_description_t",`Enum [ "GNUTLS_A_|CLOSE_NOTIFY";
+                                         "GNUTLS_A_|UNEXPECTED_MESSAGE";
+                                         "GNUTLS_A_|BAD_RECORD_MAC";
+                                         "GNUTLS_A_|DECRYPTION_FAILED";
+                                         "GNUTLS_A_|RECORD_OVERFLOW";
+                                         "GNUTLS_A_|DECOMPRESSION_FAILURE";
+                                         "GNUTLS_A_|HANDSHAKE_FAILURE";
+                                         "GNUTLS_A_|SSL3_NO_CERTIFICATE";
+                                         "GNUTLS_A_|BAD_CERTIFICATE";
+                                         "GNUTLS_A_|UNSUPPORTED_CERTIFICATE";
+                                         "GNUTLS_A_|CERTIFICATE_REVOKED";
+                                         "GNUTLS_A_|CERTIFICATE_EXPIRED";
+                                         "GNUTLS_A_|CERTIFICATE_UNKNOWN";
+                                         "GNUTLS_A_|ILLEGAL_PARAMETER";
+                                         "GNUTLS_A_|UNKNOWN_CA";
+                                         "GNUTLS_A_|ACCESS_DENIED";
+                                         "GNUTLS_A_|DECODE_ERROR";
+                                         "GNUTLS_A_|DECRYPT_ERROR";
+                                         "GNUTLS_A_|EXPORT_RESTRICTION";
+                                         "GNUTLS_A_|PROTOCOL_VERSION";
+                                         "GNUTLS_A_|INSUFFICIENT_SECURITY";
+                                         "GNUTLS_A_|INTERNAL_ERROR";
+                                         "GNUTLS_A_|USER_CANCELED";
+                                         "GNUTLS_A_|NO_RENEGOTIATION";
+                                         "GNUTLS_A_|UNSUPPORTED_EXTENSION";
+                                         "GNUTLS_A_|CERTIFICATE_UNOBTAINABLE";
+                                         "GNUTLS_A_|UNRECOGNIZED_NAME";
+                                         "GNUTLS_A_|UNKNOWN_PSK_IDENTITY";
+                                         "?GNUTLS_A_|INNER_APPLICATION_FAILURE";
+                                         "?GNUTLS_A_|INNER_APPLICATION_VERIFICATION";
+                                       ];
+    "gnutls_handshake_description_t",
+                                 `Enum [ "GNUTLS_HANDSHAKE_|HELLO_REQUEST";
+                                         "GNUTLS_HANDSHAKE_|CLIENT_HELLO";
+                                         "GNUTLS_HANDSHAKE_|SERVER_HELLO";
+                                         "?GNUTLS_HANDSHAKE_|HELLO_VERIFY_REQUEST";
+                                         "?GNUTLS_HANDSHAKE_|NEW_SESSION_TICKET";
+                                         "GNUTLS_HANDSHAKE_|CERTIFICATE_PKT";
+                                         "GNUTLS_HANDSHAKE_|SERVER_KEY_EXCHANGE";
+                                         "GNUTLS_HANDSHAKE_|CERTIFICATE_REQUEST";
+                                         "GNUTLS_HANDSHAKE_|SERVER_HELLO_DONE";
+                                         "GNUTLS_HANDSHAKE_|CERTIFICATE_VERIFY";
+                                         "GNUTLS_HANDSHAKE_|CLIENT_KEY_EXCHANGE";
+                                         "GNUTLS_HANDSHAKE_|FINISHED";
+                                         "GNUTLS_HANDSHAKE_|SUPPLEMENTAL";
+                                         "?GNUTLS_HANDSHAKE_|CHANGE_CIPHER_SPEC";
+                                         "?GNUTLS_HANDSHAKE_|CLIENT_HELLO_V2";
+                                       ];
+    "gnutls_certificate_status_t",
+                                 `Flags [ "GNUTLS_CERT_|INVALID";
+                                          "GNUTLS_CERT_|REVOKED";
+                                          "GNUTLS_CERT_|SIGNER_NOT_FOUND";
+                                          "GNUTLS_CERT_|SIGNER_NOT_CA";
+                                          "GNUTLS_CERT_|INSECURE_ALGORITHM";
+                                          "GNUTLS_CERT_|NOT_ACTIVATED";
+                                          "GNUTLS_CERT_|EXPIRED";
+                                        ];
+    "gnutls_certificate_request_t",
+                                  `Enum [ "GNUTLS_CERT_|IGNORE";
+                                          "GNUTLS_CERT_|REQUEST";
+                                          "GNUTLS_CERT_|REQUIRE";
+                                        ];
+    "gnutls_certificate_verify_flags",
+                                  `Flags [ "GNUTLS_VERIFY_|DISABLE_CA_SIGN";
+                                           "GNUTLS_VERIFY_|ALLOW_X509_V1_CA_CRT";
+                                           "GNUTLS_VERIFY_|DO_NOT_ALLOW_SAME";
+                                           "GNUTLS_VERIFY_|ALLOW_ANY_X509_V1_CA_CRT";
+                                           "GNUTLS_VERIFY_|ALLOW_SIGN_RSA_MD2";
+                                           "GNUTLS_VERIFY_|ALLOW_SIGN_RSA_MD5";
+                                           "GNUTLS_VERIFY_|DISABLE_TIME_CHECKS";
+                                           "?GNUTLS_VERIFY_|DISABLE_TRUSTED_TIME_CHECKS";
+                                           "?GNUTLS_VERIFY_|DO_NOT_ALLOW_X509_V1_CA_CRT";
+                                           "?GNUTLS_VERIFY_|DISABLE_CRL_CHECKS";
+                                         ];
+
+    "gnutls_openpgp_crt_status_t",
+                                  `Enum [ "GNUTLS_OPENPGP_|CERT";
+                                          "GNUTLS_OPENPGP_|CERT_FINGERPRINT"
+                                        ];
+    "gnutls_close_request_t",     `Enum [ "GNUTLS_SHUT_|RDWR";
+                                          "GNUTLS_SHUT_|WR";
+                                        ];
+
+    "gnutls_protocol_t",          `Enum [ "GNUTLS_|SSL3";
+                                          "GNUTLS_|TLS1_0";
+                                          "GNUTLS_|TLS1_1";
+                                          "GNUTLS_|TLS1_2";
+                                          "?GNUTLS_|DTLS1_0";
+                                          "GNUTLS_|VERSION_UNKNOWN";
+                                        ];
+    "gnutls_x509_crt_fmt_t",      `Enum [ "GNUTLS_X509_FMT_|DER";
+                                          "GNUTLS_X509_FMT_|PEM"
+                                        ];
+    "gnutls_certificate_print_formats_t",
+                                  `Enum [ "GNUTLS_CRT_PRINT_|FULL";
+                                          "GNUTLS_CRT_PRINT_|ONELINE";
+                                          "GNUTLS_CRT_PRINT_|UNSIGNED_FULL";
+                                        ];
+    "gnutls_ecc_curve_t",         `Enum [ "GNUTLS_ECC_CURVE_|INVALID";
+                                          "GNUTLS_ECC_CURVE_|SECP224R1";
+                                          "GNUTLS_ECC_CURVE_|SECP256R1";
+                                          "GNUTLS_ECC_CURVE_|SECP384R1";
+                                          "GNUTLS_ECC_CURVE_|SECP521R1";
+                                          "GNUTLS_ECC_CURVE_|SECP192R1";
+                                        ];
+    "gnutls_sec_param_t",         `Enum [ "GNUTLS_SEC_PARAM_|UNKNOWN";
+                                          "GNUTLS_SEC_PARAM_|WEAK";
+                                          "GNUTLS_SEC_PARAM_|LOW";
+                                          "GNUTLS_SEC_PARAM_|NORMAL";
+                                          "GNUTLS_SEC_PARAM_|HIGH";
+                                          "GNUTLS_SEC_PARAM_|ULTRA"
+                                        ];
+
+    "gnutls_init_flags",         `Flags [ "GNUTLS_|SERVER";
+                                          "GNUTLS_|CLIENT";
+                                          "?GNUTLS_|DATAGRAM";
+                                          "?GNUTLS_|NONBLOCK"
+                                        ];
+    "gnutls_server_name_type_t",  `Enum [ "GNUTLS_NAME_|DNS" ];
+
+    "gnutls_supplemental_data_format_type_t",
+                            `Enum [ "GNUTLS_SUPPLEMENTAL_|USER_MAPPING_DATA" ];
+
+    "gnutls_psk_key_flags", `Enum [ "GNUTLS_PSK_KEY_|RAW";
+                                    "GNUTLS_PSK_KEY_|HEX" ];
+
+    "gnutls_x509_subject_alt_name_t", `Enum [ "GNUTLS_SAN_|DNSNAME";
+                                              "GNUTLS_SAN_|RFC822NAME";
+                                              "GNUTLS_SAN_|URI";
+                                              "GNUTLS_SAN_|IPADDRESS";
+                                              "GNUTLS_SAN_|OTHERNAME";
+                                              "GNUTLS_SAN_|DN";
+                                              "GNUTLS_SAN_|OTHERNAME_XMPP";
+                                            ];
+    "gnutls_privkey_type_t",   `Enum [ "GNUTLS_PRIVKEY_|X509";
+                                       "GNUTLS_PRIVKEY_|OPENPGP";
+                                       "GNUTLS_PRIVKEY_|PKCS11";
+                                       "?GNUTLS_PRIVKEY_|EXT"
+                                     ];
+
+    "key_usage", `Flags [ "GNUTLS_KEY_|DIGITAL_SIGNATURE";
+                          "GNUTLS_KEY_|NON_REPUDIATION";
+                          "GNUTLS_KEY_|KEY_ENCIPHERMENT";
+                          "GNUTLS_KEY_|DATA_ENCIPHERMENT";
+                          "GNUTLS_KEY_|KEY_AGREEMENT";
+                          "GNUTLS_KEY_|KEY_CERT_SIGN";
+                          "GNUTLS_KEY_|CRL_SIGN";
+                          "GNUTLS_KEY_|ENCIPHER_ONLY";
+                          "GNUTLS_KEY_|DECIPHER_ONLY";
+                        ];
+    "gnutls_channel_binding_t", `Enum [ "GNUTLS_CB_|TLS_UNIQUE" ];
+    "gnutls_info_access_what_t", `Enum [ "GNUTLS_IA_|ACCESSMETHOD_OID";
+                                         "GNUTLS_IA_|ACCESSLOCATION_GENERALNAME_TYPE";
+                                         "GNUTLS_IA_|URI";
+                                         "GNUTLS_IA_|OCSP_URI";
+                                         "GNUTLS_IA_|CAISSUERS_URI";
+                                       ];
+    "gnutls_certificate_import_flags", 
+        `Flags [ "?GNUTLS_X509_CRT_LIST_|FAIL_IF_UNSORTED";
+                 "GNUTLS_X509_CRT_LIST_|IMPORT_FAIL_IF_EXCEED";
+               ];
+    "error_code", `Enum [ "GNUTLS_E_|SUCCESS";
+                          "GNUTLS_E_|UNKNOWN_COMPRESSION_ALGORITHM";
+                          "GNUTLS_E_|UNKNOWN_CIPHER_TYPE";
+                          "GNUTLS_E_|LARGE_PACKET";
+                          "GNUTLS_E_|UNSUPPORTED_VERSION_PACKET";
+                          "GNUTLS_E_|UNEXPECTED_PACKET_LENGTH";
+                          "GNUTLS_E_|INVALID_SESSION";
+                          "GNUTLS_E_|FATAL_ALERT_RECEIVED";
+                          "GNUTLS_E_|UNEXPECTED_PACKET";
+                          "GNUTLS_E_|WARNING_ALERT_RECEIVED";
+                          "GNUTLS_E_|ERROR_IN_FINISHED_PACKET";
+                          "GNUTLS_E_|UNEXPECTED_HANDSHAKE_PACKET";
+                          "GNUTLS_E_|UNKNOWN_CIPHER_SUITE";
+                          "GNUTLS_E_|UNWANTED_ALGORITHM";
+                          "GNUTLS_E_|MPI_SCAN_FAILED";
+                          "GNUTLS_E_|DECRYPTION_FAILED";
+                          "GNUTLS_E_|MEMORY_ERROR";
+                          "GNUTLS_E_|DECOMPRESSION_FAILED";
+                          "GNUTLS_E_|COMPRESSION_FAILED";
+                          "GNUTLS_E_|AGAIN";
+                          "GNUTLS_E_|EXPIRED";
+                          "GNUTLS_E_|DB_ERROR";
+                          "GNUTLS_E_|SRP_PWD_ERROR";
+                          "GNUTLS_E_|INSUFFICIENT_CREDENTIALS";
+                          "GNUTLS_E_|HASH_FAILED";
+                          "GNUTLS_E_|BASE64_DECODING_ERROR";
+                          "GNUTLS_E_|MPI_PRINT_FAILED";
+                          "GNUTLS_E_|REHANDSHAKE";
+                          "GNUTLS_E_|GOT_APPLICATION_DATA";
+                          "GNUTLS_E_|RECORD_LIMIT_REACHED";
+                          "GNUTLS_E_|ENCRYPTION_FAILED";
+                          "GNUTLS_E_|PK_ENCRYPTION_FAILED";
+                          "GNUTLS_E_|PK_DECRYPTION_FAILED";
+                          "GNUTLS_E_|PK_SIGN_FAILED";
+                          "GNUTLS_E_|X509_UNSUPPORTED_CRITICAL_EXTENSION";
+                          "GNUTLS_E_|KEY_USAGE_VIOLATION";
+                          "GNUTLS_E_|NO_CERTIFICATE_FOUND";
+                          "GNUTLS_E_|INVALID_REQUEST";
+                          "GNUTLS_E_|SHORT_MEMORY_BUFFER";
+                          "GNUTLS_E_|INTERRUPTED";
+                          "GNUTLS_E_|PUSH_ERROR";
+                          "GNUTLS_E_|PULL_ERROR";
+                          "GNUTLS_E_|RECEIVED_ILLEGAL_PARAMETER";
+                          "GNUTLS_E_|REQUESTED_DATA_NOT_AVAILABLE";
+                          "GNUTLS_E_|PKCS1_WRONG_PAD";
+                          "GNUTLS_E_|RECEIVED_ILLEGAL_EXTENSION";
+                          "GNUTLS_E_|INTERNAL_ERROR";
+                          "GNUTLS_E_|DH_PRIME_UNACCEPTABLE";
+                          "GNUTLS_E_|FILE_ERROR";
+                          "GNUTLS_E_|TOO_MANY_EMPTY_PACKETS";
+                          "GNUTLS_E_|UNKNOWN_PK_ALGORITHM";
+                          "?GNUTLS_E_|TOO_MANY_HANDSHAKE_PACKETS";
+                          "GNUTLS_E_|NO_TEMPORARY_RSA_PARAMS";
+                          "GNUTLS_E_|NO_COMPRESSION_ALGORITHMS";
+                          "GNUTLS_E_|NO_CIPHER_SUITES";
+                          "GNUTLS_E_|OPENPGP_GETKEY_FAILED";
+                          "GNUTLS_E_|PK_SIG_VERIFY_FAILED";
+                          "GNUTLS_E_|ILLEGAL_SRP_USERNAME";
+                          "GNUTLS_E_|SRP_PWD_PARSING_ERROR";
+                          "GNUTLS_E_|NO_TEMPORARY_DH_PARAMS";
+                          "GNUTLS_E_|ASN1_ELEMENT_NOT_FOUND";
+                          "GNUTLS_E_|ASN1_IDENTIFIER_NOT_FOUND";
+                          "GNUTLS_E_|ASN1_DER_ERROR";
+                          "GNUTLS_E_|ASN1_VALUE_NOT_FOUND";
+                          "GNUTLS_E_|ASN1_GENERIC_ERROR";
+                          "GNUTLS_E_|ASN1_VALUE_NOT_VALID";
+                          "GNUTLS_E_|ASN1_TAG_ERROR";
+                          "GNUTLS_E_|ASN1_TAG_IMPLICIT";
+                          "GNUTLS_E_|ASN1_TYPE_ANY_ERROR";
+                          "GNUTLS_E_|ASN1_SYNTAX_ERROR";
+                          "GNUTLS_E_|ASN1_DER_OVERFLOW";
+                          "GNUTLS_E_|OPENPGP_UID_REVOKED";
+                          "GNUTLS_E_|CERTIFICATE_ERROR";
+                          (* "GNUTLS_E_|X509_CERTIFICATE_ERROR"; *)
+                          "GNUTLS_E_|CERTIFICATE_KEY_MISMATCH";
+                          "GNUTLS_E_|UNSUPPORTED_CERTIFICATE_TYPE";
+                          "GNUTLS_E_|X509_UNKNOWN_SAN";
+                          "GNUTLS_E_|OPENPGP_FINGERPRINT_UNSUPPORTED";
+                          "GNUTLS_E_|X509_UNSUPPORTED_ATTRIBUTE";
+                          "GNUTLS_E_|UNKNOWN_HASH_ALGORITHM";
+                          "GNUTLS_E_|UNKNOWN_PKCS_CONTENT_TYPE";
+                          "GNUTLS_E_|UNKNOWN_PKCS_BAG_TYPE";
+                          "GNUTLS_E_|INVALID_PASSWORD";
+                          "GNUTLS_E_|MAC_VERIFY_FAILED";
+                          "GNUTLS_E_|CONSTRAINT_ERROR";
+                          "GNUTLS_E_|WARNING_IA_IPHF_RECEIVED";
+                          "GNUTLS_E_|WARNING_IA_FPHF_RECEIVED";
+                          "GNUTLS_E_|IA_VERIFY_FAILED";
+                          "GNUTLS_E_|UNKNOWN_ALGORITHM";
+                          "?GNUTLS_E_|UNSUPPORTED_SIGNATURE_ALGORITHM";
+                          "?GNUTLS_E_|SAFE_RENEGOTIATION_FAILED";
+                          "?GNUTLS_E_|UNSAFE_RENEGOTIATION_DENIED";
+                          "?GNUTLS_E_|UNKNOWN_SRP_USERNAME";
+                          "?GNUTLS_E_|PREMATURE_TERMINATION";
+                          "GNUTLS_E_|BASE64_ENCODING_ERROR";
+                          (* "GNUTLS_E_|INCOMPATIBLE_GCRYPT_LIBRARY"; *)
+                          "GNUTLS_E_|INCOMPATIBLE_CRYPTO_LIBRARY";
+                          "GNUTLS_E_|INCOMPATIBLE_LIBTASN1_LIBRARY";
+                          "GNUTLS_E_|OPENPGP_KEYRING_ERROR";
+                          "GNUTLS_E_|X509_UNSUPPORTED_OID";
+                          "GNUTLS_E_|RANDOM_FAILED";
+                          "GNUTLS_E_|BASE64_UNEXPECTED_HEADER_ERROR";
+                          "GNUTLS_E_|OPENPGP_SUBKEY_ERROR";
+                          "GNUTLS_E_|CRYPTO_ALREADY_REGISTERED";
+                          "GNUTLS_E_|HANDSHAKE_TOO_LARGE";
+                          "?GNUTLS_E_|CRYPTODEV_IOCTL_ERROR";
+                          "?GNUTLS_E_|CRYPTODEV_DEVICE_ERROR";
+                          "?GNUTLS_E_|CHANNEL_BINDING_NOT_AVAILABLE";
+                          "?GNUTLS_E_|BAD_COOKIE";
+                          "?GNUTLS_E_|OPENPGP_PREFERRED_KEY_ERROR";
+                          "?GNUTLS_E_|INCOMPAT_DSA_KEY_WITH_TLS_PROTOCOL";
+                          "?GNUTLS_E_|PKCS11_ERROR";
+                          "?GNUTLS_E_|PKCS11_LOAD_ERROR";
+                          "?GNUTLS_E_|PARSING_ERROR";
+                          "?GNUTLS_E_|PKCS11_PIN_ERROR";
+                          "?GNUTLS_E_|PKCS11_SLOT_ERROR";
+                          "?GNUTLS_E_|LOCKING_ERROR";
+                          "?GNUTLS_E_|PKCS11_ATTRIBUTE_ERROR";
+                          "?GNUTLS_E_|PKCS11_DEVICE_ERROR";
+                          "?GNUTLS_E_|PKCS11_DATA_ERROR";
+                          "?GNUTLS_E_|PKCS11_UNSUPPORTED_FEATURE_ERROR";
+                          "?GNUTLS_E_|PKCS11_KEY_ERROR";
+                          "?GNUTLS_E_|PKCS11_PIN_EXPIRED";
+                          "?GNUTLS_E_|PKCS11_PIN_LOCKED";
+                          "?GNUTLS_E_|PKCS11_SESSION_ERROR";
+                          "?GNUTLS_E_|PKCS11_SIGNATURE_ERROR";
+                          "?GNUTLS_E_|PKCS11_TOKEN_ERROR";
+                          "?GNUTLS_E_|PKCS11_USER_ERROR";
+                          "?GNUTLS_E_|CRYPTO_INIT_FAILED";
+                          "?GNUTLS_E_|TIMEDOUT";
+                          "?GNUTLS_E_|USER_ERROR";
+                          "?GNUTLS_E_|ECC_NO_SUPPORTED_CURVES";
+                          "?GNUTLS_E_|ECC_UNSUPPORTED_CURVE";
+                          "?GNUTLS_E_|PKCS11_REQUESTED_OBJECT_NOT_AVAILBLE";
+                          "?GNUTLS_E_|CERTIFICATE_LIST_UNSORTED";
+                          "?GNUTLS_E_|ILLEGAL_PARAMETER";
+                          "GNUTLS_E_|UNIMPLEMENTED_FEATURE";
+                        ];
+    "gnutls_pkcs_encrypt_flags_t",
+                   `Flags [ "GNUTLS_PKCS_|PLAIN";
+                            "GNUTLS_PKCS_|USE_PKCS12_3DES";
+                            "GNUTLS_PKCS_|USE_PKCS12_ARCFOUR";
+                            "GNUTLS_PKCS_|USE_PKCS12_RC2_40";
+                            "GNUTLS_PKCS_|USE_PBES2_3DES";
+                          ];
+
+    "empty_flags", `Flags [ "DUMMY" ];
+    "str_datum", `Manual("type str_datum = string");
+    "str_datum_p", `Manual("type str_datum_p = string");
+    "const_str_datum_p", `Manual("type const_str_datum_p = string");
+  ]
+
+(* standard parser:
+    - all params are input
+    - net_gnutls_error_code = int is checked
+ *)
+
+(* abbrevs:
+    - uint = unsigned int
+    - ztstr = zero-terminated string
+    - <elt> ztlist = zero-terminated list (of ints or enums)
+    - <elt> array = array of something
+    - array_size
+    - <id> bigarray = a data buffer as bigarray
+    - <id> bigarray_size = the size of the bigarray
+    - (bigarray_datum = a gnutls_datum_t * as bigarray)
+    - str_datum = a gnutls_datum_t * as string
+    - file_descr
+
+   Output values are not deallocated by the generated wrapper code.
+ *)
+
+let standard ?(ask_for_size=false) ?(optional=false) ?(options=[]) decl =
+  let (name, result, params) = parse decl in
+  let params1 =
+    List.map 
+      (fun (n,tag,ty) -> 
+         if ask_for_size && 
+              (ty = "1 bigarray_size" ||
+               ty = "1 stringbuf_size" ||
+               ty = "1 ztstringbuf_size") then
+           (n, `Out_ignore, ty)
+         else if ask_for_size && (ty = "1 stringbuf" || ty = "1 ztstringbuf")
+         then
+           (n, `Out, ty)
+         else
+           (n,  tag, ty)
+      )
+      params in
+  (name,
+   params1 @ 
+     [ "result", 
+       (if result = "void" || result = "error_code" then
+          `Return_ignore 
+        else `Return
+       ), 
+       result
+     ],
+   (if ask_for_size then [ `GNUTLS_ask_for_size ] else []) @
+   (if result = "error_code" || has_prefix ~prefix:"error_code/" result then
+      [ `Post("net_gnutls_error_check(RESULT);") ]
+    else
+      []
+   ) @
+   (if optional then [ `Optional ] else []) @
+   options
+  )
+
+
+(*
+let standard_blocking decl =
+  let (name, params, directives) = standard decl in
+  (name, params, directives @ [ `Blocking ])
+ *)
+
+let functions =
+  [ standard
+      "void gnutls_global_init()";
+
+    standard
+      "bool gnutls_error_is_fatal(error_code error)";    
+    standard
+      "const ztstr gnutls_strerror(error_code error)";
+    standard
+      "const ztstr gnutls_strerror_name(error_code error)";
+
+    "gnutls_check_version",
+    [ "req_version", `In_ignore, "const_charp";
+      "result", `Return, "const ztstr"
+    ],
+    [ `Pre("req_version__c = NULL;") ];
+
+    (**********************************************************************)
+    (* Logging                                                            *)
+    (**********************************************************************)
+    standard
+      "void gnutls_global_set_log_level (int level)";
+    (* TODO: gnutls_global_set_log_function *)
+    (* TODO: gnutls_global_set_audit_log_function *)
+
+    (**********************************************************************)
+    (* Session and transport basics                                       *)
+    (**********************************************************************)
+    "gnutls_init",  
+    [ "session", `Out, "gnutls_session_t";
+      "flags",   `In,  "gnutls_init_flags";
+      "result",  `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Post("attach_session_callbacks(session__c);");
+    ];
+
+    standard
+      "void gnutls_certificate_server_set_request \
+           (gnutls_session_t session, gnutls_certificate_request_t req)";
+
+    standard
+      "void gnutls_certificate_send_x509_rdn_sequence \
+           (gnutls_session_t session, bool status)";
+
+    "gnutls_certificate_verify_peers2",
+    [ "session", `In, "gnutls_session_t";
+      "status", `Out, "gnutls_certificate_status_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    "gnutls_certificate_get_peers",
+    [ "session", `In, "gnutls_session_t";
+      "list_size", `Out_ignore, "result array_size_uint";
+      "result", `Return, "const str_datum array";
+    ],
+    [];
+
+(*
+    standard
+      "void net_gnutls_transport_set_int \
+           (gnutls_session_t session, file_descr fd)";
+ *)
+    standard
+      "bool gnutls_record_get_direction (gnutls_session_t session)";
+    standard
+      "error_code gnutls_handshake (gnutls_session_t session)";
+    standard
+      "error_code gnutls_rehandshake (gnutls_session_t session)";
+    standard
+      ~options: [
+        `Pre("if (data_size__c < 0 || \
+                  data_size__c > caml_ba_byte_size(Caml_ba_array_val(data))) \
+                      invalid_argument(\"gnutls_record_send\");"
+            )
+      ]
+      "error_code/uint gnutls_record_send \
+          (gnutls_session_t session, 1 bigarray data, int data_size)";
+    standard
+      "error_code/uint gnutls_record_recv \
+          (gnutls_session_t session, 1 bigarray data, 1 bigarray_size data_size)";
+    (* TODO: gnutls_record_recv_seq *)
+
+    standard
+      "uint gnutls_record_check_pending (gnutls_session_t session)";
+    standard
+      "error_code gnutls_bye \
+          (gnutls_session_t session, gnutls_close_request_t how)";
+
+    (**********************************************************************)
+    (* Alerts                                                             *)
+    (**********************************************************************)
+
+    standard
+      "gnutls_alert_description_t gnutls_alert_get (gnutls_session_t session)";
+    standard
+      "const ztstr gnutls_alert_get_name (gnutls_alert_description_t alert)";
+    standard
+      ~optional:true
+      "const ztstr gnutls_alert_get_strname (gnutls_alert_description_t alert)";
+    standard
+      "error_code gnutls_alert_send (gnutls_session_t session, \
+             gnutls_alert_level_t level, \
+             gnutls_alert_description_t desc)";
+    standard
+      "error_code gnutls_alert_send_appropriate \
+          (gnutls_session_t session, int err)";
+    "gnutls_error_to_alert",
+    [ "error", `In, "error_code";
+      "level", `Out, "int/gnutls_alert_level_t";
+      "result", `Return, "gnutls_alert_description_t";
+    ],
+    [];
+
+    (**********************************************************************)
+    (* Priority strings                                                   *)
+    (**********************************************************************)
+
+    "gnutls_priority_init",
+    [ "prority_cache", `Out, "gnutls_priority_t";
+      "priorities", `In, "ztstr";
+      "err_pos", `In_ignore, "const char **";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Declare("const char *err_pos_dummy;");
+      `Pre("err_pos__c = &err_pos_dummy;");
+      `Post("net_gnutls_error_check(RESULT);")
+    ];
+
+    "gnutls_priority_get_cipher_suite_index",
+    [ "pcache", `In, "gnutls_priority_t";
+      "idx", `In, "uint";
+      "sidx", `Out, "uint";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
+
+    standard
+      "error_code gnutls_priority_set \
+            (gnutls_session_t session, gnutls_priority_t priority)";
+    standard
+      "error_code gnutls_set_default_priority (gnutls_session_t session)";
+
+
+    (**********************************************************************)
+    (* sec_param                                                          *)
+    (**********************************************************************)
+
+    standard
+      ~optional:true
+      "uint gnutls_sec_param_to_pk_bits (gnutls_pk_algorithm_t algo, \
+                                            gnutls_sec_param_t param)";
+    standard
+      ~optional:true
+      "gnutls_sec_param_t gnutls_pk_bits_to_sec_param \
+                             (gnutls_pk_algorithm_t algo, \
+                              uint bits)";
+    standard
+      ~optional:true
+      "const ztstr gnutls_sec_param_get_name (gnutls_sec_param_t param)";
+
+
+    (**********************************************************************)
+    (* Session serialization client                                       *)
+    (**********************************************************************)
+
+    standard
+      "error_code gnutls_session_set_data \
+           (gnutls_session_t session, \
+            1 stringbuf session_data, 1 stringbuf_size session_data_size)";
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_session_get_data \
+           (gnutls_session_t session, \
+            1 stringbuf session_data, 1 stringbuf_size session_data_size)";
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_session_get_id \
+           (gnutls_session_t session, \
+            1 stringbuf session_id, 1 stringbuf_size session_id_size)";
+
+    standard
+      "bool gnutls_session_is_resumed (gnutls_session_t session)";
+
+    (**********************************************************************)
+    (* Session serialization server                                       *)
+    (**********************************************************************)
+
+    (* TODO: gnutls_db_set_retrieve/remove/store_function *)
+
+    standard
+      "void gnutls_db_set_cache_expiration \
+           (gnutls_session_t session, int seconds)";
+    standard
+      "void gnutls_db_remove_session (gnutls_session_t session)";
+    standard
+      "int gnutls_db_check_entry \
+           (gnutls_session_t session, str_datum session_entry)";
+
+    (**********************************************************************)
+    (* Session tickets                                                    *)
+    (**********************************************************************)
+
+    "gnutls_session_ticket_key_generate",
+    [ "key", `Out, "str_datum";
+      "result",  `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
+
+    standard
+      ~optional:true
+      "error_code gnutls_session_ticket_enable_client \
+           (gnutls_session_t session)";
+    standard
+      ~optional:true
+      "error_code gnutls_session_ticket_enable_server \
+           (gnutls_session_t session, str_datum_p key)";
+
+    (**********************************************************************)
+    (* PRF                                                                *)
+    (**********************************************************************)
+
+    standard
+      "error_code gnutls_prf \
+           (gnutls_session_t session, \
+            1 bigarray_size label_size, 1 bigarray label, \
+            bool server_random_first, \
+            2 bigarray_size extra_size, 2 bigarray extra, \
+            3 bigarray_size outsize, 3 bigarray out)";
+    standard
+      "error_code gnutls_prf_raw \
+           (gnutls_session_t session, \
+            1 bigarray_size label_size, 1 bigarray label, \
+            2 bigarray_size seed_size, 2 bigarray seed,  \
+            3 bigarray_size outsize, 3 bigarray out)";
+
+    (**********************************************************************)
+    (* Channel binding                                                    *)
+    (**********************************************************************)
+
+    "gnutls_session_channel_binding",
+    [ "session", `In, "gnutls_session_t";
+      "cbtype", `In, "gnutls_channel_binding_t";
+      "cb", `Out, "str_datum";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
+
+    (**********************************************************************)
+    (* Elliptic curves                                                    *)
+    (**********************************************************************)
+
+    standard
+      ~optional:true
+      "const ztstr gnutls_ecc_curve_get_name (gnutls_ecc_curve_t curve)";
+    standard
+      ~optional:true
+      "int gnutls_ecc_curve_get_size (gnutls_ecc_curve_t curve)";
+    standard
+      ~optional:true
+      "gnutls_ecc_curve_t gnutls_ecc_curve_get(gnutls_session_t session)";
+
+    (**********************************************************************)
+    (* Algorithms                                                         *)
+    (**********************************************************************)
+
+    standard
+      "gnutls_cipher_algorithm_t gnutls_cipher_get (gnutls_session_t session)";
+    standard
+      "gnutls_kx_algorithm_t gnutls_kx_get (gnutls_session_t session)";
+    standard
+      "gnutls_mac_algorithm_t gnutls_mac_get (gnutls_session_t session)";
+    standard
+      "gnutls_compression_method_t gnutls_compression_get \
+          (gnutls_session_t session)";
+    standard
+      "gnutls_certificate_type_t gnutls_certificate_type_get \
+          (gnutls_session_t session)";
+    
+    standard
+      "uint gnutls_cipher_get_key_size (gnutls_cipher_algorithm_t algorithm)";
+    standard
+      "uint gnutls_mac_get_key_size (gnutls_mac_algorithm_t algorithm)";
+    standard
+      "const ztstr gnutls_cipher_get_name (gnutls_cipher_algorithm_t algorithm)";
+    standard
+      "const ztstr gnutls_mac_get_name (gnutls_mac_algorithm_t algorithm)";
+    standard
+      "const ztstr gnutls_compression_get_name (gnutls_compression_method_t algo)";
+    standard
+      "const ztstr gnutls_kx_get_name (gnutls_kx_algorithm_t algorithm)";
+    standard
+      "const ztstr gnutls_certificate_type_get_name (gnutls_certificate_type_t ty)";
+    standard
+      "const ztstr gnutls_pk_get_name (gnutls_pk_algorithm_t algorithm)";
+    standard
+      "const ztstr gnutls_sign_get_name (gnutls_sign_algorithm_t algorithm)";
+    standard
+      "gnutls_mac_algorithm_t gnutls_mac_get_id(ztstr name)";
+    standard
+      "gnutls_compression_method_t gnutls_compression_get_id(ztstr name)";
+    standard
+      "gnutls_cipher_algorithm_t gnutls_cipher_get_id(ztstr name)";
+    standard
+      "gnutls_kx_algorithm_t gnutls_kx_get_id(ztstr name)";
+    standard
+      "gnutls_protocol_t gnutls_protocol_get_id(ztstr name)";
+    standard
+      "gnutls_certificate_type_t gnutls_certificate_type_get_id(ztstr name)";
+    standard
+      "gnutls_pk_algorithm_t gnutls_pk_get_id(ztstr name)";
+    standard
+      "gnutls_sign_algorithm_t gnutls_sign_get_id(ztstr name)";
+    standard
+      "const gnutls_cipher_algorithm_t ztlist gnutls_cipher_list ()";
+    standard
+      "const gnutls_mac_algorithm_t ztlist gnutls_mac_list()";
+    standard
+      "const gnutls_compression_method_t ztlist gnutls_compression_list()";
+    standard
+      "const gnutls_protocol_t ztlist gnutls_protocol_list()";
+    standard
+      "const gnutls_certificate_type_t ztlist gnutls_certificate_type_list()";
+    standard
+      "const gnutls_kx_algorithm_t ztlist gnutls_kx_list()";
+    standard
+      "const gnutls_pk_algorithm_t ztlist gnutls_pk_list()";
+    standard
+      "const gnutls_sign_algorithm_t ztlist gnutls_sign_list()";
+    standard
+      "gnutls_protocol_t gnutls_protocol_get_version \
+           (gnutls_session_t session)";
+    standard
+      "const ztstr gnutls_protocol_get_name (gnutls_protocol_t version)";
+    standard
+      "const ztstr gnutls_cipher_suite_get_name \
+           (gnutls_kx_algorithm_t kx_algorithm, \
+            gnutls_cipher_algorithm_t cipher_algorithm, \
+            gnutls_mac_algorithm_t mac_algorithm)";
+    (* TODO: gnutls_cipher_suite_info *)
+
+    (**********************************************************************)
+    (* Symmetric cryptography                                             *)
+    (**********************************************************************)
+
+    standard
+      "bool net_have_crypto()";
+
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_init \
+           (OUT gnutls_cipher_hd_t handle, \
+            gnutls_cipher_algorithm_t cipher, \
+            str_datum_p key, \
+            str_datum_p iv)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_encrypt2 \
+           (gnutls_cipher_hd_t handle, \
+            1 bigarray text, \
+            1 bigarray_size textlen, \
+            2 bigarray ciphertext, \
+            2 bigarray_size ciphertextlen)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_decrypt2 \
+           (gnutls_cipher_hd_t handle, \
+            1 bigarray ciphertext, \
+            2 bigarray_size ciphertextlen, \
+            2 bigarray text, \
+            2 bigarray_size textlen)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_add_auth \
+           (gnutls_cipher_hd_t handle, \
+            1 stringbuf text, \
+            1 stringbuf_size text_size)";
+    standard
+      ~optional:true
+      "error_code gnutls_cipher_tag \
+           (gnutls_cipher_hd_t handle, \
+            1 stringbuf tag, \
+            1 stringbuf_size tag_size)";
+
+    (**********************************************************************)
+    (* Handshake details                                                  *)
+    (**********************************************************************)
+
+    standard
+      "void gnutls_handshake_set_private_extensions \
+          (gnutls_session_t session, bool allow)";
+    standard
+      "gnutls_handshake_description_t gnutls_handshake_get_last_out \
+          (gnutls_session_t session)";
+    standard
+      "gnutls_handshake_description_t gnutls_handshake_get_last_in \
+          (gnutls_session_t session)";
+    standard
+      "void gnutls_handshake_set_max_packet_length \
+           (gnutls_session_t session, uint max)";
+    (* TODO: gnutls_handshake_set_post_client_hello_function *)
+
+    (**********************************************************************)
+    (* Session details                                                    *)
+    (**********************************************************************)
+
+    "gnutls_sign_algorithm_get_requested",
+    [ "session", `In, "gnutls_session_t";
+      "indx", `In, "uint";
+      "algo", `Out, "gnutls_sign_algorithm_t";
+      "result",  `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
+
+
+    standard
+      "void gnutls_session_enable_compatibility_mode \
+          (gnutls_session_t session)";
+    standard
+      "void gnutls_record_disable_padding (gnutls_session_t session)";
+    standard
+      "uint gnutls_record_get_max_size (gnutls_session_t session)";
+    standard
+      "error_code gnutls_record_set_max_size \
+           (gnutls_session_t session, uint size)";
+    standard
+      "error_code gnutls_server_name_set \
+           (gnutls_session_t session, \
+            gnutls_server_name_type_t type, \
+            1 stringbuf name, 1 stringbuf_size name_length)";
+    
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_server_name_get \
+           (gnutls_session_t session, \
+            1 ztstringbuf data, \
+            1 ztstringbuf_size data_length, \
+            OUT gnutls_server_name_type_t ty, \
+            uint indx)";
+    
+    standard
+      ~optional:true
+      "bool gnutls_safe_renegotiation_status (gnutls_session_t session)";
+    standard
+      "const ztstr gnutls_supplemental_get_name \
+            (gnutls_supplemental_data_format_type_t ty)";
+
+    standard
+      "void gnutls_credentials_clear (gnutls_session_t session)";
+
+    (**********************************************************************)
+    (* General helpers                                                    *)
+    (**********************************************************************)
+
+    "gnutls_key_generate",
+    [ "key", `Out, "str_datum";
+      "key_size", `In, "uint";
+      "result",  `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);");
+      `Optional
+    ];
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_fingerprint \
+           (gnutls_digest_algorithm_t algo, str_datum_p data, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    (* TODO: gnutls_random_art *)
+
+    (**********************************************************************)
+    (* Certificate credentials                                            *)
+    (**********************************************************************)
+
+    "gnutls_certificate_allocate_credentials",
+    [ "sc", `Out, "gnutls_certificate_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      ~optional:true
+      "error_code gnutls_certificate_set_x509_system_trust \
+           (gnutls_certificate_credentials_t cred)";
+
+    standard
+      "error_code gnutls_certificate_set_x509_trust_file \
+           (gnutls_certificate_credentials_t cred, \
+            ztstr cafile, \
+            gnutls_x509_crt_fmt_t type)";
+    standard
+      "error_code gnutls_certificate_set_x509_trust_mem \
+           (gnutls_certificate_credentials_t res, \
+            str_datum_p ca, \
+            gnutls_x509_crt_fmt_t type)";
+    standard
+      "error_code gnutls_certificate_set_x509_crl_file \
+           (gnutls_certificate_credentials_t cred, \
+            ztstr crlfile, \
+            gnutls_x509_crt_fmt_t type)";
+    standard
+      "error_code gnutls_certificate_set_x509_crl_mem \
+           (gnutls_certificate_credentials_t res, \
+            str_datum_p crl, \
+            gnutls_x509_crt_fmt_t type)";
+    standard
+      "error_code gnutls_certificate_set_x509_key_file \
+           (gnutls_certificate_credentials_t cred, \
+            ztstr certfile, \
+            ztstr keyfile, \
+            gnutls_x509_crt_fmt_t type)";
+    standard
+      "error_code gnutls_certificate_set_x509_key_mem \
+           (gnutls_certificate_credentials_t res, \
+            str_datum_p cert, \
+            str_datum_p key, \
+            gnutls_x509_crt_fmt_t type)";
+    standard
+      "error_code gnutls_certificate_set_x509_simple_pkcs12_file \
+           (gnutls_certificate_credentials_t res, \
+            ztstr pkcs12file, \
+            gnutls_x509_crt_fmt_t type, \
+            ztstr password)";
+    standard
+      "error_code gnutls_certificate_set_x509_simple_pkcs12_mem \
+           (gnutls_certificate_credentials_t res, \
+            str_datum_p p12blob, \
+            gnutls_x509_crt_fmt_t type, \
+            ztstr password)";
+    standard
+      "error_code gnutls_certificate_set_x509_key \
+           (gnutls_certificate_credentials_t res, \
+            gnutls_x509_crt_t array cert_list, \
+            cert_list array_size cert_list_size, \
+            gnutls_x509_privkey_t key)";
+       (* NB: certs and key are copied by this function *)
+    standard
+      "error_code/int gnutls_certificate_set_x509_trust \
+           (gnutls_certificate_credentials_t res, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_size)";
+       (* NB: certs are copied by this function *)
+    standard
+      "error_code/int gnutls_certificate_set_x509_crl \
+           (gnutls_certificate_credentials_t res, \
+            gnutls_x509_crl_t array crl_list, \
+            crl_list array_size crl_list_size)";
+       (* NB: crls are copied by this function *)
+(*
+    "gnutls_certificate_get_openpgp_keyring",
+    [ "sc", `In, "gnutls_certificate_credentials_t";
+      "keyring", `Out, "gnutls_openpgp_keyring_t";
+      "result", `Return_ignore, "void";
+    ],
+    [ ];
+ *)
+
+
+    (**********************************************************************)
+    (* Anon credentials                                                   *)
+    (**********************************************************************)
+
+    "gnutls_anon_allocate_server_credentials",
+    [ "sc", `Out, "gnutls_anon_server_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    (* TODO: gnutls_anon_set_server_params_function *)
+
+    "gnutls_anon_allocate_client_credentials",
+    [ "sc", `Out, "gnutls_anon_client_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+
+    (**********************************************************************)
+    (* Credential parameters (DH)                                         *)
+    (**********************************************************************)
+
+    "gnutls_dh_params_init",
+    [ "dh_params", `Out, "gnutls_dh_params_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_dh_params_import_raw \
+           (gnutls_dh_params_t dh_params, \
+            str_datum_p prime, \
+            str_datum_p generator)";
+    standard
+      "error_code gnutls_dh_params_import_pkcs3 \
+           (gnutls_dh_params_t params, \
+            str_datum_p pkcs3_params, \
+            gnutls_x509_crt_fmt_t format)";
+    standard
+      "error_code gnutls_dh_params_generate2 \
+           (gnutls_dh_params_t params, uint bits)";
+
+    (* TODO: gnutls_dh_params_export_* *)
+
+    standard
+      "error_code gnutls_dh_params_cpy \
+           (gnutls_dh_params_t dst, gnutls_dh_params_t src)";
+
+    standard
+      "void gnutls_certificate_set_dh_params \
+           (gnutls_certificate_credentials_t res, \
+            gnutls_dh_params_t dh_params)";
+    standard
+      "void gnutls_anon_set_server_dh_params \
+           (gnutls_anon_server_credentials_t res, \
+            gnutls_dh_params_t dh_params)";
+
+    standard
+      "void gnutls_psk_set_server_dh_params \
+           (gnutls_psk_server_credentials_t res, \
+            gnutls_dh_params_t dh_params)";
+
+    standard
+      "void gnutls_dh_set_prime_bits \
+           (gnutls_session_t session, uint bits)";
+    standard
+      "int gnutls_dh_get_secret_bits (gnutls_session_t session)";
+    standard
+      "int gnutls_dh_get_peers_public_bits (gnutls_session_t session)";
+    standard
+      "int gnutls_dh_get_prime_bits (gnutls_session_t session)";
+
+    "gnutls_dh_get_group",
+    [ "session", `In, "gnutls_session_t";
+      "raw_gen", `Out, "str_datum";
+      "raw_prime", `Out, "str_datum";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    "gnutls_dh_get_pubkey",
+    [ "session", `In, "gnutls_session_t";
+      "raw_key", `Out, "str_datum";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    (* TODO: gnutls_certificate_set_params_function *)
+    (* TODO: gnutls_anon_set_params_function *)
+    (* TODO: gnutls_psk_set_params_function *)
+
+    (**********************************************************************)
+    (* Certificate details                                                *)
+    (**********************************************************************)
+
+    standard
+      "gnutls_credentials_type_t gnutls_auth_get_type \
+           (gnutls_session_t session)";
+    standard
+      "gnutls_credentials_type_t gnutls_auth_server_get_type \
+           (gnutls_session_t session)";
+    standard
+      "gnutls_credentials_type_t gnutls_auth_client_get_type \
+           (gnutls_session_t session)";
+
+    (* TODO: gnutls_certificate_set_retrieve_function *)
+    (* TODO: gnutls_certificate_set_verify_function *)
+
+    standard
+      "const_str_datum_p gnutls_certificate_get_ours (gnutls_session_t session)";
+    standard
+      "double gnutls_certificate_activation_time_peers \
+           (gnutls_session_t session)";
+    standard
+      "double gnutls_certificate_expiration_time_peers \
+            (gnutls_session_t session)";
+    standard
+      "error_code/bool gnutls_certificate_client_get_request_status \
+            (gnutls_session_t session)";
+
+    (**********************************************************************)
+    (* X509 details                                                       *)
+    (**********************************************************************)
+
+    standard
+      ~optional:true
+      "error_code gnutls_certificate_get_issuer \
+           (gnutls_certificate_credentials_t sc, \
+            gnutls_x509_crt_t cert, OUT gnutls_x509_crt_t issuer, \
+            empty_flags flags)";
+
+    (* TODO_ gnutls_certificate_free_* *)
+
+    standard
+      "void gnutls_certificate_set_verify_flags \
+           (gnutls_certificate_credentials_t res, \
+            gnutls_certificate_verify_flags flags)";
+
+    standard
+      "void gnutls_certificate_set_verify_limits \
+           (gnutls_certificate_credentials_t res, \
+            uint max_bits, \
+            uint max_depth)";
+
+    (**********************************************************************)
+    (* OpenPGP details                                                    *)
+    (**********************************************************************)
+
+    standard
+      "void gnutls_openpgp_send_cert \
+           (gnutls_session_t session, gnutls_openpgp_crt_status_t status)";
+
+
+
+    (**********************************************************************)
+    (* SRP                                                                *)
+    (**********************************************************************)
+
+    "gnutls_srp_allocate_client_credentials",
+    [ "sc", `Out, "gnutls_srp_client_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_srp_set_client_credentials \
+           (gnutls_srp_client_credentials_t res, \
+            ztstr username, ztstr password)";
+
+    "gnutls_srp_allocate_server_credentials",
+    [ "sc", `Out, "gnutls_srp_server_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_srp_set_server_credentials_file \
+           (gnutls_srp_server_credentials_t res, \
+            ztstr password_file, ztstr password_conf_file)";
+    standard
+      "const ztstr gnutls_srp_server_get_username (gnutls_session_t session)";
+    standard
+      "void gnutls_srp_set_prime_bits (gnutls_session_t session, uint bits)";
+
+    "gnutls_srp_verifier",
+    [ "username", `In, "ztstr";
+      "password", `In, "ztstr";
+      "salt", `In, "str_datum_p";
+      "generator", `In, "str_datum_p";
+      "prime", `In, "str_datum_p";
+      "res", `Out, "str_datum";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    (* TODO: access to gnutls_srp_<N>_group_prime/generator *)
+
+    (* TODO: gnutls_srp_set_server_credentials_function
+             gnutls_srp_set_client_credentials_function
+
+       The "special" base64 functions
+     *)
+
+    (**********************************************************************)
+    (* PSK                                                                *)
+    (**********************************************************************)
+
+    "gnutls_psk_allocate_client_credentials",
+    [ "sc", `Out, "gnutls_psk_client_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_psk_set_client_credentials \
+           (gnutls_psk_client_credentials_t res, \
+            ztstr username, \
+            str_datum_p key, \
+            gnutls_psk_key_flags flags)";
+
+    "gnutls_psk_allocate_server_credentials",
+    [ "sc", `Out, "gnutls_psk_server_credentials_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_psk_set_server_credentials_file \
+           (gnutls_psk_server_credentials_t res, ztstr password_file)";
+    standard
+      "error_code gnutls_psk_set_server_credentials_hint \
+           (gnutls_psk_server_credentials_t res, ztstr hint)";
+    standard
+      "const ztstr gnutls_psk_server_get_username (gnutls_session_t session)";
+    standard
+      "const ztstr gnutls_psk_client_get_hint (gnutls_session_t session)";
+
+    (* TODO: gnutls_psk_set_server_credentials_function
+             gnutls_psk_set_client_credentials_function
+     *)
+
+
+    (* TODO: gnutls_psk_set_server_params_function *)
+
+    (**********************************************************************)
+    (* X509 certificate reading                                           *)
+    (**********************************************************************)
+
+    "gnutls_x509_crt_init",
+    [ "cert", `Out, "gnutls_x509_crt_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_x509_crt_import \
+           (gnutls_x509_crt_t cert, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format)";
+
+    (* gnutls_x509_crt_list_import: in gnutls.c *)
+
+    (* In the following, ask_for_size:true enables special handling of the
+       "1 stringbuf" and "1 stringbuf_size" arguments. The function is first
+       called with a NULL buffer pointer to get the size of the buffer, and
+       then again with a buffer of the right size. The buffer is returned as
+       string
+     *)
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_export \
+           (gnutls_x509_crt_t cert, \
+            gnutls_x509_crt_fmt_t format, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_issuer_dn \
+           (gnutls_x509_crt_t cert, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_issuer_dn_oid \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+
+(*
+  int gnutls_x509_crt_get_issuer_dn_by_oid (gnutls_x509_crt_t cert,
+                                            const char *oid, int indx,
+                                            unsigned int raw_flag,
+                                            void *buf, size_t * buf_size);
+ *)
+
+    (* FIXME: there is a null byte at the end of the returned string *)
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_dn \
+           (gnutls_x509_crt_t cert, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_dn_oid \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+(*
+  int gnutls_x509_crt_get_dn_by_oid (gnutls_x509_crt_t cert,
+                                     const char *oid, int indx,
+                                     unsigned int raw_flag, void *buf,
+                                     size_t * buf_size);
+ *)
+
+    standard
+      "bool gnutls_x509_crt_check_hostname \
+           (gnutls_x509_crt_t cert, const ztstr hostname)";
+    standard
+      "error_code/gnutls_sign_algorithm_t \
+       gnutls_x509_crt_get_signature_algorithm \
+           (gnutls_x509_crt_t cert)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_signature \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      "error_code/uint gnutls_x509_crt_get_version \
+           (gnutls_x509_crt_t cert)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_key_id \
+           (gnutls_x509_crt_t crt, \
+            empty_flags flags, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_authority_key_id \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_subject_key_id \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      ~optional:true
+      "error_code gnutls_x509_crt_get_subject_unique_id \
+           (gnutls_x509_crt_t crt, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      ~optional:true
+      "error_code gnutls_x509_crt_get_issuer_unique_id \
+           (gnutls_x509_crt_t crt, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~optional:true
+      "error_code gnutls_x509_crt_get_authority_info_access \
+           (gnutls_x509_crt_t crt, \
+            uint seq, gnutls_info_access_what_t what, \
+            OUT str_datum data, \
+            OUT ubool critical)";
+    standard
+      "double gnutls_x509_crt_get_activation_time(gnutls_x509_crt_t cert)";
+    standard
+      "double gnutls_x509_crt_get_expiration_time (gnutls_x509_crt_t cert)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_serial \
+           (gnutls_x509_crt_t cert, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      "error_code/gnutls_pk_algorithm_t gnutls_x509_crt_get_pk_algorithm \
+           (gnutls_x509_crt_t cert, OUT uint bits)";
+    standard
+      "error_code gnutls_x509_crt_get_pk_rsa_raw \
+           (gnutls_x509_crt_t crt, \
+            OUT str_datum m, OUT str_datum e)";
+    standard
+      "error_code gnutls_x509_crt_get_pk_dsa_raw \
+           (gnutls_x509_crt_t crt, \
+           OUT str_datum p, OUT str_datum q, OUT str_datum g, OUT str_datum y)";
+    standard
+      ~ask_for_size:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_subject_alt_name \
+           (gnutls_x509_crt_t cert, \
+            uint seq, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
+            OUT ubool critical)";
+(*
+  int gnutls_x509_crt_get_subject_alt_name2 (gnutls_x509_crt_t cert,
+                                             unsigned int seq, void *ret,
+                                             size_t * ret_size,
+                                             unsigned int *ret_type,
+                                             unsigned int *critical);
+ *)
+    standard
+      ~ask_for_size:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_subject_alt_othername_oid \
+           (gnutls_x509_crt_t cert, \
+            uint seq, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+    
+    standard
+      ~ask_for_size:true
+      ~optional:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_issuer_alt_name \
+           (gnutls_x509_crt_t cert, \
+            uint seq,\
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
+            OUT ubool critical)";
+(*
+  int gnutls_x509_crt_get_issuer_alt_name2 (gnutls_x509_crt_t cert,
+                                            unsigned int seq, void *ret,
+                                            size_t * ret_size,
+                                            unsigned int *ret_type,
+                                            unsigned int *critical);
+ *)
+
+    standard
+      ~ask_for_size:true
+      ~optional:true
+      "error_code/gnutls_x509_subject_alt_name_t \
+       gnutls_x509_crt_get_issuer_alt_othername_oid \
+           (gnutls_x509_crt_t cert, \
+            uint seq, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+
+    standard
+      "error_code gnutls_x509_crt_get_ca_status \
+           (gnutls_x509_crt_t cert, OUT ubool critical)";
+    standard
+      "error_code gnutls_x509_crt_get_basic_constraints \
+           (gnutls_x509_crt_t cert, \
+            OUT ubool critical, OUT bool ca, OUT int pathlen)";
+    standard
+      "error_code gnutls_x509_crt_get_key_usage \
+           (gnutls_x509_crt_t cert, \
+            OUT key_usage key_usage, OUT ubool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_oid \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size)";
+(*
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_by_oid \
+           (gnutls_x509_crt_t cert, const ztstr oid, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size, \
+            OUT ubool critical)";
+ *)
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_info \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
+            OUT bool critical)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_extension_data \
+           (gnutls_x509_crt_t cert, int indx, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+(*
+  int gnutls_x509_crt_get_subject (gnutls_x509_crt_t cert,
+                                   gnutls_x509_dn_t * dn);
+  int gnutls_x509_crt_get_issuer (gnutls_x509_crt_t cert,
+                                  gnutls_x509_dn_t * dn);
+  int gnutls_x509_dn_get_rdn_ava (gnutls_x509_dn_t dn, int irdn,
+                                  int iava, gnutls_x509_ava_st * ava);
+
+  int gnutls_x509_dn_init (gnutls_x509_dn_t * dn);
+
+  int gnutls_x509_dn_import (gnutls_x509_dn_t dn,
+                             const gnutls_datum_t * data);
+
+  int gnutls_x509_dn_export (gnutls_x509_dn_t dn,
+                             gnutls_x509_crt_fmt_t format, void *output_data,
+                             size_t * output_data_size);
+
+  void gnutls_x509_dn_deinit (gnutls_x509_dn_t dn);
+ *)
+    standard
+      "bool gnutls_x509_crt_check_issuer \
+           (gnutls_x509_crt_t cert, gnutls_x509_crt_t issuer)";
+    standard
+      "error_code gnutls_x509_crt_list_verify \
+           (gnutls_x509_crt_t array cert_list, \
+            cert_list array_size cert_list_length, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_length, \
+            gnutls_x509_crl_t array crl_list, \
+            crl_list array_size crl_list_length, \
+            gnutls_certificate_verify_flags flags, \
+            OUT gnutls_certificate_status_t verify)";
+    standard
+      "error_code gnutls_x509_crt_verify \
+           (gnutls_x509_crt_t cert, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_length, \
+            gnutls_certificate_verify_flags flags, \
+            OUT gnutls_certificate_status_t verify)";
+    standard
+      "error_code gnutls_x509_crl_verify \
+           (gnutls_x509_crl_t crl, \
+            gnutls_x509_crt_t array ca_list, \
+            ca_list array_size ca_list_length, \
+            gnutls_certificate_verify_flags flags, \
+            OUT gnutls_certificate_status_t verify)";
+    standard
+      "error_code/bool gnutls_x509_crt_check_revocation \
+           (gnutls_x509_crt_t cert, \
+            gnutls_x509_crl_t array crl_list, \
+            crl_list array_size crl_list_length)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_fingerprint \
+           (gnutls_x509_crt_t cert, \
+            gnutls_digest_algorithm_t algo, \
+            1 stringbuf output_data, 1 stringbuf_size output_data_size)";
+    standard
+      ~ask_for_size:true
+      "error_code gnutls_x509_crt_get_key_purpose_oid \
+           (gnutls_x509_crt_t cert, \
+            int indx, \
+            1 ztstringbuf output_data, 1 ztstringbuf_size output_data_size, \
+            OUT ubool critical)";
+
+
+    (**********************************************************************)
+    (* X509 private keys                                                  *)
+    (**********************************************************************)
+
+    "gnutls_x509_privkey_init",
+    [ "cert", `Out, "gnutls_x509_privkey_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_x509_privkey_import \
+           (gnutls_x509_privkey_t key, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format)";            
+
+    standard
+      "error_code gnutls_x509_privkey_import_pkcs8 \
+           (gnutls_x509_privkey_t key, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format, \
+            ztstr password, \
+            gnutls_pkcs_encrypt_flags_t flags);";
+
+    (**********************************************************************)
+    (* X509 CRLs                                                          *)
+    (**********************************************************************)
+
+    "gnutls_x509_crl_init",
+    [ "cert", `Out, "gnutls_x509_crl_t";
+      "result", `Return_ignore, "error_code";
+    ],
+    [ `Post("net_gnutls_error_check(RESULT);") ];
+
+    standard
+      "error_code gnutls_x509_crl_import \
+           (gnutls_x509_crl_t key, \
+            const_str_datum_p data, \
+            gnutls_x509_crt_fmt_t format)";            
+
+  ]
+
+
+let optional_functions =
+  (* also generate checks for these *)
+  [ "gnutls_transport_set_pull_timeout_function";
+    "gnutls_certificate_set_verify_function";
+    "gnutls_x509_crl_list_import";
+    "gnutls_cipher_init";
+    "gnutls_cipher_deinit";
+    "gnutls_cipher_encrypt2";
+    "gnutls_cipher_decrypt2";
+    "gnutls_cipher_add_auth";
+    "gnutls_cipher_tag";
+  ]
+
+
+let optional_types =
+  [ "gnutls_sec_param_t";
+    "gnutls_channel_binding_t";
+    "gnutls_ecc_curve_t";
+    "gnutls_info_access_what_t";
+    "gnutls_privkey_type_t";
+    "gnutls_cipher_hd_t";
+  ]
+
+
+let () =
+  generate 
+    ~c_file:"gnutls.c"
+    ~ml_file:"gnutls.ml"
+    ~mli_file:"gnutls.mli"
+    ~modname:"nettls_gnutls_bindings"
+    ~types
+    ~functions
+    ~optional_functions
+    ~optional_types
+    ~free: [ "str_datum"; "str_datum_p" ]
+    ~init: []
+    ~hashes:[ "Certificate";
+              "Srp_client";
+              "Srp_server";
+              "Anon_client";
+              "Anon_server";
+              "Psk_client";
+              "Psk_server"
+            ]
+    ~enum_of_string:[ "b_error_of_name", "error_code" ]
+    ()

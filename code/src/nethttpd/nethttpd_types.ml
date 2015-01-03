@@ -91,6 +91,7 @@ object
   method input_header : Nethttp.http_header
   method cgi_properties : (string * string) list
   method input_body_size : int64
+  method tls_session_props : Nettls_support.tls_session_props option
 end
 
 
@@ -125,6 +126,7 @@ object
   method request_body_rejected : bool
   method send_file : Unix.file_descr -> int64 -> unit
   method output_state : output_state ref
+  method tls_session_props : Nettls_support.tls_session_props option
 end
 
 
@@ -146,6 +148,8 @@ object(self)
   val mutable out_channel = new Netchannels.output_null()
   val mutable protocol = `Other
   val mutable cookies = lazy(assert false)
+  val mutable tls_session_props =
+                (None : Nettls_support.tls_session_props option)
   val output_state = ref (`Start : output_state)
 
   initializer (
@@ -248,7 +252,7 @@ object(self)
     self # input_header_field ~default:"" "CONTENT-TYPE"
 
   method input_content_type() =
-    Mimestring.scan_mime_type_ep (self # input_header_field "CONTENT-TYPE") []
+    Netmime_string.scan_mime_type_ep (self # input_header_field "CONTENT-TYPE") []
 
 (*
   method output_header =
@@ -282,6 +286,9 @@ object(self)
 
   method set_output_header_fields h =
     out_header # set_fields h
+
+  method tls_session_props =
+    tls_session_props
 end
 
 
@@ -331,6 +338,8 @@ object(self)
   method input_body_size = 0L
   method request_body_rejected = false
 
+  method tls_session_props = env # tls_session_props
+
   method output_state = env # output_state
     (* The variable is shared! *)
 end
@@ -350,6 +359,7 @@ object
   method input_header = info#input_header
   method cgi_properties = info#cgi_properties
   method input_body_size = info#input_body_size
+  method tls_session_props = info#tls_session_props
   method response_status_code = response_status_code
   method request_body_rejected = request_body_rejected
   method output_header = output_header
@@ -457,6 +467,7 @@ let output_std_response config (env : #extended_environment)
     ( object
 	method server_socket_addr = env#server_socket_addr
 	method remote_socket_addr = env#remote_socket_addr
+        method tls_session_props = env#tls_session_props
 	method request_method = req_meth
 	method request_uri = req_uri
 	method input_header = req_hdr

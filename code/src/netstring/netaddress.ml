@@ -36,7 +36,7 @@ let mbox_route_addr personal (route, spec) =
   `Mailbox
     (new mailbox ?name:personal route spec)
 
-open Mimestring
+open Netmime_string
 
 let rev = List.rev
 
@@ -51,12 +51,12 @@ let parse string =
   
   (* manage lookahead token *)
   let lookahead_et, lookahead =
-    let et, t = Mimestring.scan_token scanner in
+    let et, t = Netmime_string.scan_token scanner in
     ref et, ref t
   in
   
   let next () =
-    let et, t = Mimestring.scan_token scanner in
+    let et, t = Netmime_string.scan_token scanner in
     lookahead_et := et;
     lookahead := t
   in
@@ -64,7 +64,7 @@ let parse string =
   
   (* parsing error - some kind of location/error recovery? *)
   let error s = 
-    let pos = Mimestring.get_pos !lookahead_et in
+    let pos = Netmime_string.get_pos !lookahead_et in
     raise (Parse_error (pos, s)) in
 
   (* parse a list of elements *)

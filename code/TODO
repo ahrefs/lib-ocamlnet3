@@ -1,3 +1,242 @@
+IETF docs:
+ - HTTP auth: https://tools.ietf.org/wg/httpauth/
+ - OAUTH: https://tools.ietf.org/wg/oauth/
+ - Kitten: https://tools.ietf.org/wg/kitten/
+ - jose: https://tools.ietf.org/wg/jose/
+ - TLS: https://tools.ietf.org/wg/tls/
+ - HTTP2: https://tools.ietf.org/wg/httpbis/
+ - NFS (and SunRPC): https://tools.ietf.org/wg/nfsv4/
+
+OCAMLNET 4 RELEASE:
+ - CHECK AGAIN UNIT TESTS - DONE
+ - CHECK EXAMPLES
+    * pop + SASL auth (pointer!)
+    * queues + GSSAPI (pointer!)
+    * simple tls client/server with netchannels
+ - renames: xdr, xdr_mstring, mimestring - DONE
+ - Netconversion refactoring - DONE
+ - module refactoring so far needed (smaller executables)
+ - IPv6:
+    * Rpc_server - DONE
+    * Rpc_client: - DONE
+ - mod_apache build errors - DONE
+ - gnutls build warnings - DONE
+ - DOC UPDATE
+    * remove all the ocamlnet 3 links - DONE
+    * OCamlnet 4 intro
+       - also: build changes, other changes - DONE
+ - BUILD update
+    * oasis - DONE
+ - IF TIME:
+    * Netshm for Mac - DONE (so far possible)
+    * SASLprep - DONE
+    * Netplex: user-specific socket dirs - DONE
+    * password files
+
+User's wishes/fixes:
+ - mode of netplex socket can be set in config file (T. Calderon) - DONE
+ - setgid does not work (lookup wrong) (T. Calderon) - DONE
+
+
+Netconversion:
+ - findlib:
+     netunidata
+     netunidata.<charset>  e.g. netunidata.iso88592
+     netunidata.<collection>  e.g. netunidata.all
+ - Netunidata.load "<charset>"  or "<collection>"
+             .lazy_load
+             .disable
+             .override
+   (ex: Netdb)
+ - checksums are always in-core
+
+GSSAPI:
+ - check when to delete contexts. Fix protocol interpreters  - DONE
+ - implement channel bindings - DONE
+ - check again use of buffers in GSSAPI system bindings - DONE
+ - do not block threads during GSSAPI calls - DONE
+ - protocol interpreters should return a gssapi_props object - DONE
+ - check whether RPC + GSSAPI is compatible with Linux - DONE
+ - clean up Netmech_scram_gssapi. Use the same credential format
+   as for SASL. Describe this in credentials.txt
+    * export Netmech_scram_sasl.extract_credentials (in Netmech_scram)
+    * option for setting a context lifetime
+
+Netmime:
+ - remove email-specific header methods from class type. Provide them
+   as additional functions (Netmime.Header) - DONE
+ - move Netmime channel functions to Netmime_channels - DONE
+ - Mimestring -> Netmime_string - DONE
+
+getrandom()
+ - Linux 3.17
+ - https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=c6e9d6f38894798696f23c8084ca7edbf16ee895
+
+Nethttpd + auth:
+ - implement the core of it rather low-level (Nethttpd_kernel)
+   only HTTP_MECHANISM; no basic auth
+ - service abstraction: parse config file; push authentication
+
+Netmulticore2: see list of ideas on trac
+
+Netshm on MacOS: do not use record locking on shared memory fd.
+ - use second file in /tmp
+ - put the name of the file into the shared memory segment
+Extend Netshm for multi-threading
+ - record locking is per process
+Use Netshm as optional backend for Netplex_sharedvar
+ - needs to be enabled by the user (because of kernel resource management)
+
+ - Netcgi_common.cgi_delegation
+
+SASL:
+ - GS2-style channel bindings - DONE
+ - PLAIN - DONE
+ - CRAM-MD5 - DONE
+    * TODO: saslprep if available
+ - DIGEST-MD5 - DONE
+    * Fix: also support charset=utf-8 in HTTP clients - DONE
+ - Complete SCRAM:
+    * session ID - WONT
+    * props - DONE
+    * better prefix for export - DONE
+    * authPassword: authPassword-SCRAM-SHA-1 - DONE
+ - more authPassword:
+    * authPassword-MD5 and authPassword-SHA1 for PLAIN (RFC 3112)
+    * userPassword: see RFC 2307
+      http://www.openldap.org/faq/data/cache/347.html for ssha
+    * overview: http://wiki2.dovecot.org/Authentication/PasswordSchemes
+    * more secure:
+      http://en.wikipedia.org/wiki/PBKDF2
+      http://en.wikipedia.org/wiki/Crypt_(C)
+      scrypt, bcrypt
+    * TASK: check_password function implementing many of these schemes
+      (useful for PLAIN)
+    * TASK: update_password function that computes many of these schemes
+    * TASK: implement digest-md5 scheme
+    * TASK: read and write credentials, support many formats like
+      /etc/passwd, htpasswd, htdigest, maybe even ldif
+    * TASK: custom format. just convert (username*credentials) to/from yojson.
+    * TASK: document all that!
+ - support module Netsys_sasl - DONE
+ - implement for POP - DONE
+ - implement for SMTP  - DONE
+ - GS2 bridge - DONE
+ - SASLprep "light"
+
+HTTP:
+ - enhance digest and support new algorithms
+   (httpauth-digest, see http://www.ietf.org/mail-archive/web/http-auth/current/maillist.html)
+ - SCRAM for HTTP
+   (httpauth-scram-auth. Very interesting:
+    http://www.ietf.org/mail-archive/web/http-auth/current/msg01769.html)
+ - Server-side authentication?
+ - Auth framework? RFC 7235 - DONE
+ - cookie jar for Http_client
+
+TLS:
+ - how to get unique identifiers for tls-unique channel binding?
+   (RFC 5929) - WONT (found some discussion that tls-unique is broken)
+
+ - check that downcasts are also possible for endpoints
+ - Netsys_tls.recv: check performance
+
+ - Also add `PEM_data to TLS config. Support that in Netplex parser.
+ - document Netplex config for TLS - DONE
+ - document new Netplex directives in netplex_admin.txt - DONE
+ - Rpc_ssl: integrate into main rpc lib - DONE
+ - remove watchdog
+ - pop: also basic TLS support (like smtp) - DONE
+ - telnet: add a "starttls" method (to be used by ftp client) - DONE
+ - FTP: rfc4217 - DONE
+   test servers: ftp.pca.dfn.de
+ - delete openssl support - DONE
+
+
+ - DONE: ensure that clients use a safe default config that only accepts
+   approved CAs
+    * support gnutls_certificate_set_x509_system_trust if defined
+    * create_x509_credentials ~system_trust:true
+    * check at configure time:
+        /etc/ssl/ca-bundle.pem \
+        /etc/ssl/certs/ca-certificates.crt \
+        /etc/pki/tls/cert.pem \
+        /usr/local/share/certs/ca-root-nss.crt \
+        /etc/ssl/cert.pem
+ - use ztstringbuf for all the other functions returning zero-terminated
+   strings - DONE
+ - implement alert support
+     * DONE partially: peers always accept rehandshakes with identical config
+     * Open: request rehandshakes
+ - session cache
+     * Netplex_cache. Like Netplex_sharedvar, but only strings, and
+       with a timeout - DONE
+ - Nethttpd_types.tls_props - DONE
+ - Nethttpd_kernel: export tls_props - DONE
+ - fill cgi env
+     * HTTPS - DONE
+     * other props (check what Apache uses and keep compatible)
+       in Nethttpd_reactor.http_environment
+       Missing:
+       SSL_SESSION_RESUMED
+       SSL_SECURE_RENEG
+       SSL_COMPRESS_METHOD
+       <cert>_M_VERSION
+       <cert>_V_REMAIN
+       <cert>_A_SIG
+       <cert>_A_KEY
+       <cert>_CERT
+       SSL_TLS_SNI
+       suffixes: T,I,G,S,D,UID
+       numeric suffixies when several components exist (or use only the first)
+ - Nethttpd: check that Host header and the certificate host name
+   are identical - DONE
+ - check that https redirects work - DONE
+ - config: TLS name as user name
+    * check client authentication - DONE
+ - SNI:
+     * server: probably need to select the cert to send.
+       Figure out how to do that. (Maybe look at mod_gnutls?)
+       THIS IS AUTOMATICALLY DONE BY GNUTLS! JUST ADD SEVERAL CERTS
+       TO THE SESSION!
+     * server: check that SNI name and "Host" header are identical
+       NO! This wouldn't cover resumed sessions. Instead we match
+       the "Host" header with the selected server cert.
+     * client: just set the right hostname
+ - Info:
+   Since GnuTLS-3.1.2 session tickets are automatically enabled in the client.
+   Also do something automatically for pre-3.1.2 versions?
+ - implement renegotiation for nethttpd
+    - i.e. some request needs a certificate
+    - figure out how to do it. Idea: output a redirect to the same page,
+      and request the rehandshake immediately after sending the 300
+      response. That way the rehandshake is a special response message.
+ - OCSP support ?
+
+LATER:
+ - DTLS support
+     type dtls_config =
+      { dtls_mtu : int;
+        dtls_enable_cookies : bool;
+        dtls_retrans_tmo : float;
+        dtls_total_tmo : float;
+      }
+
+      * create_endpoint: ?dtls:dtls_config
+      * get_dtls_timeout : endpoint -> float  (-1 if no DTLS is active)
+      * cookies are implemented inside Nettls_gnutls. The GNUTLS session
+        object is first created when the cookie phase is over.
+      * always set dtls nonblocking mode, so that a recv with timeout is
+        not needed
+      * comments in uq_multiplex.ml for a DTLS-aware multiplex controller
+      * testcase: use DTLS for RPC
+      * open: how to clean up sessions that are idle for too long
+        (maybe set limits: max_idle_time, max_sessions)
+
+
+cleanup of all hex digit routines
+  - should go to Netencoding
+
 Shell_sys: 
  - there is no way to wait for a started process
  - get the subprocess watcher
@@ -102,26 +341,40 @@ OCAMLNET
 ----------------------------------------------------------------------
 Major future directions:
 
-- Continue SSL
-  * Nethttpd
-  * Ftp_client
+- Continue TLS
+  * Nethttpd - DONE
+  * Ftp_client - DONE
+  * integrate more of GnuTLS
 
 - Integrate more protocols/improve implementations
-  * NetDNS: integrate
+  * NetDNS: finish & integrate
   * sftp: develop
   * async fastcgi client
+  * RPC: support RPCBIND versions 3 and 4 (for IPv6 needed)
+  * NFSv4 client as Netfs
+  * Webfinger (RFC 7033)
 
 - Security
-  * GSS-API wrapper on C level (Kerberos support)
-  * GSS-API and HTTP
-  * GSS-API and FTP
-  * SASL
-  * SASL and POP
-  * SASL and SMTP
-  * Containers for credentials
+  * Access GnuTLS crypto routines via Cryptokit-like API
+  * GSS-API wrapper on C level (Kerberos support) - DONE
+  * GSS-API and HTTP - "Negotiate" - DONE
+  * GSS-API and FTP - DONE
+  * SASL - DONE
+  * SASL and POP - DONE
+  * SASL and SMTP - DONE
+  * Containers for credentials - DONE
   * Password hashing suite
+  * Password files, e.g. LDIF-compatible
   * Protect RPC better against DoS attacks
   * Netcgi2/Nethttpd w/ authentication
+  * OAUTH
+    * OAUTH 1.0a (RFC 5849)
+    * OAUTH 2 (RFC 6749, 6750)
+    * OAUTH+SASL (being defined)
+  - UPDATES
+    * GSSAPI v3
+    * RPSEC_GSS version 2 (RFC 5403) and 3 (being defined)
+
 
 - Performance
   * epoll - DONE
@@ -139,8 +392,12 @@ Major future directions:
   * smoothen Netplex APIs
   * more delegation classes
   * Nethttpd: include more real web server features
+     - authentication
+     - relaying
   * Netcgi + Netplex: allow same config style as Nethttpd
   * ASN.1 string functions
+     - decode - DONE
+     - encode
 
 - More async
   * Nethttpd services
@@ -184,12 +441,6 @@ fix reported problems
 
 - Equeue_ssl: include function to extract cert fingerprint - DONE
 
-- Bug Http_client:
-  Digest auth where the server uses a domain string with several URLs!
-  e.g. domain="/path http://server/path" (legal according to RFC).
-  Symptom: The authenticated request is not tried at all after getting
-  the 401 response
-
 - bug netcgi2-apache:
   add -Wl,--rpath,$(APACHE_OCAMLLIBDIR) to $(APXS) for builing the .so
   the --rpath option is platform-dependent, though
@@ -218,9 +469,6 @@ fix reported problems
     in (cgi-)config?
   * maybe it is just about unifying the two styles of error pages?
     (Nethttpd_util.std_error_response vs. Netcgi_common.error_page)
-
-- GSS-API for HTTP: see RFC 4559. This is specified for SPNEGO
-  and NTLM, but looks applicable to any other mechanism, too
 
 - add utility functions for password hashing
   (see /etc/passwd under Linux)
@@ -315,443 +563,11 @@ Enhanced token scanner:
   * integrate netdns
   * IPv6 for netdns
 
-- FTP w/SSL support
-  * RFC 4217
-  * SSL for data channels: currently, the data connections use
-    Uq_engines.sender/receiver to copy data from a file_descr to
-    an async_in/out_channel:
-      descr --copy--> async_in/out_channel.
-    Change this to:
-      descr --wrap--> mplex --copy--> async_in/out_channel
-    Do the copy with Uq_io.copy.
-  * SSL for control channel: Need to upgrade Telnet_client so it
-    can use (and exchange) mplex.
-    Difficulty: OOB data cannot be routed via mplex.
-  * Support for AUTH, PROT, PBSZ
-    - AUTH: Once we get a positive response, switch to SSL on the
-      control connection
-    - remember in ftp_state what was negotiated for the data conn.
-      Enable SSL if privacy is requested. Attn: always use tls_connect,
-      even if an active mode file transfer is being done!
-  * Modularity:
-    - Add concept of "security_provider", an implementation-dependent
-      type
-    - By pushing the AUTH_SSL provider, this security mechanism becomes
-      available.
-  * test against: e.g. pureftpd
-  * dev time: 1 day
-
-----------------------------------------------------------------------
-Plan for Ocamlnet 3.5
-----------------------------------------------------------------------
-
---- Done:
-
-- Finish FTP client - DONE
-
-- Netfs applications:
-  * HTTP - DONE
-  * FTP - DONE
-
-- function for parsing "host:port" strings (also with IPv6 support) -
-  DONE (Netsockaddr)
-
-- Neturl: IPv6 support  - DONE
-
-- default_page_size statt
-  let page_size = 
-    try Netsys_mem.getpagesize() with _ -> 4096 - DONE
-
-- Shell: need some function for turning stdin/stdout into an in/out_obj_channel
-  (only one descriptor can do this) - DONE
-
-- Http_fs: check what happens when a file is read but the stream is
-  closed before EOF - DONE
-- Http_client: Convenience still raises Http_error.
-  Also define more clearly what "not successful" means for Http_protocol.
-  - DONE
-- Netfs: add `Dummy to all flags - DONE
-- Netfs.copy and symlinks - DONE
-- Netglob: check i18l patterns again - DONE
-- Shell_fs: make the commands to execute configurable - sort of DONE
-
-- complete Netfs, Netglob
-  * Netfs: test - DONE
-  * Netfs: maybe add copy method? - DONE
-  * Netfs: rm -r is maybe "too" insecure - DONE
-  * Netfs: support Win32 better - DONE (filenames)
-  * Netfs BUG: In copy_into, filenames are not converted between
-    encodings. - DONE
-
-- Netfs: readlink - DONE
-
-- unlinkat - DONE
-- fchdir - DONE
-
-- Unixqueue: define no_group (do not spend time for group management)
-  DONE
-
-GSSAPI:
- - define GSSAPI classes - DONE
- - wrap C impls of GSSAPI
- - SCRAM (RFC 5802) - DONE
- - ONCRPC + GSSAPI (RPCSEC_GSS) (RFC2203) - DONE
-   Fix Rpc_auth_gssapi: canonicalize names before exporting - DONE
- - Add Rpc_server.is_dummy - DONE
- - Add Rpc_proxy: user_name config - DONE
- - Avoid string copying - DONE
-
-
-Test regexp:
- - Mimestring.scan_header OK, read_header OK, write_header OK
- - Mimestring: token scanner, RFC 2231 encoding, read_multipart_body OK
- - Netconversion.norm_enc_name OK
- - Netencoding.Html.encode, decode OK
- - Netstring_str.quote_set OK
- - Netglob.esc_subst OK
- - Netfs.local_fs OK
- - Nethttp.Header OK
- - Netmime.drop_ws OK
- - Neturl.fixup_url_string, classify_path, local_path_of_file_url OK
- - Netmech_scram OK
- - Netaux.KMP OK
- - Netsendmail.create_address_tokens create_text_tokens OK
- - Nethttpd_kernel, also chunked encoding -> test_acceptor OK
- - Netstring tests OK
- - Http_client OK
-
-Netstring_pcre.replace: The replacement string follows PCRE syntax
-(i.e. $& for whole match etc.) - FIXED
-
-Netnumber (in netstring): - DONE
- - defines all the numeric Rtypes - DONE
- - plus comparisons - DONE
- - submodule BE (big endian) - DONE
- - submodule LE (little endian) - DONE
-
-- WebDAV, Haddop_fs: use Netfs.empty_fs - DONE
-- Netfs.abort_write - DONE (cancel)
-
-Fixme:
- - Netstring_pcre.quote: does not work for NULL bytes - DONE
-
-- export Netcgi_common.error_page - DONE
-- Netmcore_mempool.shm_name_of_pool - DONE
-- Http_fs: the http_stream_fs should also define a pipeline method - DONE
-- Http_fs: enable compression if possible - DONE
-- Option for Netfs.local_fs: enable_relative_names - DONE
-- Uq_engines.signal_engine: should be thread-safe (signal function
-  can be called from other thread) - DONE
-- Http_client.pipeline: add requests via an engine - DONE
-
-- IPv6 list:
-  netcgi2: Netcgi_common, class cgi: prep of properties searches
-  for ':' in SERVER_NAME. This won't work anymore. - DONE
-
-  * Netplex_cenv.container_count : service_name -> int
-    (useful in pre_start_hook, post_finish_hook) - DONE (as container meth)
-  * container # is_first : bool - WONT
-  * make startup_directory accessible in containers - DONE
-  * socket_directory should be an absolute path - DONE
-
-- RPc_server: preflight mode for XDR - 
-  DONE (array length check)
-
-- Better exceptions: connect_check should include the socket address
-  as third string - DONE
-- Netplex: startup_directory: make this also visible in container - DONE
-- LIne number in errors like
-  Netplex_config.Config_error("./twincastd.conf: Syntax error") - DONE
-
-- Bug Http_client:
-  OPTIONS with authentication does not work!
-  Symptom: request fails with `No_reply status.
-  Problem: OPTIONS is not idempotent. So
-   - after first attempt: the request is checked, and as a result it is
-     re-added to fragile_pipeline
-     (and implicitly reinitialized)
-   - server closes connection
-   - robust pipeline: finds the fresh request, but does not reschedule
-     it because a second check is done, and it is found that the request is
-     not idempotent
-  Solution: When the request is added by authentication the second
-  check in robust_pipeline must be skipped. Add a flag to message class
-  to remember the decision of the first check
-  - DONE
-
-Optimization:
-  - Uq_io.input_lines: reads as much lines as possible from in_buffer
-    and returns list of lines
-    -> useful in Mapred_task_exec, emap implementation
-    DONE
-
-- Finish Neturl (~addr, ~socksymbol, url_addr, url_socksymbol) - DONE
-- Uq_resolver: support IP addresses enclosed in brackets - DONE
-
-inject custom esys into Netplex
-- DONE
-
-Idea. If -debug Netlog.ms/us/ns log with higher precision
-  (Also for Netplex)
-- DONE VIA NEW FORMAT STRINGS
-
-Fix Uq_io.read for Plasma
- - WONT
-
-- speed up accepts in Netplex
-  DONE
-
-- Netchannels.lift_in: if buffered=false, automatically enable the
-  buffer the first time input_line is called
-  WONT
-
-- Performance: after lift_in, the input_line fn is slow
-  DONE: Not exactly sure what this is. Added a new option ~pass_through
-  which makes it easier to use a buffer on demand only
-
-Advanced:
- - Special form of condition variables one can poll on
-   (See Plasma: pfs_condition) - DONE
-
-- Netshm: use blitting functions encoded in C (for int32 bigarrays)
-  Better: bigarray conversion to flat memory
-  DONE
-
-Make Netplex containers thread-safe
-- DONE
-
-Generalize the following for engines:
- - Uq_engines.Thread_monitor
-   val create : esys -> mon
-   val run : mon -> (esys -> 'a -> 'b engine) -> esys -> 'a -> 'b engine
-
-   [let e = run mon f esys arg]: Semantically, this just calls [f arg]
-   and returns the result as engine [e]. The specialty of the
-   thread monitor is that the [run] function can be called from
-   several threads in parallel. It is ensured that all functions [f]
-   that are running at the same time are all running in the same
-   thread. The monitor is allowed to switch to a different thread
-   when any of the functions [f] finishes. Switching can happen
-   whenever the event system waits for new events.
-DONE
-
-Unixqueue: if the loop is left by exception, ensure that the pollset
-is disposed - DONE
-
-inet addr functions from Plasma_util - DONE
-
-netmcore pools: option to initialize the pool (avoid SIGBUS)
-- DONE
-
-
-- Fix Netmcore, when forking:
-  do not unmap anymore if a mapping is not inherited (or make this
-  configurable)
-  DONE (default is now to inherit all resources)
-
-- Fix Netmcore:
-  get_resource should do all the process and resource table cleanup
-  from post_start when it is called the first time in container
-  context. This way the cleanup is also done when a process uses
-  the machinery that was not started via Netmcore. - DONE
-
-RPC marshalling speedup
- - DONE
-
-- Implement Netsys_posix.spawn with posix_spawn for systems 
-  supporting that - DONE
-
-- Improve Rtypes performance - DONE
-
-- RPC: generate direct mapping - DONE
-
-- eventfd (Linux), as an efficient way of waking equeue up from
-  other threads - DONE
-
-- Name_resolution_error
-  use this in Uq_engines.connector. - DONE
-
-- Netclient: Support for CONNECT - DONE
-
-- Netclient: Code-cleanup - DONE
-
-- Netclient: engine interface for HTTP - DONE
-
-- access to good random number generator on all platforms
-  (for cryptogrpahy) - DONE
-
-- GSSAPI - DONE
-
-- delegation classes for nethttpd config objects - DONE
-
-- use bigarray I/O in more cases
-  * RPC - DONE
-  * Http_client - DONE
-
-- SSL support for Http_client - DONE
-
-- Better integration of SOCKS
-  * Http_client: DONE
-  * Ftp_client: DONE
-
-- Netplex documentation:
-   * netplex-admin - DONE
-   * configuration manual - DONE
-
-- more engine-style interfaces:
-   * Http_client.pipeline: add requests via an engine - DONE
-
-- pluggable filesystem classes - DONE
-
-Bugs Tidalwave:
-  * ocamlnet
-	- Bug: Netstring_pcre.global_replace - DONE
-
-Http_client.pipeline:
-	- aggressive caching does not work properly. Sometimes descriptors
-	  are closed in the wrong moment. - DONE
-
-
-
-----------------------------------------------------------------------
-Plan for Ocamlnet 3
-----------------------------------------------------------------------
-
---- Already done:
-
-  * Netclient: better storage methods. Pass status code (or even header)
-    to the `File or `Body function. DONE
-
-- Doc:
-  * container sockets - DONE
-
-- Other
-  * Go through examples. Fix programming style
-      nethttpd DONE
-      rpc/finder DONE
-
-
-  * check Uq_engines.poll_process_engine
-  * add Util.connector_of_sockaddr to Rpc_client
-  * move signal_engine, rpc_engine to Ocamlnet
-  * functions for creating Netplex_types.protocol and .socket_service_config
-  * Rpc_util: function for printing arbitrary values
-    (use: Nn_state, Transaction_error)
-  * Rpc_client: ensure that first error is properly reported
-    (instead of Message_lost)
-  * bug sigchld_process: should check all processes (signals can be
-    merged)
-
-  * Rpc_proxy: layer on top of Rpc_client w/ automatic connection handling
-  * Generate proxies
-  * Rpc trace
-  * Fix: `Accept_limit_length for Rpc_server. Add filters to clients, too
-    (see msg by rafaelsen on ocamlnet-devel)
-  * Bug Paolo Donadeo on ocamlnet-devel:
-    `Redirect_response not working
-  * Redesign Win32 named pipe support. Interface resembles socket API.
-  * Security aspects of Win32 named pipes
-  * Fully integrate named pipes into Unixqueue and Netplex
-  * Limited support for anonymous pipes using helper threads
-    (Netsys_win32: I/O threads; also support these whereever reasonable)
-  * Support for something similar to Netsys_posix.spawn
-  * Integrate win32 spawn into Shell
-  * netplex: socket directory is ignored for Unix domain sockets.
-    relative UD sockets should be taken relative to socket dir
-  * netplex_main:
-      - chdir for daemonize
-  * netplex: Shut down master sockets after use.
-  * netplex.fd_table: print fd table from Netlog
-  * netclient: Set "Host" header also for proxy requests
-  * netclient: parsing fails of URL http://host?param
-  * nethtml: <body> is now an essential block
-  * netcgi2, url: better magic to enfore '/' between script name and path info
-  * Container-private servers. Containers may define additional RPC
-    servers for local data traffic only. (-> address type "container")
-  * think about page pools, for cases where too many pages are mmap'ed.
-    Generalization of the free pages we manage in Netpagebuffer.
-  * Netdate: support for RFC 3339 dates (see webdav_xml)
-  * ocamlrpcgen: export _program variable in client interfaces
-  * Rpc_netplex: config var for Rpc_server.set_timeout
-  * RPC: prevent that xid's can be reused
-  * new netplex admin command: netplex.connections. The detail string
-    is implemented for RPC only, so far.
-  * Documentation: What is supported on Win32?
-  * nethttpd_services: GET /file//path?p=1
-    parameters like p were not recognized when there was "//" in path
-    (redirect_request bug)
-  * nethttpd_services: if PATH_TRANSLATED points to a directory, omit the
-    trailing slash. See also Nethtttpd_services.w32_fix_trailing_slash -
-    but this is a hack
-  * Nethttpd: configurable error response
-  * Nethttpd: option for suppressing "broken pipe"
-  * Gprof support
-  * "syslog": Just calls syslog()
-
-
-- object strings:
-  class type string =
-    object
-      method length : int
-      method string : string
-      method memory : memory
-      method blit_to_string : ...
-      method blit_to_memory : ...
-    end
-
-  Use this in RPC context to avoid copying of strings as much as possible.
-  Option for the user to see these objects:
-  typedef _object string mystring<>;
-
-- NetCGI cleanup - DONE
-
-- Shell_uq/Shell_sys: Drop Shell_sys.wait implementation. Replace with
-  engine. The system_handler is replaced by something like
-  type system_handler = {
-     mutable eng_opt : engine opt;
-       (* The engine. abort stops it. run runs it *)
-     watch_descriptors : Unix.file_descr list -> Unix.file_descr list -> unit
-       (* Set the descriptors to watch *)
-  }
-
-  * Shell for POSIX systems: fix the style how ocamlnet waits for 
-    forked processes. The current solution does not work well for
-    mt programs because it is undefined which thread gets the SIGCHLD.
-      - ocamlnet-3.0test1 has had some issues here. These are now fixed.
-
-  * Netplex:
-      - set logger earlier (if external logger is used): Now using Netlog.
-
-- fd leaks / double close:
-  * Netlog: implements hash table with used descriptors (in debugging
-    mode)
-    - for each managed fd:
-        - owning module
-        - type
-        - GC hook: pointer to a finalisable block. When this block is collected
-          the fd is set to state "garbage
-    - which fd's to manage: the long-living fd's
-
-
-- Move new cookie implementation to Nethttp - DONE
-
-- Faster URL encoding functions can be moved to Netencoding
-  if really faster - REVISIT
-
-- Bug: Netplex daemonization doesn't wait until the inner process is
-  initialized (enough)
-
-- Better Bigarray integration:
-  * read/write with bigarray as buffer
-
 ----------------------------------------------------------------------
 Performance improvements after Ocamlnet 3.0
 ----------------------------------------------------------------------
 
 A list of possible improvements, once interfaces are stable again:
-
-- Provide epoll/kqueue-based event_system
-  * epoll - DONE
 
 - Implement Netplex_semaphore with POSIX semaphores for systems
   supporting them
@@ -783,31 +599,16 @@ A list of possible improvements, once interfaces are stable again:
 - Implement Netplex_sharedvar with Netshm shared memory for systems
   supporting that
 
-- RPC: server should support caching for configured procedures
-  (Hmmm, unclear. Maybe we just want a server where one can intercept the
-  raw messages.)
-
 ----------------------------------------------------------------------
 Implementation improvements after Ocamlnet 3.0
 ----------------------------------------------------------------------
-
-- NNTP client implementation (async)
-
-- signalfd (Linux), as an efficient way of catching SIGCHLD
 
 - Update Equeue_intro:
    * Throw out the chapter about async channel
    * Include a chapter about Uq_io
 
-- Rpc_proxy: 
-  * revise shared reliability caches.
-  * idempotent calls: better the endpoint is immediately switched after
-    the first failure
-
 - Configurable async name resolution (already started: Uq_resolver)
   [Maybe include netdns?]
-
-- Cluster Message bus (netfunk)
 
 - Improved shared memory support; RPC over shared memory
   [Depends very much on whether camlboxes can be made safer, and
@@ -819,8 +620,6 @@ Implementation improvements after Ocamlnet 3.0
   * Better impl: provide clean engine API in Nethttpd_engines
     (or new module Nethttpd_async_service)
 
-- krb5 for rpc
-
 - netplex component for monitoring:
    - ping RPC services, but also support for plugging in other protocols
    - post monitoring results to neighbors (UDP, optionally with multicasting)
@@ -831,11 +630,6 @@ Implementation improvements after Ocamlnet 3.0
 
 - Fix Netplex_kit.start_helper_thread so that the component leaves
   `Starting state quickly
-
-- Bug Win32 and netplex-admin -shutdown: Apparently, the sys client
-  is not shut down, and the sys server keeps going because of this.
-  There is a pipe_shutdown call for the sys client, but it does not seem
-  to do what it is supposed to. Result is that the shutdown hangs.
 
 - Rpc_server:
    * support suspended state

@@ -94,6 +94,9 @@ module Generator (G : Odoc_html.Html_generator) = struct
         (self#escape caption)
         file
 
+    method private html_of_br b t =
+      bprintf b "<br />"
+
     method private html_of_div tag b t =
       let html_classes =
         match split_args t with
@@ -199,6 +202,7 @@ module Generator (G : Odoc_html.Html_generator) = struct
         | "trend" -> self#html_of_divend "tr" b t
         | "td" -> self#html_of_div "td" b t
         | "tdend" -> self#html_of_divend "td" b t
+        | "br" -> self#html_of_br b t
         | "directinclude" -> self#html_of_direct_include b t
         | "fixpxpcoretypes" -> self#html_of_fix_pxp_core_types b t
         | "knowntype" -> add_known_type t

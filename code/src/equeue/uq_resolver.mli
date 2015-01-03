@@ -46,6 +46,9 @@ exception Host_not_found of string
 
 class type resolver =
 object
+  method ipv6 : bool
+    (** Whether [host_by_name] may return IPv6 addresses *)
+
   method host_by_name : 
            string -> Unixqueue.event_system -> Unix.host_entry engine
     (** Look up the passed host name up. The implementation can be synchronous
@@ -82,7 +85,7 @@ val sockaddr_of_socksymbol : ?resolver:resolver ->
 
 val default_resolver : unit -> resolver
   (** The default resolver uses [Unix.gethostbyname] to look up names.
-      Note that this usually means that no IPv6 addresses are returned.
+      Note that this means that no IPv6 addresses are returned.
    *)
 
 val gai_resolver : ?ipv4:bool -> ?ipv6:bool -> unit -> resolver
@@ -100,7 +103,10 @@ val gai_resolver : ?ipv4:bool -> ?ipv6:bool -> unit -> resolver
 (** {1 Plugins} *)
 
 val current_resolver : unit -> resolver
-  (** Returns the pluggable resolver *)
+  (** Returns the pluggable resolver. Unless overridden by
+      [set_current_resolver], the returned resolver depends on the result
+      of {!Netsys.is_ipv6_system}.
+   *)
 
 val set_current_resolver : resolver -> unit
   (** Set the pluggable resolver *)

@@ -45,11 +45,11 @@ type q_entry =
 type soa =
     { soa_mname : domain;
       soa_rname : domain;
-      soa_serial : Rtypes.uint4;
-      soa_refresh : Rtypes.int4;
-      soa_retry : Rtypes.int4;
-      soa_expire : Rtypes.int4;
-      soa_minimum : Rtypes.uint4;
+      soa_serial : Netnumber.uint4;
+      soa_refresh : Netnumber.int4;
+      soa_retry : Netnumber.int4;
+      soa_expire : Netnumber.int4;
+      soa_minimum : Netnumber.uint4;
     }
 
 
@@ -78,7 +78,7 @@ type rr_entry =
     { rr_name : domain;
       rr_type : type_;
       rr_class : qclass;
-      rr_ttl : Rtypes.uint4;
+      rr_ttl : Netnumber.uint4;
       rr : rr
     }
 

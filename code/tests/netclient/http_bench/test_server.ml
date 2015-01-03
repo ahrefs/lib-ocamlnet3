@@ -168,10 +168,17 @@ without connection.
   let wait_for_connection = ref true in
   let thisspec = ref !spec in
 
-  Ssl.init();
+  Nettls_gnutls.init();
 
-  let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Server_context in
-  Ssl.use_certificate ctx "ssl-cert-snakeoil.pem" "ssl-cert-snakeoil.key";
+  let tls_config =
+    Netsys_tls.create_x509_config
+      ~peer_auth:`None
+      ~trust:[ `PEM_file "ca.crt" ]
+      ~keys:[ `PEM_file "server.crt", 
+              `PEM_file "server.key",
+              None
+            ]
+      (module Nettls_gnutls.TLS) in
 
   let use_ssl = ref !ssl in
 
@@ -191,42 +198,22 @@ without connection.
       prerr_endline "! ACCEPTED NEW CONNECTION";
 
     let upgrade() =
-      let ssl_sock = Ssl.embed_socket conn ctx in
-      Ssl.accept ssl_sock;
       if !protocol then 
 	prerr_endline "! ACCEPTED SSL SESSION";
-      ( object
-	  method read s p n = 
-	    try Ssl.read ssl_sock s p n
-	    with Ssl.Read_error Ssl.Error_zero_return -> 0
-	      | Ssl.Read_error Ssl.Error_syscall ->
-		  if !protocol then
-		    prerr_endline "! UNCLEAN SSL STATE";
-		  0
-	  method write s p n = Ssl.write ssl_sock s p n
-	  method shutdown_in () = Ssl.shutdown ssl_sock
-	  method shutdown_out () = 
-	    let (flag_in, flag_out) = Ssl_exts.get_shutdown ssl_sock in
-	    if not flag_out then
-		Ssl_exts.single_shutdown ssl_sock
-	  method close() = Ssl.shutdown ssl_sock; Unix.close conn
-	end
-      ) in
+      let ch =
+        new Netchannels_crypto.tls_endpoint
+            ~role:`Server
+            ~peer_name:None
+            conn
+            tls_config in
+      ch#flush();
+      ch in
 
     let ops =
       if !use_ssl then 
-	ref(upgrade())
+	ref(upgrade() :> Netchannels.raw_io_channel)
       else
-	ref
-	  ( object
-	      method read s p n = Unix.read conn s p n
-	      method write s p n = Unix.single_write conn s p n
-	      method shutdown_in () = Unix.shutdown conn Unix.SHUTDOWN_RECEIVE
-	      method shutdown_out () = Unix.shutdown conn Unix.SHUTDOWN_SEND
-	      method close() = Unix.close conn
-	    end
-	  ) in
-
+	ref(new Netchannels.socket_descr ~fd_style:`Recv_send_implied conn) in
     
     let connopen = ref true in
     let eof_sent = ref false in  (* i.e. write side closed *)
@@ -235,7 +222,7 @@ without connection.
 
       (* Interpret 'spec' and react *)
 
-      while !connopen & !thisspec <> [] & fst(List.hd !thisspec) < !n0 do
+      while !connopen && !thisspec <> [] && fst(List.hd !thisspec) < !n0 do
 	let (lineno, react) :: rest_spec = !thisspec in
 	thisspec := rest_spec;
 
@@ -263,7 +250,7 @@ without connection.
 	      let l = String.length fstring in
               begin try
 	        while !m < l do
-		  m := !m + !ops#write fstring !m (l - !m)
+		  m := !m + !ops#output fstring !m (l - !m)
 	        done
               with
                  Unix.Unix_error(Unix.EPIPE,_,_) ->
@@ -274,23 +261,23 @@ without connection.
 	  | End ->
 	      if !protocol then
 		prerr_endline "SENDING EOF";
-	      !ops#shutdown_out();
+	      !ops#close_out();
 	      eof_sent := true;
 	  | Break_and_reconnect ->
 	      if !protocol then
 		prerr_endline "BREAKING CONNECTION";
-	      !ops#close();
+              Unix.close conn;
 	      broken := true;
 	      wait_for_connection := true;
 	      connopen := false;
 	  | Close_input ->
 	      if !protocol then
 		prerr_endline "CLOSING INPUT SIDE";
-	      !ops#shutdown_in();
+	      !ops#close_in();
 	  | Close_output ->
 	      if !protocol then
 		prerr_endline "CLOSING OUTPUT SIDE";
-	      !ops#shutdown_out();
+	      !ops#close_out();
 	  | Expect line ->
 	      let actual_line = get_current_line() in
 	      if !protocol then
@@ -304,7 +291,7 @@ without connection.
 		  prerr_endline ("! GOT LINE '" ^ actual_line ^ "'");
 		  prerr_endline ("! THE LINE DOES NOT MATCH. SENDING EOF");
 		end;
-		!ops#shutdown_out();
+		!ops#close_out();
 		eof_sent := true;
 		failwith "Test failure";
 	      end
@@ -321,7 +308,7 @@ without connection.
 		  prerr_endline ("! GOT LINE '" ^ actual_line ^ "'");
 		  prerr_endline ("! THE LINE DOES NOT MATCH. SENDING EOF");
 		end;
-		!ops#shutdown_out();
+		!ops#close_out();
 		eof_sent := true;
 		failwith "Test failure";
 	      end
@@ -332,14 +319,14 @@ without connection.
 	  | Starttls ->
 	      if !protocol then
 		prerr_endline "STARTTLS";
-	      ops := upgrade()
+	      ops := (upgrade() :> Netchannels.raw_io_channel)
 	  | Expect_end ->
 	      if !protocol then
 		prerr_endline "! IGNORING INPUT UNTIL GETTING EOF";
 	      let k = ref 1 in
 	      while !k <> 0 do
-		k := !ops#read buff 0 buffsize;
-		if !k > 0 & !protocol then
+		k := (try !ops#input buff 0 buffsize with End_of_file -> 0);
+		if !k > 0 && !protocol then
 		  prerr_endline ("! IGNORING " ^ string_of_int !k ^ " BYTES");
 	      done;
 	      connopen := false;
@@ -348,8 +335,8 @@ without connection.
 		prerr_endline "! IGNORING INPUT UNTIL GETTING EOF";
 	      let k = ref 1 in
 	      while !k <> 0 do
-		k := !ops#read buff 0 buffsize;
-		if !k > 0 & !protocol then
+		k := (try !ops#input buff 0 buffsize with End_of_file -> 0);
+		if !k > 0 && !protocol then
 		  prerr_endline ("! IGNORING " ^ string_of_int !k ^ " BYTES");
 	      done;
 	      wait_for_connection := true;
@@ -364,7 +351,8 @@ without connection.
 	      let k = ref n in
 	      let eof = ref false in
 	      while !k > 0 do
-		let p = !ops#read buff 0 (min buffsize !k) in
+		let p = (try !ops#input buff 0 (min buffsize !k) 
+                         with End_of_file -> 0) in
 		if p > 0 && !protocol then
 		  prerr_endline ("! IGNORING " ^ string_of_int p ^ " BYTES");
 		if p = 0 then (
@@ -391,7 +379,7 @@ without connection.
       if not !broken then begin
 
 	(* let _ = Unix.select [ conn ] [] [] (-1.0) in*)
-	let k = !ops#read buff 0 buffsize in
+	let k = ( try !ops#input buff 0 buffsize with End_of_file -> 0) in
       
 	if k = 0 then begin
 	  (* got EOF *)
@@ -422,11 +410,11 @@ without connection.
     if not !broken then begin
       if not !eof_sent then begin
 	if !protocol then prerr_endline "! IMMEDIATELY REPLYING EOF";
-	!ops#shutdown_out();
+	!ops#close_out();
 	eof_sent := true;
       end;
       if !protocol then prerr_endline "! CLOSING SOCKET";
-      !ops#close();
+      !ops#close_in();
     end;
 
   done (* while !wait_for_connection *)
@@ -434,11 +422,16 @@ without connection.
 
 Sys.signal Sys.sigpipe Sys.Signal_ignore;
 
+(* Netsys_tls.Debug.enable := true;; *)
+
 begin try
+  Printexc.record_backtrace true;
   main()
 with
     e ->
-      prerr_endline ("Exception: "  ^ Printexc.to_string e)
+      let bt = Printexc.get_backtrace() in
+      prerr_endline ("Exception: "  ^ Printexc.to_string e);
+      if bt<>"" then prerr_endline ("Backtrace: " ^ bt);
 end;
 
 Unix.sleep 1;

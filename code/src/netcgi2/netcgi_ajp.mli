@@ -72,6 +72,7 @@ val run :
   ?output_type:output_type ->
   ?arg_store:arg_store ->
   ?exn_handler:exn_handler ->
+  ?socket:Unix.file_descr ->
   ?sockaddr:Unix.sockaddr ->
   ?port:int ->
   (cgi -> unit) -> unit
@@ -82,9 +83,11 @@ val run :
                    Default: allow from all.
       @param output_type Default: [`Direct ""]
       @param arg_store Default: [`Automatic] for all arguments.
+      @param socket is a listening socket to use. Overrides [sockaddr]
+                  and [port]
+      @param sockaddr The sockaddress (overrides [port])
       @param port The port used by the web server to send the requests
                   (Default: 8009).
-      @param sockaddr The sockaddress (overrides [port])
       @param exn_handler See {!Netcgi.exn_handler}.  Default: delegate
       all exceptions to the default handler.  *)
 
@@ -106,6 +109,18 @@ val handle_request :
       The return value indicates whether the connection can be kept
       open or must be closed.
    *)
+
+val handle_connection :
+  config -> output_type -> arg_store -> exn_handler ->
+  (cgi -> unit) -> ?script_name:string -> Unix.file_descr ->
+    unit
+    (** [handle_connection config output_type arg_store eh f ?script_name fd]:
+        This is a lower-level interface that processes
+        exactly one connection [fd]. The descriptor is closed (even on
+        error).
+
+        The other arguments are just like for [run].
+    *)
 
 
 (* ---------------------------------------------------------------------- *)

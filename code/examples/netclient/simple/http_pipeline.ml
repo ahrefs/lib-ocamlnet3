@@ -23,7 +23,7 @@
  * but it does not make sense if the network is saturated because of this.
  *)
 
-open Http_client;;
+open Nethttp_client;;
 
 let got_response message =
   (* This function is called when the response has arrived, or a timeout

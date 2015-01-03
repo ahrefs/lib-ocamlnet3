@@ -283,7 +283,7 @@ module ManagedClient = struct
 	mclient_user_name : string option;
 	mclient_initial_ping : bool;
 	mclient_max_response_length : int option;
-	mclient_mstring_factories : Xdr_mstring.named_mstring_factories option;
+	mclient_mstring_factories : Netxdr_mstring.named_mstring_factories option;
       }
 
   type state = [ `Down | `Connecting | `Up of Unix.sockaddr option]
@@ -590,7 +590,7 @@ module ManagedClient = struct
 	  client 
 	  prog
 	  mc.null_proc_name
-	  Xdr.XV_void
+	  Netxdr.XV_void
 	  (fun get_reply ->
 	     try
 	       let _ = get_reply() in   (* or exn *)

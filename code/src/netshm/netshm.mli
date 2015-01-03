@@ -20,10 +20,12 @@ val supported_types : shm_type list
   (** The types supported for this OS *)
 
 type shm_name =
-  [ `POSIX of string
-      (** This name refers to a POSIX shared memory object. The name
+  [ `POSIX of string * string
+      (** The right name refers to a POSIX shared memory object. The name
         * must start with a slash, and must not contain further slashes,
-        * e.g. ["/my_shm"].
+        * e.g. ["/my_shm"]. The left name points to a file in the usual
+        * file tree. {b Note that [`POSIX] does not work correctly on
+        * OS X because it is not possible to resize memory objects.}
        *)
   | `File of string
       (** This is the name of an arbitrary file used to store the
@@ -36,12 +38,14 @@ type shm_name =
 
 val shm_type_of_name : shm_name -> shm_type
 
-val open_shm : shm_name -> Unix.open_flag list -> int -> shm_descr
+val open_shm : ?unique:bool -> shm_name -> Unix.open_flag list -> int -> shm_descr
   (** Opens the shared memory object.
     *
     * For [POSIX_shm] not all open flags can be specified. The flags
     * are limited to [O_RDONLY], [O_RDWR], [O_CREAT], [O_EXCL] and
     * [O_TRUNC].
+    *
+    * [unique]: Unique file generation as in [create_unique_shm].
    *)
 
 val create_unique_shm : shm_name -> int -> shm_descr

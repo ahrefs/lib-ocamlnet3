@@ -1,5 +1,5 @@
 open Tk;;
-open Telnet_client;;
+open Nettelnet_client;;
 
 (*let _ = Unixqueue.set_debug_mode true;;*)
 

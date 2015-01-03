@@ -1,5 +1,8 @@
 (* This is the HTTP client example from the User's Manual *)
 
+#use "topfind";;
+#require "equeue";;
+
 open Uq_engines
 open Uq_engines.Operators
 
@@ -13,10 +16,11 @@ end ;;
 
 let main() =
   let ues = Unixqueue.create_unix_event_system() in
-  let c = connector (`Socket(`Sock_inet_byname(Unix.SOCK_STREAM,
-					       "www.npc.de", 80),
-			     default_connect_options
-			    )) ues in
+  let c = Uq_client.connect_e
+            (`Socket(`Sock_inet_byname(Unix.SOCK_STREAM,
+				       "www.camlcity.org", 80),
+		     Uq_client.default_connect_options
+	    )) ues in
   let b = Buffer.create 10000 in
 
   let e =
@@ -31,7 +35,7 @@ let main() =
 		    Uq_io.write_eof_e d ++
                       (fun _ ->
 			let buffer = new async_buffer b in
-			new receiver ~src:fd ~dst:buffer ues
+			new Uq_transfer.receiver ~src:fd ~dst:buffer ues
                       )
 		 )
 	  | _ -> assert false
@@ -39,12 +43,18 @@ let main() =
 
   when_state
     ~is_done:(fun _ ->
-                prerr_endline "HTTP RESPONSE RECEIVED!")
+                prerr_endline "HTTP RESPONSE RECEIVED!";
+                print_endline (Buffer.contents b)
+             )
     ~is_error:(fun _ ->
-                prerr_endline "ERROR!")
+                prerr_endline "ERROR!"
+              )
     e;
 
   Unixqueue.run ues;
 
   b
 ;;
+
+
+main();;

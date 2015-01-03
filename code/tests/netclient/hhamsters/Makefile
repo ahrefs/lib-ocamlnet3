@@ -6,10 +6,10 @@ test:
 	./hhamsters.run
 
 hhamsters: hhamsters.ml
-	ocamlfind ocamlopt -o hhamsters -g -package netclient -linkpkg hhamsters.ml
+	ocamlfind ocamlopt -o hhamsters -g -package netclient,nettls-gnutls -linkpkg hhamsters.ml
 
 hhamsters.run: hhamsters.ml
-	ocamlfind ocamlc -o hhamsters.run -g -package netclient -linkpkg hhamsters.ml
+	ocamlfind ocamlc -o hhamsters.run -g -custom -package netclient,nettls-gnutls -linkpkg hhamsters.ml
 
 
 .PHONY: clean

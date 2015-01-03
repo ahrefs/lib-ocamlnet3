@@ -16,12 +16,14 @@ let rpc_factory
       () =
 
   let pmap_register sockserv progs_and_versions port =
+    let need_ipv6 = ref false in
     List.iter
       (fun (_, fds) ->
 	 Array.iter
 	   (fun fd ->
 	      match Unix.getsockname fd with
-		| Unix.ADDR_INET(_,p) ->
+		| Unix.ADDR_INET(a,p) ->
+                    if Netsys.is_ipv6_inet_addr a then need_ipv6 := true;
 		    ( match !port with
 			| None -> port := Some p;
 			| Some p' ->
@@ -36,18 +38,30 @@ let rpc_factory
     match !port with
       | None -> ()
       | Some p ->
-	  let pmap = Rpc_portmapper.create_inet "localhost" in
+	  let pmap = Rpc_portmapper.create_local() in
 	  List.iter
 	    (fun (prog_nr, vers_nr) ->
-	       ( match Rpc_portmapper.getport pmap prog_nr vers_nr Rpc.Tcp with
-		   | 0 -> ()
-		   | p' ->
-		       let _ =
-			 Rpc_portmapper.unset pmap prog_nr vers_nr Rpc.Tcp p' in
-		       ()
-	       );
-	       ignore(Rpc_portmapper.set pmap prog_nr vers_nr Rpc.Tcp p)
+	       ignore(
+		 Rpc_portmapper.unset_rpcbind pmap prog_nr vers_nr "" "" "")
 	    )
+	    progs_and_versions;
+          let addrs =
+            if !need_ipv6 then
+              [ Unix.inet6_addr_any; Unix.inet_addr_any ]
+            else
+              [ Unix.inet_addr_any ] in
+          List.iter
+	    (fun (prog_nr, vers_nr) ->
+               List.iter
+                 (fun addr ->
+                    let netid = Rpc.netid_of_inet_addr addr Rpc.Tcp in
+                    let uaddr = Rpc.create_inet_uaddr addr p in
+                    let owner = string_of_int (Unix.getuid()) in
+	            ignore(Rpc_portmapper.set_rpcbind pmap prog_nr vers_nr netid
+                                                      uaddr owner)
+                 )
+                 addrs
+            )
 	    progs_and_versions;
 	  Rpc_portmapper.shut_down pmap
   in
@@ -56,10 +70,11 @@ let rpc_factory
     match !port with
       | None -> ()
       | Some p ->
-	  let pmap = Rpc_portmapper.create_inet "localhost" in
+	  let pmap = Rpc_portmapper.create_local() in
 	  List.iter
 	    (fun (prog_nr, vers_nr) ->
-	       ignore(Rpc_portmapper.unset pmap prog_nr vers_nr Rpc.Tcp p);
+	       ignore(
+                   Rpc_portmapper.unset_rpcbind pmap prog_nr vers_nr "" "" "")
 	    )
 	    progs_and_versions;
 	  Rpc_portmapper.shut_down pmap;
@@ -158,11 +173,15 @@ let rpc_factory
 				(`Multiplexer_endpoint mplex) esys in
 			    srv_list := (srv,fd) :: !srv_list;
 			    Rpc_server.set_exception_handler srv
-			      (fun err ->
+			      (fun err bt ->
 				 container # log
 				   `Crit
 				   ("RPC server caught exception: " ^ 
-				      Netexn.to_string err));
+				      Netexn.to_string err);
+				 container # log
+				   `Crit
+				   ("Backtrace: " ^ bt);
+                              );
 			    Rpc_server.set_onclose_action 
 			      srv (fun _ ->
 				     srv_list :=

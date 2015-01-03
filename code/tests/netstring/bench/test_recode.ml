@@ -456,14 +456,14 @@ let test_cursor16() =
 
 print_endline "Warning: You need to set OCAMLPATH to run this test!";;
 let dir =
-  let ch = Unix.open_process_in "ocamlfind query netstring" in
+  let ch = Unix.open_process_in "ocamlfind query netunidata" in
   let line = input_line ch in
   ignore(Unix.close_process_in ch);
   if Sys.file_exists (line ^ "/cmapf.iso88591.netdb") then
     line
   else
     line ^ "/netdb";;
-Netdb.override_file_db dir;
+Netunidata.set_net_db_dir dir;
 
 print_endline "Warning: You need the command 'iconv' to run this test!";
 flush stdout;

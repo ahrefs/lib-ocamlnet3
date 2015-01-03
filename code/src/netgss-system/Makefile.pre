@@ -1,0 +1,27 @@
+TOP_DIR=../..
+
+PRE = 1
+PKGNAME = netgss-system
+GENERATE = META netgss_bindings.ml netgss_bindings.mli \
+           netgss_bindings_stubs.c done_reconfigure
+
+include $(TOP_DIR)/Makefile.rules
+
+CLEAN_LIST += netgss_bindings.ml \
+              netgss_bindings.mli \
+              netgss_bindings_stubs.c \
+              done_reconfigure
+
+netgss_bindings.ml: done_reconfigure
+	@:
+
+netgss_bindings.mli: done_reconfigure
+	@:
+
+netgss_bindings_stubs.c: done_reconfigure
+	@:
+
+done_reconfigure: gssapi.descr gssapi.c gssapi.ml gssapi.mli
+	./reconfigure
+
+

@@ -456,7 +456,7 @@ usage: ocamlrpcgen [-aux] [-clnt] [-srv] [-srv2]
 - [-U var]: Undefines the C preprocessor variable [var].
 - [-direct]: The effect of this switch is that ocamlrpcgen generates
   different code that directly maps the XDR byte representation to
-  the final OCaml values, and bypasses {!Xdr.xdr_value} as much as
+  the final OCaml values, and bypasses {!Netxdr.xdr_value} as much as
   possible. This is the same style the traditional rpcgen preferred.
   The code is faster (up to 50% for certain large values), but also much
   longer. As a rule of thumb, this style is only a win if you have
@@ -755,7 +755,7 @@ file, e.g.
 typedef _managed string s<>;
 ]}
 
-A managed string is mapped to the object type {!Xdr_mstring.mstring}.
+A managed string is mapped to the object type {!Netxdr_mstring.mstring}.
 The idea of managed strings is to avoid data copies as much as possible,
 and to introduce some freedom of representation. In particular, managed
 strings can be backed by normal strings or by bigarrays of char. The

@@ -26,8 +26,8 @@
  * the answer among all answers.
  *)
 
-open Rtypes
-open Xdr
+open Netnumber
+open Netxdr
 open Rpc
 
 exception Connection_lost
@@ -54,15 +54,22 @@ type connector =
 	 * given port number. A number of 0 means that the port is
 	 * chosen by the operating system.
 	 * Note: The service is only locally reachable.
+         *
+         * IPv6: if the socket can be bound to ::1, this is preferred.
 	 *)
   | Portmapped
         (** The service is installed on every network interface; the port is
 	 * chosen by the operating system; the program is registered with the
-	 * portmapper
+	 * portmapper (or rpcbind).
+         *
+         * IPv6: if the socket can be bound to ::, this is preferred. Also,
+         * if {!Netsys.is_ipv6_system} returns true, the IPv6 capability is
+         * registered with rpcbind.
 	 *)
   | Internet of (Unix.inet_addr * int)
         (** The service is installed on the passed interface/port combination.
-	 * Use Unix.inet_addr_any to listen on all network interfaces.
+	 * Use [Unix.inet_addr_any] to listen on all network interfaces (IPv4),
+         * or [Unix.inet6_addr_any] for IPv6 and IPv4.
 	 * Use port 0 to automatically choose the port number.
 	 *)
   | Unix of string
@@ -174,6 +181,16 @@ end
 val default_socket_config : socket_config
 class default_socket_config : socket_config
 
+val tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                        socket_config
+  (** This configuration establishes TLS when accepting new connections.
+      It is (so far) only compatible with {!Rpc.Tcp}.
+   *)
+
+class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
+                          socket_config
+  (** TLS configuration as class *)
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
@@ -209,6 +226,7 @@ val create2 :
 val bind :
       ?program_number:uint4 ->  (* Override program number *)
       ?version_number:uint4 ->  (* Override version number *)
+      ?pm_continue:bool ->
       Rpc_program.t ->
       binding list ->
       t -> 
@@ -217,6 +235,11 @@ val bind :
     * must be informed, this action is started (and continued in the
     * background). One can bind several programs in several versions to the
     * same server.
+    *
+    * [pm_continue]: you need to set this to [true] for all follow-up binds
+    * after the first one. If [pm_continue] is [false], the portmapper entry
+    * is completely removed before a new registration is done. If it is [true],
+    * the new registration is appended to the existing one.
    *)
 
 val unbind :
@@ -236,7 +259,7 @@ val get_event_system : session -> Unixqueue.event_system
 val get_connection_id : session -> connection_id
   (** Get the connection_id *)
 
-val get_xid : session -> Rtypes.uint4
+val get_xid : session -> Netnumber.uint4
   (** Returns the session ID.
    * Important note: This number identifies the session from the caller's
    * view, not from the server's view!
@@ -278,6 +301,13 @@ val is_dummy : t -> bool
   (** Whether this is a server in [`Dummy] mode. These servers cannot be
       used for communication
    *)
+
+val get_tls_session_props : session -> Nettls_support.tls_session_props option
+  (** Get the TLS properties so far TLS is enabled *)
+
+val get_gssapi_props : session -> Netsys_gssapi.server_props option
+  (** Get the GSSAPI properties if available *)
+
 
 type rule =
     [ `Deny
@@ -328,7 +358,7 @@ val set_session_filter_2 : t -> (Rpc_transport.sockaddr -> connection_id -> rule
     * connection ID.
    *)
 
-val set_mstring_factories : t -> Xdr_mstring.named_mstring_factories -> unit
+val set_mstring_factories : t -> Netxdr_mstring.named_mstring_factories -> unit
   (** Sets the mstring factories to use for decoding requests containing
       managed strings
    *)
@@ -351,11 +381,13 @@ val reply : session -> xdr_value -> unit
 val reply_error : session -> Rpc.server_error -> unit
   (** Like [reply], but an error condition is sent back to the caller. *)
 
-val set_exception_handler : t -> (exn -> unit) -> unit
+val set_exception_handler : t -> (exn -> string -> unit) -> unit
   (** Sets the exception handler for the server.
    * The exception handler gets most exceptions raised by the functions that
    * are bound to procedures. The exception handler does not get Abort
    * exceptions and any exceptions resulting from I/O problems.
+   *
+   * The string is the backtrace if present, or "" otherwise.
    *
    * NOTES ABOUT EXCEPTIONS:
    * - The default exception handler logs a [`Crit] message using {!Netlog}.
@@ -404,10 +436,11 @@ val stop_connection : t -> connection_id -> unit
 
 type auth_result =
     Auth_positive of (string * string * string * 
-			Xdr.encoder option * Xdr.decoder option)
+			Netxdr.encoder option * Netxdr.decoder option *
+                          Netsys_gssapi.server_props option)
       (** Successful authentication:
           [(username, returned_verifier_flavour, returned_verifier_data, 
-	    enc_opt, dec_opt
+	    enc_opt, dec_opt, gss_opt
 	  )]
 
 	  Encoders and decoders are allowed to raise the exceptions
@@ -415,7 +448,7 @@ type auth_result =
        *)
   | Auth_negative of Rpc.server_error
       (** Failed authentication *)
-  | Auth_reply of (Xdr_mstring.mstring list * string * string)
+  | Auth_reply of (Netxdr_mstring.mstring list * string * string)
       (** The authentication method generates the positive response
 	  of this RPC call:
 	  [(data, verf_flavor, verf_data)]
@@ -448,6 +481,7 @@ object
   method verifier : string * string
   method frame_len : int
   method message : Rpc_packer.packed_value
+  method transport_user : string option
 end
 
 
@@ -486,6 +520,13 @@ object
      * [procedure], and [xid] are new. Added new [auth_result] of
      * [Auth_reply].
      *)
+
+  method invalidate_connection : connection_id -> unit
+    (** Removes all auth sessions for this connection *)
+
+  method invalidate : unit -> unit
+    (** Remove all auth sessions *)
+
 end
 
 val set_auth_methods : t -> auth_method list -> unit
@@ -504,7 +545,8 @@ val auth_too_weak : auth_method
 
 val auth_transport : auth_method
   (** Authenticate by trusting the transport layer. The user returned by
-    * the multiplexer's method peer_user_name is taken.
+    * the multiplexer's method peer_user_name is taken. Use this for getting
+    * the user name from a client certificate.
     *)
 
 val get_user : session -> string

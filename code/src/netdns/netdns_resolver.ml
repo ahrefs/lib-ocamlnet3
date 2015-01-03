@@ -947,7 +947,7 @@ object(self)
       List.iter
 	(fun rr ->
 	   let ttl =
-	     min max_ttl (Int64.to_float (Rtypes.int64_of_uint4 rr.rr_ttl)) in
+	     min max_ttl (Int64.to_float (Netnumber.int64_of_uint4 rr.rr_ttl)) in
 	   let expires = 
 	     now +. ttl in
 	   self # replace_fwd_mapping expires rr;

@@ -5,7 +5,7 @@
 
 open Netchannels
 open Netmime
-open Mimestring
+open Netmime_string
 
 let sendmail_program = "/usr/lib/sendmail" ;;
 
@@ -38,24 +38,24 @@ let create_address_tokens
     if Netstring_str.string_match only_usascii_re hr_addr 0 <> None then begin
       (* Use double quotes to protect meta characters *)
       if exists specials_re hr_addr then
-	[Mimestring.QString hr_addr]
+	[Netmime_string.QString hr_addr]
       else 
 	List.map
-	  (fun s -> Mimestring.Atom s)
+	  (fun s -> Netmime_string.Atom s)
 	  (Netstring_str.split ws_re hr_addr)
     end
     else
-      [Mimestring.EncodedWord((Netconversion.string_of_encoding out_charset,""),
+      [Netmime_string.EncodedWord((Netconversion.string_of_encoding out_charset,""),
 			      "Q", 
 			      hr_addr)]
   in
   (* TODO: Check syntax of formal_addr *)
   let formal_words =
-    [ Mimestring.Special '<'; 
-      Mimestring.Atom formal_addr; 
-      Mimestring.Special '>'
+    [ Netmime_string.Special '<'; 
+      Netmime_string.Atom formal_addr; 
+      Netmime_string.Special '>'
     ] in
-  (hr_words @ [ Mimestring.Special ' ' ] @ formal_words)
+  (hr_words @ [ Netmime_string.Special ' ' ] @ formal_words)
 ;;
 
 
@@ -65,7 +65,7 @@ let create_address_list_tokens ?in_charset ?out_charset addrs =
 	[] -> []
       | addr :: (addr' :: _ as addrs') ->
 	  create_address_tokens ?in_charset ?out_charset addr @ 
-	  [ Mimestring.Special ','; Mimestring.Special ' ' ] @
+	  [ Netmime_string.Special ','; Netmime_string.Special ' ' ] @
 	  map addrs'
       | [ addr ] ->
 	  create_address_tokens ?in_charset ?out_charset addr
@@ -80,7 +80,7 @@ let format_field_value fieldname tokens =
   let maxlen = 78 in
   let hardmaxlen = 998 in
   let initlen = String.length fieldname + 2 in  (* String.length ": " = 2 *)
-  Mimestring.write_value 
+  Netmime_string.write_value 
     ~maxlen1:(maxlen - initlen)
     ~maxlen
     ~hardmaxlen1:(hardmaxlen - initlen)
@@ -99,7 +99,7 @@ let create_text_tokens
     if Netstring_str.string_match only_usascii_re value 0 <> None then
       List.map (fun s -> Atom s) (Netstring_str.split ws_re value)
     else
-      [ Mimestring.EncodedWord((Netconversion.string_of_encoding out_charset,""), 
+      [ Netmime_string.EncodedWord((Netconversion.string_of_encoding out_charset,""), 
 			       "Q", 
 			       value) ]
   in
@@ -403,6 +403,6 @@ let sendmail ?(mailer = sendmail_program) ?(crlf = false) message =
   with_out_obj_channel
     (new output_command cmd)
     (fun ch ->
-       write_mime_message ~crlf ch message;
+       Netmime_channels.write_mime_message ~crlf ch message;
     )
 ;;

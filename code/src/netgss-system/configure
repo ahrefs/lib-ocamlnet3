@@ -1,0 +1,157 @@
+#! /bin/sh
+
+# Env:
+# GSSAPI_CFLAGS
+# GSSAPI_LIBS
+
+have_gssapi=0
+
+stdlib=`ocamlc -where`
+
+rm -f config.h config.sh config.mk
+ulimit -c 0          # no coredumps
+
+compiler="ocamlc -custom"
+if ocamlopt; then compiler=ocamlopt; fi
+
+log="config.log"
+rm -f $log
+touch $log
+
+out="config.h"
+rm -f $out
+touch $out
+
+mkdir -p testdir
+
+######################################################################
+
+# Programs linked with ocamlc have more libraries linked in by default.
+# Because of this, we use ocamlopt if available.
+
+call_ocamlc () {
+    echo '$' $compiler -ccopt "$GSSAPI_CFLAGS" -cclib "$GSSAPI_LIBS" "$@" >>$log
+    ( cd testdir;
+      $compiler -ccopt "$GSSAPI_CFLAGS" -cclib "$GSSAPI_LIBS" "$@"
+    )  >>$log 2>&1
+    return $?
+}
+
+
+check_fun() {
+    macro="$1"
+    fun="$2"
+
+}
+
+######################################################################
+
+
+check_gssapi() {
+    fun=gss_init_sec_context
+    echo "# FUN $fun" >> $log
+
+    cat <<EOF >testdir/main.ml
+external test : unit -> unit = "do_test"
+let () = test()
+EOF
+
+    cat <<EOF >testdir/test.c
+#ifdef __APPLE__
+#include <GSS/gssapi.h>
+#else
+#include <gssapi.h>
+#endif
+
+#include "caml/mlvalues.h"
+
+value do_test (value dummy) {
+  (void) & $fun;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -o test test.c main.ml; then
+        have_gssapi=1    
+        variant="INCLUDE_GSSAPI"
+    else
+        have_gssapi=0
+    fi
+}
+
+
+check_shishi() {
+    fun=gss_init_sec_context
+    echo "# FUN $fun" >> $log
+
+    cat <<EOF >testdir/main.ml
+let () = ()
+EOF
+
+    cat <<EOF >testdir/test.c
+#include <gss.h>
+int main (int argc, char *argv[], char *envp[]) {
+  (void) & $fun;
+  return 0;
+}
+EOF
+
+    if call_ocamlc -o test test.c main.ml; then
+        have_gssapi=1
+        variant="INCLUDE_GSS"
+    else
+        have_gssapi=0
+    fi
+}
+
+
+printf "Checking for GSSAPI/Kerberos... "
+
+if [ -n "$GSSAPI_LIBS" -o -n "$GSSAPI_CFLAGS" ]; then
+    check_gssapi
+    if [ $have_gssapi -eq 0 ]; then
+        check_shishi
+    fi
+else
+    case `uname -s` in
+        Darwin)
+            GSSAPI_LIBS="-framework GSS"
+            GSSAPI_CFLAGS=""
+            check_gssapi
+            ;;
+
+        *)
+            for lib in -lgssglue -lgssapi_krb5 -lgssapi; do
+                GSSAPI_LIBS="$lib"
+                check_gssapi
+                if [ $have_gssapi -gt 0 ]; then break; fi
+            done
+            if [ $have_gssapi -eq 0 ]; then
+                GSSAPI_LIBS="-lgss"
+                check_shishi
+            fi
+    esac
+fi
+
+
+if [ $have_gssapi -gt 0 ]; then
+    echo "found ($GSSAPI_LIBS)"
+else
+    echo "not found"
+    exit 1
+fi
+
+if [ $have_gssapi -gt 0 ]; then
+    # The vars in config.sh are picked up by reconfigure
+    echo "GSSAPI_CFLAGS='$GSSAPI_CFLAGS'" >>config.sh
+    echo "GSSAPI_LIBS='$GSSAPI_LIBS'" >>config.sh
+    echo "GSSAPI_VARIANT=$variant" >>config.sh
+
+    # The vars in config.mk are appended to Makefile.conf
+    echo "# GSSAPI" >> config.mk
+    echo "NETGSS_CFLAGS = $GSSAPI_CFLAGS" >>config.mk
+    echo "NETGSS_LINK_OPTIONS = $GSSAPI_LIBS" >> config.mk
+    echo "NETGSS_VARIANT = $variant" >>config.mk
+
+    ./reconfigure
+fi
