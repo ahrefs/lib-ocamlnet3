@@ -285,7 +285,7 @@ class x509_certificate_from_ASN1 asn1 =
                           tbs_cert_l2)
       | _ ->
            fail() in
-  let cert_serial_str = get_int_str cert_serial_int in
+  let cert_serial_str = get_int_repr cert_serial_int in
   let sigtoo_algo = parse_algo_id sigtoo_algo_asn1 in
   let sig_algo_ok =
     fst sig_algo = fst sigtoo_algo &&
@@ -794,7 +794,7 @@ let parse_authority_key_identifier s =
 
   let parse_serno =
     function
-    | Integer i -> get_int_str i
+    | Integer i -> get_int_repr i
     | _ -> fail() in
 
   let k, v = Netasn1.decode_ber s in

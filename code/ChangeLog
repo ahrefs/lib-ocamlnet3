@@ -1,3 +1,9 @@
+2015-01-05  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netasn1_encoder: new module for encding ASN.1 messages
+
+-- OCamlnet-4.1 fork
+
 2014-12-30  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netplex: the Netplex socket directory has a different default

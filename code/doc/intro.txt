@@ -190,6 +190,7 @@ for other libraries.
    Netaccel_link
    Netaddress
    Netasn1
+   Netasn1_encode
    Netauth
    Netaux
    Netbuffer

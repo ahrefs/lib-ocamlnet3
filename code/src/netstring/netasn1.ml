@@ -50,6 +50,7 @@ module Value = struct
     | Set of value list
     | Tagptr of tag_class * int * pc * string * int * int
     | Tag of tag_class * int * pc * value
+    | ITag of tag_class * int * value
     | OID of int array
     | ROID of int array
     | ObjectDescriptor of string
@@ -78,6 +79,8 @@ module Value = struct
    and bitstring_value = string
    and time_value = U of string | G of string
 
+  type time_subtype = [ `U | `G ]
+
   let rec equal v1 v2 =
     match (v1, v2) with
       | (Seq s1, Seq s2) ->
@@ -102,7 +105,7 @@ module Value = struct
            v1 = v2
 
 
-  let get_int_str v = v
+  let get_int_repr v = v
   let get_int_b256 v =
     if v = "\000" then
       [| |]
@@ -142,8 +145,76 @@ module Value = struct
     if x > max_int32L || x < min_int32L then raise Out_of_range;
     Int64.to_int32 x
 
+  let int64_a n =
+    let rec recurse n p bit7 =
+      if n = 0L then
+        if bit7 then (
+          let a = Array.make (p+1) 0 in
+          a.(0) <- 0;
+          a
+        )
+        else
+          Array.make p 0
+      else if n = (-1L) then
+        if bit7 then
+          Array.make p 0
+        else (
+          let a = Array.make (p+1) 0 in
+          a.(0) <- 255;
+          a          
+        )
+      else
+        let byte = Int64.to_int (Int64.logand n 0xffL) in
+        let n' = Int64.shift_right n 8 in  (* arithm. shift *)
+        let a = recurse n' (p+1) (byte >= 0x80) in
+        let l = Array.length a in
+        a.(l-1-p) <- byte;
+        a in
+    if n = 0L || n = (-1L) then (
+      [| Int64.to_int (Int64.logand n 0xffL) |]
+    )
+    else
+      recurse n 0 false
 
-  let get_real_str v = v
+  let intstr a =
+    let l = Array.length a in
+    let s = String.make l '\x00' in
+    for k = 0 to l-1 do
+      s.[k] <- Char.chr a.(k)
+    done;
+    s
+
+  let int64 n =
+    intstr(int64_a n)
+    
+  let int32 n =
+    int64 (Int64.of_int32 n)
+
+  let int n =
+    int64 (Int64.of_int n)
+
+  let int_b256_a a =
+    (* normalize the number (express it with as few bytes as possible) *)
+    let l = Array.length a in
+    if l=0 then
+      [| 0 |]
+    else (
+      let k = ref 0 in
+      while !k < l-1 &&
+            ((a.(!k) = 0 && a.(!k+1) < 0x80) ||
+               (a.(!k) = 0xff && a.(!k+1) >= 0x80))
+      do
+        incr k
+      done;
+      Array.sub a !k (l - !k)
+    )
+
+  let int_b256 a =
+    intstr (int_b256_a a)
+
+  let get_real_repr v = v
+
+  let get_bitstring_repr v = v
 
   let get_bitstring_size v =
     let n_unused = Char.code v.[0] in
@@ -152,16 +223,102 @@ module Value = struct
   let get_bitstring_data v =
     String.sub v 1 (String.length v - 1)
 
-  let get_bitstring_bits v =
-    let size = get_bitstring_size v in
+  let get_bitstring_bits ?size v =
+    let v_size = get_bitstring_size v in
+    let size =
+      match size with
+        | None -> v_size
+        | Some n -> n in
     Array.init
       size
       (fun k ->
-         let p = k lsr 3 in
-         let q = k land 7 in
-         let x = Char.code v.[ p + 1 ] in
-         (x lsl q) land 0x80 <> 0
+         if k < v_size then
+           let p = k lsr 3 in
+           let q = k land 7 in
+           let x = Char.code v.[ p + 1 ] in
+           (x lsl q) land 0x80 <> 0
+         else
+           false
       )
+
+  let bitstring_of_bits bits =
+    let buf = Buffer.create 80 in
+    let l = Array.length bits in
+    let p = l land 0x7 in
+    Buffer.add_char buf (Char.chr (if p=0 then 0 else 8-p));
+    let c = ref 0 in
+    let sh = ref 7 in
+    Array.iteri
+      (fun k bit ->
+         let b = if bit then 1 else 0 in
+         c := !c lor (b lsl !sh);
+         if !sh = 0 then (
+           Buffer.add_char buf (Char.chr !c);
+           c := 0;
+           sh := 7
+         )
+         else
+           decr sh
+      )
+      bits;
+    if !sh < 7 then
+      Buffer.add_char buf (Char.chr !c);
+    Buffer.contents buf
+
+  let mask =
+    [| 0b1000_0000;
+       0b1100_0000;
+       0b1110_0000;
+       0b1111_0000;
+       0b1111_1000;
+       0b1111_1100;
+       0b1111_1110;
+       0b1111_1111;
+      |]
+
+  let bitstring_of_string s size =
+    if size < 0 then invalid_arg "Netasn1.Value.bitstring_of_string";
+    let slen = String.length s in
+    let buf = Buffer.create 80 in
+    let p = size land 0x7 in
+    Buffer.add_char buf (Char.chr (if p=0 then 0 else 8-p));
+    let q = size / 8 in
+    Buffer.add_string buf (String.sub s 0 (min q slen));
+    if slen < q then
+      Buffer.add_string buf (String.make (q - slen) '\x00');
+    if p > 0 then (
+      let last =
+        if slen > q then Char.code (s.[q]) else 0 in
+      let m = mask.(p-1) in
+      let last' = last land m in
+      Buffer.add_char buf (Char.chr last')
+    );
+    Buffer.contents buf
+
+  let truncate_trailing_zero_bits s =
+    let slen = String.length s in
+    let size_in = ((slen - 1) lsl 3) - Char.code s.[0] in
+    let size = ref size_in in
+    let k = ref (slen-1) in
+    let cont = ref true in
+    while !cont && !k >= 1 do
+      let b =
+        8 - (if !k = slen-1 then Char.code s.[0] else 0) in
+      if s.[ !k ] = '\x00' then
+        size := !size - b
+      else (
+        let c = Char.code s.[ !k ] in
+        let j = ref 0 in
+        while (mask.( !j ) land c) <> c do
+          incr j
+        done;
+        size := !size - b + !j + 1;
+        cont := false
+      );
+      decr k;
+    done;
+    bitstring_of_string (String.sub s 1 (slen-1)) !size
+
 
   let utc_re = Netstring_str.regexp
                  "^\\([0-9][0-9]\\)\
@@ -169,7 +326,7 @@ module Value = struct
                   \\([0-9][0-9]\\)\
                   \\([0-9][0-9]\\)\
                   \\([0-9][0-9]\\)\
-                  \\([0-9][0-9]\\)Z$"
+                  \\([0-9][0-9]\\)\\(.*\\)$"
 
   let gentime_re = Netstring_str.regexp
                      "^\\([0-9][0-9][0-9][0-9]\\)\
@@ -178,13 +335,33 @@ module Value = struct
                       \\([0-9][0-9]\\)\
                       \\([0-9][0-9]\\)\
                       \\([0-9][0-9]\\)\
-                      \\(.[0-9]+\\)?Z$"
+                      \\(.[0-9]+\\)?\\([-Z+].*\\)$"
 
+  let zone_re = Netstring_str.regexp "^[-+][0-9][0-9][0-9][0-9]$"
 
-  let get_time_str =
+  let get_time_subtype =
+    function
+    | U s -> `U
+    | G s -> `G
+
+  let get_time_repr =
     function
     | U s -> s
     | G s -> s
+
+  let get_zone s =
+    if s = "Z" then
+      0
+    else (
+      match Netstring_str.string_match zone_re s 0 with
+        | None ->
+             failwith "Netasn1.Value.get_zone"
+        | Some _ ->
+             let h = int_of_string (String.sub s 1 2) in
+             let m = int_of_string (String.sub s 3 2) in
+             let v = h*60 + m in
+             if s.[0] = '-' then -v else v
+    )
 
   let get_time =
     function
@@ -198,12 +375,14 @@ module Value = struct
                let hour = int_of_string (Netstring_str.matched_group m 4 s) in
                let minute = int_of_string (Netstring_str.matched_group m 5 s) in
                let second = int_of_string (Netstring_str.matched_group m 6 s) in
+               let zonestr = Netstring_str.matched_group m 7 s in
+               let zone = get_zone zonestr in
                if month = 0 || month > 12 || day = 0 || day > 31 ||
                     hour > 23 || minute > 59 || second > 59 
                then
                  failwith "Netasn1.Value.get_time";
                { Netdate.year; month; day; hour; minute; second;
-                 nanos = 0; zone = 0; week_day = (-1)
+                 nanos = 0; zone; week_day = (-1)
                }
            | None ->
                failwith "Netasn1.Value.get_time"
@@ -218,6 +397,8 @@ module Value = struct
                let hour = int_of_string (Netstring_str.matched_group m 4 s) in
                let minute = int_of_string (Netstring_str.matched_group m 5 s) in
                let second = int_of_string (Netstring_str.matched_group m 6 s) in
+               let zonestr = Netstring_str.matched_group m 8s in
+               let zone = get_zone zonestr in
                if month = 0 || month > 12 || day = 0 || day > 31 ||
                     hour > 23 || minute > 59 || second > 59 
                then
@@ -233,11 +414,41 @@ module Value = struct
                    int_of_string n4
                  with Not_found -> 0 in
                { Netdate.year; month; day; hour; minute; second;
-                 nanos; zone = 0; week_day = (-1)
+                 nanos; zone; week_day = (-1)
                }
            | None ->
                failwith "Netasn1.Value.get_time"
         )
+
+  let utctime date =
+    let open Netdate in
+    if date.year < 1950 || date.year >= 2050 then
+      failwith "Netasn1.Value.utctime: year out of valid range";
+    let s =
+      if date.zone = 0 then
+        Netdate.format
+          ~fmt:"%y%m%d%H%M%SZ"
+          date
+      else
+        Netdate.format
+          ~fmt:"%y%m%d%H%M%S%z"
+          date in
+    U s
+
+  let gentime ~digits date =
+    if digits > 9 then
+      invalid_arg "Netasn1.Value.gentime";
+    let s =
+      if Netdate.(date.zone)=0 then
+        Netdate.format
+          ~fmt:("%Y%m%d%H%M%." ^ string_of_int digits ^ "SZ")
+          date
+      else
+        Netdate.format
+          ~fmt:("%Y%m%d%H%M%." ^ string_of_int digits ^ "S%z")
+          date in
+    G s
+
 end
 
 
