@@ -12,7 +12,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
 	   netsendmail.cmo nethttp.cmo \
 	   netpagebuffer.cmo netfs.cmo netglob_lex.cmo netglob.cmo \
 	   netauth.cmo netnumber.cmo netxdr_mstring.cmo netxdr.cmo \
-	   netasn1.cmo netoid.cmo netdn.cmo netx509.cmo \
+	   netasn1.cmo netasn1_encode.cmo netoid.cmo netdn.cmo netx509.cmo \
            netascii_armor.cmo nettls_support.cmo \
 	   netgssapi_support.cmo netgssapi_auth.cmo \
 	   netmech_scram.cmo netmech_scram_gssapi.cmo netmech_scram_sasl.cmo \
@@ -46,7 +46,8 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netmappings.mli netaux.mli nethttp.mli netpagebuffer.mli \
 	netfs.mli netglob.mli netauth.mli netsockaddr.mli \
         netnumber.mli netxdr_mstring.mli netxdr.mli \
-	netcompression.mli netunichar.mli netasn1.mli netoid.mli \
+	netcompression.mli netunichar.mli netasn1.mli netasn1_encode.mli \
+	netoid.mli \
 	netdn.mli netx509.mli netascii_armor.mli nettls_support.mli \
 	netmech_scram.mli netmech_scram_gssapi.mli netmech_scram_sasl.mli \
 	netgssapi_support.mli netgssapi_auth.mli netchannels_crypto.mli \
@@ -59,7 +60,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 
 PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
 
-ALL_EXTRA = netaccel.cma netaccel_link.cmo
+ALL_EXTRA = netaccel.cma netaccel_link.cmo netstring_top.cmo
 
 netaccel.cma: netaccel_c.o netaccel.cmo
 	$(OCAMLMKLIB) -o netaccel -oc netaccel_c netaccel_c.o netaccel.cmo
