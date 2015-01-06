@@ -2,6 +2,7 @@
 
 exception Out_of_range
 exception Parse_error of int
+exception Header_too_short
 
 module Type_name = struct
   type type_name =
@@ -532,7 +533,7 @@ let decode_ber_header ?pos ?len ?(skip_length_check=false) s =
       c
     )
     else
-      raise(Parse_error !cur) in
+      raise Header_too_short in
   let id0 = next() in
   let pc = 
     if (id0 land 0x20) <> 0 then Value.Constructed else Value.Primitive in
@@ -593,7 +594,10 @@ let decode_ber_header ?pos ?len ?(skip_length_check=false) s =
 let rec decode_ber_length ?pos ?len s =
   let pos, pos_end = decode_region ?pos ?len s in
   let (hdr_len, tc, pc, tag, length_opt) =
-    decode_ber_header ~pos ~len:(pos_end - pos) s in
+    try
+      decode_ber_header ~pos ~len:(pos_end - pos) s
+    with
+      | Header_too_short -> raise(Parse_error pos_end) in
   match length_opt with
     | Some n ->
         hdr_len + n
@@ -624,7 +628,10 @@ let rec decode_homo_construction f pos pos_end indefinite expected_tag s =
   while not (at_end()) do
     assert(!cur < pos_end);
     let (hdr_len, tc, pc, tag, length_opt) =
-      decode_ber_header ~pos:!cur ~len:(pos_end - !cur) s in
+      try
+        decode_ber_header ~pos:!cur ~len:(pos_end - !cur) s
+      with
+        | Header_too_short -> raise (Parse_error pos_end) in
     if tc <> Value.Universal then raise (Parse_error !cur);
     if tag <> expected_tag then raise (Parse_error !cur);
     ( match pc with
@@ -659,7 +666,10 @@ let rec decode_homo_construction f pos pos_end indefinite expected_tag s =
 let rec decode_ber ?pos ?len s =
   let pos, pos_end = decode_region ?pos ?len s in
   let (hdr_len, tc, pc, tag, length_opt) =
-    decode_ber_header ~pos ~len:(pos_end - pos) s in
+    try
+      decode_ber_header ~pos ~len:(pos_end - pos) s
+    with
+      | Header_too_short -> raise (Parse_error pos_end) in
   match tc with
     | Value.Universal ->
         let cur = pos + hdr_len in

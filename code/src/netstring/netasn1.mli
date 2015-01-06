@@ -6,6 +6,7 @@
 
 exception Out_of_range
 exception Parse_error of int (** Byte position in string *)
+exception Header_too_short
 
 module Type_name : sig
   type type_name =
@@ -312,6 +313,9 @@ val decode_ber_header : ?pos:int -> ?len:int -> ?skip_length_check:bool ->
 
       If [skip_length_check] is set, the function does not check whether
       the string is long enough to hold the whole data part.
+
+      If the string is a valid beginning of a header, the special exception
+      [Header_too_short] is raised (instead of [Parse_error]).
    *)
 
 
