@@ -850,7 +850,7 @@ let read_x509_config (cf:config_file) a_x509 =
   (trust, revoke, keys)
 
 
-let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
+let read_tls_config ?verify (cf:config_file) addr tls_opt =
   let basedir = Filename.dirname cf#filename in
   match cf#resolve_section addr "tls" with
     | [] ->
@@ -919,7 +919,6 @@ let read_tls_config ?verify ?peer_name_unchecked (cf:config_file) addr tls_opt =
                                   ?algorithms
                                   ?dh_params
                                   ?verify
-                                  ?peer_name_unchecked
                                   ~trust
                                   ~revoke
                                   ~keys

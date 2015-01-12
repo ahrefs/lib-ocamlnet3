@@ -82,8 +82,7 @@ module type TLS_PROVIDER =
     val create_config :
           ?algorithms : string ->
           ?dh_params : dh_params ->
-          ?verify : (endpoint -> bool) ->
-          ?peer_name_unchecked : bool ->
+          ?verify : (endpoint -> bool -> bool -> bool) ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
           unit ->
@@ -97,9 +96,6 @@ module type TLS_PROVIDER =
             implementation-defined.
           - [dh_params]: parameters for Diffie-Hellman key exchange (used for
             DH-based authentication, but only on the server side)
-          - [peer_name_unchecked]: If you do not want to check the peer name
-            although authentication is enabled, you can set this option.
-            (Normally, it is an error just to omit [peer_name].)
           - [peer_auth]: controls whether the peer is requested to authenticate.
             This can be set to [`None] meaning not to request authentication
             and to ignore credentials, or to [`Optional] meaning not to request
@@ -112,7 +108,14 @@ module type TLS_PROVIDER =
             credentials of the peer.
           - [verify] is a function called to verify the peer certificate
             in addition to the actions of [peer_auth]. The function must
-            return [true] in order to be successful.
+            return [true] in order to be successful. The arguments of the
+            function are the TLS endpoint, and two bools indicating the
+            success of previous checks. The first bool says whether the
+            certificate is trusted (based on [peer_auth], [trust] and
+            [system_trust]), and the second bool says whether the host name
+            of the peer matches the name in the certificate. If not
+            passed, [verify] defaults to [(fun _ cert_ok name_ok ->
+            cert_ok && name_ok)], i.e. both bools must be true.
 
           A configuration is read-only once created, and can be used for
           several endpoints. In particular, it does not cache TLS sessions.

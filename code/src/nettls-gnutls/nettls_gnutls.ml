@@ -95,8 +95,7 @@ module Make_TLS_1
           dh_params : G.gnutls_dh_params_t option;
           peer_auth : [ `None | `Optional | `Required ];
           credentials : credentials;
-          verify : endpoint -> bool;
-          peer_name_unchecked : bool;
+          verify : endpoint -> bool -> bool -> bool;
         }
 
     type serialized_session =
@@ -169,8 +168,9 @@ module Make_TLS_1
       "-----END " ^ header_tag ^ "-----\n"
 
 
-    let create_config ?(algorithms="NORMAL") ?dh_params ?(verify=fun _ -> true)
-                      ?(peer_name_unchecked=false) ~peer_auth 
+    let create_config ?(algorithms="NORMAL") ?dh_params 
+                      ?(verify=fun _ cert_ok name_ok -> cert_ok && name_ok)
+                      ~peer_auth 
                       ~credentials () =
       let f() =
         let priority = G.gnutls_priority_init algorithms in
@@ -196,7 +196,6 @@ module Make_TLS_1
           peer_auth;
           credentials;
           verify;
-          peer_name_unchecked
         } in
       trans_exn f ()
 
@@ -331,7 +330,6 @@ module Make_TLS_1
     let create_endpoint ~role ~recv ~send ~peer_name config =
       if peer_name=None && 
          role=`Client &&
-         not config.peer_name_unchecked &&
          config.peer_auth <> `None
       then
         failwith "TLS configuration error: authentication required, \
@@ -540,15 +538,22 @@ module Make_TLS_1
 
     let verify ep =
       let f() =
-        if G.gnutls_certificate_get_peers ep.session = [| |] then (
-          if ep.config.peer_auth = `Required then
-            raise(Exc.TLS_error (G.gnutls_strerror_name `No_certificate_found))
-        )
-        else (
-          if ep.config.peer_auth <> `None then (
-            let status_l = G.gnutls_certificate_verify_peers2 ep.session in
-            if status_l <> [] then
-              raise(Exc.TLS_error "NETTLS_CERT_VERIFICATION_FAILED");
+        let cert_ok, name_ok =
+          if G.gnutls_certificate_get_peers ep.session = [| |] then (
+            (* No certificate available *)
+            if ep.config.peer_auth = `Required then
+              raise(Exc.TLS_error
+                      (G.gnutls_strerror_name `No_certificate_found));
+            (true, true)
+          )
+          else (
+            if ep.config.peer_auth = `None then
+              (* Checks turned off *)
+              (true, true)
+            else
+              let status_l = G.gnutls_certificate_verify_peers2 ep.session in
+              let cert_ok = 
+                status_l = [] in
 (*
               failwith(sprintf "Certificate verification failed with codes: " ^ 
                          (String.concat ", " 
@@ -556,23 +561,25 @@ module Make_TLS_1
                                G.string_of_verification_status_flag
                                status_l)));
  *)
-            if not ep.config.peer_name_unchecked then ( 
-              match ep.peer_name with
-                | None -> ()
-                | Some pn ->
-                     let der_peer_certs = 
-                       G.gnutls_certificate_get_peers ep.session in
-                     assert(der_peer_certs <> [| |]);
-                     let peer_cert = G.gnutls_x509_crt_init() in
-                     G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
-                     let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
-                     if not ok then
-                       raise(Exc.TLS_error "NETTLS_NAME_VERIFICATION_FAILED");
-            );
-            if not (ep.config.verify ep) then
-              raise(Exc.TLS_error "NETTLS_USER_VERIFICATION_FAILED");
-          )
-        ) in
+              let name_ok =
+                match ep.peer_name with
+                  | None ->
+                      false
+                  | Some pn ->
+                      let der_peer_certs = 
+                        G.gnutls_certificate_get_peers ep.session in
+                      assert(der_peer_certs <> [| |]);
+                      let peer_cert = G.gnutls_x509_crt_init() in
+                      G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
+                      let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
+                      ok in
+              (cert_ok, name_ok)
+          ) in
+        let ok =
+          ep.config.verify ep cert_ok name_ok in
+        if not ok then
+          raise(Exc.TLS_error "NETTLS_VERIFICATION_FAILED");
+        () in
       trans_exn f ()
 
     let get_endpoint_creds ep =

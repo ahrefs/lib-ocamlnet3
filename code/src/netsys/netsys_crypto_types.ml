@@ -29,8 +29,7 @@ module type TLS_PROVIDER =
     val create_config :
           ?algorithms : string ->
           ?dh_params : dh_params ->
-          ?verify : (endpoint -> bool) ->
-          ?peer_name_unchecked : bool ->
+          ?verify : (endpoint -> bool -> bool -> bool) ->
           peer_auth : [ `None | `Optional | `Required ] ->
           credentials : credentials ->
           unit ->

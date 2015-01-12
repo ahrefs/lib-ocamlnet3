@@ -106,8 +106,8 @@ val error_message : (module Netsys_crypto_types.TLS_PROVIDER) ->
 val create_x509_config :
       ?algorithms : string ->
       ?dh_params : dh_params ->
-      ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
-      ?peer_name_unchecked : bool ->
+      ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> 
+                 bool -> bool -> bool) ->
       ?system_trust:bool ->
       ?trust : crt_list list ->
       ?revoke : crl_list list ->
@@ -124,9 +124,6 @@ val create_x509_config :
             implementation-defined.
           - [dh_params]: parameters for Diffie-Hellman key exchange (used for
             DH-based authentication, but only on the server side)
-          - [peer_name_unchecked]: If you do not want to check the peer name
-            although authentication is enabled, you can set this option.
-            (Normally, it is an error just to omit [peer_name].)
           - [peer_auth]: controls whether the peer is requested to authenticate.
             This can be set to [`None] meaning not to request authentication
             and to ignore credentials, or to [`Optional] meaning not to request
@@ -137,7 +134,14 @@ val create_x509_config :
             [`Required].
           - [verify] is a function called to verify the peer certificate
             in addition to the actions of [peer_auth]. The function must
-            return [true] in order to be successful.
+            return [true] in order to be successful. The arguments of the
+            function are the TLS endpoint, and two bools indicating the
+            success of previous checks. The first bool says whether the
+            certificate is trusted (based on [peer_auth], [trust] and
+            [system_trust]), and the second bool says whether the host name
+            of the peer matches the name in the certificate. If not
+            passed, [verify] defaults to [(fun _ cert_ok name_ok ->
+            cert_ok && name_ok)], i.e. both bools must be true.
           - [system_trust]: if set, the system certificates are trusted
           - [trust] specifies the CAs of peers to trust (default: empty)
           - [revoke] specifies CRLs for revocation of peer certificates
