@@ -114,6 +114,7 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
   let client_emit_response cs method_name uri hdr =
     if cs.cstate <> `Emit && cs.cstate <> `Stale then
       failwith "Netmech_digest_http.client_emit_response: bad state";
+    client_modify ~mod_method:method_name ~mod_uri:uri cs;
     let l1 = client_emit_response_kv ~quote:true cs in
     let l2 =
       List.map

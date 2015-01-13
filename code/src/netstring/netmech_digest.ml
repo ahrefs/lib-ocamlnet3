@@ -572,6 +572,25 @@ let client_process_initial_challenge_kv cs msg_params =
     | Not_found ->
         cs.cstate <- `Auth_error "unspecified"
 
+let client_modify ?mod_method ?mod_uri cs =
+  match cs.cresp with
+    | None ->
+        invalid_arg "Netmech_digest.client_modify"
+    | Some rp ->
+        let rp1 =
+          { rp with
+            r_method = (match mod_method with
+                          | None -> rp.r_method
+                          | Some m -> m
+                       );
+            r_digest_uri = (match mod_uri with
+                              | None -> rp.r_digest_uri
+                              | Some u -> u
+                           )
+          } in
+        cs.cresp <- Some rp1
+
+
 let client_emit_response_kv ?(quote=false) cs =
   (* SASL: method_name="AUTHENTICATE" *)
   let q s = if quote then qstring s else s in
