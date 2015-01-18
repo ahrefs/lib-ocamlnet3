@@ -1,3 +1,9 @@
+2015-01-18  Gerd Stolpmann <gerd@gerd-stolpmann.de>
+
+	* Release 4.0.1
+
+	* _oasis is generated from _oasis.in
+
 2014-12-30  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netplex: the Netplex socket directory has a different default

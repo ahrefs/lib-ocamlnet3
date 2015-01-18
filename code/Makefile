@@ -103,3 +103,6 @@ postconf:
 	echo 'pkg_version="$(VERSION)"' >>setup.data
 	echo 'bindir="$(BINDIR)"' >>setup.data
 	echo 'datadir="$(NET_DB_DIR)"' >>setup.data
+
+_oasis: _oasis.in
+	sed -e 's/@VERSION@/$(VERSION)/' _oasis.in >_oasis
