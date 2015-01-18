@@ -1119,9 +1119,26 @@ fi
 rm -f src/netcgi2-apache/config.h
 
 ######################################################################
-# make oasis happy
+# make oasis happy: setup.save will be picked up by "make postconf"
+# and will be appended to setup.data. That way the config update
+# will reach oasis.
 
-touch setup.data
+rm -f setup.save
+echo "pkg_version=\"$version\"" >>setup.save
+echo "bindir= \"$bindir\"" >>setup.save
+echo "datadir=\"$net_db_dir\"" >>setup.save
+echo "prefix=\"<not interpreted>\"" >>setup.save
+echo "destdir=\"$destdir\"" >>setup.save
+
+for opt in $eoptions; do
+    e="o=\$enable_$opt"
+    eval "$e"
+    if [ $o -gt 0 ]; then
+        echo "$opt=\"true\"" >>setup.save
+    else
+        echo "$opt=\"false\"" >>setup.save
+    fi
+done
 
 ######################################################################
 # Finish
