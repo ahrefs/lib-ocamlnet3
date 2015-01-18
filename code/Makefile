@@ -104,5 +104,7 @@ postconf:
 	echo 'bindir="$(BINDIR)"' >>setup.data
 	echo 'datadir="$(NET_DB_DIR)"' >>setup.data
 
+# phony because VERSION may also change
+.PHONY: _oasis
 _oasis: _oasis.in
 	sed -e 's/@VERSION@/$(VERSION)/' _oasis.in >_oasis
