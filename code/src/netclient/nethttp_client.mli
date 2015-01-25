@@ -107,11 +107,12 @@ exception Http_protocol of exn;;
    *)
 
 exception Http_error of (int * string);;
-  (** {b Deprecated.} 
+  (** {b Deprecated in the scope of [pipeline].} 
    * The server sent an error message. The left component of the pair is
    * the error code, the right component is the error text.
    * This exception is only used by [get_resp_body], and by the
-   * {!Nethttp_client.Convenience} module.
+   * {!Nethttp_client.Convenience} module. Note that for the latter
+   * usage the exception does not count as deprecated.
    *)
 
 type status =
