@@ -1,3 +1,8 @@
+2015-01-27  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Nethttp.set_content_range: this function generated an incorrect
+	  header (the "bytes" word was missing). (Török Edwin)
+
 2015-01-18  Gerd Stolpmann <gerd@gerd-stolpmann.de>
 
 	* Release 4.0.1
