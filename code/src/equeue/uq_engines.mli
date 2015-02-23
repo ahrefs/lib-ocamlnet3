@@ -138,6 +138,13 @@ class type [ 't ] engine = object
      * If the callback raises an exception, this exception is
      * propagated to the caller of {!Unixqueue.run}.
      *)
+  method request_proxy_notification : ('t engine -> bool) -> unit
+    (** Requests to call back the function when there is another engine
+        that can be used as proxy for this object. Note that this is a pure
+        optimization for [qseq_engine], and is normally not implemented
+        for any other engine construction. It is ok to define this method
+        as a no-op.
+     *)
   method event_system : Unixqueue.event_system
     (** Returns the event system the engine is attached to *)
 end
@@ -568,6 +575,7 @@ object
   method state : 't engine_state
   method private set_state : 't engine_state -> unit
   method request_notification : (unit -> bool) -> unit
+  method request_proxy_notification : ('t engine -> bool) -> unit
   method private notify : unit -> unit
   method event_system : Unixqueue.event_system
 end

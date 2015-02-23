@@ -34,6 +34,7 @@ class type [ 't ] engine = object
   method state : 't engine_state
   method abort : unit -> unit
   method request_notification : (unit -> bool) -> unit
+  method request_proxy_notification : ( 't engine -> bool ) -> unit
   method event_system : Unixqueue.event_system
 end
 

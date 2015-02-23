@@ -1207,6 +1207,10 @@ object(self)
       (fun eng -> eng # request_notification f')
       engines
 
+  method request_proxy_notification _ =
+    (* not implemented *)
+    ()
+
   method event_system =  ues
 
 end

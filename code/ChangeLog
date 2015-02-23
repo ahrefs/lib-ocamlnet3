@@ -1,3 +1,20 @@
+2015-02-23  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Equeue: There is a new method request_proxy_notification,
+	  which is only used by Uq_engines.qseq_engine (but unfortunately
+	  needs to appear in the public type of the object). This new
+	  methods permits that chains of Uq_engines.qseq_engine pairs
+	  can now be arbitrarily long without consuming too much memory
+	  and without the danger of getting stack overflows.
+
+	  This fixes issues where notification chains got too long. In
+	  particular, we saw a stack overflow when retrieving a video
+	  stream via HTTP. The stream was sent with many chunks, resulting
+	  in a long Uq_engines.qseq_engine chain.
+
+	  Implementers of engines can simply define request_proxy_notification
+	  as no-ops.
+
 2015-01-27  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Nethttp.set_content_range: this function generated an incorrect
