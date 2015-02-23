@@ -55,7 +55,7 @@ type connector =
 	 * chosen by the operating system.
 	 * Note: The service is only locally reachable.
          *
-         * IPv6: if the socket can be bound to ::1, this is preferred.
+         * IPv6: not supported for compatibility reasons
 	 *)
   | Portmapped
         (** The service is installed on every network interface; the port is
