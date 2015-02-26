@@ -1,5 +1,7 @@
 2015-02-26  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
+	* Release 4.0.2
+
 	* OpenBSD build: fix linker option (Christopher Zimmermann)
 
 2015-02-23  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
