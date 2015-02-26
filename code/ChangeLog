@@ -1,3 +1,7 @@
+2015-02-26  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* OpenBSD build: fix linker option (Christopher Zimmermann)
+
 2015-02-23  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Equeue: There is a new method request_proxy_notification,
