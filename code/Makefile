@@ -106,5 +106,5 @@ postconf:
 # phony because VERSION may also change
 .PHONY: _oasis
 _oasis: _oasis.in
-	sed -e 's/@VERSION@/$(VERSION)/' _oasis.in >_oasis
+	v=`./configure -version`; sed -e 's/@VERSION@/'"$$v/" _oasis.in >_oasis
 	oasis setup
