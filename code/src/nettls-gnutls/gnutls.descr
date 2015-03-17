@@ -1161,13 +1161,16 @@ let functions =
     (* SRP                                                                *)
     (**********************************************************************)
 
+    (* NB Some Linux distros do not include SRP *)
+
     "gnutls_srp_allocate_client_credentials",
     [ "sc", `Out, "gnutls_srp_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);"); `Optional ];
 
     standard
+      ~optional:true
       "error_code gnutls_srp_set_client_credentials \
            (gnutls_srp_client_credentials_t res, \
             ztstr username, ztstr password)";
@@ -1176,15 +1179,18 @@ let functions =
     [ "sc", `Out, "gnutls_srp_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);"); `Optional ];
 
     standard
+      ~optional:true
       "error_code gnutls_srp_set_server_credentials_file \
            (gnutls_srp_server_credentials_t res, \
             ztstr password_file, ztstr password_conf_file)";
     standard
+      ~optional:true
       "const ztstr gnutls_srp_server_get_username (gnutls_session_t session)";
     standard
+      ~optional:true
       "void gnutls_srp_set_prime_bits (gnutls_session_t session, uint bits)";
 
     "gnutls_srp_verifier",
@@ -1196,7 +1202,7 @@ let functions =
       "res", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Post("net_gnutls_error_check(RESULT);"); `Optional ];
 
     (* TODO: access to gnutls_srp_<N>_group_prime/generator *)
 
