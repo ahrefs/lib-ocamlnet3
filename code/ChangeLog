@@ -1,3 +1,8 @@
+2015-04-27  Gerd Stolpmann  <gerd@zotac>
+
+	* GnuTLS: supporting GnuTLS versions where SRP is disabled.
+	  Supporting GnuTLS-3.4.
+
 2015-02-26  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Release 4.0.2
