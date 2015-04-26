@@ -26,14 +26,6 @@ typedef const gnutls_datum_t * const_str_datum_p;
 
 typedef unsigned int empty_flags;
    
-#ifndef HAVE_FUN_gnutls_srp_allocate_client_credentials
-static void gnutls_srp_free_client_credentials(void *) {}
-#endif
-
-#ifndef HAVE_FUN_gnutls_srp_allocate_server_credentials
-static void gnutls_srp_free_server_credentials(void *) {}
-#endif
-
 #define wrap_const_str_datum_p wrap_str_datum_p
 #define unwrap_const_str_datum_p unwrap_str_datum_p
 

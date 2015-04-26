@@ -133,8 +133,9 @@ EOF
 #include "caml/mlvalues.h"
 $add_include
 value do_test(value dummy) {
-  (void) & $fun;
-  return 0;
+  void *p;
+  p = & $fun;
+  return (p != NULL) ? 0 : 1;
 }
 EOF
 
