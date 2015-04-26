@@ -1,5 +1,7 @@
 2015-04-27  Gerd Stolpmann  <gerd@zotac>
 
+	* Release 4.0.3
+
 	* GnuTLS: supporting GnuTLS versions where SRP is disabled.
 	  Supporting GnuTLS-3.4.
 
@@ -14,7 +16,7 @@
 	* Equeue: There is a new method request_proxy_notification,
 	  which is only used by Uq_engines.qseq_engine (but unfortunately
 	  needs to appear in the public type of the object). This new
-	  methods permits that chains of Uq_engines.qseq_engine pairs
+	  method permits that chains of Uq_engines.qseq_engine pairs
 	  can now be arbitrarily long without consuming too much memory
 	  and without the danger of getting stack overflows.
 
