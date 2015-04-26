@@ -48,7 +48,13 @@ static void net_nettle_set_encrypt_key(net_nettle_cipher_t cipher,
                                        net_nettle_cipher_ctx_t ctx,
                                        unsigned int length,
                                        const uint8_t *key) {
+#ifdef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
+    if (length != cipher->key_size)
+        failwith("net_nettl_set_encrypt_key: key has wrong size");
+    cipher->set_encrypt_key(ctx, key);
+#else
     cipher->set_encrypt_key(ctx, length, key);
+#endif
 }
 
 
@@ -56,7 +62,13 @@ static void net_nettle_set_decrypt_key(net_nettle_cipher_t cipher,
                                        net_nettle_cipher_ctx_t ctx,
                                        unsigned int length,
                                        const uint8_t *key) {
+#ifdef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
+    if (length != cipher->key_size)
+        failwith("net_nettl_set_decrypt_key: key has wrong size");
+    cipher->set_decrypt_key(ctx, key);
+#else
     cipher->set_decrypt_key(ctx, length, key);
+#endif
 }
 
 static void net_nettle_encrypt(net_nettle_cipher_t cipher,
@@ -117,7 +129,14 @@ static void net_nettle_ciphers(net_nettle_cipher_t **ciphers,
 
 /* Extensions to the generic API */
 
-static void net_des_set_key(void *ctx, unsigned int length,
+#ifdef  HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
+#define MAYBE_LENGTH
+#else
+#define MAYBE_LENGTH unsigned int length,
+#endif
+
+
+static void net_des_set_key(void *ctx, MAYBE_LENGTH
                             const uint8_t *key) {
     struct des_ctx *dctx;
     dctx = (struct des_ctx *) ctx;
@@ -141,11 +160,11 @@ static const struct nettle_cipher net_nettle_des =
     .key_size = 56,
     .set_encrypt_key = net_des_set_key,
     .set_decrypt_key = net_des_set_key,
-    .encrypt = net_des_encrypt,
-    .decrypt = net_des_decrypt
+    .encrypt = (nettle_cipher_func *) net_des_encrypt,
+    .decrypt = (nettle_cipher_func *) net_des_decrypt
   };
 
-static void net_des3_set_key(void *ctx, unsigned int length,
+static void net_des3_set_key(void *ctx, MAYBE_LENGTH
                              const uint8_t *key) {
     struct des3_ctx *dctx;
     dctx = (struct des3_ctx *) ctx;
@@ -169,16 +188,33 @@ static const struct nettle_cipher net_nettle_des3 =
     .key_size = 112,
     .set_encrypt_key = net_des3_set_key,
     .set_decrypt_key = net_des3_set_key,
-    .encrypt = net_des3_encrypt,
-    .decrypt = net_des3_decrypt
+    .encrypt = (nettle_cipher_func *) net_des3_encrypt,
+    .decrypt = (nettle_cipher_func *) net_des3_decrypt
   };
 
+
+/* Blowfish: this cipher has a variable length. Older versions of Nettle
+   support this well, but newer nettle_cipher types do not, so we have to
+   restrict to blowfish128
+*/
+
+
+#ifndef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
 static void net_blowfish_set_key(void *ctx, unsigned int length,
                                  const uint8_t *key) {
     struct blowfish_ctx *dctx;
     dctx = (struct blowfish_ctx *) ctx;
     blowfish_set_key(dctx, length, key);
 }
+#endif
+
+#ifdef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
+static void net_blowfish128_set_key(void *ctx, const uint8_t *key) {
+    struct blowfish_ctx *dctx;
+    dctx = (struct blowfish_ctx *) ctx;
+    blowfish128_set_key(dctx, key);
+}
+#endif
 
 static void net_blowfish_encrypt(void *ctx, unsigned int length,
                                  uint8_t *dst, const uint8_t *src) {
@@ -190,6 +226,7 @@ static void net_blowfish_decrypt(void *ctx, unsigned int length,
     blowfish_decrypt((struct blowfish_ctx *) ctx, length, dst, src);
 }
 
+#ifndef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
 static const struct nettle_cipher net_nettle_blowfish =
   { .name = "blowfish",
     .context_size = sizeof(struct blowfish_ctx),
@@ -197,9 +234,24 @@ static const struct nettle_cipher net_nettle_blowfish =
     .key_size = 16,  /* variable */
     .set_encrypt_key = net_blowfish_set_key,
     .set_decrypt_key = net_blowfish_set_key,
-    .encrypt = net_blowfish_encrypt,
-    .decrypt = net_blowfish_decrypt
+    .encrypt = (nettle_cipher_func *) net_blowfish_encrypt,
+    .decrypt = (nettle_cipher_func *) net_blowfish_decrypt
   };
+#endif
+
+
+#ifdef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS
+static const struct nettle_cipher net_nettle_blowfish =
+  { .name = "blowfish128",
+    .context_size = sizeof(struct blowfish_ctx),
+    .block_size = 64,
+    .key_size = 16,  /* variable */
+    .set_encrypt_key = net_blowfish128_set_key,
+    .set_decrypt_key = net_blowfish128_set_key,
+    .encrypt = (nettle_cipher_func *) net_blowfish_encrypt,
+    .decrypt = (nettle_cipher_func *) net_blowfish_decrypt
+  };
+#endif
 
 static const struct nettle_cipher * const ext_ciphers[] = {
     &net_nettle_des,
@@ -219,6 +271,10 @@ static void net_ext_ciphers(net_nettle_cipher_t **ciphers,
 
 
 /* GCM */
+
+/* TODO: newer versions of Nettle have a nettle_aead abstraction in
+   nettle-meta.h
+*/
 
 static net_nettle_gcm_aes_ctx_t net_nettle_gcm_aes_init(void) {
 #ifdef HAVE_NETTLE_GCM_H

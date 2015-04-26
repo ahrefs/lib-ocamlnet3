@@ -1,5 +1,8 @@
 (* This file is included into nettls_gnutls_bindings.ml *)
 
+(* cppo *)
+#include "config.h"
+
 exception Null_pointer
 exception Error of error_code
 exception Short_memory_buffer of int
@@ -108,7 +111,27 @@ let string_of_verification_status_flag =
     | `Insecure_algorithm -> "INSECURE_ALGORITHM"
     | `Not_activated -> "NOT_ACTIVATED"
     | `Expired -> "EXPIRED"
-
+#ifdef HAVE_ENUM_GNUTLS_CERT_SIGNATURE_FAILURE
+    | `Signature_failure -> "SIGNATURE_FAILURE"
+#endif
+#ifdef HAVE_ENUM_GNUTLS_CERT_REVOCATION_DATA_SUPERSEDED
+    | `Revocation_data_superseded -> "REVOCATION_DATA_SUPERSEDED"
+#endif
+#ifdef HAVE_ENUM_GNUTLS_CERT_UNEXPECTED_OWNER
+    | `Unexpected_owner -> "UNEXPECTED_OWNER"
+#endif
+#ifdef HAVE_ENUM_GNUTLS_CERT_REVOCATION_DATA_ISSUED_IN_FUTURE
+    | `Revocation_data_issued_in_future -> "REVOCATION_DATA_ISSUED_IN_FUTURE"
+#endif
+#ifdef HAVE_ENUM_GNUTLS_CERT_SIGNER_CONSTRAINTS_FAILURE
+    | `Signer_constraints_failure -> "SIGNER_CONSTRAINTS_FAILURE"
+#endif
+#ifdef HAVE_ENUM_GNUTLS_CERT_MISMATCH
+    | `Mismatch -> "MISMATCH"
+#endif
+#ifdef HAVE_ENUM_GNUTLS_CERT_PURPOSE_MISMATCH
+    | `Purpose_mismatch -> "PURPOSE_MISMATCH"
+#endif
 
 external gnutls_x509_crt_list_import : string -> gnutls_x509_crt_fmt_t ->
                                   gnutls_certificate_import_flags ->

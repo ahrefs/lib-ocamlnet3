@@ -135,13 +135,7 @@ let functions =
 let optional_types =
   [ ]
 let optional_functions =
-  [ "nettle_gcm_aes_set_key";
-    "nettle_gcm_aes_set_iv";
-    "nettle_gcm_aes_update";
-    "nettle_gcm_aes_encrypt";
-    "nettle_gcm_aes_decrypt";
-    "nettle_gcm_aes_digest";
-    "nettle_ciphers";   (* actually a variable *)
+  [ "nettle_ciphers";   (* actually a variable *)
     "nettle_hashes";    (* actually a variable *)
   ]
 
