@@ -4,6 +4,7 @@ PRE = 1
 PKGNAME = nettls-gnutls
 GENERATE = META nettls_gnutls_bindings.ml nettls_gnutls_bindings.mli \
            nettls_gnutls_bindings_stubs.c done_reconfigure
+NODEP = @true
 
 include $(TOP_DIR)/Makefile.rules
 

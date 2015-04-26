@@ -188,7 +188,7 @@ check_type() {
 #include <nettle/nettle-meta.h>
 $add_include
 int main (int argc, char *argv[], char *envp[]) {
-  $ty x;
+  $ty * x;
   return 0;
 }
 EOF

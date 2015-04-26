@@ -133,7 +133,7 @@ let functions =
 
 
 let optional_types =
-  [ ]
+  [ "nettle_cipher_func" ]
 let optional_functions =
   [ "nettle_ciphers";   (* actually a variable *)
     "nettle_hashes";    (* actually a variable *)

@@ -27,6 +27,11 @@ static void net_nettle_null_pointer(void) {
                           ("Nettls_nettle_bindings.Null_pointer"));
 }
 
+#ifndef HAVE_TY_nettle_cipher_func
+#define nettle_cipher_func nettle_crypt_func
+#endif
+
+
 /* Generic API */
 
 static net_nettle_cipher_ctx_t
