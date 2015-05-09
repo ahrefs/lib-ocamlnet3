@@ -14,6 +14,30 @@
 
 #pragma GCC diagnostic ignored "-Wunused-function"
 
+static int initialized = 0;
+
+void nettls_init(void) {
+    int code;
+    if (!initialized) {
+        code = gnutls_global_init();
+        if (code != GNUTLS_E_SUCCESS) {
+            fprintf(stderr, "Nettls_gnutls: cannot initialize: %s\n",
+                    gnutls_strerror(code));
+        }
+        else
+            initialized = 1;
+    }
+}
+
+
+void nettls_deinit(void) {
+    if (initialized) {
+        gnutls_global_deinit();
+        initialized = 0;
+    }    
+}
+
+
 typedef int error_code;
 typedef unsigned int gnutls_init_flags;
 typedef unsigned int key_usage;
@@ -438,6 +462,7 @@ static void b_free_session(gnutls_session_t s) {
 CAMLprim value net_b_set_pull_callback(value sv, value fun) {
     gnutls_session_t s;
     b_session_callbacks_t cb;
+    nettls_init();
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     caml_modify_generational_global_root(&(cb->pull_fun), fun);
@@ -449,6 +474,7 @@ CAMLprim value net_b_set_pull_timeout_callback(value sv, value fun) {
 #ifdef HAVE_FUN_gnutls_transport_set_pull_timeout_function
     gnutls_session_t s;
     b_session_callbacks_t cb;
+    nettls_init();
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     caml_modify_generational_global_root(&(cb->pull_timeout_fun), fun);
@@ -462,6 +488,7 @@ CAMLprim value net_b_set_pull_timeout_callback(value sv, value fun) {
 CAMLprim value net_b_set_push_callback(value sv, value fun) {
     gnutls_session_t s;
     b_session_callbacks_t cb;
+    nettls_init();
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     caml_modify_generational_global_root(&(cb->push_fun), fun);
@@ -473,6 +500,7 @@ CAMLprim value net_b_set_verify_callback(value sv, value fun) {
 #ifdef HAVE_FUN_gnutls_certificate_set_verify_function
     gnutls_session_t s;
     b_session_callbacks_t cb;
+    nettls_init();
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     caml_modify_generational_global_root(&(cb->verify_fun), fun);
@@ -489,6 +517,7 @@ CAMLprim value net_b_set_db_callbacks(value sv,
                                       value retrieve_fun) {
     gnutls_session_t s;
     b_session_callbacks_t cb;
+    nettls_init();
     s = unwrap_gnutls_session_t(sv);
     cb = gnutls_session_get_ptr(s);
     gnutls_db_set_retrieve_function(s, &db_retrieve_callback);
@@ -506,6 +535,7 @@ CAMLprim value net_gnutls_credentials_set(value sess, value creds) {
     gnutls_session_t s;
     int error_code;
     CAMLparam2(sess,creds);
+    nettls_init();
     s = unwrap_gnutls_session_t(sess);
     switch (Long_val(Field(creds,0))) {
     case H_Certificate: {
@@ -588,6 +618,7 @@ CAMLprim value net_gnutls_x509_crt_list_import(value datav, value formatv,
     CAMLparam3(datav, formatv, flagsv);
     CAMLlocal2(array, crt);
 
+    nettls_init();
     data = unwrap_str_datum(datav);
     format = unwrap_gnutls_x509_crt_fmt_t(formatv);
     flags = unwrap_gnutls_certificate_import_flags(flagsv);
@@ -630,6 +661,7 @@ CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv,
     CAMLparam3(datav, formatv, flagsv);
     CAMLlocal2(array, crt);
 
+    nettls_init();
     data = unwrap_str_datum(datav);
     format = unwrap_gnutls_x509_crt_fmt_t(formatv);
     flags = unwrap_gnutls_certificate_import_flags(flagsv);

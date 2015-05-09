@@ -1233,16 +1233,28 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
 end
 
 
+(* Initialization of GnuTLS: This is done when the first wrapper function
+   is invoked via nettls_init(). Note that (since around GnuTLS-3.2) the
+   file /dev/random is permanently kept open. If this is in the way,
+   you can call nettls_deinit. (NB. This scheme is somewhat fragile,
+   as it breaks when there is another user of GnuTLS keeping the library
+   initialized.)
+ *)
 
 let init() =
-  Nettls_gnutls_bindings.gnutls_global_init();
   Netsys_crypto.set_current_tls
     (module TLS : Netsys_crypto_types.TLS_PROVIDER);
   Netsys_crypto.set_current_symmetric_crypto
     (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO);
   Netsys_crypto.set_current_digests
-    (module Digests : Netsys_crypto_types.DIGESTS)
-
+    (module Digests : Netsys_crypto_types.DIGESTS);
+  Netsys_posix.register_post_fork_handler
+    ( object
+        method name = "nettls_deinit"
+        method run() = 
+          Nettls_gnutls_bindings.nettls_deinit()
+      end
+    )
 
 let () =
   init()

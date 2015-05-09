@@ -20,6 +20,7 @@ let standard ?(optional=false) ?(options=[]) decl =
               (if result = "void" then `Return_ignore else `Return),
               result
             ],
+   [ `Pre("nettls_init();"); ] @
    (if optional then [ `Optional ] else []) @
      options
   )

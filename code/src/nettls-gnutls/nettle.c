@@ -13,6 +13,8 @@
 
 #pragma GCC diagnostic ignored "-Wunused-function"
 
+void nettls_init(void);
+
 typedef struct nettle_cipher *net_nettle_cipher_t;
 typedef void *net_nettle_cipher_ctx_t;
 typedef void *net_nettle_gcm_aes_ctx_t;

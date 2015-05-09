@@ -467,6 +467,7 @@ let standard ?(ask_for_size=false) ?(optional=false) ?(options=[]) decl =
        ), 
        result
      ],
+   [`Pre("nettls_init();")] @
    (if ask_for_size then [ `GNUTLS_ask_for_size ] else []) @
    (if result = "error_code" || has_prefix ~prefix:"error_code/" result then
       [ `Post("net_gnutls_error_check(RESULT);") ]
@@ -486,7 +487,9 @@ let standard_blocking decl =
 
 let functions =
   [ standard
-      "void gnutls_global_init()";
+      "void nettls_init()";
+    standard
+      "void nettls_deinit()";
 
     standard
       "bool gnutls_error_is_fatal(error_code error)";    
@@ -499,7 +502,9 @@ let functions =
     [ "req_version", `In_ignore, "const_charp";
       "result", `Return, "const ztstr"
     ],
-    [ `Pre("req_version__c = NULL;") ];
+    [ `Pre("req_version__c = NULL;");
+      `Pre("nettls_init();");
+    ];
 
     (**********************************************************************)
     (* Logging                                                            *)
@@ -517,7 +522,8 @@ let functions =
       "flags",   `In,  "gnutls_init_flags";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);");
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);");
       `Post("attach_session_callbacks(session__c);");
     ];
 
@@ -534,14 +540,15 @@ let functions =
       "status", `Out, "gnutls_certificate_status_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     "gnutls_certificate_get_peers",
     [ "session", `In, "gnutls_session_t";
       "list_size", `Out_ignore, "result array_size_uint";
       "result", `Return, "const str_datum array";
     ],
-    [];
+    [ `Pre("nettls_init();") ];
 
 (*
     standard
@@ -597,7 +604,7 @@ let functions =
       "level", `Out, "int/gnutls_alert_level_t";
       "result", `Return, "gnutls_alert_description_t";
     ],
-    [];
+    [ `Pre("nettls_init();") ];
 
     (**********************************************************************)
     (* Priority strings                                                   *)
@@ -610,6 +617,7 @@ let functions =
       "result", `Return_ignore, "error_code";
     ],
     [ `Declare("const char *err_pos_dummy;");
+      `Pre("nettls_init();");
       `Pre("err_pos__c = &err_pos_dummy;");
       `Post("net_gnutls_error_check(RESULT);")
     ];
@@ -620,7 +628,8 @@ let functions =
       "sidx", `Out, "uint";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);");
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);");
       `Optional
     ];
 
@@ -696,7 +705,8 @@ let functions =
     [ "key", `Out, "str_datum";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);");
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);");
       `Optional
     ];
 
@@ -737,7 +747,8 @@ let functions =
       "cb", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);");
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);");
       `Optional
     ];
 
@@ -905,7 +916,8 @@ let functions =
       "algo", `Out, "gnutls_sign_algorithm_t";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);");
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);");
       `Optional
     ];
 
@@ -954,7 +966,8 @@ let functions =
       "key_size", `In, "uint";
       "result",  `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);");
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);");
       `Optional
     ];
 
@@ -973,7 +986,8 @@ let functions =
     [ "sc", `Out, "gnutls_certificate_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       ~optional:true
@@ -1061,7 +1075,8 @@ let functions =
     [ "sc", `Out, "gnutls_anon_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO: gnutls_anon_set_server_params_function *)
 
@@ -1069,7 +1084,8 @@ let functions =
     [ "sc", `Out, "gnutls_anon_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
 
     (**********************************************************************)
@@ -1080,7 +1096,8 @@ let functions =
     [ "dh_params", `Out, "gnutls_dh_params_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_dh_params_import_raw \
@@ -1132,14 +1149,16 @@ let functions =
       "raw_prime", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     "gnutls_dh_get_pubkey",
     [ "session", `In, "gnutls_session_t";
       "raw_key", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     (* TODO: gnutls_certificate_set_params_function *)
     (* TODO: gnutls_anon_set_params_function *)
@@ -1218,7 +1237,8 @@ let functions =
     [ "sc", `Out, "gnutls_srp_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);"); `Optional ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);"); `Optional ];
 
     standard
       ~optional:true
@@ -1230,7 +1250,8 @@ let functions =
     [ "sc", `Out, "gnutls_srp_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);"); `Optional ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);"); `Optional ];
 
     standard
       ~optional:true
@@ -1253,7 +1274,8 @@ let functions =
       "res", `Out, "str_datum";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);"); `Optional ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);"); `Optional ];
 
     (* TODO: access to gnutls_srp_<N>_group_prime/generator *)
 
@@ -1271,7 +1293,8 @@ let functions =
     [ "sc", `Out, "gnutls_psk_client_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_psk_set_client_credentials \
@@ -1284,7 +1307,8 @@ let functions =
     [ "sc", `Out, "gnutls_psk_server_credentials_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_psk_set_server_credentials_file \
@@ -1312,7 +1336,8 @@ let functions =
     [ "cert", `Out, "gnutls_x509_crt_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_x509_crt_import \
@@ -1603,7 +1628,8 @@ let functions =
     [ "cert", `Out, "gnutls_x509_privkey_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_x509_privkey_import \
@@ -1627,7 +1653,8 @@ let functions =
     [ "cert", `Out, "gnutls_x509_crl_t";
       "result", `Return_ignore, "error_code";
     ],
-    [ `Post("net_gnutls_error_check(RESULT);") ];
+    [ `Pre("nettls_init();");
+      `Post("net_gnutls_error_check(RESULT);") ];
 
     standard
       "error_code gnutls_x509_crl_import \
