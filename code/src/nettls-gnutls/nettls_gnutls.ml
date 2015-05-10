@@ -41,6 +41,7 @@ module Make_TLS_1
 
     type credentials =
         { gcred : G.gnutls_credentials;
+          gcred_create : unit -> G.gnutls_credentials;
         }
 
     type dh_params =
@@ -191,135 +192,177 @@ module Make_TLS_1
                 let dhp = G.gnutls_dh_params_init() in
                 G.gnutls_dh_params_generate2 dhp bits;
                 Some dhp in
+        let credentials' =
+          match dhp_opt with
+            | None ->
+                 credentials
+            | Some dhp ->
+                 let c = credentials.gcred_create() in
+                 ( match c with
+                     | `Certificate gc ->
+                          G.gnutls_certificate_set_dh_params gc dhp
+                     | _ ->
+                          ()
+                 );
+                 { credentials with gcred = c } in
         { priority;
           dh_params = dhp_opt;
           peer_auth;
-          credentials;
+          credentials = credentials';
           verify;
         } in
       trans_exn f ()
 
 
-    let create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys () =
-      let gcred = G.gnutls_certificate_allocate_credentials() in
-      if system_trust then (
-        match Nettls_gnutls_config.system_trust with
-          | `Gnutls ->
-               G.gnutls_certificate_set_x509_system_trust gcred
-          | `File path ->
-               let certs =
-                 parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] path snd in
-               List.iter
-                 (fun data ->
-                    G.gnutls_certificate_set_x509_trust_mem gcred data `Der
-                 )
-                 certs
-      );
-      List.iter
-        (fun crt_spec ->
-           let der_crts =
-             match crt_spec with
-               | `PEM_file file ->
-                   parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] file snd
-               | `DER l ->
-                   l in
-           List.iter
-             (fun data ->
-                G.gnutls_certificate_set_x509_trust_mem gcred data `Der
-             )
-             der_crts
+    let get_der_crts proj boundaries spec =
+      List.map
+        (fun x ->
+           match proj x with
+             | `PEM_file file ->
+                  parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] file snd
+             | `DER l ->
+                  l
         )
-        trust;
-      List.iter
-        (fun crl_spec ->
-           let der_crls =
-             match crl_spec with
-               | `PEM_file file ->
-                   parse_pem [ "X509 CRL" ] file snd
-               | `DER l ->
-                   l in
-           List.iter
-             (fun data ->
-                G.gnutls_certificate_set_x509_crl_mem gcred data `Der
-             )
-             der_crls
-        )
-        revoke;
-      List.iter
-        (fun (crts, pkey, pw_opt) ->
-           let der_crts =
-             match crts with
-               | `PEM_file file ->
-                   parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] file snd
-               | `DER l ->
-                   l in
-           let gcrts =
-             List.map
-               (fun data ->
-                  let gcrt = G.gnutls_x509_crt_init() in
-                  G.gnutls_x509_crt_import gcrt data `Der;
-                  gcrt
-               )
-               der_crts in
-           let gpkey = G.gnutls_x509_privkey_init() in
+        spec
+
+    let get_der_pkeys spec =
+      List.map
+        (fun (_,pkey,pw_opt) ->
            let pkey1 =
-             match pkey with
+             match pkey with 
                | `PEM_file file ->
-                   let p =
-                     parse_pem
-                       [ "RSA PRIVATE KEY";
-                         "DSA PRIVATE KEY";
-                         "EC PRIVATE KEY";
-                         "PRIVATE KEY";
-                         "ENCRYPTED PRIVATE KEY"
-                       ]
-                       file
-                       (fun (tag,data) ->
-                          match tag with
-                            | "RSA PRIVATE KEY" -> `RSA data
-                            | "DSA PRIVATE KEY" -> `DSA data
-                            | "EC PRIVATE KEY" -> `EC data
-                            | "PRIVATE KEY" -> `PKCS8 data
-                            | "ENCRYPTED PRIVATE KEY" -> `PKCS8_encrypted data
-                            | _ -> assert false
-                       ) in
-                   (List.hd p :> private_key)
+                    let p =
+                      parse_pem
+                        [ "RSA PRIVATE KEY";
+                          "DSA PRIVATE KEY";
+                          "EC PRIVATE KEY";
+                          "PRIVATE KEY";
+                          "ENCRYPTED PRIVATE KEY"
+                        ]
+                        file
+                        (fun (tag,data) ->
+                           match tag with
+                             | "RSA PRIVATE KEY" -> `RSA data
+                             | "DSA PRIVATE KEY" -> `DSA data
+                             | "EC PRIVATE KEY" -> `EC data
+                             | "PRIVATE KEY" -> `PKCS8 data
+                             | "ENCRYPTED PRIVATE KEY" -> `PKCS8_encrypted data
+                             | _ -> assert false
+                        ) in
+                    (List.hd p :> private_key)
                | other ->
-                   other in
-
+                    other in
            ( match pkey1 with
-               | `PEM_file file ->
-                   assert false
-               | `RSA data ->
-                   (* There is no entry point for parsing ONLY this format *)
-                   let pem = create_pem "RSA PRIVATE KEY" data in
-                   G.gnutls_x509_privkey_import gpkey pem `Pem
-               | `DSA data ->
-                   (* There is no entry point for parsing ONLY this format *)
-                   let pem = create_pem "DSA PRIVATE KEY" data in
-                   G.gnutls_x509_privkey_import gpkey pem `Pem
-               | `EC data ->
-                   (* There is no entry point for parsing ONLY this format *)
-                   let pem = create_pem "EC PRIVATE KEY" data in
-                   G.gnutls_x509_privkey_import gpkey pem `Pem
-               | `PKCS8 data ->
-                   G.gnutls_x509_privkey_import_pkcs8 
-                     gpkey data `Der "" [`Plain]
                | `PKCS8_encrypted data ->
-                   ( match pw_opt with
-                       | None ->
-                           failwith "No password for encrypted PKCS8 data"
-                       | Some pw ->
-                           G.gnutls_x509_privkey_import_pkcs8
-                             gpkey data `Der pw []
-                   )
-
+                    ( match pw_opt with
+                        | None ->
+                             failwith "No password for encrypted PKCS8 data"
+                        | Some _ ->
+                             ()
+                    )
+               | _ ->
+                    ()
            );
-           G.gnutls_certificate_set_x509_key gcred (Array.of_list gcrts) gpkey
+           pkey1
         )
-        keys;
-      G.gnutls_certificate_set_verify_flags gcred [];
-      { gcred = `Certificate gcred }
+        spec
+
+
+    let id x = x
+    let p13 (x,_,_) = x
+
+
+    let create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys () =
+      let trust_certs =
+        get_der_crts id [ "X509 CERTIFICATE"; "CERTIFICATE" ] trust in
+      let revoke_certs =
+        get_der_crts id [ "X509 CRL" ] revoke in
+      let certs =
+        get_der_crts p13 [ "X509 CERTIFICATE"; "CERTIFICATE" ] keys in
+      let pkeys =
+        get_der_pkeys keys in
+      let cplist =
+        List.combine certs pkeys in
+      let create () =
+        let gcred = G.gnutls_certificate_allocate_credentials() in
+        if system_trust then (
+          match Nettls_gnutls_config.system_trust with
+            | `Gnutls ->
+                 G.gnutls_certificate_set_x509_system_trust gcred
+            | `File path ->
+                 let certs =
+                   parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] path snd in
+                 List.iter
+                   (fun data ->
+                      G.gnutls_certificate_set_x509_trust_mem gcred data `Der
+                   )
+                   certs
+        );
+        List.iter
+          (fun der_crts ->
+             List.iter
+               (fun data ->
+                  G.gnutls_certificate_set_x509_trust_mem gcred data `Der
+               )
+               der_crts
+          )
+          trust_certs;
+        List.iter
+          (fun der_crls ->
+             List.iter
+               (fun data ->
+                  G.gnutls_certificate_set_x509_crl_mem gcred data `Der
+               )
+               der_crls
+          )
+          revoke_certs;
+        List.iter2
+          (fun (der_crts,pkey1) (_, _, pw_opt) ->
+             let gcrts =
+               List.map
+                 (fun data ->
+                    let gcrt = G.gnutls_x509_crt_init() in
+                    G.gnutls_x509_crt_import gcrt data `Der;
+                    gcrt
+                 )
+                 der_crts in
+             let gpkey = G.gnutls_x509_privkey_init() in
+             ( match pkey1 with
+                 | `PEM_file file ->
+                     assert false
+                 | `RSA data ->
+                     (* There is no entry point for parsing ONLY this format *)
+                     let pem = create_pem "RSA PRIVATE KEY" data in
+                     G.gnutls_x509_privkey_import gpkey pem `Pem
+                 | `DSA data ->
+                     (* There is no entry point for parsing ONLY this format *)
+                     let pem = create_pem "DSA PRIVATE KEY" data in
+                     G.gnutls_x509_privkey_import gpkey pem `Pem
+                 | `EC data ->
+                     (* There is no entry point for parsing ONLY this format *)
+                     let pem = create_pem "EC PRIVATE KEY" data in
+                     G.gnutls_x509_privkey_import gpkey pem `Pem
+                 | `PKCS8 data ->
+                     G.gnutls_x509_privkey_import_pkcs8 
+                       gpkey data `Der "" [`Plain]
+                 | `PKCS8_encrypted data ->
+                     ( match pw_opt with
+                         | None ->
+                              assert false
+                         | Some pw ->
+                              G.gnutls_x509_privkey_import_pkcs8
+                                gpkey data `Der pw []
+                     )
+
+             );
+             G.gnutls_certificate_set_x509_key gcred (Array.of_list gcrts) gpkey
+          )
+          cplist keys;
+        G.gnutls_certificate_set_verify_flags gcred [];
+        `Certificate gcred in
+      { gcred = create();
+        gcred_create = create
+      }
 
     let create_x509_credentials ?(system_trust=false) 
                                 ?(trust=[]) ?(revoke=[]) ?(keys=[]) () =
