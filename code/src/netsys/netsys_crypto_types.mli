@@ -188,9 +188,10 @@ module type TLS_PROVIDER =
           If a server requests authentication from the client, it must also
           set [trust].
 
-          The keys must include the full certificate path [cert_path], starting
-          with the endpoint certificate, followed by all middle certificates, and
-          ending with the certificate of the CA. The [private_key]
+          The keys must include the certificate path [cert_path], starting
+          with the endpoint certificate, and followed by all middle
+          certificates, but omitting the certificate of the CA.
+          The [private_key]
           is the key of the endpoint. If it is password-encrypted, the
           password must be given.
        *)
