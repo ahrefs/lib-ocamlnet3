@@ -501,6 +501,9 @@ module Make_TLS_1
         | G.Error `Interrupted ->
             raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""))
         | G.Error `Rehandshake ->
+            (* ignore rehandshakes triggered by the client *)
+            if ep.role = `Server then
+              raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""));
             if ep.state = `Switching then
               raise (Exc.TLS_switch_response true)
             else

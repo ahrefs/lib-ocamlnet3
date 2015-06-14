@@ -1,3 +1,13 @@
+2015-06-14  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* GnuTLS: initializing the library on-demand. This avoids that
+	  /dev/random is kept open all the time since program start, and
+	  works around incompatibilities with Netplex. (Thomas Calderon
+	  found the problem.)
+
+	* GnuTLS: setting DH parameters on certificates (this was forgotten in
+	  previous releases). (Thomas Calderon found the problem.)
+
 2015-04-27  Gerd Stolpmann  <gerd@zotac>
 
 	* Release 4.0.3
