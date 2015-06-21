@@ -5,7 +5,7 @@
 	* GnuTLS: compatibility with GnuTLS-3.4.2
 
 	* Nethttpd_plex: the post_add_hook was not called by accident
-	  (since OCamlnet-4); this is now fixes.
+	  (since OCamlnet-4); this is now fixed.
 
 	* Nethtml: new option case_sensitive
 
