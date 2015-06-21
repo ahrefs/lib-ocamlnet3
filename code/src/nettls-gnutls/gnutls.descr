@@ -196,8 +196,7 @@ let types =
     "gnutls_server_name_type_t",  `Enum [ "GNUTLS_NAME_|DNS" ];
 
     "gnutls_supplemental_data_format_type_t",
-                            `Enum [ "?GNUTLS_SUPPLEMENTAL_|USER_MAPPING_DATA";
-                                    "?GNUTLS_SUPPLEMENTAL_|UNKNOWN";
+                            `Enum [ "?GNUTLS_SUPPLEMENTAL_|UNKNOWN";
                                   ];
 
     "gnutls_psk_key_flags", `Enum [ "GNUTLS_PSK_KEY_|RAW";
