@@ -1,3 +1,7 @@
+2015-06-21  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Nethtml: new option case_sensitive
+
 2015-06-14  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* GnuTLS: initializing the library on-demand. This avoids that
