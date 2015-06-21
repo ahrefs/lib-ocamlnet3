@@ -1,5 +1,8 @@
 2015-06-21  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
+	* Nethttpd_plex: the post_add_hook was not called by accident
+	  (since OCamlnet-4); this is now fixes.
+
 	* Nethtml: new option case_sensitive
 
 2015-06-14  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
