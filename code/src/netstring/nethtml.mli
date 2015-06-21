@@ -214,6 +214,7 @@ val parse : ?dtd:simplified_dtd ->            (* default: html40_dtd *)
             ?return_declarations:bool ->      (* default: false *)
             ?return_pis:bool ->               (* default: false *)
             ?return_comments:bool ->          (* default: false *)
+            ?case_sensitive:bool ->
               Netchannels.in_obj_channel ->
                 document list
   (** Parses the HTML document from an object channel and returns it.

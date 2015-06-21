@@ -640,9 +640,11 @@ let parse_document ?(dtd = html40_dtd)
 	List.rev !current_subs
 ;;
 
-let parse ?dtd ?return_declarations ?return_pis ?return_comments ch =
+let parse ?dtd ?return_declarations ?return_pis ?return_comments
+          ?case_sensitive ch =
   let buf = Netchannels.lexbuf_of_in_obj_channel ch in
-  parse_document ?dtd ?return_declarations ?return_comments ?return_pis buf
+  parse_document ?dtd ?return_declarations ?return_comments ?return_pis 
+                 ?case_sensitive buf
 ;;  
 
 
