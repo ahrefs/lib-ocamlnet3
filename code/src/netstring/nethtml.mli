@@ -187,6 +187,7 @@ val parse_document : ?dtd:simplified_dtd ->            (* default: html40_dtd *)
                      ?return_declarations:bool ->      (* default: false *)
                      ?return_pis:bool ->               (* default: false *)
                      ?return_comments:bool ->          (* default: false *)
+                     ?case_sensitive:bool ->
                      Lexing.lexbuf ->
                        document list
   (** Parses the HTML document from a [lexbuf] and returns it. 
@@ -203,6 +204,10 @@ val parse_document : ?dtd:simplified_dtd ->            (* default: html40_dtd *)
    * @param return_comments if set, the parser returns [<!--] .... [-->] comments
    *   as [Element("--",["contents",c],[])] nodes, where [c] is the string inside
    *   [<!--] and [-->]. - By default, comments are skipped.
+   * @param case_sensitive if set, the case of attributes and elements is
+   *   preserved, and when comparing these entities case matters. By default,
+   *   the case does not matter, and attributes and elements are returned with
+   *   lowercased names.
    *)
 
 val parse : ?dtd:simplified_dtd ->            (* default: html40_dtd *)

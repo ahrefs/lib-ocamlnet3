@@ -292,13 +292,19 @@ module Strset = Set.Make(S);;
 let parse_document ?(dtd = html40_dtd) 
                    ?(return_declarations = false) 
                    ?(return_pis = false)
-                   ?(return_comments = false) buf =
+                   ?(return_comments = false)
+                   ?(case_sensitive = false) buf =
   let current_name = ref "" in
   let current_atts = ref [] in
   let current_subs = ref [] in
   let current_excl = ref Strset.empty in      (* current exclusions *)
   let stack = Stack.create() in
   let dtd_hash = hashtbl_from_alist dtd in
+  let maybe_lowercase =
+    if case_sensitive then
+      (fun s -> s)
+    else
+      String.lowercase in
 
   let model_of element_name =
     if element_name = "" then
@@ -422,11 +428,11 @@ let parse_document ?(dtd = html40_dtd)
 		      Name v ->
 			let toks, is_empty =
 			  parse_atts_lookahead (next_no_space false) in
-		      	( (String.lowercase n, v) :: toks, is_empty )
+		      	( (maybe_lowercase n, v) :: toks, is_empty )
 		    | Literal v ->
 			let toks, is_empty =
 			  parse_atts_lookahead (next_no_space false) in
-		      	( (String.lowercase n,v) :: toks, is_empty )
+		      	( (maybe_lowercase n,v) :: toks, is_empty )
 		    | Eof ->
 		      	raise End_of_scan
 		    | Relement ->
@@ -443,15 +449,15 @@ let parse_document ?(dtd = html40_dtd)
 		  raise End_of_scan
 	      | Relement ->
 		  (* <tag name> <==> <tag name="name"> *)
-		  ( [ String.lowercase n, String.lowercase n ], false)
+		  ( [ maybe_lowercase n, maybe_lowercase n ], false)
 	      | Relement_empty ->
 		  (* <tag name> <==> <tag name="name"> *)
-		  ( [ String.lowercase n, String.lowercase n ], true)
+		  ( [ maybe_lowercase n, maybe_lowercase n ], true)
 	      | next' ->
 		  (* assume <tag name ... > <==> <tag name="name" ...> *)
 		  let toks, is_empty = 
 		    parse_atts_lookahead next' in
-		  ( ( String.lowercase n, String.lowercase n ) :: toks,
+		  ( ( maybe_lowercase n, maybe_lowercase n ) :: toks,
 		    is_empty)
 	    )
       	| Eof ->
@@ -467,7 +473,7 @@ let parse_document ?(dtd = html40_dtd)
     (* Parse until </name> *)
     match scan_special buf with
       | Lelementend n ->
-	  if String.lowercase n = name then
+	  if maybe_lowercase n = name then
 	    ""
 	  else
 	    "</" ^ n ^ parse_special name
@@ -510,7 +516,7 @@ let parse_document ?(dtd = html40_dtd)
 	    current_subs := (Element("?",["contents",pi],[])) :: !current_subs;
 	  parse_next()
       | Lelement name ->
-	  let name = String.lowercase name in
+	  let name = maybe_lowercase name in
 	  let (_, model) = model_of name in
 	  ( match model with
 		`Empty ->
@@ -564,7 +570,7 @@ let parse_document ?(dtd = html40_dtd)
 	  current_subs := (Data data) :: !current_subs;
 	  parse_next()
       | Lelementend name ->
-	  let name = String.lowercase name in
+	  let name = maybe_lowercase name in
 	  (* Read until ">" *)
 	  skip_element();
 	  (* Search the element to close on the stack: *)
