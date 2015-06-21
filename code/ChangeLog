@@ -1,5 +1,9 @@
 2015-06-21  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
+	* Release 4.0.4
+
+	* GnuTLS: compatibility with GnuTLS-3.4.2
+
 	* Nethttpd_plex: the post_add_hook was not called by accident
 	  (since OCamlnet-4); this is now fixes.
 
