@@ -1,3 +1,7 @@
+2015-07-05  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netsys_polypipe: adding this module
+
 2015-01-05  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netasn1_encoder: new module for encding ASN.1 messages
