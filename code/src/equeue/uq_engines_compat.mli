@@ -44,6 +44,7 @@ class type [ 't ] engine = object
   method state : 't engine_state
   method abort : unit -> unit
   method request_notification : (unit -> bool) -> unit
+  method request_proxy_notification : ('a engine -> bool) -> unit
   method event_system : Unixqueue.event_system
 end
 
@@ -184,6 +185,7 @@ object
   method state : 't engine_state
   method private set_state : 't engine_state -> unit
   method request_notification : (unit -> bool) -> unit
+  method request_proxy_notification : ('t engine -> bool) -> unit
   method private notify : unit -> unit
   method event_system : Unixqueue.event_system
 end

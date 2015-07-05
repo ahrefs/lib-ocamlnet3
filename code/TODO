@@ -7,6 +7,8 @@ IETF docs:
  - HTTP2: https://tools.ietf.org/wg/httpbis/
  - NFS (and SunRPC): https://tools.ietf.org/wg/nfsv4/
 
+Rpc_netplex: support TLS via config file
+
 OCAMLNET 4 RELEASE:
  - CHECK AGAIN UNIT TESTS - DONE
  - CHECK EXAMPLES

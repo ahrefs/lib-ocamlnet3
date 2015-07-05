@@ -1,0 +1,76 @@
+----------------------------------------------------------------------
+htproc architecture
+----------------------------------------------------------------------
+
+Nethttpd2:
+ - support for HTTP/1.* and HTTP/2.0
+ - this module performs only the basic request processing:
+
+   request -> (redirect|auth|static-file|forward)
+
+ - the normal processing is that a request is forwarded to an htproc
+   (HTTP procedure). The result of an htproc may be
+
+   (response|redirect|auth|static-file|forward)
+
+ - htprocs run in their own Netplex containers
+   benefits:
+    * out-of-order processing is then possible with HTTP/2.0
+    * more freedom when mapping requests to computing resources,
+      e.g. some requests can be served by synchronous containers
+      and others by concurrent containers
+ - htprocs are invoked via RPC, but for multi-threaded apps there
+   should be the possibility to "short-cut" the wire-encoding steps
+ - standard htproc processors:
+    * file serving
+      (actually, only directory serving, as files can be directly
+      served by Nethttpd)
+    * nethttpd style dynamic services
+    * CGI invocation
+
+Nethtproc:
+ - new library with the htproc infrastructure:
+    * types
+    * basic processing (even if this is invoked done in Nethttpd2 context)
+    * standard htprocs
+ - every htproc has on invocation:
+    * the request (method, URL path, headers)
+    * contextual parameters (TLS, SNI)
+    * CGI properties
+    * processing instructions:
+       - number of htproc hops
+       - e.g. name of the CGI executable
+       - e.g. URL of proxy server
+
+Encoding of requests/responses as RPC args:
+
+ - RPC: void ht_request(mplex_block block)
+    * only transmits the request
+    * the client of this RPC is the Nethttpd2 processor
+    * the server of this RPC is the Nethtproc processor
+    * the client does not await an RPC reply (any response is ignored anyway)
+
+ - What is mplex_block?
+
+   { req_id : int64;
+     sub_id : int;
+     elements : element array
+   }
+
+   Possible elements:
+    - SNI
+    - Method
+    - Header
+    - CGI_info
+    - Proc_instr
+    - Data
+    - End
+    - Internal_error
+
+ - RPC: mplex_block ht_response(int64)
+    * only transmits the request
+    * the client of this RPC is the Nethttpd2 processor
+    * the server of this RPC is the Nethtproc processor
+    * the client sends the RPC call at the same time as ht_request is invoked,
+      but the server first responds when it has got something to return
+    * the server sends multiple responses (batching)

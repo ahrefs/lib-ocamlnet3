@@ -21,8 +21,25 @@ CC_OPTIONS = $(NETTLS_GNUTLS_CFLAGS)
 CC_OPTIONS_FOR_nettls_gnutls_bindings_stubs.c = -ccopt -Wno-unused-function
 
 INCLUDES = $(INC_NETSYS) $(INC_NETSTRING)
+NODEP = @true
 
 include $(TOP_DIR)/Makefile.rules
+
+nettls_gnutls_bindings.cmo : nettls_gnutls_bindings.cmi
+nettls_gnutls_bindings.cmx : nettls_gnutls_bindings.cmi
+nettls_nettle_bindings.cmo : nettls_gnutls_bindings.cmi \
+    nettls_nettle_bindings.cmi
+nettls_nettle_bindings.cmx : nettls_gnutls_bindings.cmx \
+    nettls_nettle_bindings.cmi
+nettls_gnutls.cmo : nettls_nettle_bindings.cmi nettls_gnutls_config.cmo \
+    nettls_gnutls_bindings.cmi nettls_gnutls.cmi
+nettls_gnutls.cmx : nettls_nettle_bindings.cmx nettls_gnutls_config.cmx \
+    nettls_gnutls_bindings.cmx nettls_gnutls.cmi
+nettls_gnutls_bindings.cmi :
+nettls_nettle_bindings.cmi :
+nettls_gnutls.cmi : nettls_gnutls_bindings.cmi
+nettls_gnutls_config.cmo :
+nettls_gnutls_config.cmx :
 
 .PHONY: cobjects
 cobjects: $(COBJECTS)
@@ -51,5 +68,3 @@ nettls_gnutls_config.ml: done_reconfigure
 done_reconfigure: gnutls.descr gnutls.c gnutls.ml gnutls.mli \
 	          nettle.descr nettle.c nettle.ml nettle.mli
 	./reconfigure
-
-include depend

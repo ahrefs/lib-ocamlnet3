@@ -49,8 +49,9 @@ class nethttpd_processor ?(hooks = new Netplex_kit.empty_processor_hooks())
 object(self)
   inherit Netplex_kit.processor_hooks_delegation hooks
 
-  method post_add_hook _ ctrl =
-    ctrl # add_plugin Netplex_sharedvar.plugin
+  method post_add_hook sockserv ctrl =
+    ctrl # add_plugin Netplex_sharedvar.plugin;
+    hooks # post_add_hook sockserv ctrl
 
   method process ~when_done (container : Netplex_types.container) fd proto =
     let config = mk_config container in

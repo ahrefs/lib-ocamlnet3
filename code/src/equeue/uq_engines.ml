@@ -51,6 +51,7 @@ class type [ 't ] engine = object
   method state : 't engine_state
   method abort : unit -> unit
   method request_notification : (unit -> bool) -> unit
+  method request_proxy_notification : ('t engine -> bool) -> unit
   method event_system : Unixqueue.event_system
 end
 ;;
@@ -128,6 +129,13 @@ module IntSet =
 class [ 't ] engine_mixin_i (state : 't engine_state ref) esys =
   let notify_list = ref [] in
   let notify_list_new = ref [] in
+  let setup_notify_list() =
+    match !notify_list_new with
+      | [] -> ()
+      | n -> 
+	   notify_list := !notify_list @ n;
+	   notify_list_new := [] in
+  let proxy_notification = ref None in
 object(self)
   method state = !state
 
@@ -139,19 +147,24 @@ object(self)
             when the engine already reached the final state";
     notify_list_new := f :: !notify_list_new
     
+  method request_proxy_notification ( f : 't engine -> bool ) =
+    if (not (is_active !state)) then
+      dlog "engine_mixin warning: the method request_proxy_notification was \
+             called when the engine already reached the final state";
+    proxy_notification := Some f
+    
   method private set_state s =
     if is_active !state then (
       state := s;
       self # notify();
     )
 
+  method private notify_list() =
+    setup_notify_list();
+    !notify_list
+
   method private notify() =
-    ( match !notify_list_new with
-	| [] -> ()
-	| n -> 
-	    notify_list := !notify_list @ n;
-	    notify_list_new := [];
-    );
+    setup_notify_list();
     (* Optimize the case that we only have 1 element in the list. The
        expensive part here is the assignment (calls caml_modify).
      *)
@@ -181,6 +194,28 @@ object(self)
 		!notify_list
 	    )
     )
+
+  method private proxy_notify e =
+    match !proxy_notification with
+      | None ->
+           ()
+      | Some p ->
+           let keep =
+	      try
+		p e
+	      with
+		| error ->
+		    Unixqueue.epsilon esys (fun () -> raise error);
+		    false in
+	   if not keep then
+	     proxy_notification := None
+
+
+  method private proxy_notify_list() =
+    match !proxy_notification with
+      | None -> []
+      | Some p -> [p]
+
 end ;;
 
 
@@ -302,6 +337,56 @@ let aborted_engine esys =
   const_engine `Aborted esys
 
 
+(* Sequencing engines ("bind" operation): This is somewhat special,
+   because the sequences can be arbitrarily long, and we'd like to
+   avoid that engines stack up indefinitely.
+
+   If event counting is enabled (nocount=false), there is no chance
+   to improve anything.
+
+   If counting is disabled, though, we also optimize a few other things:
+
+   1) Cut notification chains: In a chain e1 ++ e2 ++ ... ++ eN the
+   last started engine sN is the first one that transitions to `Done
+   (or `Error):
+
+   e1 arg1 ++ (fun2 arg -> e2 arg2 ++ ... (fun argN -> eN argN) ...)
+   ----------------------------------------------------------------- = s1
+                           ----------------------------------------- = s2
+                                                       .......       = sN=eN
+
+   Now, the other engines are notified: sN notifies s(N-1), which
+   in turn notifies its predecessor, etc., until s1 is reached. This
+   chain has two bad effects:
+     - The long notification chain may cause a stack overflow
+     - The engine objects remain live in memory, because there are references
+       from s(k) to s(k-1)
+
+   The idea to short-circuit the notification. When s(k+1) is created
+   we configure it so that the very first element of the chain is directly
+   notified, and not the direct predecessor.
+
+   This is implemented this way: when the second engine (eng_b) of a
+   sequencing pair is created, it is configured so that all notifications
+   for the current engine are directly applied to the new engine. Also,
+   there is no direct connection between the current and the new engine.
+
+   Drawback: for methods like [state], we need to keep the reference
+   eng_b longer than we want. [state] is now implemented by forwarding
+   the state request to eng_b. In other words, we replace the notification
+   chain with another chain that forwards individual requests from one
+   chain element to the next. This also creates memory references, but now
+   in the opposite direction.
+
+   2) Use proxy notification: If we are smart, we forward requests like
+   s1#state directly to sN#state bypassing all engines in the middle.
+   This is called proxying: sN becomes a proxy for the result of s1.
+   Proxying is activated once the right-hand part of a sequencing pair
+   is running (which is possible because the right-hand part is the
+   result of the whole pair).
+ *)
+
+
 class ['a,'b] iseq_engine ~nocount
                           (eng_a : 'a #engine)
                           (make_b : 'a -> 'b #engine) =
@@ -313,8 +398,10 @@ class ['a,'b] iseq_engine ~nocount
   let eng_b = ref None in
   let eng_b_state = ref (`Working 0) in
 
+  let proxy = ref None in
+
 object(self)
-  inherit ['b] engine_mixin (`Working 0) esys 
+  inherit ['b] engine_mixin (`Working 0) esys as super
 
   initializer
     match !eng_a with
@@ -326,6 +413,33 @@ object(self)
 	    ignore(self#update_a())
 	  )
       | None -> assert false
+
+  method state =
+    if nocount then
+      match !proxy with
+        | None ->
+             ( match !eng_b with
+                 | None -> super#state
+                 | Some e -> e#state
+             )
+        | Some p ->
+             p#state
+    else
+      super#state
+
+  method request_notification f =
+    if nocount then
+      match !proxy with
+        | None ->
+             ( match !eng_b with
+                 | None -> super#request_notification f
+                 | Some e -> e#request_notification f
+             )
+        | Some p ->
+             p#request_notification f
+    else
+      super#request_notification f
+    
 
   method private update_a() =
     (* eng_a is running, eng_b not yet existing *)
@@ -353,8 +467,41 @@ object(self)
 	  let s' = e # state in
 	  eng_b_state := s';
 	  self # seq_count();
-	  if is_active s' then
-	    e # request_notification self#update_b
+          (* Tell the listeners that this engine acts now as a proxy: *)
+          self # proxy_notify e;
+	  if is_active s' then (
+            if nocount then (
+              (* We bypass this engine, and send updates directly to the
+                 observers of this engine. That way we avoid that the
+                 notification chain grows indefinitely. Also, in this case
+                 [self#state] is forwarded to [eng_b#state] (see above).
+               *)
+              let l1 = self # notify_list() in
+              List.iter
+                (fun f ->
+                   e # request_notification f
+                )
+                l1;
+              (* Configure proxying: If this object doesn't have any
+                 proxy notification request, it is the start of the chain.
+                 So we request that whenever there is a proxy for eng_b,
+                 it shall also be the proxy for this object (update_proxy).
+                 Otherwise, we just forward notifications like above.
+               *)
+              let l2 = self # proxy_notify_list() in
+              if l2 = [] then
+                e # request_proxy_notification self#update_proxy
+              else
+                List.iter
+                  (fun f ->
+                     e # request_proxy_notification f
+                  )
+                  l2
+            )
+            else
+              (* this one also has the danger of running into stack overflows *)
+	      e # request_notification self#update_b
+          )
 	  else
 	    ignore(self#update_b());
 	  false
@@ -388,13 +535,19 @@ object(self)
 	  self # set_state s;
 	  false
 
+  method private update_proxy p =
+    proxy := Some p;
+    eng_b := None;
+    eng_b_state := (`Working 0);
+    true
+
   method private seq_count() =
     match self#state with
       | `Working n ->
           if not nocount then
   	    self # set_state (`Working (n+1))
       | _ ->
-	  assert false
+          ()
 
   method abort() =
     ( match !eng_a with

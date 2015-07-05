@@ -1330,7 +1330,7 @@ module Header = struct
 	  | Some length -> Int64.to_string length
 	  | None -> "*"
       ) in
-    mh # update_field "Content-Range" s
+    mh # update_field "Content-Range" ("bytes " ^ s)
 
   let get_content_type mh =
     try

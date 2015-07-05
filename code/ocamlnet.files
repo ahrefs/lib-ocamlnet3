@@ -91,6 +91,11 @@ f src/netstring/netglob_lex.mll
 x src/netstring/netunichar.ml
 x src/netstring/netstring_pcre.mli
 x src/netstring/netstring_pcre.ml
+# former files in this dir:
+x src/netstring/netmappings_iso.ml
+x src/netstring/netmappings_jp.ml
+x src/netstring/netmappings_kr.ml
+x src/netstring/netmappings_other.ml
 # The pattern:
 p src/netstring/.*\.ml
 p src/netstring/.*\.mli

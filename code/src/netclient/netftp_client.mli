@@ -372,6 +372,9 @@ object
   method request_notification : (unit -> bool) -> unit
     (** as in {!Uq_engines.engine} *)
 
+  method request_proxy_notification : (unit Uq_engines.engine -> bool) -> unit
+    (** as in {!Uq_engines.engine} *)
+
   method is_empty : bool
     (** Whether the queue is empty *)
 

@@ -100,6 +100,11 @@ distclean:
 
 .PHONY: postconf
 postconf:
-	echo 'pkg_version="$(VERSION)"' >>setup.data
-	echo 'bindir="$(BINDIR)"' >>setup.data
-	echo 'datadir="$(NET_DB_DIR)"' >>setup.data
+	cat setup.save >>setup.data
+
+
+# phony because VERSION may also change
+.PHONY: _oasis
+_oasis: _oasis.in
+	v=`./configure -version`; sed -e 's/@VERSION@/'"$$v/" _oasis.in >_oasis
+	oasis setup

@@ -5925,7 +5925,11 @@ class pipeline =
                   raise Not_found;
 		Hashtbl.find transports trans
 	      with Not_found ->
-		failwith "Nethttp_client: No transport for this transport ID" in
+                if trans = https_trans_id then
+                  failwith "Nethttp_client: No https transport available"
+                else
+		  failwith ("Nethttp_client: No transport for this transport ID: " ^ 
+                              string_of_int trans) in
 	    let proxy_auth_handler_opt =
 	      match auth with
 		| Some(u,p,insecure) ->

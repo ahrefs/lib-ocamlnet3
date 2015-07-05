@@ -42,13 +42,13 @@ file_engine: file_engine.ml
 		file_engine.ml -linkpkg -g
 
 netplex: netplex.ml
-	ocamlfind ocamlc -o netplex -package "netstring,netcgi2,unix,nethttpd-for-netcgi2,netplex" \
+	ocamlfind ocamlc -o netplex -package "netstring,netcgi2,unix,nethttpd,netplex" \
 		-thread netplex.ml -linkpkg -g
 netplex_auth: netplex_auth.ml
-	ocamlfind ocamlc -o netplex_auth -package "netstring,netcgi2,unix,nethttpd-for-netcgi2,netplex" \
+	ocamlfind ocamlc -o netplex_auth -package "netstring,netcgi2,unix,nethttpd,netplex" \
 		-thread netplex_auth.ml -linkpkg -g
 netplex_tls: enable_tls.ml netplex.ml
-	ocamlfind ocamlc -o netplex_tls -package "netstring,netcgi2,unix,nethttpd-for-netcgi2,netplex,nettls-gnutls" \
+	ocamlfind ocamlc -o netplex_tls -package "netstring,netcgi2,unix,nethttpd,netplex,nettls-gnutls" \
 		-thread enable_tls.ml netplex.ml -linkpkg -g -custom
 
 clean:

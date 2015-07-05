@@ -4,6 +4,68 @@
 
 -- OCamlnet-4.1 fork
 
+2015-06-21  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Release 4.0.4
+
+	* GnuTLS: compatibility with GnuTLS-3.4.2
+
+	* Nethttpd_plex: the post_add_hook was not called by accident
+	  (since OCamlnet-4); this is now fixed.
+
+	* Nethtml: new option case_sensitive
+
+2015-06-14  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* GnuTLS: initializing the library on-demand. This avoids that
+	  /dev/random is kept open all the time since program start, and
+	  works around incompatibilities with Netplex. (Thomas Calderon
+	  found the problem.)
+
+	* GnuTLS: setting DH parameters on certificates (this was forgotten in
+	  previous releases). (Thomas Calderon found the problem.)
+
+2015-04-27  Gerd Stolpmann  <gerd@zotac>
+
+	* Release 4.0.3
+
+	* GnuTLS: supporting GnuTLS versions where SRP is disabled.
+	  Supporting GnuTLS-3.4.
+
+2015-02-26  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Release 4.0.2
+
+	* OpenBSD build: fix linker option (Christopher Zimmermann)
+
+2015-02-23  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Equeue: There is a new method request_proxy_notification,
+	  which is only used by Uq_engines.qseq_engine (but unfortunately
+	  needs to appear in the public type of the object). This new
+	  method permits that chains of Uq_engines.qseq_engine pairs
+	  can now be arbitrarily long without consuming too much memory
+	  and without the danger of getting stack overflows.
+
+	  This fixes issues where notification chains got too long. In
+	  particular, we saw a stack overflow when retrieving a video
+	  stream via HTTP. The stream was sent with many chunks, resulting
+	  in a long Uq_engines.qseq_engine chain.
+
+	  Implementers of engines can simply define request_proxy_notification
+	  as no-ops.
+
+2015-01-27  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Nethttp.set_content_range: this function generated an incorrect
+	  header (the "bytes" word was missing). (Török Edwin)
+
+2015-01-18  Gerd Stolpmann <gerd@gerd-stolpmann.de>
+
+	* Release 4.0.1
+
+	* _oasis is generated from _oasis.in
+
 2014-12-30  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netplex: the Netplex socket directory has a different default

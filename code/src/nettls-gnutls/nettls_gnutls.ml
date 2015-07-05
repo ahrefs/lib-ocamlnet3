@@ -41,6 +41,7 @@ module Make_TLS_1
 
     type credentials =
         { gcred : G.gnutls_credentials;
+          gcred_create : unit -> G.gnutls_credentials;
         }
 
     type dh_params =
@@ -95,8 +96,7 @@ module Make_TLS_1
           dh_params : G.gnutls_dh_params_t option;
           peer_auth : [ `None | `Optional | `Required ];
           credentials : credentials;
-          verify : endpoint -> bool;
-          peer_name_unchecked : bool;
+          verify : endpoint -> bool -> bool -> bool;
         }
 
     type serialized_session =
@@ -169,8 +169,9 @@ module Make_TLS_1
       "-----END " ^ header_tag ^ "-----\n"
 
 
-    let create_config ?(algorithms="NORMAL") ?dh_params ?(verify=fun _ -> true)
-                      ?(peer_name_unchecked=false) ~peer_auth 
+    let create_config ?(algorithms="NORMAL") ?dh_params 
+                      ?(verify=fun _ cert_ok name_ok -> cert_ok && name_ok)
+                      ~peer_auth 
                       ~credentials () =
       let f() =
         let priority = G.gnutls_priority_init algorithms in
@@ -191,136 +192,177 @@ module Make_TLS_1
                 let dhp = G.gnutls_dh_params_init() in
                 G.gnutls_dh_params_generate2 dhp bits;
                 Some dhp in
+        let credentials' =
+          match dhp_opt with
+            | None ->
+                 credentials
+            | Some dhp ->
+                 let c = credentials.gcred_create() in
+                 ( match c with
+                     | `Certificate gc ->
+                          G.gnutls_certificate_set_dh_params gc dhp
+                     | _ ->
+                          ()
+                 );
+                 { credentials with gcred = c } in
         { priority;
           dh_params = dhp_opt;
           peer_auth;
-          credentials;
+          credentials = credentials';
           verify;
-          peer_name_unchecked
         } in
       trans_exn f ()
 
 
-    let create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys () =
-      let gcred = G.gnutls_certificate_allocate_credentials() in
-      if system_trust then (
-        match Nettls_gnutls_config.system_trust with
-          | `Gnutls ->
-               G.gnutls_certificate_set_x509_system_trust gcred
-          | `File path ->
-               let certs =
-                 parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] path snd in
-               List.iter
-                 (fun data ->
-                    G.gnutls_certificate_set_x509_trust_mem gcred data `Der
-                 )
-                 certs
-      );
-      List.iter
-        (fun crt_spec ->
-           let der_crts =
-             match crt_spec with
-               | `PEM_file file ->
-                   parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] file snd
-               | `DER l ->
-                   l in
-           List.iter
-             (fun data ->
-                G.gnutls_certificate_set_x509_trust_mem gcred data `Der
-             )
-             der_crts
+    let get_der_crts proj boundaries spec =
+      List.map
+        (fun x ->
+           match proj x with
+             | `PEM_file file ->
+                  parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] file snd
+             | `DER l ->
+                  l
         )
-        trust;
-      List.iter
-        (fun crl_spec ->
-           let der_crls =
-             match crl_spec with
-               | `PEM_file file ->
-                   parse_pem [ "X509 CRL" ] file snd
-               | `DER l ->
-                   l in
-           List.iter
-             (fun data ->
-                G.gnutls_certificate_set_x509_crl_mem gcred data `Der
-             )
-             der_crls
-        )
-        revoke;
-      List.iter
-        (fun (crts, pkey, pw_opt) ->
-           let der_crts =
-             match crts with
-               | `PEM_file file ->
-                   parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] file snd
-               | `DER l ->
-                   l in
-           let gcrts =
-             List.map
-               (fun data ->
-                  let gcrt = G.gnutls_x509_crt_init() in
-                  G.gnutls_x509_crt_import gcrt data `Der;
-                  gcrt
-               )
-               der_crts in
-           let gpkey = G.gnutls_x509_privkey_init() in
+        spec
+
+    let get_der_pkeys spec =
+      List.map
+        (fun (_,pkey,pw_opt) ->
            let pkey1 =
-             match pkey with
+             match pkey with 
                | `PEM_file file ->
-                   let p =
-                     parse_pem
-                       [ "RSA PRIVATE KEY";
-                         "DSA PRIVATE KEY";
-                         "EC PRIVATE KEY";
-                         "PRIVATE KEY";
-                         "ENCRYPTED PRIVATE KEY"
-                       ]
-                       file
-                       (fun (tag,data) ->
-                          match tag with
-                            | "RSA PRIVATE KEY" -> `RSA data
-                            | "DSA PRIVATE KEY" -> `DSA data
-                            | "EC PRIVATE KEY" -> `EC data
-                            | "PRIVATE KEY" -> `PKCS8 data
-                            | "ENCRYPTED PRIVATE KEY" -> `PKCS8_encrypted data
-                            | _ -> assert false
-                       ) in
-                   (List.hd p :> private_key)
+                    let p =
+                      parse_pem
+                        [ "RSA PRIVATE KEY";
+                          "DSA PRIVATE KEY";
+                          "EC PRIVATE KEY";
+                          "PRIVATE KEY";
+                          "ENCRYPTED PRIVATE KEY"
+                        ]
+                        file
+                        (fun (tag,data) ->
+                           match tag with
+                             | "RSA PRIVATE KEY" -> `RSA data
+                             | "DSA PRIVATE KEY" -> `DSA data
+                             | "EC PRIVATE KEY" -> `EC data
+                             | "PRIVATE KEY" -> `PKCS8 data
+                             | "ENCRYPTED PRIVATE KEY" -> `PKCS8_encrypted data
+                             | _ -> assert false
+                        ) in
+                    (List.hd p :> private_key)
                | other ->
-                   other in
-
+                    other in
            ( match pkey1 with
-               | `PEM_file file ->
-                   assert false
-               | `RSA data ->
-                   (* There is no entry point for parsing ONLY this format *)
-                   let pem = create_pem "RSA PRIVATE KEY" data in
-                   G.gnutls_x509_privkey_import gpkey pem `Pem
-               | `DSA data ->
-                   (* There is no entry point for parsing ONLY this format *)
-                   let pem = create_pem "DSA PRIVATE KEY" data in
-                   G.gnutls_x509_privkey_import gpkey pem `Pem
-               | `EC data ->
-                   (* There is no entry point for parsing ONLY this format *)
-                   let pem = create_pem "EC PRIVATE KEY" data in
-                   G.gnutls_x509_privkey_import gpkey pem `Pem
-               | `PKCS8 data ->
-                   G.gnutls_x509_privkey_import_pkcs8 
-                     gpkey data `Der "" [`Plain]
                | `PKCS8_encrypted data ->
-                   ( match pw_opt with
-                       | None ->
-                           failwith "No password for encrypted PKCS8 data"
-                       | Some pw ->
-                           G.gnutls_x509_privkey_import_pkcs8
-                             gpkey data `Der pw []
-                   )
-
+                    ( match pw_opt with
+                        | None ->
+                             failwith "No password for encrypted PKCS8 data"
+                        | Some _ ->
+                             ()
+                    )
+               | _ ->
+                    ()
            );
-           G.gnutls_certificate_set_x509_key gcred (Array.of_list gcrts) gpkey
+           pkey1
         )
-        keys;
-      G.gnutls_certificate_set_verify_flags gcred [];
-      { gcred = `Certificate gcred }
+        spec
+
+
+    let id x = x
+    let p13 (x,_,_) = x
+
+
+    let create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys () =
+      let trust_certs =
+        get_der_crts id [ "X509 CERTIFICATE"; "CERTIFICATE" ] trust in
+      let revoke_certs =
+        get_der_crts id [ "X509 CRL" ] revoke in
+      let certs =
+        get_der_crts p13 [ "X509 CERTIFICATE"; "CERTIFICATE" ] keys in
+      let pkeys =
+        get_der_pkeys keys in
+      let cplist =
+        List.combine certs pkeys in
+      let create () =
+        let gcred = G.gnutls_certificate_allocate_credentials() in
+        if system_trust then (
+          match Nettls_gnutls_config.system_trust with
+            | `Gnutls ->
+                 G.gnutls_certificate_set_x509_system_trust gcred
+            | `File path ->
+                 let certs =
+                   parse_pem [ "X509 CERTIFICATE"; "CERTIFICATE" ] path snd in
+                 List.iter
+                   (fun data ->
+                      G.gnutls_certificate_set_x509_trust_mem gcred data `Der
+                   )
+                   certs
+        );
+        List.iter
+          (fun der_crts ->
+             List.iter
+               (fun data ->
+                  G.gnutls_certificate_set_x509_trust_mem gcred data `Der
+               )
+               der_crts
+          )
+          trust_certs;
+        List.iter
+          (fun der_crls ->
+             List.iter
+               (fun data ->
+                  G.gnutls_certificate_set_x509_crl_mem gcred data `Der
+               )
+               der_crls
+          )
+          revoke_certs;
+        List.iter2
+          (fun (der_crts,pkey1) (_, _, pw_opt) ->
+             let gcrts =
+               List.map
+                 (fun data ->
+                    let gcrt = G.gnutls_x509_crt_init() in
+                    G.gnutls_x509_crt_import gcrt data `Der;
+                    gcrt
+                 )
+                 der_crts in
+             let gpkey = G.gnutls_x509_privkey_init() in
+             ( match pkey1 with
+                 | `PEM_file file ->
+                     assert false
+                 | `RSA data ->
+                     (* There is no entry point for parsing ONLY this format *)
+                     let pem = create_pem "RSA PRIVATE KEY" data in
+                     G.gnutls_x509_privkey_import gpkey pem `Pem
+                 | `DSA data ->
+                     (* There is no entry point for parsing ONLY this format *)
+                     let pem = create_pem "DSA PRIVATE KEY" data in
+                     G.gnutls_x509_privkey_import gpkey pem `Pem
+                 | `EC data ->
+                     (* There is no entry point for parsing ONLY this format *)
+                     let pem = create_pem "EC PRIVATE KEY" data in
+                     G.gnutls_x509_privkey_import gpkey pem `Pem
+                 | `PKCS8 data ->
+                     G.gnutls_x509_privkey_import_pkcs8 
+                       gpkey data `Der "" [`Plain]
+                 | `PKCS8_encrypted data ->
+                     ( match pw_opt with
+                         | None ->
+                              assert false
+                         | Some pw ->
+                              G.gnutls_x509_privkey_import_pkcs8
+                                gpkey data `Der pw []
+                     )
+
+             );
+             G.gnutls_certificate_set_x509_key gcred (Array.of_list gcrts) gpkey
+          )
+          cplist keys;
+        G.gnutls_certificate_set_verify_flags gcred [];
+        `Certificate gcred in
+      { gcred = create();
+        gcred_create = create
+      }
 
     let create_x509_credentials ?(system_trust=false) 
                                 ?(trust=[]) ?(revoke=[]) ?(keys=[]) () =
@@ -331,7 +373,6 @@ module Make_TLS_1
     let create_endpoint ~role ~recv ~send ~peer_name config =
       if peer_name=None && 
          role=`Client &&
-         not config.peer_name_unchecked &&
          config.peer_auth <> `None
       then
         failwith "TLS configuration error: authentication required, \
@@ -460,6 +501,9 @@ module Make_TLS_1
         | G.Error `Interrupted ->
             raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""))
         | G.Error `Rehandshake ->
+            (* ignore rehandshakes triggered by the client *)
+            if ep.role = `Server then
+              raise (Unix.Unix_error(Unix.EINTR, "Nettls_gnutls", ""));
             if ep.state = `Switching then
               raise (Exc.TLS_switch_response true)
             else
@@ -540,15 +584,22 @@ module Make_TLS_1
 
     let verify ep =
       let f() =
-        if G.gnutls_certificate_get_peers ep.session = [| |] then (
-          if ep.config.peer_auth = `Required then
-            raise(Exc.TLS_error (G.gnutls_strerror_name `No_certificate_found))
-        )
-        else (
-          if ep.config.peer_auth <> `None then (
-            let status_l = G.gnutls_certificate_verify_peers2 ep.session in
-            if status_l <> [] then
-              raise(Exc.TLS_error "NETTLS_CERT_VERIFICATION_FAILED");
+        let cert_ok, name_ok =
+          if G.gnutls_certificate_get_peers ep.session = [| |] then (
+            (* No certificate available *)
+            if ep.config.peer_auth = `Required then
+              raise(Exc.TLS_error
+                      (G.gnutls_strerror_name `No_certificate_found));
+            (true, true)
+          )
+          else (
+            if ep.config.peer_auth = `None then
+              (* Checks turned off *)
+              (true, true)
+            else
+              let status_l = G.gnutls_certificate_verify_peers2 ep.session in
+              let cert_ok = 
+                status_l = [] in
 (*
               failwith(sprintf "Certificate verification failed with codes: " ^ 
                          (String.concat ", " 
@@ -556,23 +607,25 @@ module Make_TLS_1
                                G.string_of_verification_status_flag
                                status_l)));
  *)
-            if not ep.config.peer_name_unchecked then ( 
-              match ep.peer_name with
-                | None -> ()
-                | Some pn ->
-                     let der_peer_certs = 
-                       G.gnutls_certificate_get_peers ep.session in
-                     assert(der_peer_certs <> [| |]);
-                     let peer_cert = G.gnutls_x509_crt_init() in
-                     G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
-                     let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
-                     if not ok then
-                       raise(Exc.TLS_error "NETTLS_NAME_VERIFICATION_FAILED");
-            );
-            if not (ep.config.verify ep) then
-              raise(Exc.TLS_error "NETTLS_USER_VERIFICATION_FAILED");
-          )
-        ) in
+              let name_ok =
+                match ep.peer_name with
+                  | None ->
+                      false
+                  | Some pn ->
+                      let der_peer_certs = 
+                        G.gnutls_certificate_get_peers ep.session in
+                      assert(der_peer_certs <> [| |]);
+                      let peer_cert = G.gnutls_x509_crt_init() in
+                      G.gnutls_x509_crt_import peer_cert der_peer_certs.(0) `Der;
+                      let ok = G.gnutls_x509_crt_check_hostname peer_cert pn in
+                      ok in
+              (cert_ok, name_ok)
+          ) in
+        let ok =
+          ep.config.verify ep cert_ok name_ok in
+        if not ok then
+          raise(Exc.TLS_error "NETTLS_VERIFICATION_FAILED");
+        () in
       trans_exn f ()
 
     let get_endpoint_creds ep =
@@ -1226,16 +1279,28 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
 end
 
 
+(* Initialization of GnuTLS: This is done when the first wrapper function
+   is invoked via nettls_init(). Note that (since around GnuTLS-3.2) the
+   file /dev/random is permanently kept open. If this is in the way,
+   you can call nettls_deinit. (NB. This scheme is somewhat fragile,
+   as it breaks when there is another user of GnuTLS keeping the library
+   initialized.)
+ *)
 
 let init() =
-  Nettls_gnutls_bindings.gnutls_global_init();
   Netsys_crypto.set_current_tls
     (module TLS : Netsys_crypto_types.TLS_PROVIDER);
   Netsys_crypto.set_current_symmetric_crypto
     (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO);
   Netsys_crypto.set_current_digests
-    (module Digests : Netsys_crypto_types.DIGESTS)
-
+    (module Digests : Netsys_crypto_types.DIGESTS);
+  Netsys_posix.register_post_fork_handler
+    ( object
+        method name = "nettls_deinit"
+        method run() = 
+          Nettls_gnutls_bindings.nettls_deinit()
+      end
+    )
 
 let () =
   init()

@@ -38,8 +38,8 @@ val read_netplex_config :
 
 
 val read_tls_config :
-      ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
-      ?peer_name_unchecked : bool ->
+      ?verify : ((module Netsys_crypto_types.TLS_ENDPOINT) -> 
+                 bool -> bool -> bool) ->
       config_file ->
       address ->
       (module Netsys_crypto_types.TLS_PROVIDER) option ->

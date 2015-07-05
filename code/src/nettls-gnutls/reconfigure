@@ -57,6 +57,29 @@ EOF
     call_ocamlc -c test.c
 }
 
+init_nettle_set_key() {
+    # older versions of Nettle have cipher->set_encrypt_key with three args,
+    # and newer only two args. (Also for set_decrypt_key.)
+    echo "Checking whether set_en/decrypt_key has two args"
+    echo "# set_key" >> $log
+    cat <<EOF >testdir/test.c
+#include <nettle/nettle-types.h>
+#include <nettle/nettle-meta.h>
+#include <stdlib.h>
+int main (int argc, char *argv[], char *envp[]) {
+  struct nettle_cipher *cipher;
+  void *ctx;
+  cipher = &nettle_aes128;
+  ctx = malloc(cipher->context_size);
+  cipher->set_encrypt_key(ctx, (const uint8_t *) "0123456789abcdef");
+  cipher->set_decrypt_key(ctx, (const uint8_t *) "0123456789abcdef");
+  return 0;
+}
+EOF
+    call_ocamlc -c test.c
+}
+
+
 init_checks() {
     if init_header "gnutls/crypto.h"; then
         have_gnutls_crypto_h=1
@@ -81,6 +104,11 @@ init_checks() {
         echo "#define HAVE_NETTLE_GCM_H" >>$out
     else
         echo "#undef HAVE_NETTLE_GCM_H" >>$out
+    fi
+    if init_nettle_set_key; then
+        echo "#define HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS" >>$out
+    else
+        echo "#undef HAVE_NETTLE_SET_KEY_WITH_TWO_ARGS" >>$out
     fi
 }
 
@@ -133,8 +161,9 @@ EOF
 #include "caml/mlvalues.h"
 $add_include
 value do_test(value dummy) {
-  (void) & $fun;
-  return 0;
+  void *p;
+  p = & $fun;
+  return (p != NULL) ? 0 : 1;
 }
 EOF
 
@@ -159,7 +188,7 @@ check_type() {
 #include <nettle/nettle-meta.h>
 $add_include
 int main (int argc, char *argv[], char *envp[]) {
-  $ty x;
+  $ty * x;
   return 0;
 }
 EOF

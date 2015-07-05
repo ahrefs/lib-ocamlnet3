@@ -14,6 +14,7 @@ let addr_of_name name =
   entry.Unix.h_addr_list.(0)
 ;;
 
+(*
 class [ 't ] engine_mixin (init_state : 't engine_state) =
 object(self)
   val mutable notify_list = []
@@ -36,7 +37,7 @@ object(self)
     notify_list_new <- [];
     notify_list <- List.filter (fun f -> f()) notify_list
 end ;;
-
+ *)
 
 class message_receiver src message_callback ues =
 object(self)
@@ -52,7 +53,7 @@ object(self)
    * The engine is never done.
    *)
 
-  inherit [unit] engine_mixin (`Working 0 : unit engine_state)
+  inherit [unit] engine_mixin (`Working 0 : unit engine_state) ues
 
   val group = Unixqueue.new_group ues
   val mutable in_eof = false
@@ -86,7 +87,7 @@ object(self)
     self # check_input_polling()
 
   method abort() =
-    match state with
+    match self#state with
 	`Working _ ->
 	  in_eof <- true;
 	  self # set_state `Aborted;
@@ -97,7 +98,7 @@ object(self)
   method event_system = ues
 
   method private count() =
-    match state with
+    match self#state with
 	`Working n -> 
 	  self # set_state (`Working (n+1))
       | _ ->
@@ -152,7 +153,7 @@ object(self)
     (* It is possible that this method is called when the engine is already
      * aborted. In this case, just do nothing.
      *)
-    match state with
+    match self#state with
 	`Working _ ->
 	  let message_expected = String.length message in
 	  let need_polling = not in_eof && message_length < message_expected in
@@ -411,7 +412,7 @@ type 't transition =
 
 class virtual ['t] automaton socks_socket ues =
 object(self)
-  inherit ['t] engine_mixin (`Working 0)
+  inherit ['t] engine_mixin (`Working 0) ues
 
   val mutable socks_state = Trans(fun () -> assert false)
 
@@ -444,7 +445,7 @@ object(self)
 
   method private msg_received () =
     try
-      ( match state with
+      ( match self#state with
 	    `Working n ->
 	      self # set_state (`Working (n+1))
 	  | _ ->

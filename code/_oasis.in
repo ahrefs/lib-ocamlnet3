@@ -1,6 +1,6 @@
 OASISFormat:  0.4
 Name:         ocamlnet
-Version:      4.0
+Version:      @VERSION@
 Synopsis:     Internet protocols and helper data structures
 Authors:      Gerd Stolpmann et al.
 ConfType:     custom (0.4)
@@ -18,39 +18,39 @@ XCustomInstall: make install
 XCustomUninstall: make uninstall
 
 Flag "gtk2"
-  Description: Support for gtk2 event loops
+  Description: gtk2: Support for gtk2 event loops
   Default: false
 
 Flag "tcl"
-  Description: Support for Tcl/Tk event loops
+  Description: tcl: Support for Tcl/Tk event loops
   Default: false
 
 Flag "zlib"
-  Description: Support for compression
+  Description: zlib: Support for compression
   Default: false
 
 Flag "apache"
-  Description: Build the Apache module
+  Description: apache: Build the Apache module
   Default: false
 
 Flag "gnutls"
-  Description: Enable TLS
+  Description: gnutls: Enable (Gnu) TLS
   Default: false
 
 Flag "gssapi"
-  Description: Enable GSSAPI
+  Description: gssapi: Enable GSSAPI
   Default: false
 
 Flag "pcre"
-  Description: Build netstring-pcre library
+  Description: pcre: Build netstring-pcre library
   Default: false
 
 Flag "full_pcre"
-  Description: Use pcre for all regular expressions
+  Description: full_pcre: Use pcre for all regular expressions
   Default: false
 
 Flag "nethttpd"
-  Description: Build the webserver nethttpd
+  Description: nethttpd: Build the webserver nethttpd
   Default: false
 
 Library "equeue"

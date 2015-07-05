@@ -108,7 +108,13 @@ let string_of_verification_status_flag =
     | `Insecure_algorithm -> "INSECURE_ALGORITHM"
     | `Not_activated -> "NOT_ACTIVATED"
     | `Expired -> "EXPIRED"
-
+    | `Signature_failure -> "SIGNATURE_FAILURE"
+    | `Revocation_data_superseded -> "REVOCATION_DATA_SUPERSEDED"
+    | `Unexpected_owner -> "UNEXPECTED_OWNER"
+    | `Revocation_data_issued_in_future -> "REVOCATION_DATA_ISSUED_IN_FUTURE"
+    | `Signer_constraints_failure -> "SIGNER_CONSTRAINTS_FAILURE"
+    | `Mismatch -> "MISMATCH"
+    | `Purpose_mismatch -> "PURPOSE_MISMATCH"
 
 external gnutls_x509_crt_list_import : string -> gnutls_x509_crt_fmt_t ->
                                   gnutls_certificate_import_flags ->

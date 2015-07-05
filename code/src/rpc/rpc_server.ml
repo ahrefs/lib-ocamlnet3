@@ -1325,9 +1325,11 @@ let create2_socket_server ?(config = default_socket_config)
     let (fd, close_inactive_descr) =
       match conn with
 	| Localhost port ->
-	    let s = 
-              Uq_server.listen_on_inet_socket
-                Unix.inet6_addr_loopback port stype opts in
+             let addr =
+               Unix.inet_addr_loopback in
+	     let s = 
+               Uq_server.listen_on_inet_socket
+                 addr port stype opts in
 	    (s, true)
 	| Internet (addr,port) ->
 	    let s = 

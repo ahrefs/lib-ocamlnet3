@@ -11,6 +11,9 @@ MAPPINGS = netmappings_iso.ml \
 	   netmappings_jp.ml \
 	   netmappings_kr.ml
 
+ALL_EXTRA = $(MAPPINGS:.ml=.cmo) netuniinit.cmo
+OPT_EXTRA = $(MAPPINGS:.ml=.cmx) netuniinit.cmx
+
 include $(TOP_DIR)/Makefile.rules
 
 include depend

@@ -540,6 +540,7 @@ object
                   cmd -> (ftp_state * reply) Uq_engines.engine
   method send_abort : unit -> unit
   method request_notification : (unit -> bool) -> unit
+  method request_proxy_notification : (unit Uq_engines.engine -> bool) -> unit
   method run : unit -> unit
   method ftp_state : ftp_state
   method state : unit Uq_engines.engine_state

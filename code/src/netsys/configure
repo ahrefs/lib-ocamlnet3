@@ -159,7 +159,6 @@ posix_pthr_link_options=""
 case `uname -s` in
     SunOS)         posix_pthr_link_options="-lpthread -lposix4" ;;
     FreeBSD)       posix_pthr_link_options="-pthread" ;;
-    OpenBSD)       posix_pthr_link_options="-pthread" ;;
     *)             posix_pthr_link_options="-lpthread" ;;
 esac
 
