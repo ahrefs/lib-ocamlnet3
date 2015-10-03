@@ -78,7 +78,7 @@ let rec cannot_represent s =
 
 #ifdef WORDSIZE_64
 let lt_uint4 x y =
-  if x < y then x >= 0 else y < x && y < 0
+  if x < y then x >= 0 || y < 0 else x >= 0 && y < 0
 #else
 let lt_uint4 x y =
   if x < y then 
@@ -103,7 +103,7 @@ let ge_uint4 x y = not(lt_uint4 x y)
 
 
 let lt_uint8 x y =
-  if x < y then x >= 0L else y < x && y < 0L
+  if x < y then x >= 0L || y <= 0L else x >= 0L && y < 0L
 
 let le_uint8 x y = not(lt_uint8 y x)
 let gt_uint8 x y = lt_uint8 y x
