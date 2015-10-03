@@ -1,3 +1,8 @@
+2015-10-03  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netnumber: on 64 bit platforms, the functions lt_uint4 and
+	  lt_uint8 were wrong. Fixed now.
+
 2015-06-21  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Release 4.0.4
