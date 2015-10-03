@@ -42,6 +42,32 @@ let overflow32 f x =
 ;;
 
 
+let test_lt_int4 () =
+  let n1 = mk_int4 ('\000', '\000', '\000', '\001') in
+  let n2 = mk_int4 ('\000', '\000', '\001', '\000') in
+  let n7 = mk_int4 ('\128', '\000', '\000', '\000') in
+  let n8 = mk_int4 ('\255', '\255', '\255', '\255') in
+
+  let all = [ n7; n8; n1; n2 ] in
+  let all_by_all =
+    List.map
+      (fun p ->
+         List.map
+           (fun q ->
+              p < q
+           )
+           all
+      )
+      all in
+  all_by_all =
+    [ [ false; true; true; true ];
+      [ false; false; true; true ];
+      [ false; false; false; true ];
+      [ false; false; false; false ]
+    ]
+;;
+
+
 let test_sth_of_int4 () =
   let n1 = mk_int4 ('\000', '\000', '\000', '\001') in
   let n2 = mk_int4 ('\000', '\000', '\001', '\000') in
@@ -101,6 +127,32 @@ let test_int4_of_sth() =
   (int4_of_int64 (Int64.of_string "0x40000000") = n3) &&
   (overflow int4_of_int64 (Int64.of_string "0x80000000")) &&
   (int4_of_int64 (Int64.of_string "-1") = n4)
+;;
+
+
+let test_lt_uint4 () =
+  let n1 = mk_uint4 ('\000', '\000', '\000', '\001') in
+  let n2 = mk_uint4 ('\000', '\000', '\001', '\000') in
+  let n7 = mk_uint4 ('\128', '\000', '\000', '\000') in
+  let n8 = mk_uint4 ('\255', '\255', '\255', '\255') in
+
+  let all = [ n1; n2; n7; n8 ] in
+  let all_by_all =
+    List.map
+      (fun p ->
+         List.map
+           (fun q ->
+              lt_uint4 p q
+           )
+           all
+      )
+      all in
+  all_by_all =
+    [ [ false; true; true; true ];
+      [ false; false; true; true ];
+      [ false; false; false; true ];
+      [ false; false; false; false ]
+    ]
 ;;
 
   
@@ -169,6 +221,31 @@ let test_uint4_of_sth() =
 ;;*)
 
 
+let test_lt_int8 () =
+  let n1 = mk_int8 ('\000','\000','\000','\000','\000','\000','\000','\001') in
+  let n2 = mk_int8 ('\000','\000','\000','\000','\001','\000','\000','\000') in
+  let n6 = mk_int8 ('\128','\000','\000','\000','\000','\000','\000','\000') in
+  let n7 = mk_int8 ('\255','\255','\255','\255','\255','\255','\255','\255') in
+
+  let all = [ n6; n7; n1; n2 ] in
+  let all_by_all =
+    List.map
+      (fun p ->
+         List.map
+           (fun q ->
+              p < q
+           )
+           all
+      )
+      all in
+  all_by_all =
+    [ [ false; true; true; true ];
+      [ false; false; true; true ];
+      [ false; false; false; true ];
+      [ false; false; false; false ]
+    ]
+;;
+
 let test_sth_of_int8 () =
   let n1 = mk_int8 ('\000','\000','\000','\000','\000','\000','\000','\001') in
   let n2 = mk_int8 ('\000','\000','\000','\000','\001','\000','\000','\000') in
@@ -227,6 +304,31 @@ let test_int8_of_sth() =
   (int8_of_int64 (Int64.of_string "-1") = n5)
 ;;
 
+
+let test_lt_uint8 () =
+  let n1 = mk_uint8 ('\000','\000','\000','\000','\000','\000','\000','\001') in
+  let n2 = mk_uint8 ('\000','\000','\000','\000','\001','\000','\000','\000') in
+  let n6 = mk_uint8 ('\128','\000','\000','\000','\000','\000','\000','\000') in
+  let n7 = mk_uint8 ('\255','\255','\255','\255','\255','\255','\255','\255') in
+
+  let all = [ n1; n2; n6; n7 ] in
+  let all_by_all =
+    List.map
+      (fun p ->
+         List.map
+           (fun q ->
+              lt_uint8 p q
+           )
+           all
+      )
+      all in
+  all_by_all =
+    [ [ false; true; true; true ];
+      [ false; false; true; true ];
+      [ false; false; false; true ];
+      [ false; false; false; false ]
+    ]
+;;
 
 let test_sth_of_uint8 () =
   let n1 = mk_uint8 ('\000','\000','\000','\000','\000','\000','\000','\001') in
@@ -316,10 +418,14 @@ let test_read_int4 () =
 
 test "sth_of_int4" test_sth_of_int4;;
 test "int4_of_sth" test_int4_of_sth;;
+test "lt_int4" test_lt_int4;;
 test "sth_of_uint4" test_sth_of_uint4;;
 test "uint4_of_sth" test_uint4_of_sth;;
+test "lt_uint4" test_lt_uint4;;
 test "sth_of_int8" test_sth_of_int8;;
 test "int8_of_sth" test_int8_of_sth;;
+test "lt_int8" test_lt_int8;;
 test "sth_of_uint8" test_sth_of_uint8;;
 test "uint8_of_sth" test_uint8_of_sth;;
+test "lt_uint8" test_lt_uint8;;
 test "test_read_int4" test_read_int4;;
