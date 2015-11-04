@@ -207,6 +207,7 @@ f src/equeue-gtk1/Makefile.pre
 f src/equeue-gtk1/Makefile.gtk
 p src/equeue-gtk1/.*\.ml
 p src/equeue-gtk1/.*\.mli
+f src/equeue-gtk1/doc-ignore
 
 d src/equeue-gtk2
 f src/equeue-gtk2/META.in
