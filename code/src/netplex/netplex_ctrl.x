@@ -357,14 +357,23 @@ union shvar_code switch(shvar_enum d) {
  default: void;
 };
 
+union shvar_serial switch(shvar_enum d) {
+ case SHVAR_OK:
+     _int64 hyper serial;
+ default: void;
+};
+
 union shvar_get switch(shvar_enum d) {
- case SHVAR_OK: 
-     longstring value;
+ case SHVAR_OK:
+     struct _tuple {
+         longstring value;
+         _int64 hyper serial;
+     } result;
  default: 
      void;
 };
 
-
+typedef int *slot;
 
 
 program Sharedvar {
@@ -392,7 +401,7 @@ program Sharedvar {
            tmo: If non-negative, the timeout
 	*/
 
-	shvar_code set_value(longstring, longstring, longstring) = 2;
+	shvar_serial set_value(longstring, longstring, longstring) = 2;
 	/* set_value(var_name, var_value, ty): Sets the variable var_name to
            var_value. This is only possible when the variable exists,
            and has the right type.
@@ -425,6 +434,10 @@ program Sharedvar {
 	   variable (or all variables if var_name="*"). log_level is
 	   the stringified log level
 	*/
+
+        slot shm_slot(longstring) = 7;
+        /* shm_slot(var_name): get the shm slot for this variable (if possible) 
+         */
 
     } = 2;
 } = 5;

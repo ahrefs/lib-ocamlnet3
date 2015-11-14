@@ -61,6 +61,7 @@ val plugin : plugin
    *)
 
 
+(** {2 Classical API} *)
 
 (** The folloing functions can all be invoked in container
     contexts. In controller context, access is limited to [get_value].
@@ -189,6 +190,54 @@ val dump : string -> Netlog.level -> unit
       string argument "*" dumps all variables.
    *)
 
+(** {2 API with versioned access} *)
+
+(** The API with versioned values can very quickly check whether newer
+    values are available (the check consists just of a memory read). If a newer
+    version is avaiable, the value still needs to be retrieved with an
+    RPC call, though.
+
+    The central function is [vv_update]. See also the limitations mentioned
+    there.
+ *)
+
+type 'a versioned_value
+  (** Cache for the current value *)
+
+val vv_access : string -> string versioned_value
+  (** Get the current value of this variable. This succeeds even when the
+      variable does not exist.
+   *)
+
+val vv_access_enc : string -> encap versioned_value
+  (** Same for encapsulated variables *)
+
+val vv_get : 'a versioned_value -> 'a option
+  (** Extract the current value, or [None] if the variable cannot be found. *)
+
+val vv_version : _ versioned_value -> int64
+  (** Get the current version number.  The version number is increased by
+      every "set" operation. Raised [Not_found] if the variable cannot be
+      found.
+   *)
+
+val vv_update : _ versioned_value -> bool
+  (** Check whether there is a new version of the value, and update the
+      cache. Return whether the update occurred.
+
+      Note that there is a limitation on the number of variables that can
+      use [vv_update]. For every [versioned_value] a slot in a shared memory
+      segment is allocated. However, there is only a limited number of such
+      slots (currently 1023). If more slots are needed, the performance will
+      be degraded.
+   *)
+
+val vv_set : 'a versioned_value -> 'a -> bool
+  (** Set the current value. Return whether successful *)
+
+
+(** {2 Classical functor} *)
+
 module Make_var_type(T:Netplex_cenv.TYPE) : 
           Netplex_cenv.VAR_TYPE with type t = T.t
   (** Creates a module with [get] and [set] functions to access variables
@@ -210,6 +259,24 @@ module Make_var_type(T:Netplex_cenv.TYPE) :
       ]}
    *)
 
+(** {2 Functor with versioned access} *)
+
+module type VV_TYPE =
+  sig
+    type t
+    type var
+    val access : string -> var
+    val get : var -> t
+    val set : var -> t -> unit
+    val version : var -> int64
+    val update : var -> bool
+  end
+
+module Make_vv(T:Netplex_cenv.TYPE) : 
+          VV_TYPE with type t = T.t
+
+
+(** {2 Examples} *)
 
 (** Example code:
 
