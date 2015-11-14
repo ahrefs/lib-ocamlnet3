@@ -2,6 +2,7 @@
 
 open Uq_engines
 open Uq_engines.Operators
+open Printf
 
 type asn1_message = Netasn1.Value.value
 
@@ -76,6 +77,7 @@ type result_code =
 
 
 exception LDAP_error of result_code * string
+exception Auth_error of string
 
 type ldap_result =
     { result_code : result_code;
@@ -285,13 +287,36 @@ let close_e conn =
   e
 
 
-let await_response conn msg_id f_e =
+let with_conn_e f conn =
+  meta_engine
+    (f conn)
+  ++ (fun st ->
+        (* FIXME: close only for only non-fatal errors! *)
+        close_e conn
+        ++ (fun () -> eps_e (st :> _ engine_state) conn.esys)
+     )
+    
+
+
+let await_response_e conn msg_id f_e =
   (* Invoke f_e with the response message when a response for msg_id arrives *)
   let signal_eng, signal = Uq_engines.signal_engine conn.esys in
   let s = { signal_eng; signal } in
-  let _e = signal_eng ++ f_e in
+  let e = signal_eng ++ f_e in
   Hashtbl.replace conn.signals msg_id s;
-  ()
+  when_state
+    ~is_error:(fun _ -> printf "e->ERROR\n%!")
+    e;
+  e
+
+
+let trivial_sync_e conn l =
+  let e =
+    msync_engine l (fun () () -> ()) () conn.esys in
+  when_state
+    ~is_error:(fun _ -> printf "sync->ERROR\n%!")
+    e;
+  e
 
 
 let decode_ldap_result msg =
@@ -334,58 +359,195 @@ let decode_ldap_result msg =
         fail()
 
 
-let simple_bind_e conn bind_dn password =
+let encode_simple_bind_req id bind_dn password =
+  let open Netasn1.Value in
+  let ldap_version = 3 in
+  Seq [ Integer (int id);
+        ITag(Application, 0,
+             Seq [ Integer (int ldap_version);
+                   Octetstring bind_dn;
+                   ITag(Context, 0,
+                        Octetstring password)
+                 ]
+            )
+      ]
+
+
+let encode_sasl_bind_req id bind_dn mech creds_opt =
+  let open Netasn1.Value in
+  let ldap_version = 3 in
+  Seq [ Integer (int id);
+        ITag(Application, 0,
+             Seq [ Integer (int ldap_version);
+                   Octetstring bind_dn;
+                   ITag(Context, 3,
+                        Seq ( Octetstring mech ::
+                                ( match creds_opt with
+                                    | None -> []
+                                    | Some creds -> [ Octetstring creds ]
+                                )
+                            )
+                       )
+                 ]
+            )
+      ]
+
+
+let decode_bind_resp ?(ok=[`Success]) resp_msg =
+  let open Netasn1.Value in
+  match resp_msg with
+    | Seq [ Integer _;
+            Tagptr(Application, 1, pc, s, pos, len)
+          ] ->
+        let _, bind_resp =
+          Netasn1.decode_ber_contents
+            ~pos ~len s pc Netasn1.Type_name.Seq in
+        ( match bind_resp with
+            | Seq bind_seq ->
+                let bind_result, comps =
+                  decode_ldap_result bind_seq in
+                if not (List.mem bind_result.result_code ok) then (
+                  printf "ERROR %s\n%!" bind_result.result_error_msg;
+                  raise(LDAP_error(bind_result.result_code,
+                                   bind_result.result_error_msg));
+                );
+                (bind_result.result_code, comps)
+            | _ ->
+                raise Not_found
+        )
+    | _ ->
+        raise Not_found
+
+
+let decode_simple_bind_resp resp_msg =
+  let _, comps = decode_bind_resp resp_msg in
+  if comps <> [] then raise Not_found;
+  ()
+
+
+let decode_sasl_bind_resp resp_msg =
+  let open Netasn1.Value in
+  let code, comps = 
+    decode_bind_resp ~ok:[`Success;`SaslBindInProgress] resp_msg in
+  let cont =
+    code = `SaslBindInProgress in
+  match comps with
+    | [ Tagptr(Context, 7, pc, s, pos, len) ] ->
+        let _, creds_msg =
+           Netasn1.decode_ber_contents
+             ~pos ~len s pc Netasn1.Type_name.Octetstring in
+        ( match creds_msg with
+            | Octetstring data ->
+                (cont, Some data)
+            | _ ->
+                raise Not_found
+        )
+    | [] ->
+        (cont, None)
+    | _ ->
+        raise Not_found
+
+
+let conn_simple_bind_e conn bind_dn password =
   let fail() =
     failwith "LDAP bind: unexpected response" in
   let id = new_msg_id conn in
-  let ldap_version = 3 in
-  let req_msg =
-    let open Netasn1.Value in
-    Seq [ Integer (int id);
-          ITag(Application, 0,
-               Seq [ Integer (int ldap_version);
-                     Octetstring bind_dn;
-                     ITag(Context, 0,
-                          Octetstring password)
-                   ]
-              )
-        ] in
-  await_response
+  let req_msg = encode_simple_bind_req id bind_dn password in
+  trivial_sync_e
     conn
-    id
-    (fun resp_msg ->
-       let open Netasn1.Value in
-       match resp_msg with
-         | Seq [ Integer _;
-                 Tagptr(Application, 1, pc, s, pos, len)
-               ] ->
-             let _, bind_resp =
-               Netasn1.decode_ber_contents
-                 ~pos ~len s pc Netasn1.Type_name.Seq in
-             ( match bind_resp with
-                 | Seq bind_seq ->
-                     let bind_result, comps =
-                       decode_ldap_result bind_seq in
-                     if bind_result.result_code <> `Success then
-                       raise(LDAP_error(bind_result.result_code,
-                                        bind_result.result_error_msg));
-                     if comps <> [] then fail();
-                     eps_e (`Done ()) conn.esys
-                 | _ ->
-                     fail()
-             )
-         | _ -> 
-             fail()
-    );
-  send_message_e conn req_msg
+    [ await_response_e
+        conn
+        id
+        (fun resp_msg ->
+         try
+           decode_simple_bind_resp resp_msg;
+           eps_e (`Done()) conn.esys
+         with
+           | Not_found -> fail()
+        );
+      send_message_e conn req_msg
+    ]
+
+
+let conn_sasl_bind_e conn
+                     (mech : (module Netsys_sasl_types.SASL_MECHANISM))
+                     bind_dn user authz sasl_creds params =
+  let module M = (val mech) in
+  let fail() =
+    failwith "LDAP bind: unexpected response" in
+  let creds = M.init_credentials sasl_creds in
+  let cs =
+    M.create_client_session 
+      ~user
+      ~authz
+      ~creds
+      ~params () in
+  let id = new_msg_id conn in
+
+  let rec loop_e cont_needed =
+    printf "LOOP\n%!";
+    match M.client_state cs with
+      | `OK ->
+          if cont_needed then fail();
+          eps_e (`Done()) conn.esys
+      | `Auth_error msg ->
+          raise (Auth_error msg)
+      | `Stale ->
+          failwith "Netldap.conn_sasl_bind_e: unexpected SASL state"
+      | `Wait ->
+          if not cont_needed then fail();
+          let req_msg = encode_sasl_bind_req id bind_dn M.mechanism_name None in
+          trivial_sync_e
+            conn
+            [ await_response_e conn id on_challenge_e;
+              send_message_e conn req_msg
+            ]
+      | `Emit ->
+          if not cont_needed then fail();
+          let data = M.client_emit_response cs in
+          let req_msg =
+            encode_sasl_bind_req id bind_dn M.mechanism_name (Some data) in
+          trivial_sync_e
+            conn
+            [ await_response_e conn id on_challenge_e;
+              send_message_e conn req_msg
+            ]
+
+    and on_challenge_e resp_msg =
+      printf "CHALLENGE\n%!";
+      let cont_needed, data_opt =
+        try
+          decode_sasl_bind_resp resp_msg
+        with
+          | Not_found -> fail() in
+      match M.client_state cs with
+      | `OK ->
+          if cont_needed then fail();
+          eps_e (`Done()) conn.esys
+      | `Auth_error msg ->
+          raise (Auth_error msg)
+      | `Wait ->
+          ( match data_opt with
+              | Some data ->
+                  M.client_process_challenge cs data;
+                  loop_e cont_needed
+              | None ->
+                  fail()
+          )
+      | `Stale
+      | `Emit ->
+          failwith "Netldap.conn_sasl_bind_e: unexpected SASL state"
+  in
+  loop_e true
 
   
 (*
 #use "topfind";;
-#require "netclient";;
+#require "netclient,nettls-gnutls";;
 open Netldap;;
 open Uq_engines.Operators;;
 
+let bind_dn = "uid=gerdsasl,ou=users,o=gs-adressbuch";;
 let password = "XXX";;
 
 let esys = Unixqueue.create_unix_event_system();;
@@ -394,8 +556,19 @@ let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "office1", 389),
 let e =
   connect_e addr esys
   ++ (fun conn ->
-         simple_bind_e conn "uid=gerd,ou=users,o=gs-adressbuch" password
+         conn_simple_bind_e conn bind_dn password
          ++ (fun () -> close_e conn)
      );;
+
+let mech = (module Netmech_scram_sasl.SCRAM_SHA1 : Netsys_sasl_types.SASL_MECHANISM);;
+let e =
+  connect_e addr esys
+  ++ with_conn_e
+    (fun conn ->
+         conn_sasl_bind_e
+            conn mech bind_dn "gerdsasl" "" [ "password", password, [] ] []
+     );;
+
+
 Unixqueue.run esys;;
  *)
