@@ -63,20 +63,18 @@ val plugin : plugin
 
 (** {2 Classical API} *)
 
-(** The folloing functions can all be invoked in container
-    contexts. In controller context, access is limited to [get_value].
-
-    If called from the wrong context the exception
-    {!Netplex_cenv.Not_in_container_thread} is raised. 
+(** Most of the folloing functions can be invoked in both container
+    and controller contexts, with the notable exception of
+    [wait_for_value].
  *)
 
 val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
-                 string -> bool
+                 ?ssn:string -> string -> bool
   (** Create the variable with the passed name with an empty string
       (or the exception [Sharedvar_null]) as
       initial value. If the creation is possible (i.e. the variable did
       not exist already), the function returns [true], otherwise 
-      the already existing variable is left modified, and [false] is
+      the already existing variable is left unchanged, and [false] is
       passed back. By default, the variable can be modified and deleted
       by any other container. Two options allow you to change that:
 
@@ -85,7 +83,7 @@ val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
         last component of the socket service terminates, the variable is
         automatically deleted. The deletion happens after the
         [post_finish_hook] is executed, so the variable is still accessible
-        from this hook.
+        from this hook. Note that the controller has unlimited access anyway.
       - [ro]: if true, only the owner can set the value
       - [enc]: if true, the variable stores encapsulated values, otherwise
         strings
@@ -93,6 +91,8 @@ val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
       - [timeout]: if passed, the variable will be automatically deleted
         after this number of seconds. The timeout starts anew with every
         read or write of the variable.
+      - [ssn]: If called from the controller and [own], this must be set to the
+        socket service name of the owner
 
       Variable names are global to the whole netplex system. By convention,
       these names are formed like ["service_name.local_name"], i.e. they
@@ -133,9 +133,6 @@ val get_value : string -> string option
 
       Raises [Sharedvar_type_mismatch] if the variable is not a string
       variable.
-
-      As an exception of the general rules, this function can also be
-      called from the controller, and not only from a container.
    *)
 
 val get_enc_value : string -> encap option
@@ -143,9 +140,6 @@ val get_enc_value : string -> encap option
       variable does not exist, [None] is returned.
 
       Raises [Sharedvar_type_mismatch] if the variable is not encapsulated
-
-      As an exception of the general rules, this function can also be
-      called from the controller, and not only from a container.
    *)
 
 val wait_for_value : string -> string option
@@ -158,6 +152,8 @@ val wait_for_value : string -> string option
 
       An ongoing wait is interrupted when the variable is deleted. In this
       case [None] is returned.
+
+      {b This function can only be invoked from container context!}
    *)
 
 val wait_for_enc_value : string -> encap option
@@ -180,6 +176,8 @@ val get_lazily : string -> (unit -> string) -> string option
       No provisions are taken to delete the variable. If [delete_var]
       is called by user code (which is allowed at any time), and
       [get_lazily] is called again, the lazy value will again be computed.
+
+      {b This function can only be invoked from container context!}
    *)
 
 val get_enc_lazily : string -> (unit -> encap) -> encap option

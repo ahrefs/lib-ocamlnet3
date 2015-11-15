@@ -105,8 +105,10 @@ let x_plugin =
 	  | "create_var" ->
 	      let (var_name, own_flag, ro_flag, ty, tmo) =
 		Netplex_ctrl_aux._to_Sharedvar'V2'create_var'arg arg in
+              let owner =
+                if own_flag then Some ssn else None in
 	      let success =
-		self # create_var ctrl ssn var_name own_flag ro_flag ty tmo in
+		self # create_var ctrl owner var_name ro_flag ty tmo in
 	      reply(
 		Some(Netplex_ctrl_aux._of_Sharedvar'V2'create_var'res success))
 
@@ -114,7 +116,7 @@ let x_plugin =
 	      let (var_name, var_value, ty) =
 		Netplex_ctrl_aux._to_Sharedvar'V2'set_value'arg arg in
 	      let code =
-		self # set_value ctrl ssn var_name var_value ty in
+		self # set_value ctrl (Some ssn) var_name var_value ty in
 	      reply(
 		Some(Netplex_ctrl_aux._of_Sharedvar'V2'set_value'res code))
 
@@ -130,7 +132,7 @@ let x_plugin =
 	      let (var_name) =
 		Netplex_ctrl_aux._to_Sharedvar'V2'delete_var'arg arg in
 	      let success =
-		self # delete_var ctrl ssn var_name in
+		self # delete_var ctrl (Some ssn) var_name in
 	      reply(
 		Some(Netplex_ctrl_aux._of_Sharedvar'V2'delete_var'res success))
 
@@ -167,21 +169,21 @@ let x_plugin =
 	  Hashtbl.remove owns (ctrl,ssn);
 	  List.iter
 	    (fun var_name ->
-	       ignore(self # delete_var ctrl ssn var_name)
+	       ignore(self # delete_var ctrl (Some ssn) var_name)
 	    )
 	    vars
 	)
 
       method shm = shm
 
-      method private create_var ctrl ssn var_name own_flag ro_flag ty tmo =
+      method create_var ctrl owner var_name ro_flag ty tmo =
 	if Hashtbl.mem variables (ctrl,var_name) then
 	  `shvar_exists
 	else (
           let g_tmo = ref None in
           let var =
             { var_value = "";
-              var_owner = if own_flag then Some ssn else None;
+              var_owner = owner;
               var_ro = ro_flag;
               var_ty = ty;
               var_tmo = tmo;
@@ -193,10 +195,12 @@ let x_plugin =
               var_shm_index = None;
             } in
 	  Hashtbl.add variables (ctrl,var_name) var;
-	  if own_flag then (
-	    let ovars =
-	      try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
-	    Hashtbl.replace owns (ctrl,ssn) (var_name :: ovars)
+          ( match owner with
+              | Some ssn ->
+	          let ovars =
+	            try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
+	          Hashtbl.replace owns (ctrl,ssn) (var_name :: ovars)
+              | None -> ()
 	  );
           self # restart_timer ctrl var_name g_tmo tmo;
           self # incr_version None;
@@ -237,7 +241,7 @@ let x_plugin =
           g_tmo := Some g;
           Unixqueue.weak_once ctrl#event_system g tmo
             (fun () -> 
-               ignore(self # delete_var_force ctrl var_name)
+               ignore(self # delete_var ctrl None var_name)
             )
         )
         else
@@ -254,25 +258,29 @@ let x_plugin =
                   | Some idx -> ba.{ idx } <- version
               )
 
-      method private delete_var ctrl ssn var_name =
+      method delete_var ctrl ssn_opt var_name =
 	try
 	  let var =
 	    Hashtbl.find variables (ctrl,var_name) in
 	  ( match var.var_owner with
 	      | None -> ()
-	      | Some ssn' -> if ssn <> ssn' then raise Not_found
+	      | Some _ ->
+                  if ssn_opt <> None && ssn_opt <> var.var_owner then
+                    raise Not_found
 	  );
 	  Hashtbl.remove variables (ctrl,var_name);
           ( match !(var.var_group) with
               | None -> ()
               | Some g -> Unixqueue.clear ctrl#event_system g
           );
-	  if var.var_owner <> None then (
-	    let ovars =
-	       try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
-	    let nvars =
-	      List.filter (fun n -> n <> var_name) ovars in
-	    Hashtbl.replace owns (ctrl,ssn) nvars
+	  ( match var.var_owner with
+              | Some ssn ->
+	          let ovars =
+	            try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
+	          let nvars =
+	            List.filter (fun n -> n <> var_name) ovars in
+	          Hashtbl.replace owns (ctrl,ssn) nvars
+              | None -> ()
 	  );
           self # incr_version var.var_shm_index;
 	  Queue.iter
@@ -286,43 +294,16 @@ let x_plugin =
 	      `shvar_notfound
 
 
-      method private delete_var_force ctrl var_name =
-	try
-	  let var =
-	    Hashtbl.find variables (ctrl,var_name) in
-	  Hashtbl.remove variables (ctrl,var_name);
-          ( match !(var.var_group) with
-              | None -> ()
-              | Some g -> Unixqueue.clear ctrl#event_system g
-          );
-	  ( match var.var_owner with
-              | None -> ()
-              | Some ssn ->
-	           let ovars =
-	             try Hashtbl.find owns (ctrl,ssn) with Not_found -> [] in
-	           let nvars =
-	             List.filter (fun n -> n <> var_name) ovars in
-	           Hashtbl.replace owns (ctrl,ssn) nvars
-	  );
-          self # incr_version var.var_shm_index;
-	  Queue.iter
-	    (fun f ->
-	       self # schedule_callback ctrl f `shvar_notfound
-	    )
-	    var.var_notify;
-	with
-	  | Not_found ->
-               ()
-
-
-      method private set_value ctrl ssn var_name var_value ty =
+      method set_value ctrl ssn_opt var_name var_value ty =
 	try
 	  let var = 
 	    Hashtbl.find variables (ctrl,var_name) in
 	  var.var_count <- var.var_count + 1;
 	  ( match var.var_owner with
 	      | None -> ()
-	      | Some ssn' -> if ssn <> ssn' && var.var_ro then raise No_perm
+	      | Some _ ->
+                  if ssn_opt <> None && ssn_opt <> var.var_owner then
+                    raise No_perm
 	  );
 	  if ty <> var.var_ty then raise Bad_type;
 	  let q = Queue.create() in
@@ -418,32 +399,51 @@ let () =
      end
     )
 
+let dual_call name of_arg to_res arg f_ctrl =
+  match Netplex_cenv.self_obj() with
+    | `Container cont ->
+        to_res (cont # call_plugin plugin name (of_arg arg))
+    | `Controller ctrl ->
+        f_ctrl ctrl
+
 let create_var ?(own=false) ?(ro=false) ?(enc=false) ?(timeout = -1.0)
+               ?ssn
                var_name =
   let cont = Netplex_cenv.self_cont() in
   let ty = if enc then "encap" else "string" in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V2'create_var'res
-      (cont # call_plugin plugin "create_var"
-	 (Netplex_ctrl_aux._of_Sharedvar'V2'create_var'arg 
-	    (var_name,own,ro,ty,timeout))) in
+    dual_call
+      "create_var" 
+      Netplex_ctrl_aux._of_Sharedvar'V2'create_var'arg
+      Netplex_ctrl_aux._to_Sharedvar'V2'create_var'res
+      (var_name,own,ro,ty,timeout)
+      (fun ctrl ->
+         if own && ssn=None then
+           invalid_arg "Netplex_sharedvar.create_var: need 'ssn' parameter";
+         x_plugin # create_var ctrl ssn var_name ro ty timeout
+      ) in
   code = `shvar_ok
       
 let delete_var var_name =
   let cont = Netplex_cenv.self_cont() in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V2'delete_var'res
-      (cont # call_plugin plugin "delete_var"
-	 (Netplex_ctrl_aux._of_Sharedvar'V2'delete_var'arg var_name)) in
+    dual_call
+      "delete_var"
+      Netplex_ctrl_aux._of_Sharedvar'V2'delete_var'arg
+      Netplex_ctrl_aux._to_Sharedvar'V2'delete_var'res
+      var_name
+      (fun ctrl -> x_plugin # delete_var ctrl None var_name) in
   code = `shvar_ok
 
 let set_value_1 ty var_name var_value =
   let cont = Netplex_cenv.self_cont() in
   let code =
-    Netplex_ctrl_aux._to_Sharedvar'V2'set_value'res
-      (cont # call_plugin plugin "set_value"
-	 (Netplex_ctrl_aux._of_Sharedvar'V2'set_value'arg 
-	    (var_name,var_value,ty))) in
+    dual_call
+      "set_value"
+      Netplex_ctrl_aux._of_Sharedvar'V2'set_value'arg
+      Netplex_ctrl_aux._to_Sharedvar'V2'set_value'res
+      (var_name,var_value,ty)
+      (fun ctrl -> x_plugin # set_value ctrl None var_name var_value ty) in
   match code with
     | `shvar_ok version -> Some version
     | `shvar_badtype -> raise (Sharedvar_type_mismatch var_name)
@@ -460,25 +460,21 @@ let set_enc_value var_name (var_value:encap) =
   set_value_1 "encap" var_name str_value <> None
 
 let shm_slot var_name =
-  match Netplex_cenv.self_obj() with
-    | `Container cont ->
-	Netplex_ctrl_aux._to_Sharedvar'V2'shm_slot'res
-	  (cont # call_plugin plugin "shm_slot"
-                    (Netplex_ctrl_aux._of_Sharedvar'V2'shm_slot'arg 
-		       var_name)) 
-    | `Controller ctrl ->
-	x_plugin # shm_slot ctrl var_name
+  dual_call
+    "shm_slot"
+    Netplex_ctrl_aux._of_Sharedvar'V2'shm_slot'arg 
+    Netplex_ctrl_aux._to_Sharedvar'V2'shm_slot'res
+    var_name
+    (fun ctrl -> x_plugin # shm_slot ctrl var_name)
 
 let get_version var_name ty =
   let r =
-    match Netplex_cenv.self_obj() with
-      | `Container cont ->
-	  Netplex_ctrl_aux._to_Sharedvar'V2'get_value'res
-	    (cont # call_plugin plugin "get_value"
-	       (Netplex_ctrl_aux._of_Sharedvar'V2'get_value'arg 
-		  (var_name,ty))) 
-      | `Controller ctrl ->
-	  x_plugin # get_value ctrl var_name ty in
+    dual_call
+      "get_value"
+      Netplex_ctrl_aux._of_Sharedvar'V2'get_value'arg
+      Netplex_ctrl_aux._to_Sharedvar'V2'get_value'res
+      (var_name,ty)
+      (fun ctrl -> x_plugin # get_value ctrl var_name ty) in
   ( match r with
       | `shvar_ok s -> (Some s)
       | `shvar_badtype -> raise (Sharedvar_type_mismatch var_name)
