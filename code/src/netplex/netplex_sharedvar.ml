@@ -48,6 +48,16 @@ let vsucc n =
     (Int64.logand p' 0xffff_ffffL)
     (Int64.shift_left (Int64.logand p' 0x00ff_ffff_ff00_0000L) 8)
 
+let vok n =
+  (* Check that the bits are duplicated *)
+  let x1 = Int64.shift_right_logical (Int64.logand n 0xff00_0000L) 24 in
+  let x2 = Int64.shift_right_logical (Int64.logand n 0xff_0000_0000L) 32 in
+  x1 = x2
+
+let vbigger v1 v2 =
+  (* Return true if either v1 or v2 is not ok. Otherwise v1 > v2 *)
+  not(vok v1) || not(vok v2) || v1 > v2
+
 
 type var =
     { var_value : string;
@@ -612,7 +622,7 @@ let vv_update vv =
   let need_update =
     match vv.vv_payload, slot_opt, x_plugin#shm with
       | Some(_, old_version), Some k, Some shm ->
-          shm.{k} > old_version
+          vbigger shm.{k} old_version
       | _ ->
           true in
   if need_update then
