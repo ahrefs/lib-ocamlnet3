@@ -1,3 +1,16 @@
+2015-11-16  Gerd Stolpmann  <gerd@zotac>
+
+	* Netplex_sharedvar: implementing a new protocol that uses shared
+	  memory for announcing variable updates. Also, almost all functions
+	  can now be called from controller context.
+
+	* Netsys_global: new module, for keeping a dictionary of global
+	  strings. The dictionary is connected with Netplex_sharedvar, so
+	  that the strings can be updated across process boundaries if used
+	  with Netplex.
+
+	* Netsys_polysocket: adding this module
+
 2015-07-05  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netsys_polypipe: adding this module
