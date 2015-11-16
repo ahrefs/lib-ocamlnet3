@@ -370,12 +370,14 @@ other Ocamlnet libraries.
     Netsys_tmp
     Netsys_mem
     Netsys_sem
+    Netsys_global
     Netsys_pollset
     Netsys_pollset_generic
     Netsys_pollset_posix
     Netsys_pollset_win32
     Netsys_win32
     Netsys_polypipe
+    Netsys_polysocket
     Netsys_rng
     Netsys_crypto_types
     Netsys_crypto

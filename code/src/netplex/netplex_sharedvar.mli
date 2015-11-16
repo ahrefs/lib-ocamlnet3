@@ -274,6 +274,28 @@ module Make_vv(T:Netplex_cenv.TYPE) :
           VV_TYPE with type t = T.t
 
 
+(** {2 Netsys_global} *)
+
+(** This is a propagator for {!Netsys_global}. It is automatically activated
+    when the Netplex controller is started.
+ *)
+
+val global_propagator : unit -> Netsys_global.propagator
+(** Create a new propagator, and initialize {!Netplex_sharedvar}
+    with the current variables from {!Netsys_global}. Note that a
+    global variable with name [n] appears in Netplex as variable
+    ["global." ^ n].
+
+    The version numbers appearing in both modules are unrelated.
+
+    This function must be called from controller context.
+  *)
+
+val propagate_back : Netplex_types.controller -> unit
+  (** Copy the global variables from {!Netplex_sharedvar} (with prefix
+      "global.") back to {!Netsys_global}
+   *)
+
 (** {2 Examples} *)
 
 (** Example code:

@@ -285,6 +285,9 @@ let startup ?(late_initializer = fun _ _ -> ())
 	     par controller_config in
 	 Netplex_cenv.register_ctrl controller;
 
+         let prop = Netplex_sharedvar.global_propagator() in
+         Netsys_global.set_propagator (Some prop);
+
 	 (* Change to / so we don't block filesystems without need.
             Do this after controller creation so the controller has a
             chance to remember the cwd
@@ -312,6 +315,8 @@ let startup ?(late_initializer = fun _ _ -> ())
 	      run_controller controller;
 	      controller # free_resources();
 	      Netplex_cenv.unregister_ctrl controller;
+              Netsys_global.set_propagator None;
+              Netplex_sharedvar.propagate_back controller;
               remove_pid_file();
            )
        with

@@ -186,6 +186,8 @@ let x_plugin =
 
       method shm = shm
 
+      method variables = variables
+
       method create_var ctrl owner var_name ro_flag ty tmo =
 	if Hashtbl.mem variables (ctrl,var_name) then
 	  `shvar_exists
@@ -694,3 +696,86 @@ module Make_vv(T:Netplex_cenv.TYPE) = struct
   let update vv =
     vv_update vv
 end
+
+
+let global_prefix = "global."
+
+let global_propagator() : Netsys_global.propagator =
+  let ctrl =
+    try
+      match Netplex_cenv.self_obj() with
+        | `Container _ -> raise Not_found
+        | `Controller ctrl -> ctrl
+    with
+      | Not_found ->
+          failwith "Netplex_sharedvar.global_propagator: must be called from \
+                    controller context" in
+  let version_offset = ref 0L in
+  Netsys_global.iter
+    (fun name value version ->
+       version_offset := max !version_offset version;
+       let netplex_name = global_prefix ^ name in
+       let code =
+         x_plugin # create_var ctrl None netplex_name false "string" (-1.0) in
+       if code = `shvar_ok then (
+         ignore(x_plugin # set_value ctrl None netplex_name value "string")
+       )
+    );
+  let slot_tab = Hashtbl.create 51 in
+  object
+    method propagate name value =
+      let netplex_name = global_prefix ^ name in
+      match set_payload T_string netplex_name value with
+        | Some version ->
+            Int64.add version !version_offset
+        | None ->
+            ignore(create_var netplex_name);
+            ( match set_payload T_string netplex_name value with
+                | Some version ->
+                    Int64.add version !version_offset
+                | None ->
+                    failwith ("Netplex_sharedvar.global_propagator: \
+                               Cannot set variable: " ^ netplex_name)
+            )
+
+    method update name version =
+      let netplex_name = global_prefix ^ name in
+      let netplex_version = Int64.sub version !version_offset in
+      let slot_opt =
+        try
+          Hashtbl.find slot_tab netplex_name
+        with Not_found ->
+          shm_slot netplex_name in
+      Hashtbl.replace slot_tab netplex_name slot_opt;
+      let need_update =
+        match slot_opt, x_plugin#shm with
+          | Some k, Some shm ->
+              vbigger shm.{k} netplex_version
+          | _ ->
+              true in
+      if need_update then
+        match get_payload T_string netplex_name with
+          | Some(value,np_vers) ->
+              Some(value,Int64.add np_vers !version_offset)
+          | None ->
+              None
+      else
+        None
+  end
+
+
+let propagate_back ctrl =
+  let lp = String.length global_prefix in
+  Hashtbl.iter
+    (fun (vctrl,netplex_name) var ->
+       if vctrl = ctrl then (
+         if String.length netplex_name >= lp &&
+              String.sub netplex_name 0 lp = global_prefix
+         then (
+           let name =
+             String.sub netplex_name lp (String.length netplex_name-lp) in
+           Netsys_global.internal_set name var.var_value var.var_version
+         )
+       )
+    )
+    x_plugin#variables

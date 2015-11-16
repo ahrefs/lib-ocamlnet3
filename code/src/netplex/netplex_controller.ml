@@ -1451,7 +1451,7 @@ object(self)
     socksrv_list <- my_sockserv :: socksrv_list;
     my_wrkmng # hello (self : #controller :> controller);
     my_sockctrl # enable();
-
+    self # add_plugin Netplex_sharedvar.plugin;
   )
 
   method ptype = par # ptype
