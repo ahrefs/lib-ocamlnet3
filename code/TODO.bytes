@@ -2,12 +2,35 @@
 Immutable strings (new "bytes" type)
 ----------------------------------------------------------------------
 
+General naming:
+ - Functions with "string" in name are changed, s/string/bytes/.
+   The function with the original name is an alias, marked as
+   deprecated.
+
+   Netsys_mem.blit_memory_to_string: deprecated
+   Netsys_mem.blit_memory_to_bytes: new name
+
+ - When another variant is needed for immutable strings, use "istring".
+
+   Netsys_mem.blit_istring_to_memory
+
+ - by grepping for "string", it is possible to find code that still needs
+   to be adapted.
+
 ----------------------------------------------------------------------
 netsys:
 ----------------------------------------------------------------------
 
 Netsys_types:
-  type buffer_space = [ `Bytes of bytes | `Memory of memory ]
+  type istring = string
+    (* "istring" = immutable string *)
+
+  type tbuffer = [ `Bytes of bytes | `Memory of memory ]
+    (* "tbuffer" = tagged buffer *)
+
+  type tstring = [ `Istring of istring | tbuffer ]
+    (* "tstring" = tagged string *)
+
   type 's stringlike = { ... }
 
      find_char : char list -> 'a -> direction -> int -> int
@@ -18,18 +41,18 @@ Netsys.gread: switch to "bytes"
 Netsys.blocking_gread: same
 Netsys.really_gread: same
 
-Netsys.gread_bs: new, using buffer_space
-Netsys.blocking_gread_bs: new, using buffer_space
-Netsys.really_gread_bs: new, using buffer_space
+Netsys.gread_tbuf: new, using tbuffer
+Netsys.blocking_gread_tbug: new, using tbuffer
+Netsys.really_gread_tbuf: new, using tbuffer
 
 Netsys.gwrite: switch to "bytes"
 Netsys.really_gwrite: same
 
-Netsys.gwrite_bs: new, using buffer_space
-Netsys.really_gwrite_bs: new, using buffer_space
+Netsys.gwrite_tbuf: new, using tbuffer
+Netsys.really_gwrite_tbuf: new, using tbuffer
 
-Netsys.gwrite_substring: new
-Netsys.really_gwrite_substring: new
+Netsys.gwrite_istring: new
+Netsys.really_gwrite_istring: new
 
 Netsys: remove deprecated stuff
 
@@ -49,8 +72,8 @@ Netsys_w32.output_thread_write_substring: new
 
 Netsys_w32.fill_random: switch to "bytes"
 
-Netsys_mem.blit_memory_to_string: remove
-Netsys_mem.blit_memory_to_string_unsafe: remove
+Netsys_mem.blit_memory_to_string: alias
+Netsys_mem.blit_memory_to_string_unsafe: alias
 Netsys_mem.blit_memory_to_bytes: new
 Netsys_mem.blit_memory_to_bytes_unsafe: new
 Netsys_mem.blit_bytes_to_memory: new
