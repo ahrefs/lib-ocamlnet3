@@ -53,12 +53,10 @@ OCAMLOPT_OPTIONS_FOR_netsys_oothr_mt.ml = $(THREAD)
 OCAMLOPT_OPTIONS_FOR_netsys_oothr_mt_init.ml = $(THREAD)
 OCAMLC_OPTIONS_FOR_netsys_c_xdr.c = -ccopt -O
 
-pp = -pp "$(CPPO) $(DEF_O_SHARE_DELETE) $(DEF_O_CLOEXEC)"
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
 
-OCAMLC_OPTIONS_FOR_netsys_posix.ml = $(pp)
-OCAMLOPT_OPTIONS_FOR_netsys_posix.ml = $(pp)
-
-OCAMLDEP_OPTIONS = $(pp)
+PP_OPTIONS = -pp "$(CPPO) $(DEF_O_SHARE_DELETE) $(DEF_O_CLOEXEC) $(PP_BYTES) $(PP_DEPRECATED)"
 
 INSTALL_EXTRA += netsys_c_event.h $(OOH_OBJECT)
 

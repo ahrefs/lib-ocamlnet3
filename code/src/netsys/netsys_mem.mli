@@ -2,6 +2,8 @@
 
 (** Bigarrays as memory buffers *)
 
+open Netsys_types
+
 type memory = 
     Netsys_types.memory
   (** We consider 1-dimensional bigarrays of chars as memory buffers.
@@ -12,8 +14,8 @@ type memory =
 
 (** {2 General} *)
 
-val blit_memory_to_string : memory -> int -> string -> int -> int -> unit
-  (** [blit_memory_to_string src srcoff dst dstoff len] copies [len] characters
+val blit_memory_to_bytes : memory -> int -> Bytes.t -> int -> int -> unit
+  (** [blit_memory_to_bytes src srcoff dst dstoff len] copies [len] characters
       from buffer [src], starting at character number [srcoff], to
       string [dst], starting at character number [dstoff]
 
@@ -21,13 +23,21 @@ val blit_memory_to_string : memory -> int -> string -> int -> int -> unit
       designate a valid subbuffer of [src], or if [dstoff] and [len]
       do not designate a valid substring of [dst]. *)
 
-external blit_memory_to_string_unsafe : 
-     memory -> int -> string -> int -> int -> unit
+val blit_memory_to_string : memory -> int -> Bytes.t -> int -> int -> unit
+  DEPRECATED("Use blit_memory_to_bytes instead.")
+
+external blit_memory_to_bytes_unsafe : 
+     memory -> int -> Bytes.t -> int -> int -> unit
      =  "netsys_blit_memory_to_string" "noalloc"
   (** Unsafe version *)
 
-val blit_string_to_memory : string -> int -> memory ->  int -> int -> unit
-  (** [blit_string_to_memory src srcoff dst dstoff len] copies [len] characters
+external blit_memory_to_string_unsafe : 
+     memory -> int -> Bytes.t -> int -> int -> unit
+     =  "netsys_blit_memory_to_string" "noalloc"
+  DEPRECATED("Use blit_memory_to_bytes_unsafe instead.")
+
+val blit_bytes_to_memory : Bytes.t -> int -> memory ->  int -> int -> unit
+  (** [blit_bytes_to_memory src srcoff dst dstoff len] copies [len] characters
       from string [src], starting at character number [srcoff], to
       buffer [dst], starting at character number [dstoff]
 
@@ -35,15 +45,39 @@ val blit_string_to_memory : string -> int -> memory ->  int -> int -> unit
       designate a valid substring of [src], or if [dstoff] and [len]
       do not designate a valid subbuffer of [dst]. *)
 
-external blit_string_to_memory_unsafe : 
-           string -> int -> memory ->  int -> int -> unit
+val blit_string_to_memory : Bytes.t -> int -> memory ->  int -> int -> unit
+  DEPRECATED("Use blit_bytes_to_memory instead.")
+
+external blit_bytes_to_memory_unsafe : 
+           Bytes.t -> int -> memory ->  int -> int -> unit
   = "netsys_blit_string_to_memory" "noalloc"
   (** Unsafe version *)
 
-val memory_of_string : string -> memory
+external blit_string_to_memory_unsafe : 
+           Bytes.t -> int -> memory ->  int -> int -> unit
+  = "netsys_blit_string_to_memory" "noalloc"
+  DEPRECATED("Use blit_bytes_to_memory_unsafe instead.")
+
+val blit_istring_to_memory : istring -> int -> memory -> int -> int -> unit
+  (** [blit_istring_to_memory src srcoff dst dstoff len]: A version for
+      immutable strings *)
+
+val memory_of_bytes : Bytes.t -> memory
   (** Return a new bigarray as a copy of the string *)
 
-val string_of_memory : memory -> string
+val memory_of_string : Bytes.t -> memory
+  DEPRECATED("Use memory_of_bytes instead")
+
+val memory_of_istring : istring -> memory
+  (** Return a new bigarray as a copy of the string *)
+
+val bytes_of_memory : memory -> Bytes.t
+  (** Return a new string as a copy of the bigarray *)
+
+val string_of_memory : memory -> Bytes.t
+  DEPRECATED("Use bytes_of_memory instead")
+
+val istring_of_memory : memory -> istring
   (** Return a new string as a copy of the bigarray *)
 
 val memory_address : memory -> nativeint
@@ -200,11 +234,17 @@ val hdr_address : Obj.t -> nativeint
       cannot be moved around by the garbage collector!
    *)
 
-val cmp_string : string -> string -> int
+val cmp_bytes : Bytes.t -> Bytes.t -> int
   (** Compares two strings like [String.compare]. This also works
       when the strings reside outside the O'Caml heap, e.g. in a
       [memory] block.
    *)
+
+val cmp_string : Bytes.t -> Bytes.t -> int
+  DEPRECATED("Use cmp_bytes instead")
+
+val cmp_istring : istring -> istring -> int
+  (** A version for immutable strings *)
 
 
 exception Out_of_space

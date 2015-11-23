@@ -123,9 +123,10 @@ let _gss_buffer_t_of_message (ml : Netxdr_mstring.mstring list) =
                   let (mem1, pos) = m#as_memory in
                   let mem2 = Bigarray.Array1.sub mem1 pos m#length in
                   buffer_of_memory mem2
-             | `String ->
-                  let (str, pos) = m#as_string in
-                  buffer_of_string str pos m#length
+             | `Bytes ->
+                  (* FIXME *)
+                  let (str, pos) = m#as_bytes in
+                  buffer_of_string (Bytes.unsafe_to_string str) pos m#length
          )
     | _ ->
          let len = Netxdr_mstring.length_mstrings ml in

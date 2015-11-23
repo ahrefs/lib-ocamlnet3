@@ -1,11 +1,11 @@
 (* $Id$ *)
 
-external s_read_int4_64_unsafe : string -> int -> int
+external s_read_int4_64_unsafe : Bytes.t -> int -> int
   = "netsys_s_read_int4_64" "noalloc"
 
-external s_write_int4_64_unsafe : string -> int -> int -> unit
+external s_write_int4_64_unsafe : Bytes.t -> int -> int -> unit
   = "netsys_s_write_int4_64" "noalloc"
 
 external s_read_string_array_unsafe : 
-  string -> int -> int -> int32 -> string array -> int
+  Bytes.t -> int -> int -> int32 -> string array -> int
   = "netsys_s_read_string_array"

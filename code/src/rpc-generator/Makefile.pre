@@ -1,6 +1,8 @@
 # -*- makefile-mode -*-
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = rpc-generator
 GENERATE = parser.ml META configure

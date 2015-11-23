@@ -120,6 +120,5 @@ let iter f =
     s.table
 
 let internal_set name value version =
-  let s = get_store() in
   let var = access name in
   var.var_value := (value,version)

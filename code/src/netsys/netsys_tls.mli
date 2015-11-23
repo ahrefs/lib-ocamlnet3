@@ -2,6 +2,8 @@
 
 (** User-level TLS API *)
 
+open Netsys_types
+
 (** The following functions are a very thin layer on top of
     {!Netsys_crypto_types.TLS_PROVIDER}. The provider is passed
     here as first-class value together with the configuration and
@@ -220,7 +222,7 @@ val handshake : (module Netsys_crypto_types.TLS_ENDPOINT) -> unit
 val recv : ?on_rehandshake:
              ((module Netsys_crypto_types.TLS_ENDPOINT) -> bool) ->
            (module Netsys_crypto_types.TLS_ENDPOINT) ->
-           string -> int -> int -> int
+           Bytes.t -> int -> int -> int
   (** [recv endpoint buffer pos len]: Receives data from [endpoint],
       and puts the received bytes into [buffer] at byte position [pos].
       At most [len] bytes can be received. Returns the actually received
@@ -251,7 +253,7 @@ val mem_recv : ?on_rehandshake:
   (** Same for a memory-backed buffer *)
 
 val send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
-           string -> int -> int -> int
+           Bytes.t -> int -> int -> int
   (** [send endpoint buffer pos len]: Sends data via [endpoint],
       and takes the emitted bytes from [buffer] at byte position [pos].
       At most [len] bytes can be sent. Returns the actually sent
@@ -272,6 +274,10 @@ val send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
 val mem_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                Netsys_types.memory -> int -> int -> int
   (** Same for a memory-backed buffer *)
+
+val istr_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
+           istring -> int -> int -> int
+  (** Same for immutable string *)
 
 val shutdown : (module Netsys_crypto_types.TLS_ENDPOINT) ->
               Unix.shutdown_command -> unit

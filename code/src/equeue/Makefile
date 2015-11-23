@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME = equeue
 OBJECTS = equeue.cmo unixqueue_util.cmo unixqueue_pollset.cmo \
           unixqueue_select.cmo unixqueue.cmo \

@@ -6,9 +6,10 @@
    - impersonation: http://msdn.microsoft.com/en-us/library/aa378832(VS.85).aspx
  *)
 
+open Netsys_types
 open Printf
 
-external fill_random : string -> unit = "netsys_fill_random"
+external fill_random : Bytes.t -> unit = "netsys_fill_random"
 
 external get_full_path_name : string -> string = "netsys_get_full_path_name"
 external get_long_path_name : string -> string = "netsys_get_long_path_name"
@@ -104,7 +105,7 @@ type i_input_thread =
     mutable ithr_cmd : [ `Read | `Cancel ] option;
     mutable ithr_cancel_cmd : bool;   (* similar to ithr_cmd = Some `Cancel *)
     ithr_event : w32_event; (* The event is set when there is something to read *)
-    ithr_buffer : string;
+    ithr_buffer : Bytes.t;
     mutable ithr_buffer_start : int;
     mutable ithr_buffer_len : int;
     mutable ithr_buffer_cond : [ `Cancelled | `EOF | `Exception of exn | `Data ];
@@ -125,7 +126,7 @@ type i_output_thread =
     mutable othr_cmd : [ `Write | `Close | `Cancel ] option;
     mutable othr_cancel_cmd : bool; 
     othr_event : w32_event;
-    othr_buffer : string;
+    othr_buffer : Bytes.t;
     mutable othr_buffer_len : int;
     mutable othr_write_cond : [ `Cancelled | `Exception of exn ] option;
     mutable othr_thread : int32;   (* The Win32 thread ID *)
@@ -615,11 +616,11 @@ external netsys_pipe_connect :
   = "netsys_pipe_connect"
 
 external netsys_pipe_read :
-  c_pipe_helper -> string -> int -> int -> int
+  c_pipe_helper -> Bytes.t -> int -> int -> int
   = "netsys_pipe_read"
 
 external netsys_pipe_write :
-  c_pipe_helper -> string -> int -> int -> int
+  c_pipe_helper -> Bytes.t -> int -> int -> int
   = "netsys_pipe_write"
 
 external netsys_pipe_shutdown :
@@ -787,6 +788,8 @@ let check_for_connections psrv =
    period of time, and then set again.
  *)
 
+let empty_buf = Bytes.create 0
+
 let rec pipe_accept_1 psrv =
   match Queue.length psrv.psrv_ready with
     | 0 ->
@@ -802,11 +805,11 @@ let rec pipe_accept_1 psrv =
 	check_for_connections psrv;
 	if not(Queue.is_empty psrv.psrv_ready) then
 	  set_event psrv.psrv_cn_event;
-	ignore(netsys_pipe_read ph "" 0 0);     (* check for errors *)
+	ignore(netsys_pipe_read ph empty_buf 0 0);     (* check for errors *)
 	decorate_pipe_nogc ph psrv.psrv_name psrv.psrv_mode
     | _ ->
 	let ph = Queue.take psrv.psrv_ready in
-	ignore(netsys_pipe_read ph "" 0 0);     (* check for errors *)
+	ignore(netsys_pipe_read ph empty_buf 0 0);     (* check for errors *)
 	decorate_pipe_nogc ph psrv.psrv_name psrv.psrv_mode
 
 
@@ -836,7 +839,7 @@ let pipe_connect_event (psrv,_) =
 
 
 let pipe_read (pipe,pipe_proxy) s pos len =
-  if pos < 0 || len < 0 || pos > String.length s - len then
+  if pos < 0 || len < 0 || pos > Bytes.length s - len then
     invalid_arg "Netsys_win32.pipe_read";
   dlogr (fun () -> sprintf "pipe_read: name=%s proxydescr=%Ld len=%d" 
 	   pipe.pipe_name (int64_of_file_descr pipe_proxy) len);
@@ -856,7 +859,7 @@ let pipe_read (pipe,pipe_proxy) s pos len =
 
 
 let pipe_write (pipe,pipe_proxy) s pos len =
-  if pos < 0 || len < 0 || pos > String.length s - len then
+  if pos < 0 || len < 0 || pos > Bytes.length s - len then
     invalid_arg "Netsys_win32.pipe_write";
   dlogr (fun () -> sprintf "pipe_write: name=%s proxydescr=%Ld len=%d" 
 	   pipe.pipe_name (int64_of_file_descr pipe_proxy) len);
@@ -873,6 +876,9 @@ let pipe_write (pipe,pipe_proxy) s pos len =
 		   (Netexn.to_string error)
 	      );
 	raise error
+
+let pipe_write_istring (pipe,pipe_proxy) s pos len =
+  pipe_write (pipe,pipe_proxy) (Bytes.unsafe_of_string s) pos len
 
 
 let pipe_shutdown (pipe,pipe_proxy) = 
@@ -936,12 +942,12 @@ let unpredictable_pipe_name() =
     counter_mutex # unlock();
     n
   ) in
-  let random = String.make 16 ' ' in
+  let random = Bytes.make 16 ' ' in
   fill_random random;
   let name =
     "\\\\.\\pipe\\ocamlnet" ^ 
       string_of_int (Unix.getpid()) ^ "_" ^ string_of_int n ^ "_" ^ 
-      Digest.to_hex random in
+      Digest.to_hex(Bytes.to_string random) in
   name
 
 let pipe_pair mode =
@@ -1203,7 +1209,7 @@ module InputThread = struct
 		    ithr.ithr_descr
 		    ithr.ithr_buffer
 		    0
-		    (String.length ithr.ithr_buffer) in
+		    (Bytes.length ithr.ithr_buffer) in
 		if n = 0 then (
 		  ithr.ithr_buffer_cond <- `EOF;
 		  ithr.ithr_buffer_start <- 0;
@@ -1308,7 +1314,7 @@ module InputThread = struct
     
 
   let input_thread_read (ithr,_,_) s pos len =
-    if pos < 0 || len < 0 || pos > String.length s - len then
+    if pos < 0 || len < 0 || pos > Bytes.length s - len then
       invalid_arg "Netsys_win32.input_thread_read";
     
     if len = 0 then
@@ -1334,7 +1340,7 @@ module InputThread = struct
 				       "Netsys_win32.input_thread_read", ""))
 	     | `Data ->
 		 let n = min len ithr.ithr_buffer_len in
-		 String.blit 
+		 Bytes.blit 
 		   ithr.ithr_buffer ithr.ithr_buffer_start
 		   s pos
 		   n;
@@ -1508,7 +1514,7 @@ module OutputThread = struct
     
 
   let output_thread_write (othr,_,_) s pos len =
-    if pos < 0 || len < 0 || pos > String.length s - len then
+    if pos < 0 || len < 0 || pos > Bytes.length s - len then
       invalid_arg "Netsys_win32.output_thread_write";
     
     if len = 0 then
@@ -1532,8 +1538,8 @@ module OutputThread = struct
 					 ""))
 	       | None ->
 		   assert(othr.othr_buffer_len = 0);
-		   let n = min len (String.length othr.othr_buffer) in
-		   String.blit 
+		   let n = min len (Bytes.length othr.othr_buffer) in
+		   Bytes.blit 
 		     s pos
 		     othr.othr_buffer 0
 		     n;
@@ -1599,3 +1605,7 @@ let cancel_output_thread = OutputThread.cancel_output_thread
 let close_output_thread = OutputThread.close_output_thread
 let output_thread_proxy_descr = OutputThread.output_thread_proxy_descr
 let output_thread_descr (othr,_,_) = othr.othr_descr
+
+let output_thread_write_istring out s pos len =
+  output_thread_write out (Bytes.unsafe_of_string s) pos len
+

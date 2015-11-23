@@ -2,6 +2,8 @@
 
 (** Cryptographic digests (hashes) *)
 
+open Netsys_types
+
 type iana_hash_fn =
   [ `MD2 | `MD5 | `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
   (** The hash functions contained in the IANA registry
@@ -13,7 +15,16 @@ object
   method add_memory : Netsys_types.memory -> unit
     (** Add data *)
 
-  method add_substring : string -> int -> int -> unit
+  method add_subbytes : Bytes.t -> int -> int -> unit
+    (** Add data *)
+
+  method add_substring : Bytes.t -> int -> int -> unit
+    DEPRECATED("Use add_subbytes instead.")
+
+  method add_subistring : string -> int -> int -> unit
+    (** Add data *)
+
+  method add_tstring : tstring -> int -> int -> unit
     (** Add data *)
 
   method finish : unit -> string
@@ -66,7 +77,16 @@ val find : ?impl:(module Netsys_crypto_types.DIGESTS) ->
         e.g. "MD5-128", "SHA1-160", or "SHA2-256".
      *)
 
-val digest_string : digest -> string -> string
+val digest_tstring : digest -> tstring -> string
+  (** Digest a string *)
+
+val digest_bytes : digest -> Bytes.t -> string
+  (** Digest a string *)
+
+val digest_string : digest -> Bytes.t -> string
+  DEPRECATED("Use digest_bytes instead.")
+
+val digest_istring : digest -> string -> string
   (** Digest a string *)
 
 val digest_mstrings : digest -> Netsys_types.mstring list -> string

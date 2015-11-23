@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = netplex
 OBJECTS  = netplex_ctrl_aux.cmo netplex_ctrl_clnt.cmo netplex_ctrl_srv.cmo \
            netplex_util.cmo netplex_encap.cmo \
@@ -27,7 +29,7 @@ include $(TOP_DIR)/Makefile.rules
 
 netplex-admin$(EXEC_SUFFIX): netplex.cma netplex_admin.cmo
 	$(OCAMLC) -o netplex-admin -custom \
-		unix.cma bigarray.cma str.cma \
+	        -package "bytes unix bigarray str" -linkpkg \
 		netsys_oothr.cma netsys.cma netstring.cma equeue.cma \
 		rpc.cma netplex.cma netplex_admin.cmo
 

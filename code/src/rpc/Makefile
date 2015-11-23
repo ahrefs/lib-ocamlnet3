@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = rpc
 OBJECTS  = rpc.cmo rpc_common.cmo \
            rpc_program.cmo rpc_util.cmo rpc_portmapper_aux.cmo \

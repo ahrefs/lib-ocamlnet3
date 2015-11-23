@@ -1,47 +1,77 @@
 (* $Id$ *)
 
+open Netsys_types
 open Printf
 
 type memory = 
     (char,Bigarray.int8_unsigned_elt,Bigarray.c_layout) Bigarray.Array1.t
 
 external blit_memory_to_string_unsafe :
-           memory -> int -> string -> int -> int -> unit
+           memory -> int -> Bytes.t -> int -> int -> unit
+  = "netsys_blit_memory_to_string" "noalloc"
+
+external blit_memory_to_bytes_unsafe :
+           memory -> int -> Bytes.t -> int -> int -> unit
   = "netsys_blit_memory_to_string" "noalloc"
 
 external blit_string_to_memory_unsafe : 
-           string -> int -> memory ->  int -> int -> unit
+           Bytes.t -> int -> memory ->  int -> int -> unit
   = "netsys_blit_string_to_memory" "noalloc"
 
-let blit_memory_to_string mem memoff s soff len =
+external blit_bytes_to_memory_unsafe : 
+           Bytes.t -> int -> memory ->  int -> int -> unit
+  = "netsys_blit_string_to_memory" "noalloc"
+
+external blit_istring_to_memory_unsafe : 
+           istring -> int -> memory ->  int -> int -> unit
+  = "netsys_blit_string_to_memory" "noalloc"
+
+let blit_memory_to_bytes mem memoff s soff len =
+  let memlen = Bigarray.Array1.dim mem in
+  let slen = Bytes.length s in
+  if len < 0 || memoff < 0 || memoff > memlen - len || 
+     soff < 0 || soff > slen - len 
+  then
+    invalid_arg "Netsys_mem.blit_memory_to_bytes";
+  blit_memory_to_bytes_unsafe mem memoff s soff len
+
+let blit_memory_to_string = blit_memory_to_bytes
+
+let blit_istring_to_memory s soff mem memoff len =
   let memlen = Bigarray.Array1.dim mem in
   let slen = String.length s in
   if len < 0 || memoff < 0 || memoff > memlen - len || 
      soff < 0 || soff > slen - len 
   then
-    invalid_arg "Netsys_mem.blit_memory_to_string";
-  blit_memory_to_string_unsafe mem memoff s soff len
+    invalid_arg "Netsys_mem.blit_istring_to_memory";
+  blit_istring_to_memory_unsafe s soff mem memoff len
 
-let blit_string_to_memory s soff mem memoff len =
-  let memlen = Bigarray.Array1.dim mem in
-  let slen = String.length s in
-  if len < 0 || memoff < 0 || memoff > memlen - len || 
-     soff < 0 || soff > slen - len 
-  then
-    invalid_arg "Netsys_mem.blit_string_to_memory";
-  blit_string_to_memory_unsafe s soff mem memoff len
+let blit_bytes_to_memory s soff mem memoff len =
+  blit_istring_to_memory (Bytes.unsafe_to_string s) soff mem memoff len
 
-let memory_of_string s =
+let blit_string_to_memory = blit_bytes_to_memory
+
+let memory_of_istring s =
   let n = String.length s in
   let m = Bigarray.Array1.create Bigarray.char Bigarray.c_layout n in
-  blit_string_to_memory s 0 m 0 n;
+  blit_istring_to_memory s 0 m 0 n;
   m
 
-let string_of_memory m =
+let memory_of_bytes s =
+  memory_of_istring (Bytes.unsafe_to_string s)
+
+let memory_of_string = memory_of_bytes
+
+let bytes_of_memory m =
   let n = Bigarray.Array1.dim m in
-  let s = String.create n in
-  blit_memory_to_string m 0 s 0 n;
+  let s = Bytes.create n in
+  blit_memory_to_bytes m 0 s 0 n;
   s
+
+let string_of_memory = bytes_of_memory
+
+let istring_of_memory m =
+  Bytes.unsafe_to_string (bytes_of_memory m)
 
 external memory_address : memory -> nativeint
   = "netsys_memory_address"
@@ -117,7 +147,13 @@ external hdr_address : Obj.t -> nativeint
 external init_header : memory -> int -> int -> int -> unit
   = "netsys_init_header"
 
-external cmp_string : string -> string -> int
+external cmp_bytes : Bytes.t -> Bytes.t -> int
+  = "netsys_cmp_string"
+
+external cmp_string : Bytes.t -> Bytes.t -> int
+  = "netsys_cmp_string"
+
+external cmp_istring : string -> string -> int
   = "netsys_cmp_string"
 
 external netsys_init_string : memory -> int -> int -> unit

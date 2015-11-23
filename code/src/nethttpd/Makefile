@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = nethttpd
 OBJECTS  = nethttpd_types.cmo nethttpd_util.cmo \
            nethttpd_kernel.cmo nethttpd_reactor.cmo \

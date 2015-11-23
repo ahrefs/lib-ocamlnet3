@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = netcgi
 OBJECTS  = netcgi_common.cmo netcgi.cmo \
 	netcgi_ajp.cmo netcgi_scgi.cmo netcgi_cgi.cmo \

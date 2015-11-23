@@ -2,6 +2,28 @@
 
 (** Types for all Netsys modules *)
 
+(** {2 Bytes and characters} *)
+
+(** Remember that up to OCaml-4.01 there was only the [string] type,
+    and strings were mutable (although frequently used as if there were
+    immutable). Since OCaml-4.02 there is the immutable [string] and
+    the mutable [bytes] type.
+
+    The general strategy for switching to the string/bytes scheme is
+    to replace [string] everywhere with [bytes], and to provide
+    additional functions taking strings as input or output where it
+    makes sense. There are exceptions, though, e.g. when the string
+    acts as a key in a data structure.
+
+    The type name "string" also occurs in function names (e.g.
+    "get_string") and in variant names (e.g. [String_case]). As we
+    want to be backward compatible, we keep the old names for functions
+    on [bytes], and mark them as deprecated. 
+ *)
+
+type istring = string
+  (** A string considered as immutable *)
+
 type memory = 
     (char,Bigarray.int8_unsigned_elt,Bigarray.c_layout) Bigarray.Array1.t
   (** We consider 1-dimensional bigarrays of chars as memory buffers.
@@ -10,16 +32,26 @@ type memory =
       a file, and connect the bigarray with shared memory.
    *)
 
+type tbuffer = [ `Bytes of Bytes.t | `Memory of memory | `String of Bytes.t ]
+  (** A tagged buffer. Note that the [`String] case is deprecated.
+   *)
+
+type tstring = [ `Istring of istring | tbuffer ]
+  (** A tagged string which is not modified by the function *)
 
 (** See {!Netxdr_mstring.mstring} for documentation *)
 class type mstring =
 object
   method length : int
-  method blit_to_string :  int -> string -> int -> int -> unit
+  method blit_to_bytes :  int -> Bytes.t -> int -> int -> unit
+  method blit_to_string :  int -> Bytes.t -> int -> int -> unit
+    DEPRECATED("Use blit_to_bytes instead.")
   method blit_to_memory : int -> memory -> int -> int -> unit
-  method as_string : string * int
+  method as_bytes : Bytes.t * int
+  method as_string : Bytes.t * int
+    DEPRECATED("Use as_bytes instead.")
   method as_memory : memory * int
-  method preferred : [ `Memory | `String ]
+  method preferred : [ `Memory | `Bytes ]
 end
 
 

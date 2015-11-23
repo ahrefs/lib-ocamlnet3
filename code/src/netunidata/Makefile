@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = netunidata
 OBJECTS  = netuniconfig.cmo netunidata.cmo netunichecksums.cmo
 DOBJECTS = netunidata.mli

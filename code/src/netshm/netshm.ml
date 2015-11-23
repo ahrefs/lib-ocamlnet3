@@ -154,7 +154,7 @@ type shm_descr =
   }
 
 let supported_types =
-  ( if Netsys.have_posix_shm() then [ `POSIX ] else [] )
+  ( if Netsys_posix.have_posix_shm() then [ `POSIX ] else [] )
   @ [ `File ]
 
 type shm_name = [ `POSIX of string * string | `File of string ]
@@ -220,11 +220,11 @@ let open_shm ?(unique=false) name flags perm =
 	  List.flatten
 	    (List.map
 	       (function
-		  | Unix.O_RDONLY -> [ Netsys.SHM_O_RDONLY ]
-		  | Unix.O_RDWR   -> [ Netsys.SHM_O_RDWR ]
-		  | Unix.O_CREAT  -> [ Netsys.SHM_O_CREAT ]
-		  | Unix.O_EXCL   -> [ Netsys.SHM_O_EXCL ]
-		  | Unix.O_TRUNC  -> [ Netsys.SHM_O_TRUNC ]
+		  | Unix.O_RDONLY -> [ Netsys_posix.SHM_O_RDONLY ]
+		  | Unix.O_RDWR   -> [ Netsys_posix.SHM_O_RDWR ]
+		  | Unix.O_CREAT  -> [ Netsys_posix.SHM_O_CREAT ]
+		  | Unix.O_EXCL   -> [ Netsys_posix.SHM_O_EXCL ]
+		  | Unix.O_TRUNC  -> [ Netsys_posix.SHM_O_TRUNC ]
 		  | Unix.O_WRONLY ->
 		      invalid_arg "Netsys.open_shm: O_WRONLY not supported"
 		  | _ -> 
@@ -232,7 +232,7 @@ let open_shm ?(unique=false) name flags perm =
 	       )
 	       flags) in
 	let mem_fd, mem_name = 
-          attempt (fun n -> Netsys.shm_open n mem_flags perm) 1 mem_n in
+          attempt (fun n -> Netsys_posix.shm_open n mem_flags perm) 1 mem_n in
         let n64_1 =
           (Unix.LargeFile.fstat fd).Unix.LargeFile.st_size in
         let n64_2 =
@@ -276,7 +276,7 @@ let unlink_shm =
   | `File name ->
        Unix.unlink name
   | `POSIX(f_name,m_name) ->
-       Netsys.shm_unlink m_name;
+       Netsys_posix.shm_unlink m_name;
        Unix.unlink f_name
 
 

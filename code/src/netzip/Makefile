@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME = netzip
 OBJECTS =  netgzip.cmo
 DOBJECTS = netgzip.mli

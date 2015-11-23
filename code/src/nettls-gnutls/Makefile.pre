@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = nettls-gnutls
 GENERATE = META nettls_gnutls_bindings.ml nettls_gnutls_bindings.mli \

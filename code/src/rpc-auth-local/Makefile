@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = rpc-auth-local
 OBJECTS  = rpc_auth_local.cmo
 COBJECTS = rpclocal.o

@@ -5,11 +5,13 @@ open Netsys_mem
 class type mstring =
 object
   method length : int
-  method blit_to_string : int -> string -> int -> int -> unit
+  method blit_to_bytes :  int -> Bytes.t -> int -> int -> unit
+  method blit_to_string :  int -> Bytes.t -> int -> int -> unit
   method blit_to_memory : int -> memory -> int -> int -> unit
-  method as_string : string * int
+  method as_bytes : Bytes.t * int
+  method as_string : Bytes.t * int
   method as_memory : memory * int
-  method preferred : [ `Memory | `String ]
+  method preferred : [ `Memory | `Bytes ]
 end
 
 (* This def must be the same as the one in Netsys_types: *)
@@ -29,16 +31,17 @@ type named_mstring_factories =
 let sbm s pos len : mstring =
   if len < 0 || pos < 0 || pos > String.length s - len then
     invalid_arg "Netxdr_mstring.sbm";
-  ( object
+  ( object(self)
       method length = len
-      method blit_to_string mpos u upos l =
+      method blit_to_bytes mpos u upos l =
 	if l < 0 then
-	  invalid_arg "Netxdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	if mpos < 0 || mpos > len - l then
-	  invalid_arg "Netxdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	if upos < 0 || upos > String.length u - l then
-	  invalid_arg "Netxdr_mstring#blit_to_string";
-	String.blit s (pos+mpos) u upos l
+	  invalid_arg "Netxdr_mstring#blit_to_bytes";
+	Bytes.blit s (pos+mpos) u upos l
+      method blit_to_string = self # blit_to_bytes
       method blit_to_memory mpos u upos l =
 	if l < 0 then
 	  invalid_arg "Netxdr_mstring#blit_to_memory";
@@ -47,12 +50,13 @@ let sbm s pos len : mstring =
 	if upos < 0 || upos > Bigarray.Array1.dim u - l then
 	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	Netsys_mem.blit_string_to_memory s (pos+mpos) u upos l
-      method as_string = (s,pos)
+      method as_bytes = (s,pos)
+      method as_string = self#as_bytes
       method as_memory =
 	let m = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
 	Netsys_mem.blit_string_to_memory s pos m 0 len;
 	(m,0)
-      method preferred = `String
+      method preferred = `Bytes
     end
   )
 
@@ -60,16 +64,17 @@ let sbm s pos len : mstring =
 let mbm m pos len : mstring =
   if len < 0 || pos < 0 || pos > Bigarray.Array1.dim m - len then
     invalid_arg "Netxdr_mstring.mbm";
-  ( object
+  ( object(self)
       method length = len
-      method blit_to_string mpos u upos l =
+      method blit_to_bytes mpos u upos l =
 	if l < 0 then
-	  invalid_arg "Netxdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	if mpos < 0 || mpos > len - l then
-	  invalid_arg "Netxdr_mstring#blit_to_string";
+	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	if upos < 0 || upos > String.length u - l then
-	  invalid_arg "Netxdr_mstring#blit_to_string";
-	Netsys_mem.blit_memory_to_string m (pos+mpos) u upos l
+	  invalid_arg "Netxdr_mstring#blit_to_bytes";
+	Netsys_mem.blit_memory_to_bytes m (pos+mpos) u upos l
+      method blit_to_string = self # blit_to_bytes
       method blit_to_memory mpos u upos l =
 	if l < 0 then
 	  invalid_arg "Netxdr_mstring#blit_to_memory";
@@ -80,10 +85,12 @@ let mbm m pos len : mstring =
 	Bigarray.Array1.blit
 	  (Bigarray.Array1.sub m (pos+mpos) l)
 	  (Bigarray.Array1.sub u upos l)
-      method as_string =
-	let s = String.create len in
-	Netsys_mem.blit_memory_to_string m pos s 0 len;
+      method as_bytes =
+	let s = Bytes.create len in
+	Netsys_mem.blit_memory_to_bytes m pos s 0 len;
 	(s,0)
+      method as_string =
+        self # as_bytes
       method as_memory = (m,pos)
       method preferred = `Memory
     end
@@ -91,6 +98,7 @@ let mbm m pos len : mstring =
 
 
 let string_based_mstrings : mstring_factory =
+  (* NOT YET PORTED TO BYTES *)
   ( object
       method create_from_string s pos len must_copy =
 	if must_copy then
@@ -113,6 +121,7 @@ let string_to_mstring ?(pos=0) ?len s =
 	  
 
 let memory_based_mstrings_1 create : mstring_factory =
+  (* NOT YET PORTED TO BYTES *)
   ( object
       method create_from_string s pos len must_copy =
 	let m = create len in
@@ -220,13 +229,15 @@ let shared_sub_mstring (ms : mstring)
     invalid_arg "Netxdr_mstring.shared_sub_mstring";
   ( object(self)
       method length = sub_len
-      method blit_to_string mpos s spos len =
-        ms#blit_to_string (sub_pos+mpos) s spos len
+      method blit_to_bytes mpos s spos len =
+        ms#blit_to_bytes (sub_pos+mpos) s spos len
+      method blit_to_string = self#blit_to_bytes
       method blit_to_memory mpos mem mempos len =
         ms#blit_to_memory (sub_pos+mpos) mem mempos len
-      method as_string =
-        let (s,pos) = ms#as_string in
+      method as_bytes =
+        let (s,pos) = ms#as_bytes in
         (s,pos+sub_pos)
+      method as_string = self#as_bytes
       method as_memory =
         let (m,pos) = ms#as_memory in
         (m,pos+sub_pos)
@@ -270,7 +281,7 @@ let shared_sub_mstrings l sub_pos sub_len =
 let copy_mstring ms =
   let len = ms#length in
   match ms#preferred with
-    | `String ->
+    | `Bytes ->
 	let (s, pos) = ms#as_string in
 	string_based_mstrings#create_from_string s pos len true
     | `Memory ->
@@ -302,7 +313,7 @@ let in_channel_of_mstrings ms_list =
               )
               else (
                 match ms#preferred with
-	          | `String ->
+	          | `Bytes ->
                       let (u,start) = ms#as_string in
                       let n = min len ms_len in
                       String.blit u start s pos n;

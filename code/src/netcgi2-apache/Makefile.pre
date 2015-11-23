@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = netcgi2-apache
 GENERATE = config.h netcgi_apache_mod.ml META 500netcgi_apache.info

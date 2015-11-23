@@ -2,6 +2,7 @@
 
 (* this & that *)
 
+open Netsys_types
 
 let rec restart f arg =
   try 
@@ -78,3 +79,22 @@ let mem_sorted_array x a =
     else false
   in
   search 0 (Array.length a)
+
+
+let tbuffer_length =
+  function
+  | `Bytes u
+  | `String u ->
+      Bytes.length u
+  | `Memory u ->
+      Bigarray.Array1.dim u
+
+let tstring_length =
+  function
+  | `Bytes u
+  | `String u ->
+      Bytes.length u
+  | `Istring u ->
+      String.length u
+  | `Memory u ->
+      Bigarray.Array1.dim u

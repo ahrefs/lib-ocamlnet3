@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = netmulticore
 OBJECTS  = netmcore.cmo netmcore_camlbox.cmo netmcore_util.cmo \
 	   netmcore_mempool.cmo netmcore_heap.cmo netmcore_ref.cmo \

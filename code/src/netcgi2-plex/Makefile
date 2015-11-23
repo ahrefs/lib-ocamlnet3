@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = netcgi2-plex
 OBJECTS  = netcgi_plex.cmo
 DOBJECTS = netcgi_plex.mli

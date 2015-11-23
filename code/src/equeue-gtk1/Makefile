@@ -1,5 +1,6 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
 include ./Makefile.gtk
 # Sets GTK_PKG, GTK_VERSION, ARCHIVE, FL_NAME
 

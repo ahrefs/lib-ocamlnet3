@@ -2,6 +2,8 @@
 
 (** Primitives for Win32 *)
 
+open Netsys_types
+
 (** {1 Files} *)
 
 val get_full_path_name : string -> string
@@ -187,7 +189,7 @@ val pipe_pair : pipe_mode -> (w32_pipe * w32_pipe)
    *)
 
 
-val pipe_read : w32_pipe -> string -> int -> int -> int
+val pipe_read : w32_pipe -> Bytes.t -> int -> int -> int
   (** [pipe_read p s pos len]: Tries to read data from the pipe. If data
       is available, it is put into the [len] bytes at position [pos] of
       the string [s], and the actual number of read bytes is returned.
@@ -198,7 +200,7 @@ val pipe_read : w32_pipe -> string -> int -> int -> int
       If the end of the pipe is reached, the function returns 0.
    *)
 
-val pipe_write : w32_pipe -> string -> int -> int -> int
+val pipe_write : w32_pipe -> Bytes.t -> int -> int -> int
   (** [pipe_write p s pos len]: Tries to write data to the pipe. If space
       is available, the data is taken from the [len] bytes at position [pos] of
       the string [s], and the actual number of written bytes is returned.
@@ -206,6 +208,9 @@ val pipe_write : w32_pipe -> string -> int -> int -> int
       If no space is available, the function fails with a Unix error of
       [EAGAIN].
    *)
+
+val pipe_write_istring : w32_pipe -> istring -> int -> int -> int
+  (** Same for immutable string *)
 
 val pipe_shutdown : w32_pipe -> unit
   (** Cancels all pending I/O operations and closes the pipe handle.
@@ -323,7 +328,7 @@ val input_thread_event : w32_input_thread -> w32_event
      is reached, or there is an error condition 
    *)
 
-val input_thread_read : w32_input_thread -> string -> int -> int -> int
+val input_thread_read : w32_input_thread -> Bytes.t -> int -> int -> int
   (** [input_thread_read t s pos len]: Tries to read data from the buffer. 
       If data
       is available, it is put into the [len] bytes at position [pos] of
@@ -376,7 +381,7 @@ val output_thread_event : w32_output_thread -> w32_event
       or when there is an error condition 
    *)
 
-val output_thread_write : w32_output_thread -> string -> int -> int -> int
+val output_thread_write : w32_output_thread -> Bytes.t -> int -> int -> int
   (** [output_thread_write t s pos len]: Tries to write data to the buffer. 
       If this
       is possible, the substring starting at position [pos] of the string [s]
@@ -388,6 +393,10 @@ val output_thread_write : w32_output_thread -> string -> int -> int -> int
 
       For cancelled requests, the function raises [EPERM].
    *)
+
+val output_thread_write_istring : w32_output_thread -> istring -> int -> int ->
+                                  int
+  (** Same for immutable strings *)
 
 val close_output_thread : w32_output_thread -> unit
   (** Adds the EOF condition to the buffer. When the buffer is written
@@ -788,7 +797,7 @@ val is_crt_fd : Unix.file_descr -> int -> bool
       (physically)
    *)
 
-val fill_random : string -> unit
+val fill_random : Bytes.t -> unit
   (** Fills the string with random bytes. A cryptographically secure RNG
       is used
    *)

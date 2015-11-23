@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME = netcgi2-apache
 # Keep the name in sync with the one on handler.c :
 BUILD_EXTRA = mod_netcgi_apache.so

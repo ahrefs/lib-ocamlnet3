@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = rpc-generator
 ARCHIVE  = rpc_generator
 OBJECTS  = config.cmo syntax.cmo options.cmo parser.cmo lexer.cmo rename.cmo \

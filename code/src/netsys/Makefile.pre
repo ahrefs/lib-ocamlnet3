@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = netsys
 GENERATE = META
@@ -12,8 +14,7 @@ INSTALL_EXTRA = netsys_oothr.cmo \
 		netsys_c_event.h \
 		netsys_c_outofheap.o
 
-pp = -pp "$(CPPO) $(DEF_O_SHARE_DELETE) $(DEF_O_CLOEXEC)"
-OCAMLDEP_OPTIONS = $(pp)
+PP_OPTIONS = -pp "$(CPPO) $(DEF_O_SHARE_DELETE) $(DEF_O_CLOEXEC) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules
 

@@ -95,7 +95,7 @@ ehelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 eoptions="pcre full_pcre gtk gtk2 tcl gnutls gssapi zip apache nethttpd"
 
 # Packages to include anyway:
-requires="unix"
+requires="bytes unix"
 
 # Directory where to install data files:
 net_db_dir="<library directory>"
@@ -567,6 +567,45 @@ if [ -f $stdlib/std_exit.p.cmx ]; then
 else
     echo "not found"
     have_gprof=0
+fi
+
+######################################################################
+
+printf "Checking for attributes... "
+case `ocamlc -version` in
+  [123].*)
+        echo "no"
+        attrs=0 ;;
+  4.0[01].*)
+        echo "no"
+        attrs=0 ;;
+  *)
+        echo "yes"
+        attrs=1 ;;
+esac
+
+PP_DEPRECATED="-D 'DEPRECATED(arg)'"
+if [ $attrs -gt 0 ]; then
+    PP_DEPRECATED="-D 'DEPRECATED(arg) [@@deprecated STRINGIFY(arg)]'"
+fi
+
+######################################################################
+
+printf "Checking for immutable strings... "
+if `ocamlc -safe-string >/dev/null 2>/dev/null`; then
+    istring=1
+    echo "yes"
+else
+    istring=0
+    echo "no"
+fi
+
+if [ $istring -gt 0 ]; then
+    string_opts="-safe-string"
+    pp_bytes="-D HAVE_BYTES"
+else
+    string_opts=""
+    pp_bytes="-U HAVE_BYTES"
 fi
 
 ######################################################################
@@ -1065,6 +1104,13 @@ ENDIANESS = $endianess
 
 # gprof:
 HAVE_GPROF = $have_gprof
+
+# definition of the DEPRECATED macro
+PP_DEPRECATED = ${PP_DEPRECATED}
+
+# strings
+STRING_OPTS = $string_opts
+PP_BYTES = $pp_bytes
 
 # REGEXP support:
 REGEXP_DEFS = $regexp_defs

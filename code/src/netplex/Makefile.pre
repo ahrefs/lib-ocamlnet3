@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = netplex
 GENERATE = netplex_ctrl_aux.ml netplex_ctrl_clnt.ml netplex_ctrl_srv.ml META

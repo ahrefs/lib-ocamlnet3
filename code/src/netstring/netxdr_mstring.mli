@@ -121,11 +121,14 @@ object
   method length : int
     (** The length of the managed string *)
 
-  method blit_to_string :  int -> string -> int -> int -> unit
-    (** [blit_to_string mpos s spos len]: Copies the substring of the
+  method blit_to_bytes :  int -> Bytes.t -> int -> int -> unit
+    (** [blit_to_bytes mpos s spos len]: Copies the substring of the
 	managed string from [mpos] to [mpos+len-1] to the substring of
 	[s] from [spos] to [spos+len-1]
      *)
+
+  method blit_to_string :  int -> Bytes.t -> int -> int -> unit
+    (* DEPRECATED("Use blit_to_bytes instead.") *)
 
   method blit_to_memory : int -> memory -> int -> int -> unit
     (** [blit_to_string mpos mem mempos len]: Copies the substring of the
@@ -133,11 +136,14 @@ object
 	[mem] from [mempos] to [mempos+len-1]
      *)
 
-  method as_string : string * int
+  method as_bytes : Bytes.t * int
     (** Returns the contents as string. It is undefined whether the returned
 	string is a copy or the underlying buffer. The int is the position
 	where the contents start
      *)
+
+  method as_string : Bytes.t * int
+    (* DEPRECATED("Use as_bytes instead.") *)
 
   method as_memory : memory * int
     (** Returns the contents as memory. It is undefined whether the returned
@@ -145,8 +151,8 @@ object
 	where the contents start
      *)
 
-  method preferred : [ `Memory | `String ]
-    (** Whether [as_memory] or [as_string] is cheaper *)
+  method preferred : [ `Memory | `Bytes ]
+    (** Whether [as_memory] or [as_bytes] is cheaper *)
 
 end
 

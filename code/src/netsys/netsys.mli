@@ -2,6 +2,8 @@
 
 (** System calls missing in the [Unix] module *)
 
+open Netsys_types
+
 (** {1 Generic file descriptors} *)
 
 (** Not all OS provide generic read/write functions, or some emulation
@@ -84,7 +86,7 @@ val get_fd_style : Unix.file_descr -> fd_style
        - [`TLS]
    *)
 
-val gread : fd_style -> Unix.file_descr -> string -> int -> int -> int
+val gread : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> int
   (** [gread fd_style fd s pos len]: Reads up to [len] bytes from 
       descriptor [fd] which is supposed to support the I/O style 
       [fd_style], i.e. the right system call ([read], [recv],
@@ -98,7 +100,10 @@ val gread : fd_style -> Unix.file_descr -> string -> int -> int -> int
       If [len>0] but [n=0] the end of the input data is reached.
    *)
 
-val blocking_gread : fd_style -> Unix.file_descr -> string -> int -> int -> int
+val gread_tbuf : fd_style -> Unix.file_descr -> tbuffer -> int -> int -> int
+  (** Same for a tagged buffer *)
+
+val blocking_gread : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> int
   (** [let p = blocking_gread fd_style fd s pos len]: 
       Like [gread] up to [len] bytes are read from [fd] and stored in [s].
       If the I/O operation is blocking but the descriptor is in 
@@ -113,7 +118,11 @@ val blocking_gread : fd_style -> Unix.file_descr -> string -> int -> int -> int
       types of descriptors can be handled in non-blocking mode.
    *)
 
-val really_gread : fd_style -> Unix.file_descr -> string -> int -> int -> unit
+val blocking_gread_tbuf : fd_style -> Unix.file_descr -> tbuffer -> int -> int
+                          -> int
+  (** Same for a tagged buffer *)
+
+val really_gread : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> unit
   (** [really_read fd_style fd s pos len]: Reads exactly [len] bytes from [fd]
       and stores them in [s] starting at [pos]. If the end of file condition
       is seen before [len] bytes are read, the exception [End_of_file]
@@ -126,7 +135,12 @@ val really_gread : fd_style -> Unix.file_descr -> string -> int -> int -> unit
       types of descriptors can be handled in non-blocking mode.
    *)
 
-val gwrite : fd_style -> Unix.file_descr -> string -> int -> int -> int
+val really_gread_tbuf : fd_style -> Unix.file_descr -> tbuffer -> int -> int ->
+                        unit
+  (** Same for a tagged buffer *)
+
+
+val gwrite : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> int
   (** [gwrite fd_style fd s pos len]: Writes up to [len] bytes to
       descriptor [fd] which is supposed to support the I/O style 
       [fd_style], i.e. the right system call ([write], [send],
@@ -138,7 +152,10 @@ val gwrite : fd_style -> Unix.file_descr -> string -> int -> int -> int
       or non-blocking depends on the descriptor.
    *)
 
-val really_gwrite : fd_style -> Unix.file_descr -> string -> int -> int -> unit
+val gwrite_tstr : fd_style -> Unix.file_descr -> tstring -> int -> int -> int
+  (** Same for a tagged string *)
+
+val really_gwrite : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> unit
   (** [really_write fd_style fd s pos len]: Writes exactly the [len] bytes
       from [s] to [fd] starting at [pos]. 
       If the I/O operation is blocking but the descriptor is in 
@@ -149,6 +166,10 @@ val really_gwrite : fd_style -> Unix.file_descr -> string -> int -> int -> unit
       See [wait_until_writable] below for further information which
       types of descriptors can be handled in non-blocking mode.
    *)
+
+val really_gwrite_tstr : fd_style -> Unix.file_descr -> tstring -> int -> int ->
+                         unit
+  (** Same for a tagged string *)
 
 exception Shutdown_not_supported
   (** See [gshutdown] *)
@@ -514,36 +535,6 @@ val moncontrol : bool -> unit
 
       This is a no-op if the program is not compiler for profiling.
    *)
-
-
-(** {1 Deprecated} *)
-
-(** The following interfaces have been replaced by more generic implementations
-    that work on more platforms.
- *)
-
-val blocking_read : Unix.file_descr -> string -> int -> int -> int
-  (** Same as [blocking_gread `Read_write] *)
-
-val really_read : Unix.file_descr -> string -> int -> int -> unit
-  (** Same as [really_gread `Read_write] *)
-
-val really_write : Unix.file_descr -> string -> int -> int -> unit
-  (** Same as [really_gwrite `Read_write] *)
-
-(** The following interfaces have been moved to {!Netsys_posix}. *)
-
-type shm_open_flag =
-    Netsys_posix.shm_open_flag =
-  | SHM_O_RDONLY
-  | SHM_O_RDWR
-  | SHM_O_CREAT
-  | SHM_O_EXCL
-  | SHM_O_TRUNC
-
-val have_posix_shm : unit -> bool
-val shm_open : string -> shm_open_flag list -> int -> Unix.file_descr
-val shm_unlink : string -> unit
 
 
 (** {1 Further Documentation} *)

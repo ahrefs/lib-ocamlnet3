@@ -111,7 +111,7 @@ module Symmetric_cipher = struct
       let set_iv s =
         if String.length s <> bs then
           invalid_arg "set_iv: invalid length";
-        Netsys_mem.blit_string_to_memory s 0 !ivbuf 0 bs in
+        Netsys_mem.blit_istring_to_memory s 0 !ivbuf 0 bs in
       let set_header _ = () in
       let encrypt inbuf outbuf =
         let lbuf = Bigarray.Array1.dim inbuf in
@@ -220,7 +220,7 @@ module Symmetric_cipher = struct
       let set_iv s =
         if String.length s <> bs then
           invalid_arg "set_iv: invalid length";
-        Netsys_mem.blit_string_to_memory s 0 !ivbuf 0 bs in
+        Netsys_mem.blit_istring_to_memory s 0 !ivbuf 0 bs in
       let set_header _ = () in
       let encrypt_decrypt name inbuf outbuf =
         let lbuf = Bigarray.Array1.dim inbuf in
@@ -281,7 +281,7 @@ module Symmetric_cipher = struct
       let set_iv s =
         if String.length s <> bs then
           invalid_arg "set_iv: invalid length";
-        Netsys_mem.blit_string_to_memory s 0 ivbuf 0 bs;
+        Netsys_mem.blit_istring_to_memory s 0 ivbuf 0 bs;
         ivuse := 0 in
       let set_header _ = () in
       let encrypt_decrypt name inbuf outbuf =

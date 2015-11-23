@@ -84,10 +84,22 @@ object
         On error, the method fails.
      *)
 
-  method encrypt_string : string -> string
+  method encrypt_bytes : Bytes.t -> Bytes.t
     (** Encrypts this string as a whole *)
 
-  method decrypt_string : string -> string
+  method encrypt_string : Bytes.t -> Bytes.t
+    DEPRECATED("Use encrypt_bytes instead.")
+
+  method encrypt_istring : string -> string
+    (** Encrypts this string as a whole *)
+
+  method decrypt_bytes : Bytes.t -> Bytes.t
+    (** Decrypts this string as a whole *)
+
+  method decrypt_string : Bytes.t -> Bytes.t
+    DEPRECATED("Use decrypt_bytes instead.")
+
+  method decrypt_istring : string -> string
     (** Decrypts this string as a whole *)
 
   method mac : unit -> string
@@ -158,21 +170,42 @@ val find : ?impl:(module Netsys_crypto_types.SYMMETRIC_CRYPTO) ->
         is available in every mode.
      *)
 
-val process_substring :
+val process_subbytes :
      (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
-     string -> int -> int -> string
-  (** [process_substring p s pos len]: If [p] is [encrypt] or [decrypt] from
+     Bytes.t -> int -> int -> Bytes.t
+  (** [process_subbytes p s pos len]: If [p] is [encrypt] or [decrypt] from
       a [cipher_ctx], [p] will be called to submit the data from string [s],
       starting at position [pos] and length [len].
 
       The encrypted or decrypted string is returned.
    *)
 
-val process_string :
+val process_substring :
      (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
-     string -> string
-  (** [process_substring p s pos len]: If [p] is [encrypt] or [decrypt] from
+     Bytes.t -> int -> int -> Bytes.t
+  DEPRECATED("Use process_subbytes instead.")
+
+val process_subistring :
+     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
+     string -> int -> int -> string
+  (** [process_subistring p s pos len]: Same for immutable strings.
+   *)
+
+val process_bytes :
+     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
+     Bytes.t -> Bytes.t
+  (** [process_bytes p s]: If [p] is [encrypt] or [decrypt] from
       a [cipher_ctx], [p] will be called to submit the data from string [s].
 
       The encrypted or decrypted string is returned.
    *)
+
+val process_string :
+     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
+     Bytes.t -> Bytes.t
+  DEPRECATED("Use process_bytes instead.")
+
+val process_istring :
+     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
+     string -> string
+  (** [process_istring p s]: same for immutable strings. *)

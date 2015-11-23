@@ -1,15 +1,8 @@
-# Inclusion of Makefile.conf may fail when cleaning up:
-
--include $(TOP_DIR)/Makefile.conf
-
-# Makefile.conf: written by "configure".
-
 # How to invoke compilers and tools:
 # (May be moved to Makefile.conf if necessary)
 
 OCAMLC    = $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
-OCAMLC_MLI= $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(WARNINGS)
-# Note that PP_OPTIONS do not affect .mli! (usually breaks ocamldoc)
+OCAMLC_MLI= $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
 
 OCAMLOPT  = $(OCAMLFIND) ocamlopt -g $(OCAMLOPT_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
 OCAMLDEP  = $(OCAMLFIND) ocamldep $(OCAMLDEP_OPTIONS) $(PP_OPTIONS)
@@ -17,7 +10,7 @@ OCAMLFIND = ocamlfind
 OCAMLYACC = ocamlyacc
 OCAMLLEX  = ocamllex
 OCAMLMKLIB = $(TOP_DIR)/tools/mkstublib
-OCAMLDOC  = $(OCAMLFIND) ocamldoc
+OCAMLDOC  = $(OCAMLFIND) ocamldoc $(OCAMLDOC_OPTIONS) $(PP_OPTIONS)
 STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
 
 # CPPO: is set by Makefile.conf

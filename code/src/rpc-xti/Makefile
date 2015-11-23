@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = rpc-xti
 ARCHIVE  = rpc_xti
 OBJECTS  = rpc_xti_client.cmo

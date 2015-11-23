@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME = netclient
 OBJECTS =  nethttp_client_conncache.cmo nethttp_client.cmo nettelnet_client.cmo \
 	   netftp_data_endpoint.cmo netftp_client.cmo \

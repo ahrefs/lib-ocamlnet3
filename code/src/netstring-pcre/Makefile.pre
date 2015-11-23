@@ -1,6 +1,8 @@
 # -*- makefile-mode -*-
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = netstring-pcre
 GENERATE = netstring_pcre.mli netstring_pcre.ml META

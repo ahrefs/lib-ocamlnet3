@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = equeue-tcl
 ARCHIVE  = equeue_tcl
 OBJECTS  = uq_tcl.cmo
