@@ -877,7 +877,7 @@ let pipe_write (pipe,pipe_proxy) s pos len =
 	      );
 	raise error
 
-let pipe_write_istring (pipe,pipe_proxy) s pos len =
+let pipe_write_string (pipe,pipe_proxy) s pos len =
   pipe_write (pipe,pipe_proxy) (Bytes.unsafe_of_string s) pos len
 
 
@@ -1606,6 +1606,6 @@ let close_output_thread = OutputThread.close_output_thread
 let output_thread_proxy_descr = OutputThread.output_thread_proxy_descr
 let output_thread_descr (othr,_,_) = othr.othr_descr
 
-let output_thread_write_istring out s pos len =
+let output_thread_write_string out s pos len =
   output_thread_write out (Bytes.unsafe_of_string s) pos len
 

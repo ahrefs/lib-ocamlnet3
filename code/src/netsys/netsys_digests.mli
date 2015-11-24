@@ -18,10 +18,7 @@ object
   method add_subbytes : Bytes.t -> int -> int -> unit
     (** Add data *)
 
-  method add_substring : Bytes.t -> int -> int -> unit
-    DEPRECATED("Use add_subbytes instead.")
-
-  method add_subistring : string -> int -> int -> unit
+  method add_substring : string -> int -> int -> unit
     (** Add data *)
 
   method add_tstring : tstring -> int -> int -> unit
@@ -83,10 +80,7 @@ val digest_tstring : digest -> tstring -> string
 val digest_bytes : digest -> Bytes.t -> string
   (** Digest a string *)
 
-val digest_string : digest -> Bytes.t -> string
-  DEPRECATED("Use digest_bytes instead.")
-
-val digest_istring : digest -> string -> string
+val digest_string : digest -> string -> string
   (** Digest a string *)
 
 val digest_mstrings : digest -> Netsys_types.mstring list -> string

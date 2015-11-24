@@ -94,7 +94,7 @@ let blit = blit_to_string
 let blit_to_memory b srcpos dest destpos n =
   if srcpos < 0 || n < 0 || srcpos > b.length-n then
     raise (Invalid_argument "Netbuffer.blit_to_memory");
-  Netsys_mem.blit_istring_to_memory b.buffer srcpos dest destpos n
+  Netsys_mem.blit_string_to_memory b.buffer srcpos dest destpos n
 
     
 let unsafe_buffer b =

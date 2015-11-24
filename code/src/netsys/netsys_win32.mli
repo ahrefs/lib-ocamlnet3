@@ -209,7 +209,7 @@ val pipe_write : w32_pipe -> Bytes.t -> int -> int -> int
       [EAGAIN].
    *)
 
-val pipe_write_istring : w32_pipe -> istring -> int -> int -> int
+val pipe_write_string : w32_pipe -> string -> int -> int -> int
   (** Same for immutable string *)
 
 val pipe_shutdown : w32_pipe -> unit
@@ -394,8 +394,8 @@ val output_thread_write : w32_output_thread -> Bytes.t -> int -> int -> int
       For cancelled requests, the function raises [EPERM].
    *)
 
-val output_thread_write_istring : w32_output_thread -> istring -> int -> int ->
-                                  int
+val output_thread_write_string : w32_output_thread -> string -> int -> int ->
+                                 int
   (** Same for immutable strings *)
 
 val close_output_thread : w32_output_thread -> unit

@@ -45,39 +45,30 @@ val blit_bytes_to_memory : Bytes.t -> int -> memory ->  int -> int -> unit
       designate a valid substring of [src], or if [dstoff] and [len]
       do not designate a valid subbuffer of [dst]. *)
 
-val blit_string_to_memory : Bytes.t -> int -> memory ->  int -> int -> unit
-  DEPRECATED("Use blit_bytes_to_memory instead.")
-
 external blit_bytes_to_memory_unsafe : 
            Bytes.t -> int -> memory ->  int -> int -> unit
   = "netsys_blit_string_to_memory" "noalloc"
   (** Unsafe version *)
 
-external blit_string_to_memory_unsafe : 
-           Bytes.t -> int -> memory ->  int -> int -> unit
-  = "netsys_blit_string_to_memory" "noalloc"
-  DEPRECATED("Use blit_bytes_to_memory_unsafe instead.")
-
-val blit_istring_to_memory : istring -> int -> memory -> int -> int -> unit
-  (** [blit_istring_to_memory src srcoff dst dstoff len]: A version for
+val blit_string_to_memory : string -> int -> memory -> int -> int -> unit
+  (** [blit_string_to_memory src srcoff dst dstoff len]: A version for
       immutable strings *)
+
+external blit_string_to_memory_unsafe : 
+           string -> int -> memory ->  int -> int -> unit
+  = "netsys_blit_string_to_memory" "noalloc"
+  (** Unsafe version *)
 
 val memory_of_bytes : Bytes.t -> memory
   (** Return a new bigarray as a copy of the string *)
 
-val memory_of_string : Bytes.t -> memory
-  DEPRECATED("Use memory_of_bytes instead")
-
-val memory_of_istring : istring -> memory
+val memory_of_string : string -> memory
   (** Return a new bigarray as a copy of the string *)
 
 val bytes_of_memory : memory -> Bytes.t
   (** Return a new string as a copy of the bigarray *)
 
-val string_of_memory : memory -> Bytes.t
-  DEPRECATED("Use bytes_of_memory instead")
-
-val istring_of_memory : memory -> istring
+val string_of_memory : memory -> string
   (** Return a new string as a copy of the bigarray *)
 
 val memory_address : memory -> nativeint
@@ -240,10 +231,7 @@ val cmp_bytes : Bytes.t -> Bytes.t -> int
       [memory] block.
    *)
 
-val cmp_string : Bytes.t -> Bytes.t -> int
-  DEPRECATED("Use cmp_bytes instead")
-
-val cmp_istring : istring -> istring -> int
+val cmp_string : string -> string -> int
   (** A version for immutable strings *)
 
 

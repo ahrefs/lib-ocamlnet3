@@ -264,7 +264,7 @@ let send endpoint buf pos len =
     | exn -> return(); raise exn
 
 
-let istr_send endpoint buf pos len =
+let str_send endpoint buf pos len =
   send endpoint (Bytes.unsafe_of_string buf) pos len
 
 let shutdown endpoint how =

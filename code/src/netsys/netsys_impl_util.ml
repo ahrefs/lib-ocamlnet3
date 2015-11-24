@@ -91,10 +91,9 @@ let tbuffer_length =
 
 let tstring_length =
   function
-  | `Bytes u
-  | `String u ->
+  | `Bytes u ->
       Bytes.length u
-  | `Istring u ->
+  | `String u ->
       String.length u
   | `Memory u ->
       Bigarray.Array1.dim u

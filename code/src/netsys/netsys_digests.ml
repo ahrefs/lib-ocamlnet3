@@ -9,8 +9,7 @@ class type digest_ctx =
 object
   method add_memory : Netsys_types.memory -> unit
   method add_subbytes : Bytes.t -> int -> int -> unit
-  method add_substring : Bytes.t -> int -> int -> unit
-  method add_subistring : string -> int -> int -> unit
+  method add_substring : string -> int -> int -> unit
   method add_tstring : tstring -> int -> int -> unit
   method finish : unit -> string
 end
@@ -84,18 +83,16 @@ module Digest(Impl : Netsys_crypto_types.DIGESTS) = struct
             p := !p + r;
           done;
           free()
-        method add_substring = self # add_subbytes
-        method add_subistring s pos len =
+        method add_substring s pos len =
           self # add_subbytes (Bytes.unsafe_of_string s) pos len
         method add_tstring s pos len =
           match s with
-            | `Bytes u
-            | `String u ->
+            | `Bytes u ->
                 self # add_subbytes u pos len
             | `Memory u ->
                 self # add_memory (Bigarray.Array1.sub u pos len)
-            | `Istring u ->
-                self # add_subistring u pos len
+            | `String u ->
+                self # add_substring u pos len
         method finish() =
           Impl.finish ctx
       end
@@ -155,10 +152,8 @@ let digest_something adder length (dg : digest) s =
 let digest_bytes dg s =
   digest_something (fun ctx -> ctx#add_subbytes) Bytes.length dg s
 
-let digest_string = digest_bytes
-
-let digest_istring dg s =
-  digest_something (fun ctx -> ctx#add_subistring) String.length dg s
+let digest_string dg s =
+  digest_something (fun ctx -> ctx#add_substring) String.length dg s
 
 let digest_tstring dg s =
   digest_something (fun ctx -> ctx#add_tstring)
@@ -209,7 +204,7 @@ let hmac_ctx dg key =
 
   let ictx = dg#create() in
   let k_ipad = xor_s k_padded ipad in
-  ictx # add_subistring k_ipad 0 (String.length ipad);
+  ictx # add_substring k_ipad 0 (String.length ipad);
   
   ( object
       method add_memory m =
@@ -218,13 +213,11 @@ let hmac_ctx dg key =
         ictx # add_subbytes s pos len
       method add_substring s pos len =
         ictx # add_substring s pos len
-      method add_subistring s pos len =
-        ictx # add_subistring s pos len
       method add_tstring s pos len =
         ictx # add_tstring s pos len
       method finish() =
         let ires = ictx # finish() in
-        digest_istring dg ((xor_s k_padded opad) ^ ires)
+        digest_string dg ((xor_s k_padded opad) ^ ires)
     end
   )
 

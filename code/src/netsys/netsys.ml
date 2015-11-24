@@ -464,10 +464,9 @@ let gwrite_tstr fd_style fd ts pos len =
   match fd_style with
     | `Read_write ->
         ( match ts with
-            | `Bytes s
-            | `String s ->
+            | `Bytes s ->
 	        Unix.single_write fd s pos len
-            | `Istring s ->
+            | `String s ->
                 #ifdef HAVE_BYTES
                   Unix.single_write_substring fd s pos len
                 #else
@@ -479,10 +478,9 @@ let gwrite_tstr fd_style fd ts pos len =
     | `Recv_send _ 
     | `Recv_send_implied ->
         ( match ts with
-            | `Bytes s
-            | `String s ->
+            | `Bytes s ->
 	        Unix.send fd s pos len []
-            | `Istring s ->
+            | `String s ->
                 #ifdef HAVE_BYTES
 	          Unix.send_substring fd s pos len []
                 #else
@@ -496,11 +494,10 @@ let gwrite_tstr fd_style fd ts pos len =
     | `W32_pipe ->
 	let ph = Netsys_win32.lookup_pipe fd in
         ( match ts with
-            | `Bytes s
-            | `String s ->
+            | `Bytes s ->
 	        Netsys_win32.pipe_write ph s pos len
-            | `Istring s ->
-	        Netsys_win32.pipe_write_istring ph s pos len
+            | `String s ->
+	        Netsys_win32.pipe_write_string ph s pos len
             | `Memory s ->
                 let b =
                   Netsys_mem.bytes_of_memory
@@ -518,11 +515,10 @@ let gwrite_tstr fd_style fd ts pos len =
     | `W32_output_thread ->
 	let othr = Netsys_win32.lookup_output_thread fd in
         ( match ts with
-            | `Bytes s
-            | `String s ->
+            | `Bytes s ->
 	        Netsys_win32.output_thread_write othr s pos len
-            | `Istring s ->
-	        Netsys_win32.output_thread_write_istring othr s pos len
+            | `String s ->
+	        Netsys_win32.output_thread_write_string othr s pos len
             | `Memory s ->
                 let b =
                   Netsys_mem.bytes_of_memory
@@ -532,11 +528,10 @@ let gwrite_tstr fd_style fd ts pos len =
     | `TLS endpoint ->
         let ep = Netsys_tls.endpoint endpoint in
         ( match ts with
-            | `Bytes s
-            | `String s ->
+            | `Bytes s ->
 	        Netsys_tls.send ep s pos len        
-            | `Istring s ->
-	        Netsys_tls.istr_send ep s pos len        
+            | `String s ->
+	        Netsys_tls.str_send ep s pos len        
             | `Memory s ->
 	        Netsys_tls.mem_send ep s pos len        
         )

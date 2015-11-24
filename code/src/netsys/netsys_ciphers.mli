@@ -87,19 +87,13 @@ object
   method encrypt_bytes : Bytes.t -> Bytes.t
     (** Encrypts this string as a whole *)
 
-  method encrypt_string : Bytes.t -> Bytes.t
-    DEPRECATED("Use encrypt_bytes instead.")
-
-  method encrypt_istring : string -> string
+  method encrypt_string : string -> string
     (** Encrypts this string as a whole *)
 
   method decrypt_bytes : Bytes.t -> Bytes.t
     (** Decrypts this string as a whole *)
 
-  method decrypt_string : Bytes.t -> Bytes.t
-    DEPRECATED("Use decrypt_bytes instead.")
-
-  method decrypt_istring : string -> string
+  method decrypt_string : string -> string
     (** Decrypts this string as a whole *)
 
   method mac : unit -> string
@@ -182,13 +176,8 @@ val process_subbytes :
 
 val process_substring :
      (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
-     Bytes.t -> int -> int -> Bytes.t
-  DEPRECATED("Use process_subbytes instead.")
-
-val process_subistring :
-     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
      string -> int -> int -> string
-  (** [process_subistring p s pos len]: Same for immutable strings.
+  (** [process_substring p s pos len]: Same for immutable strings.
    *)
 
 val process_bytes :
@@ -202,10 +191,5 @@ val process_bytes :
 
 val process_string :
      (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
-     Bytes.t -> Bytes.t
-  DEPRECATED("Use process_bytes instead.")
-
-val process_istring :
-     (last:bool -> Netsys_types.memory -> Netsys_types.memory -> int * int) ->
      string -> string
-  (** [process_istring p s]: same for immutable strings. *)
+  (** [process_string p s]: same for immutable strings. *)

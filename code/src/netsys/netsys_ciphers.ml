@@ -21,11 +21,9 @@ object
   method decrypt : last:bool -> 
                    Netsys_types.memory -> Netsys_types.memory -> int * int
   method encrypt_bytes : Bytes.t -> Bytes.t
-  method encrypt_string : Bytes.t -> Bytes.t
-  method encrypt_istring : string -> string
+  method encrypt_string : string -> string
   method decrypt_bytes : Bytes.t -> Bytes.t
-  method decrypt_string : Bytes.t -> Bytes.t
-  method decrypt_istring : string -> string
+  method decrypt_string : string -> string
   method mac : unit -> string
 end
 
@@ -42,7 +40,7 @@ object
 end
 
 
-let process_subistring proc s pos len =
+let process_substring proc s pos len =
   let inbuf, free_inbuf =
     Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
   let outbuf, free_outbuf =
@@ -51,12 +49,12 @@ let process_subistring proc s pos len =
   let k = ref pos in
   while !k < len do
     let n = min (len - !k) (Bigarray.Array1.dim inbuf) in
-    Netsys_mem.blit_istring_to_memory s !k inbuf 0 n;
+    Netsys_mem.blit_string_to_memory s !k inbuf 0 n;
     let inbuf1 = Bigarray.Array1.sub inbuf 0 n in
     let (n_in, n_out) = proc ~last:(n = len - !k) inbuf1 outbuf in
     if n_in = 0 then failwith "encryption/decryption: would loop";
     let u =
-      Netsys_mem.istring_of_memory (Bigarray.Array1.sub outbuf 0 n_out) in
+      Netsys_mem.string_of_memory (Bigarray.Array1.sub outbuf 0 n_out) in
     collect := u :: !collect;
     k := !k + n_in
   done;
@@ -65,25 +63,21 @@ let process_subistring proc s pos len =
   String.concat "" (List.rev !collect)
 
 
-let process_istring proc s =
-  process_subistring proc s 0 (String.length s)
+let process_string proc s =
+  process_substring proc s 0 (String.length s)
 
 
 let process_subbytes proc s pos len =
   Bytes.unsafe_of_string
-    (process_subistring
+    (process_substring
        proc (Bytes.unsafe_to_string s) pos len
     )
 
 let process_bytes proc s =
   Bytes.unsafe_of_string
-    (process_istring
+    (process_string
        proc (Bytes.unsafe_to_string s)
     )
-
-
-let process_substring = process_subbytes
-let process_string = process_bytes
 
 
 module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
@@ -123,11 +117,9 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
         );
         (n,n)
       method encrypt_bytes s = process_bytes self#encrypt s
-      method encrypt_string s = process_bytes self#encrypt s
-      method encrypt_istring s = process_istring self#encrypt s
+      method encrypt_string s = process_string self#encrypt s
       method decrypt_bytes s = process_bytes self#decrypt s
-      method decrypt_string s = process_bytes self#decrypt s
-      method decrypt_istring s = process_istring self#decrypt s
+      method decrypt_string s = process_string self#decrypt s
       method mac() = Impl.mac ctx
     end
 
@@ -232,11 +224,9 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
         else
           (n1,n1)
       method encrypt_bytes s = process_bytes self#encrypt s
-      method encrypt_string s = process_bytes self#encrypt s
-      method encrypt_istring s = process_istring self#encrypt s
+      method encrypt_string s = process_string self#encrypt s
       method decrypt_bytes s = process_bytes self#decrypt s
-      method decrypt_string s = process_bytes self#decrypt s
-      method decrypt_istring s = process_istring self#decrypt s
+      method decrypt_string s = process_string self#decrypt s
       method mac() = Impl.mac ctx
     end
 
@@ -372,11 +362,9 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
         )
         else (n1,n1)
       method encrypt_bytes s = process_bytes self#encrypt s
-      method encrypt_string s = process_bytes self#encrypt s
-      method encrypt_istring s = process_istring self#encrypt s
+      method encrypt_string s = process_string self#encrypt s
       method decrypt_bytes s = process_bytes self#decrypt s
-      method decrypt_string s = process_bytes self#decrypt s
-      method decrypt_istring s = process_istring self#decrypt s
+      method decrypt_string s = process_string self#decrypt s
       method mac() = Impl.mac ctx
     end
 

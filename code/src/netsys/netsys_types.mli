@@ -21,9 +21,6 @@
     on [bytes], and mark them as deprecated. 
  *)
 
-type istring = string
-  (** A string considered as immutable *)
-
 type memory = 
     (char,Bigarray.int8_unsigned_elt,Bigarray.c_layout) Bigarray.Array1.t
   (** We consider 1-dimensional bigarrays of chars as memory buffers.
@@ -36,7 +33,7 @@ type tbuffer = [ `Bytes of Bytes.t | `Memory of memory | `String of Bytes.t ]
   (** A tagged buffer. Note that the [`String] case is deprecated.
    *)
 
-type tstring = [ `Istring of istring | tbuffer ]
+type tstring = [ `Bytes of Bytes.t | `Memory of memory | `String of string ]
   (** A tagged string which is not modified by the function *)
 
 (** See {!Netxdr_mstring.mstring} for documentation *)
@@ -48,8 +45,7 @@ object
     DEPRECATED("Use blit_to_bytes instead.")
   method blit_to_memory : int -> memory -> int -> int -> unit
   method as_bytes : Bytes.t * int
-  method as_string : Bytes.t * int
-    DEPRECATED("Use as_bytes instead.")
+  method as_string : string * int
   method as_memory : memory * int
   method preferred : [ `Memory | `Bytes ]
 end

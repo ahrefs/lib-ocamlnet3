@@ -275,8 +275,8 @@ val mem_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
                Netsys_types.memory -> int -> int -> int
   (** Same for a memory-backed buffer *)
 
-val istr_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
-           istring -> int -> int -> int
+val str_send : (module Netsys_crypto_types.TLS_ENDPOINT) ->
+           string -> int -> int -> int
   (** Same for immutable string *)
 
 val shutdown : (module Netsys_crypto_types.TLS_ENDPOINT) ->
