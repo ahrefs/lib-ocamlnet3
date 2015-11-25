@@ -6,8 +6,11 @@ PKGNAME = netstring-pcre
 OBJECTS =  netstring_pcre.cmo
 DOBJECTS = netstring_pcre.mli
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
 include $(TOP_DIR)/Makefile.rules
 
-REQUIRES += pcre
+REQUIRES += bytes pcre
 
 include depend

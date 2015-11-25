@@ -27,15 +27,15 @@ let explode s =
 
 let implode l =
   let n = List.length l in
-  let s = String.create n in
+  let s = Bytes.create n in
   let k = ref 0 in
   List.iter
     (fun c ->
-       s.[ !k ] <- c;
+       Bytes.set s !k c;
        incr k
     )
     l;
-  s
+  Bytes.to_string s
 
 
 let quote_set s =
@@ -59,7 +59,6 @@ let quote_set s =
 	     sprintf "quote_set: orig: %s - quoted: %s" s s'
 	  );
   s'
-
 
 (**********************************************************************)
 (* HAVE_PCRE                                                          *)
@@ -532,17 +531,22 @@ let regexp_string_case_fold s =
 ;;
 
 let string_match = Netstring_pcre.string_match ;;
+let bytes_match = Netstring_pcre.bytes_match ;;
 
 (* let string_partial_match = Netstring_pcre.string_partial_match ;; *)
 (* N/A *)
 
 let search_forward = Netstring_pcre.search_forward ;;
 let search_backward = Netstring_pcre.search_backward ;;
+let search_forward_bytes = Netstring_pcre.search_forward_bytes ;;
+let search_backward_bytes = Netstring_pcre.search_backward_bytes ;;
 
 let matched_string = Netstring_pcre.matched_string ;;
+let matched_bytes = Netstring_pcre.matched_bytes ;;
 let match_beginning = Netstring_pcre.match_beginning ;;
 let match_end = Netstring_pcre.match_end ;;
 let matched_group = Netstring_pcre.matched_group ;;
+let matched_group_bytes = Netstring_pcre.matched_group_bytes ;;
 let group_beginning = Netstring_pcre.group_beginning ;;
 let group_end = Netstring_pcre.group_end ;;
 
@@ -677,19 +681,34 @@ let string_match pat s pos =
   else
     None
 
+let bytes_match pat s pos =
+  string_match pat (Bytes.unsafe_to_string s) pos
+
 let search_forward pat s pos =
   let sr = re_search_forward pat s pos in
   if Array.length sr = 0 then raise Not_found;
   sr.(0), return_result pos sr
+
+let search_forward_bytes pat s pos =
+  search_forward pat (Bytes.unsafe_to_string s) pos
 
 let search_backward pat s pos =
   let sr = re_search_backward pat s pos in
   if Array.length sr = 0 then raise Not_found;
   sr.(0), return_result pos sr
 
-let matched_string result s =
+let search_backward_bytes pat s pos =
+  search_backward pat (Bytes.unsafe_to_string s) pos
+
+let matched_generic sub result s =
   if match_beg result.sr < 0 || match_e result.sr < 0 then raise Not_found;
-  String.sub s (match_beg result.sr) (match_e result.sr - match_beg result.sr)
+  sub s (match_beg result.sr) (match_e result.sr - match_beg result.sr)
+
+let matched_string =
+  matched_generic String.sub
+
+let matched_bytes =
+  matched_generic Bytes.sub
 
 let match_beginning result =
   if match_beg result.sr < 0 then raise Not_found;
@@ -699,15 +718,21 @@ let match_end result =
   if match_e result.sr < 0 then raise Not_found;
   match_e result.sr
 
-let matched_group result n s =
+let matched_group_generic sub result n s =
   if n < 0 || n > n_groups result.sr then raise Not_found;
   if n = 0 then
-    matched_string result s
+    matched_generic sub result s
   else 
     let gbeg = group_beg result.sr n in
     let gend = group_e result.sr n in
     if gbeg < 0 || gend < 0 then raise Not_found;
-    String.sub s gbeg (gend - gbeg)
+    sub s gbeg (gend - gbeg)
+
+let matched_group =
+  matched_group_generic String.sub
+
+let matched_group_bytes =
+  matched_group_generic Bytes.sub
 
 let group_beginning result n =
   if n < 0 || n > n_groups result.sr then raise Not_found;
@@ -954,12 +979,18 @@ let string_match pat s =
          None
     )
 
+let bytes_match pat s pos =
+  string_match pat (Bytes.unsafe_to_string s) pos
+
 let search_forward pat s =
   protect
     (fun pos ->
        let i = Str.search_forward pat s pos in
        i, return_result pos
     )
+
+let search_forward_bytes pat s pos =
+  search_forward pat (Bytes.unsafe_to_string s) pos
 
 let search_backward pat s =
   protect
@@ -968,9 +999,18 @@ let search_backward pat s =
        i, return_result pos
     )
 
-let matched_string result s =
+let search_backward_bytes pat s pos =
+  search_backward pat (Bytes.unsafe_to_string s) pos
+
+let matched_generic sub result s =
   if result.match_beg < 0 or result.match_end < 0 then raise Not_found;
-  String.sub s result.match_beg (result.match_end - result.match_beg)
+  sub s result.match_beg (result.match_end - result.match_beg)
+
+let matched_string =
+  matched_generic String.sub
+
+let matched_bytes =
+  matched_generic Bytes.sub
 
 let match_beginning result =
   if result.match_beg < 0 then raise Not_found;
@@ -980,15 +1020,21 @@ let match_end result =
   if result.match_end < 0 then raise Not_found;
   result.match_end
 
-let matched_group result n s =
+let matched_group_generic sub result n s =
   if n < 0 || n >= Array.length result.group_beg then raise Not_found;
   if n = 0 then
-    matched_string result s
+    matched_generic sub result s
   else 
     let gbeg = result.group_beg.(n-1) in
     let gend = result.group_end.(n-1) in
     if gbeg < 0 or gend < 0 then raise Not_found;
-    String.sub s gbeg (gend - gbeg)
+    sub s gbeg (gend - gbeg)
+
+let matched_group =
+  matched_group_generic String.sub
+
+let matched_group_bytes =
+  matched_group_generic Bytes.sub
 
 let group_beginning result n =
   if n < 0 || n >= Array.length result.group_beg then raise Not_found;

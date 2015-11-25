@@ -3,7 +3,8 @@ TOP_DIR=../..
 include $(TOP_DIR)/Makefile.conf
 
 OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
-	   netaux.cmo netchannels.cmo netchannels_crypto.cmo netsockaddr.cmo \
+	   netaux.cmo netstring_tstring.cmo \
+           netchannels.cmo netchannels_crypto.cmo netsockaddr.cmo \
 	   netdb.cmo netmappings_asn1.cmo netmappings.cmo netconversion.cmo \
            netulex.cmo netencoding.cmo netstream.cmo netdate.cmo \
 	   netmime_string.cmo \
@@ -28,8 +29,6 @@ PKGNAME  = netstring
 REQUIRES += $(REGEXP_PROVIDER_MAKE) bigarray
 INCLUDES += $(INC_NETSYS)
 INCLUDES += -I ../netstring-pcre
-
-OCAMLOPT_OPTIONS_FOR_netbuffer.ml = -inline 10
 
 INSTALL_EXTRA_CMO = netstring_top \
 		    netaccel_link
@@ -60,7 +59,10 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netchannels_tut.txt netmime_tut.txt netsendmail_tut.txt \
 	netulex_tut.txt neturl_tut.txt
 
-PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS) $(PP_BYTES) $(PP_DEPRECATED)"
 
 ALL_EXTRA = netaccel.cma netaccel_link.cmo netstring_top.cmo
 
@@ -70,6 +72,7 @@ netaccel.cma: netaccel_c.o netaccel.cmo
 NETNUMBER_DEFS = -D WORDSIZE_$(WORD_SIZE) -D HOST_IS_$(ENDIANESS) \
                  -D USE_NETSYS_XDR
 
+OCAMLOPT_OPTIONS_FOR_netbuffer.ml = -inline 10
 OCAMLOPT_OPTIONS_FOR_netnumber.ml = -inline 10
 OCAMLOPT_OPTIONS_FOR_xdr.ml = -inline 5
 OCAMLC_OPTIONS_FOR_netstring_top.ml = -I +compiler-libs

@@ -11,7 +11,7 @@ CLEAN_LIST += $(GENERATE)
 NETNUMBER_DEFS = -D WORDSIZE_$(WORD_SIZE) -D HOST_IS_$(ENDIANESS) \
                  -D USE_NETSYS_XDR
 
-PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS)"
+PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS) $(PP_BYTES) $(PP_DEPRECATED)"
 
 INSTALL_EXTRA = netstring_top.cmo netaccel_link.cmo netaccel.cma
 

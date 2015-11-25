@@ -67,6 +67,10 @@ val string_match:
    * and [r] describes the match.
    *)
 
+val bytes_match: 
+      regexp -> Bytes.t -> int -> result option
+  (** Same for bytes *)
+
 val search_forward: 
       regexp -> string -> int -> (int * result)
   (** Searches a match of the string with the regexp, starting at
@@ -75,6 +79,11 @@ val search_forward:
    * Returns [(p,r)] when a match at position [p] is found,
    * described by [r].
    *)
+
+val search_forward_bytes: 
+      regexp -> Bytes.t -> int -> (int * result)
+  (** Same for bytes *)
+
 val search_backward: 
       regexp -> string -> int -> (int * result)
   (** Searches a match of the string with the regexp, starting at
@@ -83,6 +92,10 @@ val search_backward:
    * Returns [(p,r)] when a match at position [p] is found,
    * described by [r].
    *)
+
+val search_backward_bytes :
+      regexp -> Bytes.t -> int -> (int * result)
+  (** Same for bytes *)
 
 (* NOT SUPPORTED:
  *
@@ -99,6 +112,9 @@ val matched_string : result -> string -> string
    * result.
    *)
 
+val matched_bytes : result -> Bytes.t -> Bytes.t
+  (** Same for bytes *)
+
 val match_beginning : result -> int
   (** Returns the position where the matched part begins *)
 
@@ -112,6 +128,9 @@ val matched_group : result -> int -> string -> string
    * functions, and the result argument must be the corresponding
    * result.
    *)
+
+val matched_group_bytes : result -> int -> Bytes.t -> Bytes.t
+  (** Same for bytes *)
 
 val group_beginning : result -> int -> int
   (** Returns the position where the substring matching the nth
@@ -141,7 +160,7 @@ val replace_first: regexp -> (*templ:*) string -> string -> string
    * [\0] is the whole match. [\\ ] is the backslash character.
    *)
 
-val global_substitute:
+val global_substitute :
        regexp -> (result -> string -> string) -> string -> string
   (** [global_substitute re subst s]: Applies the substitution function
    * [subst] to all matchings of [re] in [s], and returns the 

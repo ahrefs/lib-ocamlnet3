@@ -24,6 +24,8 @@
  * }
  *)
 
+open Netsys_types
+
 
 (** {1:preliminaries Preliminaries}
  *
@@ -51,7 +53,7 @@
  *
  * In a {b single-byte encoding} every code point is represented by
  * one byte. This is what many programmers are accustomed at, and
- * what the O'Caml language specially supports: A [string] is
+ * what the OCaml language specially supports: A [string] is
  * a sequence of [char]s, where [char] means an 8 bit quantity
  * interpreted as character. For example, the following piece of code allocates
  * a [string] of four [char]s, and assigns them individually:
@@ -69,7 +71,7 @@
  * problem arises that a single [char], actually a byte, often represents 
  * only a fraction of a full multi-byte character. There are two solutions:
  * - Give up the principle that text is represented by [string].
- *   This is, for example, the approach chosen by [Camomile], another O'Caml
+ *   This is, for example, the approach chosen by [Camomile], another OCaml
  *   library dealing with Unicode. Instead, text is represented as
  *   [int array]. This way, the algorithms processing the text can
  *   remain the same.
@@ -698,31 +700,39 @@ val convert : ?subst:(int -> string) ->
    *   of the input string minus [range_pos])
    *)
 
-
-val recode_string : in_enc:encoding -> 
+val convert_bytes : ?subst:(int -> string) ->
+                    in_enc:encoding -> 
                     out_enc:encoding ->
-		    ?subst:(int -> string) ->
-		    string ->
-                    string 
-  (** Recodes a complete string from [in_enc] to [out_enc], and returns it.
-   * The function [subst] is invoked for code points of [in_enc] that cannot
-   * be represented in [out_enc], and the result of the function invocation
-   * is substituted.
-   * Restriction: The string returned by [subst] must not be longer than 50
-   * bytes.
-   * If [subst] is missing, [Not_found] is raised in this case.
-   *
-   * @deprecated This function is obsolete since ocamlnet-0.96. Use
-   *   [convert] instead.
-   *)
+                    ?range_pos:int -> ?range_len:int ->
+	            Bytes.t ->
+                      Bytes.t
+  (** Same for bytes *)
 
+val convert_tstring : ?subst:(int -> string) ->
+                      in_enc:encoding -> 
+                      out_enc:encoding ->
+                      out_kind:'s Netstring_tstring.tstring_kind ->
+                      ?range_pos:int -> ?range_len:int ->
+	              tstring ->
+                        's
+  (** Same for tagged strings *)
+
+val convert_poly : in_ops:'s1 Netstring_tstring.tstring_ops ->
+                   out_kind:'s2 Netstring_tstring.tstring_kind ->
+                   ?subst:(int -> string) ->
+                   in_enc:encoding -> 
+                   out_enc:encoding ->
+                   ?range_pos:int -> ?range_len:int ->
+	           's1 ->
+                        's2
+  (** Polymorphic version *)
 
 val recode : in_enc:encoding -> 
              in_buf:string -> 
 	     in_pos:int ->
 	     in_len:int -> 
 	     out_enc:encoding -> 
-	     out_buf:string -> 
+	     out_buf:Bytes.t -> 
 	     out_pos:int ->
 	     out_len:int ->
 	     max_chars:int ->
@@ -769,6 +779,43 @@ val recode : in_enc:encoding ->
    * space for one complete character in [out_buf], and [max_chars >= 1], it is 
    * guaranteed that [in_n > 0 && out_n > 0].
    *)
+
+val recode_bytes : in_enc:encoding -> 
+                   in_buf:Bytes.t -> 
+	           in_pos:int ->
+	           in_len:int -> 
+	           out_enc:encoding -> 
+	           out_buf:Bytes.t -> 
+	           out_pos:int ->
+	           out_len:int ->
+	           max_chars:int ->
+                   subst:(int -> string) -> (int * int * encoding)
+  (** A [Bytes.t] version of [recode] *)
+
+val recode_tstring : in_enc:encoding -> 
+                     in_buf:tstring -> 
+	             in_pos:int ->
+	             in_len:int -> 
+	             out_enc:encoding -> 
+	             out_buf:Bytes.t -> 
+	             out_pos:int ->
+	             out_len:int ->
+	             max_chars:int ->
+                     subst:(int -> string) -> (int * int * encoding)
+  (** A version of [recode] for tagged strings *)
+
+val recode_poly : in_ops:'s Netstring_tstring.tstring_ops ->
+                  in_enc:encoding -> 
+                  in_buf:'s -> 
+	          in_pos:int ->
+	          in_len:int -> 
+	          out_enc:encoding -> 
+	          out_buf:Bytes.t -> 
+	          out_pos:int ->
+	          out_len:int ->
+	          max_chars:int ->
+                  subst:(int -> string) -> (int * int * encoding)
+  (** A polymorphic version of [recode] *)
 
 
 class conversion_pipe : 
@@ -824,19 +871,6 @@ class conversion_pipe :
    *   If [subst] is missing, [Cannot_represent] is raised in this case.
    *)
 
-
-class recoding_pipe : 
-        ?subst:(int -> string) ->
-        in_enc:encoding -> 
-	out_enc:encoding -> 
-	unit ->
-	  Netchannels.io_obj_channel
-  (** Recodes a channel like [conversion_pipe]. The difference is that
-   * [subst] raises [Not_found] by default, and not [Cannot_represent].
-   *
-   * @deprecated This class is deprecated since ocamlnet-0.96. Use
-   *   [conversion_pipe] instead.
-   *)
 
 (**********************************************************************)
 (* Cursors                                                            *)
@@ -908,8 +942,12 @@ class recoding_pipe :
  * while a cursor is in use referring to it.
  *)
 
-type cursor
-  (** A cursor denotes a character position in an encoded string *)
+type 's poly_cursor
+  (** A cursor denotes a character position in an encoded string.
+      The parameter ['s] is the string type, e.g. [string] or [bytes].
+   *)
+
+type cursor = string poly_cursor
 
 exception End_of_string
   (** Raised when it is tried to access the character after the end of the
@@ -974,14 +1012,42 @@ val create_cursor : ?range_pos:int -> ?range_len:int ->
    *   by [cursor_char_count])
    *)
 
+val create_poly_cursor : ?range_pos:int -> ?range_len:int -> 
+                         ?initial_rel_pos:int -> 
+                         encoding -> 's Netstring_tstring.tstring_ops -> 's ->
+                           's poly_cursor
+  (** Polymorphic version *)
+
+
+(** Helper type for {!Netconversion.with_tstring_cursor} *)
+type 'a with_cursor_fun =
+    { with_cursor_fun : 's . 's Netstring_tstring.tstring_ops ->
+                             's poly_cursor ->
+                             'a
+    }
+
+val with_tstring_cursor : ?range_pos:int -> ?range_len:int -> 
+                          ?initial_rel_pos:int -> 
+                          encoding -> tstring ->
+                          'a with_cursor_fun ->
+                            'a
+  (** Creates a cursor like [create_cursor] and calls [with_cursor_fun]
+      with the cursor, returning any result unchanged.
+
+      Note that there cannot be a "create_tstring_cursor" for typing
+      reasons, and this is the closest approximation.
+   *)
+
+
+
 val reinit_cursor : ?range_pos:int -> ?range_len:int -> 
                     ?initial_rel_pos:int -> 
-                    ?enc:encoding -> string -> cursor -> unit
+                    ?enc:encoding -> 's -> 's poly_cursor -> unit
   (** Reuses an existing cursor for a new purpose. The arguments are
    * as in [create_cursor].
    *)
 
-val copy_cursor : ?enc:encoding -> cursor -> cursor
+val copy_cursor : ?enc:encoding -> 's poly_cursor -> 's poly_cursor
   (** Copies the cursor. The copy can be moved independently of the original
    * cursor, but is applied to the same string. The copy starts at the
    * byte position of the string where the original cursor is currently
@@ -991,28 +1057,28 @@ val copy_cursor : ?enc:encoding -> cursor -> cursor
    *   encoding can be changed to a different one by passing [enc].
    *)
 
-val cursor_target : cursor -> string
+val cursor_target : 's poly_cursor -> 's
   (** Returns the string of the cursor
    *
    * Evaluation hints:
    * - INLINED
    *)
 
-val cursor_range : cursor -> (int * int)
+val cursor_range : _ poly_cursor -> (int * int)
   (** Returns the valid range of the cursor as pair [(range_pos, range_len)] 
    *
    * Evaluation hints:
    * - INLINED
    *)
 
-val cursor_initial_rel_pos : cursor -> int
+val cursor_initial_rel_pos : _ poly_cursor -> int
   (** Returns the initial relative byte position of the cursor 
    *
    * Evaluation hints:
    * - INLINED
    *)
 
-val cursor_char_count : cursor -> int
+val cursor_char_count : _ poly_cursor -> int
   (** Returns the character count of the cursor. The initial position
    * (when [create_cursor] was called) has the number 0, positions to the
    * right denote positive numbers, and positions to the left negative numbers.
@@ -1021,7 +1087,7 @@ val cursor_char_count : cursor -> int
    * - INLINED
    *)
 
-val cursor_pos : cursor -> int
+val cursor_pos : _ poly_cursor -> int
   (** Returns the byte position of the cursor, i.e. the byte index of
    * the string that corresponds to the cursor position. The function
    * returns the absolute position (i.e. NOT relative to [cursor_range]).
@@ -1030,7 +1096,7 @@ val cursor_pos : cursor -> int
    * - INLINED
    *)
 
-val uchar_at : cursor -> int
+val uchar_at : _ poly_cursor -> int
   (** Returns the Unicode code point of the character at the cursor.
    * Raises [End_of_string] if the cursor is positioned past the last
    * character.
@@ -1043,7 +1109,7 @@ val uchar_at : cursor -> int
    * - INLINED
    *)
 
-val cursor_byte_length : cursor -> int
+val cursor_byte_length : _ poly_cursor -> int
   (** Returns the byte length of the representation of the character at the
    * cursor. This works also for incomplete multi-byte characters and
    * BOMs.
@@ -1054,14 +1120,14 @@ val cursor_byte_length : cursor -> int
    * - INLINED
    *)
 
-val cursor_at_end : cursor -> bool
+val cursor_at_end : _ poly_cursor -> bool
   (** Returns whether the cursor is positioned past the last character.
    *
    * Evaluation hints:
    * - INLINED
    *)
 
-val move : ?num:int -> cursor -> unit
+val move : ?num:int -> _ poly_cursor -> unit
   (** Moves the cursor one character to the right, or if [num] is passed,
    * this number of characters to the right. [num] can be negative in
    * which case the cursor is moved to the left.
@@ -1073,7 +1139,7 @@ val move : ?num:int -> cursor -> unit
    * and the exception [Cursor_out_of_range] is raised.
    *)
 
-val cursor_encoding : cursor -> encoding
+val cursor_encoding : _ poly_cursor -> encoding
   (** Returns the encoding of the cursor. For some encodings, the
    * returned encoding depends on the position of the cursor (see
    * the note about UTF-8 in [create_cursor])
@@ -1082,7 +1148,7 @@ val cursor_encoding : cursor -> encoding
    * - INLINED
    *)
 
-val cursor_blit : cursor -> int array -> int -> int -> int
+val cursor_blit : _ poly_cursor -> int array -> int -> int -> int
  (** [cursor_blit cs ua pos len]: Copies at most [len] characters as code
   * points from
   * the cursor position and the following positions to the array [ua]
@@ -1102,7 +1168,7 @@ val cursor_blit : cursor -> int array -> int -> int -> int
   * The function does not move the cursor.
  *)
 
-val cursor_blit_maxlen : cursor -> int
+val cursor_blit_maxlen : _ poly_cursor -> int
   (** Returns the maximum number of characters [cursor_blit] can copy
    * at the current cursor position. This is the number of characters
    * [cursor_blit] would copy if the [len] argument were arbitrarily
@@ -1115,7 +1181,7 @@ val cursor_blit_maxlen : cursor -> int
    * at the end of the string.
    *)
 
-val cursor_blit_positions : cursor -> int array -> int -> int -> int
+val cursor_blit_positions : _ poly_cursor -> int array -> int -> int -> int
   (** Works like [cursor_blit], but copies the byte positions of the
    * characters into [ua] instead of the code points.
    *
@@ -1159,21 +1225,22 @@ val cursor_blit_positions : cursor -> int array -> int -> int -> int
  * When this code point occurs later in the text, it is interpreted as
  * this character. Of course, this means that one must know whether
  * there is a BOM at the beginning, and if not, one must know the
- * endianess. One cannot program in the style "well, let's see what is
- * coming and guess".
+ * endianess. One cannot program in the style 
+ * "well, let's see what is coming and guess".
  *
  * Unicode also allows a BOM for UTF-8 although it is meaningless to specify
  * the endianess. If you create the cursor with the encoding [`Enc_utf8]
  * nothing is done about this, and you get the BOM as normal character.
  * If you create the cursor with [`Enc_utf8_opt_bom], the BOM is treated
- * specially like in the UTF-16 and -32 cases (with the only difference
- * that it is optional for UTF-8).
+ * specially like in the UTF-16 and -32 cases
+ * (with the only difference that it is optional for UTF-8).
  *
  * The functions of this module can all deal with BOMs when reading
  * encoded text. In most cases, the BOM is hidden from the caller,
  * and just handled automatically. Cursors, however, treat BOMs as special
- * characters outside of the code set (exception [Byte_order_mark] is
- * raised). The writing functions of this module do not generate BOMs,
+ * characters outside of the code set 
+ * (exception [Byte_order_mark] is raised).
+ * The writing functions of this module do not generate BOMs,
  * however, as there is no way to tell them that a BOM is needed. The
  * function [byte_order_mark] can be used to output the BOM manually.
  *
@@ -1244,6 +1311,15 @@ val ustring_length :
    *   (default: byte length of the input string minus [range_pos])
    *)
 
+val ustring_length_ts : 
+        encoding -> ?range_pos:int -> ?range_len:int -> tstring -> int
+  (** Same for tagged strings *)
+
+val ustring_length_poly : 
+        's Netstring_tstring.tstring_ops ->
+        encoding -> ?range_pos:int -> ?range_len:int -> 's -> int
+  (** Polymorphic version *)
+
 val ustring_iter : 
        encoding ->
        (int -> unit) ->
@@ -1260,6 +1336,24 @@ val ustring_iter :
    * @param range_len The byte length of the substring to iterate over
    *   (default: byte length of the input string minus [range_pos])
    *)
+
+val ustring_iter_ts : 
+       encoding ->
+       (int -> unit) ->
+       ?range_pos:int -> ?range_len:int ->
+       tstring ->
+	 unit
+  (** Same for tagged strings *)
+
+val ustring_iter_poly : 
+       's Netstring_tstring.tstring_ops ->
+       encoding ->
+       (int -> unit) ->
+       ?range_pos:int -> ?range_len:int ->
+       's ->
+	 unit
+  (** Polymorphic version *)
+
 
 val ustring_map :
        encoding ->
@@ -1283,6 +1377,27 @@ val ustring_map :
    *   (default: byte length of the input string minus [range_pos])
    *)
 
+val ustring_map_ts :
+       encoding ->
+       (int -> int list) ->
+       ?range_pos:int -> ?range_len:int ->
+       tstring ->
+	 tstring
+  (** Same for tagged strings. The output representation is the same as for
+      the input
+   *)
+
+val ustring_map_poly :
+       's Netstring_tstring.tstring_ops ->
+       't Netstring_tstring.tstring_kind ->
+       encoding ->
+       (int -> int list) ->
+       ?range_pos:int -> ?range_len:int ->
+       's ->
+	 't
+  (** Polymorphic version *)
+
+
 val ustring_to_lower : encoding -> ?range_pos:int -> ?range_len:int ->
                        string -> string
   (** Converts the input string to lowercase.
@@ -1291,6 +1406,18 @@ val ustring_to_lower : encoding -> ?range_pos:int -> ?range_len:int ->
       as for [ustring_map]. The exception [Malformed_code] is raised
       when illegal byte sequences are found.
    *)
+
+val ustring_to_lower_ts : encoding -> ?range_pos:int -> ?range_len:int ->
+                          tstring -> tstring
+  (** Same for tagged strings. The output representation is the same as for
+      the input
+   *)
+
+val ustring_to_lower_poly : 's Netstring_tstring.tstring_ops ->
+                            't Netstring_tstring.tstring_kind ->
+                            encoding -> ?range_pos:int -> ?range_len:int ->
+                            's -> 't
+  (** Polymorphic version *)
 
 val ustring_to_upper : encoding -> ?range_pos:int -> ?range_len:int ->
                        string -> string
@@ -1301,6 +1428,19 @@ val ustring_to_upper : encoding -> ?range_pos:int -> ?range_len:int ->
       when illegal byte sequences are found.
    *)
 
+val ustring_to_upper_ts : encoding -> ?range_pos:int -> ?range_len:int ->
+                          tstring -> tstring
+  (** Same for tagged strings. The output representation is the same as for
+      the input
+   *)
+
+val ustring_to_upper_poly : 's Netstring_tstring.tstring_ops ->
+                            't Netstring_tstring.tstring_kind ->
+                            encoding -> ?range_pos:int -> ?range_len:int ->
+                            's -> 't
+  (** Polymorphic version *)
+
+
 val ustring_to_title : encoding -> ?range_pos:int -> ?range_len:int ->
                        string -> string
   (** Converts the input string to titlecase.
@@ -1309,6 +1449,19 @@ val ustring_to_title : encoding -> ?range_pos:int -> ?range_len:int ->
       as for [ustring_map]. The exception [Malformed_code] is raised
       when illegal byte sequences are found.
    *)
+
+val ustring_to_title_ts : encoding -> ?range_pos:int -> ?range_len:int ->
+                          tstring -> tstring
+  (** Same for tagged strings. The output representation is the same as for
+      the input
+   *)
+
+val ustring_to_title_poly : 's Netstring_tstring.tstring_ops ->
+                            't Netstring_tstring.tstring_kind ->
+                            encoding -> ?range_pos:int -> ?range_len:int ->
+                            's -> 't
+  (** Polymorphic version *)
+
 
 val ustring_sub :
        encoding ->
@@ -1336,6 +1489,24 @@ val ustring_sub :
    *   (default: byte length of the input string minus [range_pos])
    *)
 
+val ustring_sub_ts :
+       encoding ->
+       int ->
+       int ->
+       ?range_pos:int -> ?range_len:int ->
+       tstring ->
+	 tstring
+  (** Same for tagged strings. The output representation is the same as for
+      the input
+   *)
+
+val ustring_sub_poly : 's Netstring_tstring.tstring_ops ->
+                       't Netstring_tstring.tstring_kind ->
+                       encoding -> int -> int ->
+                       ?range_pos:int -> ?range_len:int ->
+                            's -> 't
+  (** Polymorphic version *)
+
 val ustring_compare :
       encoding ->
       (int -> int -> int) ->
@@ -1360,6 +1531,29 @@ val ustring_compare :
    *   (default: byte length of the input string minus [range_pos]),
    *   referring to the following string argument
    *)
+
+val ustring_compare_ts :
+      encoding ->
+      (int -> int -> int) ->
+       ?range_pos:int -> ?range_len:int ->
+      tstring ->
+       ?range_pos:int -> ?range_len:int ->
+      tstring ->
+	int
+  (** Same for tagged strings *)
+
+val ustring_compare_poly :
+      's1 Netstring_tstring.tstring_ops ->
+      's2 Netstring_tstring.tstring_ops ->
+      encoding ->
+      (int -> int -> int) ->
+       ?range_pos:int -> ?range_len:int ->
+      's1 ->
+       ?range_pos:int -> ?range_len:int ->
+      's2 ->
+	int
+  (** Polymorphic version *)
+
 
 val code_cmp : int -> int -> int
   (** A compare function for [ustring_compare]: Normal string comparison:
@@ -1388,6 +1582,20 @@ val uarray_of_ustring :
    *   (default: byte length of the input string minus [range_pos])
    *)
 
+val uarray_of_ustring_ts : 
+    encoding -> 
+    ?range_pos:int -> ?range_len:int ->
+    tstring -> 
+      int array
+  (** Same for tagged strings *)
+
+val uarray_of_ustring_poly : 
+    's Netstring_tstring.tstring_ops ->
+    encoding -> 
+    ?range_pos:int -> ?range_len:int ->
+    's -> 
+      int array
+  (** Polymorphic version *)
 
 val ustring_of_uarray :
     ?subst:(int -> string) ->
@@ -1403,9 +1611,9 @@ val ustring_of_uarray :
    *   to encode (default: array length minus [pos])
    * @param subst This function is called when a code point cannot be represented
    *   in the chosen character encoding. It must returns the (already encoded)
-   *   string to substitute for this code point. By default (if ~subst is
-   *   not passed), the exception [Cannot_represent] will be raised in this
-   *   case.
+   *   string to substitute for this code point. By default 
+   *   (if ~subst is not passed), the exception [Cannot_represent] 
+   *   will be raised in this case.
    *)
 
 exception Malformed_code_at of int
@@ -1422,6 +1630,15 @@ val verify : encoding -> ?range_pos:int -> ?range_len:int -> string -> unit
    *   (default: byte length of the input string minus [range_pos])
    *)
 
+val verify_ts : encoding -> ?range_pos:int -> ?range_len:int -> tstring -> unit
+  (** Same for tagged strings *)
+
+val verify_poly :
+      's Netstring_tstring.tstring_ops ->
+      encoding -> ?range_pos:int -> ?range_len:int -> 's -> unit
+  (** Polymorphic version *)
+
+
 (**********************************************************************)
 
 (* Internal *)
@@ -1433,13 +1650,17 @@ val big_slice : int
    * length 1.
    *)
 
+type poly_reader =
+    { read : 's . 's Netstring_tstring.tstring_ops -> 
+                     int array -> int array -> 's -> int -> int -> 
+                     (int * int * encoding)
+    }
+
 val read_iso88591_ref :
-  (int -> encoding -> int array -> int array -> string -> 
-     int -> int -> (int*int*encoding)) ref
+  (int -> encoding -> poly_reader) ref
 
 val read_utf8_ref :
-  (bool -> int array -> int array -> string -> int -> int -> (int*int*encoding)) 
-  ref
+  (bool -> poly_reader) ref
 
  (* The two read_* variables are initialised with default implementations.
   * They are overriden by Netaccel (if linked)

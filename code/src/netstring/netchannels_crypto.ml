@@ -24,21 +24,21 @@ end
 
 class tls_layer ?(start_pos_in=0) ?(start_pos_out=0) ?resume
                 ~role ~rd ~wr ~peer_name config =
-  let sbuf = String.create 65536 in
+  let sbuf = Bytes.create 65536 in
   let recv buf =
     try
-      let buf_len = min (Bigarray.Array1.dim buf) (String.length sbuf) in
+      let buf_len = min (Bigarray.Array1.dim buf) (Bytes.length sbuf) in
       let n = rd # input sbuf 0 buf_len in
       if n = 0 then raise(Unix.Unix_error(Unix.EAGAIN, "", ""));
-      Netsys_mem.blit_string_to_memory sbuf 0 buf 0 n;
+      Netsys_mem.blit_bytes_to_memory sbuf 0 buf 0 n;
       n
     with
       | Sys_blocked_io ->  raise(Unix.Unix_error(Unix.EAGAIN, "", ""))
       | End_of_file -> 0 in
   let send buf size =
     try
-      let send_len = min size (String.length sbuf) in
-      Netsys_mem.blit_memory_to_string buf 0 sbuf 0 send_len;
+      let send_len = min size (Bytes.length sbuf) in
+      Netsys_mem.blit_memory_to_bytes buf 0 sbuf 0 send_len;
       let n = ref 0 in
       while !n < send_len do
         let p = wr # output sbuf !n (send_len - !n) in
@@ -161,7 +161,7 @@ let process_out proc ctx ch =
   let out_buf, free_out_buf =
     Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
   let str_buf =
-    String.create (Bigarray.Array1.dim out_buf) in
+    Bytes.create (Bigarray.Array1.dim out_buf) in
   let buf_pos = ref 0 in
   let buf_len = Bigarray.Array1.dim buf in
   let closed = ref false in
@@ -172,7 +172,7 @@ let process_out proc ctx ch =
       method output s pos len =
         if !closed then raise Netchannels.Closed_channel;
         let n = min len (buf_len - !buf_pos) in
-        Netsys_mem.blit_string_to_memory s pos buf !buf_pos n;
+        Netsys_mem.blit_bytes_to_memory s pos buf !buf_pos n;
         buf_pos := !buf_pos + n;
         if !buf_pos = buf_len then
           self#flush();
@@ -184,7 +184,7 @@ let process_out proc ctx ch =
         if !buf_pos > 0 then (
           let buf1 = Bigarray.Array1.sub buf 0 !buf_pos in
           let consumed, generated = proc ~last:false buf1 out_buf in
-          Netsys_mem.blit_memory_to_string out_buf 0 str_buf 0 generated;
+          Netsys_mem.blit_memory_to_bytes out_buf 0 str_buf 0 generated;
           ch # really_output str_buf 0 generated;
           let remaining = buf_len - consumed in
           if remaining > 0 then
@@ -203,7 +203,7 @@ let process_out proc ctx ch =
         while !buf_pos >= 0 do
           let buf_sub = Bigarray.Array1.sub buf 0 !buf_pos in
           let consumed, generated = proc ~last:true buf_sub out_buf in
-          Netsys_mem.blit_memory_to_string out_buf 0 str_buf 0 generated;
+          Netsys_mem.blit_memory_to_bytes out_buf 0 str_buf 0 generated;
           ch # really_output str_buf 0 generated;
           let remaining = !buf_pos - consumed in
           if remaining > 0 then
@@ -249,7 +249,7 @@ let process_in proc ctx ch =
   let in_buf, free_in_buf =
     Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
   let str_buf =
-    String.create (Bigarray.Array1.dim in_buf) in
+    Bytes.create (Bigarray.Array1.dim in_buf) in
   let buf_pos = ref 0 in
   let buf_len = ref 0 in
   let in_buf_len = ref 0 in
@@ -265,7 +265,7 @@ let process_in proc ctx ch =
           try
             let l = Bigarray.Array1.dim in_buf - !in_buf_len in
             let n = ch # input str_buf 0 l in
-            Netsys_mem.blit_string_to_memory str_buf 0 in_buf !in_buf_len n;
+            Netsys_mem.blit_bytes_to_memory str_buf 0 in_buf !in_buf_len n;
             in_buf_len := !in_buf_len + n;
             let consumed, generated =
               proc
@@ -299,7 +299,7 @@ let process_in proc ctx ch =
         );
         let n = min len (!buf_len - !buf_pos) in
         if !eof && n=0 && len>0 then raise End_of_file;
-        Netsys_mem.blit_memory_to_string buf !buf_pos s pos n;
+        Netsys_mem.blit_memory_to_bytes buf !buf_pos s pos n;
         buf_pos := !buf_pos + n;
         pos_in := !pos_in + n;
         n
