@@ -700,14 +700,6 @@ val convert : ?subst:(int -> string) ->
    *   of the input string minus [range_pos])
    *)
 
-val convert_bytes : ?subst:(int -> string) ->
-                    in_enc:encoding -> 
-                    out_enc:encoding ->
-                    ?range_pos:int -> ?range_len:int ->
-	            Bytes.t ->
-                      Bytes.t
-  (** Same for bytes *)
-
 val convert_tstring : ?subst:(int -> string) ->
                       in_enc:encoding -> 
                       out_enc:encoding ->
@@ -779,18 +771,6 @@ val recode : in_enc:encoding ->
    * space for one complete character in [out_buf], and [max_chars >= 1], it is 
    * guaranteed that [in_n > 0 && out_n > 0].
    *)
-
-val recode_bytes : in_enc:encoding -> 
-                   in_buf:Bytes.t -> 
-	           in_pos:int ->
-	           in_len:int -> 
-	           out_enc:encoding -> 
-	           out_buf:Bytes.t -> 
-	           out_pos:int ->
-	           out_len:int ->
-	           max_chars:int ->
-                   subst:(int -> string) -> (int * int * encoding)
-  (** A [Bytes.t] version of [recode] *)
 
 val recode_tstring : in_enc:encoding -> 
                      in_buf:tstring -> 
