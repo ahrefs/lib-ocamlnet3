@@ -583,6 +583,8 @@ object
   method pos_in = raise Netchannels.Closed_channel
   method really_input (_:string) (_:int) (_:int) =
     raise Netchannels.Closed_channel
+  method really_input_string (_:int) =
+    raise Netchannels.Closed_channel
   method input_char () = raise Netchannels.Closed_channel
   method input_byte () = raise Netchannels.Closed_channel
   method input_line () = raise Netchannels.Closed_channel

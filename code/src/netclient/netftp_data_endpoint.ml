@@ -81,9 +81,11 @@ object(self)
   method output_char = out # output_char
   method output_string = out # output_string
   method output_byte = out # output_byte
+  method output_bytes = out # output_bytes
   method output_buffer = out # output_buffer
   method output_channel = out # output_channel
   method really_output = out # really_output
+  method really_output_string = out # really_output_string
 
   method output_eor() =
     out # output_string eor_s;
@@ -238,9 +240,11 @@ object(self)
   method output_char = out # output_char
   method output_string = out # output_string
   method output_byte = out # output_byte
+  method output_bytes = out # output_bytes
   method output_buffer = out # output_buffer
   method output_channel = out # output_channel
   method really_output = out # really_output
+  method really_output_string = out # really_output_string
 
   method output_eor() : unit =
     ()
@@ -265,6 +269,7 @@ object(self)
   method input_byte = ch # input_byte
   method input_line = ch # input_line
   method really_input = ch # really_input
+  method really_input_string = ch # really_input_string
 
   method input_eor() : unit =
     raise End_of_file

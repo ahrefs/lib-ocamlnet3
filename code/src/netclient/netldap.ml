@@ -243,9 +243,9 @@ let connect_e ?proxy ?peer_name ?tls_config addr esys =
 
 
 let send_message_e conn msg =
-  let buf = Buffer.create 80 in
+  let buf = Netbuffer.create 80 in
   ignore(Netasn1_encode.encode_ber buf msg);
-  let data = Buffer.contents buf in
+  let data = Netbuffer.contents buf in
   Uq_io.really_output_e conn.dev_out (`String data) 0 (String.length data)
 
 
@@ -330,10 +330,12 @@ let decode_ldap_result msg =
             comps1 ->
         let result_referrals, comps =
           match comps1 with
-            | Tagptr(Context, 3, ref_pc, ref_s, ref_pos, ref_len) :: comps2 ->
+            | Tagptr(Context, 3, ref_pc, ref_box, ref_pos, ref_len) :: comps2 ->
+                let Netstring_tstring.Tstring_polybox(ref_ops, ref_s) =
+                  ref_box in
                 let _, ref_msg =
-                  Netasn1.decode_ber_contents
-                    ~pos:ref_pos ~len:ref_len ref_s ref_pc
+                  Netasn1.decode_ber_contents_poly
+                    ~pos:ref_pos ~len:ref_len ref_ops ref_s ref_pc
                     Netasn1.Type_name.Seq in
                 let refs =
                   match ref_msg with
@@ -397,11 +399,12 @@ let decode_bind_resp ?(ok=[`Success]) resp_msg =
   let open Netasn1.Value in
   match resp_msg with
     | Seq [ Integer _;
-            Tagptr(Application, 1, pc, s, pos, len)
+            Tagptr(Application, 1, pc, box, pos, len)
           ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
         let _, bind_resp =
-          Netasn1.decode_ber_contents
-            ~pos ~len s pc Netasn1.Type_name.Seq in
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
         ( match bind_resp with
             | Seq bind_seq ->
                 let bind_result, comps =
@@ -432,10 +435,11 @@ let decode_sasl_bind_resp resp_msg =
   let cont =
     code = `SaslBindInProgress in
   match comps with
-    | [ Tagptr(Context, 7, pc, s, pos, len) ] ->
+    | [ Tagptr(Context, 7, pc, box, pos, len) ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
         let _, creds_msg =
-           Netasn1.decode_ber_contents
-             ~pos ~len s pc Netasn1.Type_name.Octetstring in
+           Netasn1.decode_ber_contents_poly
+             ~pos ~len ops s pc Netasn1.Type_name.Octetstring in
         ( match creds_msg with
             | Octetstring data ->
                 (cont, Some data)

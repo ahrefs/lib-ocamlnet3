@@ -706,9 +706,11 @@ object
   method close_out =      ch#close_out
   method pos_out =        ch#pos_out
   method really_output =  ch#really_output
+  method really_output_string = ch#really_output_string
   method output_char =    ch#output_char
   method output_string =  ch#output_string
   method output_byte =    ch#output_byte
+  method output_bytes =   ch#output_bytes
   method output_buffer =  ch#output_buffer
   method output_channel = ch#output_channel
 
@@ -726,9 +728,11 @@ object
   method close_out =      ch#close_out
   method pos_out =        ch#pos_out
   method really_output =  ch#really_output
+  method really_output_string = ch#really_output_string
   method output_char =    ch#output_char
   method output_string =  ch#output_string
   method output_byte =    ch#output_byte
+  method output_bytes =   ch#output_bytes
   method output_buffer =  ch#output_buffer
   method output_channel = ch#output_channel
 
