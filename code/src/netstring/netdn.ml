@@ -114,10 +114,10 @@ module DN_string_generic(L : AT_LOOKUP) = struct
                       if k+2 < l then
                         match s.[k+2] with
                           | ( '0' .. '9' | 'A' .. 'F' | 'a' .. 'f' ) as c2 ->
-                              let h = String.create 2 in
-                              h.[0] <- c1;
-                              h.[1] <- c2;
-                              let v = hex_val h in
+                              let h = Bytes.create 2 in
+                              Bytes.set h 0 c1;
+                              Bytes.set h 1 c2;
+                              let v = hex_val (Bytes.to_string h) in
                               Buffer.add_char b (Char.chr v);
                               b_esc := true;
                               next (k+3)

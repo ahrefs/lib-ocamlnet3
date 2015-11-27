@@ -31,6 +31,13 @@ type 't tstring_ops =
 type tstring_ops_box =
   | Tstring_ops_box : 't tstring_kind * 't tstring_ops -> tstring_ops_box
 
+type tstring_box =
+  | Tstring_box : 't tstring_kind * 't tstring_ops * 't -> tstring_box
+
+type tstring_polybox =
+  | Tstring_polybox : 't tstring_ops * 't -> tstring_polybox
+  (* Warning: you cannot match on the type 't here *)
+
 let str_subpoly : type u . u tstring_kind -> string -> int -> int -> u =
   function
   | String_kind -> String.sub

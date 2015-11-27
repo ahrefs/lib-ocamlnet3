@@ -67,7 +67,7 @@ let encode_base128 buf n =
          if i < len-1 then Char.chr(k lor 128) else Char.chr k
       )
       l in
-  List.iter (Buffer.add_char buf) l
+  List.iter (Netbuffer.add_char buf) l
 
 
 let rec encode_ber_contents buf v =
@@ -75,16 +75,16 @@ let rec encode_ber_contents buf v =
     | Value.Null ->
          Value.Primitive
     | Value.Bool b ->
-         Buffer.add_char buf (if b then '\xff' else '\x00');
+         Netbuffer.add_char buf (if b then '\xff' else '\x00');
          Value.Primitive
     | Value.Integer n 
     | Value.Enum n ->
          let s = Value.get_int_repr n in
-         Buffer.add_string buf s;
+         Netbuffer.add_string buf s;
          Value.Primitive
     | Value.Real n ->
          let s = Value.get_real_repr n in
-         Buffer.add_string buf s;
+         Netbuffer.add_string buf s;
          Value.Primitive
     | Value.OID oid ->
          if Array.length oid <= 2 then
@@ -117,23 +117,23 @@ let rec encode_ber_contents buf v =
     | Value.UniversalString s
     | Value.CharString s
     | Value.BMPString s ->
-         Buffer.add_string buf s;
+         Netbuffer.add_string buf s;
          Value.Primitive
     | Value.UTCTime t ->
          if Value.get_time_subtype t <> `U then
            encode_error "wrong time format for UTCTime";
          let s = Value.get_time_repr  t in
-         Buffer.add_string buf s;
+         Netbuffer.add_string buf s;
          Value.Primitive
     | Value.GeneralizedTime t ->
          if Value.get_time_subtype t <> `G then
            encode_error "wrong time format for GeneralizedTime";
          let s = Value.get_time_repr  t in
-         Buffer.add_string buf s;
+         Netbuffer.add_string buf s;
          Value.Primitive
     | Value.Bitstring bs ->
          let s = Value.get_bitstring_repr bs in
-         Buffer.add_string buf s;
+         Netbuffer.add_string buf s;
          Value.Primitive
     | Value.Seq vals
     | Value.Set vals
@@ -149,14 +149,15 @@ let rec encode_ber_contents buf v =
          encode_ber_contents buf v
     | Value.Tag(_,_,_,v) ->
          encode_ber buf v
-    | Value.Tagptr(_,_,pc,s,pos,len) ->
-         Buffer.add_substring buf s pos len;
+    | Value.Tagptr(_,_,pc,box,pos,len) ->
+         let Netstring_tstring.Tstring_polybox(ops,s) = box in
+         Netbuffer.add_subtstring_poly buf ops s pos len;
          pc
 
   and encode_ber buf v =
-    let buf' = Buffer.create 80 in
+    let buf' = Netbuffer.create 80 in
     let pc = encode_ber_contents buf' v in
-    let length = Buffer.length buf' in
+    let length = Netbuffer.length buf' in
     let tc, tag = tag_of_value v in
     let tc_bits =
       match tc with
@@ -171,20 +172,20 @@ let rec encode_ber_contents buf v =
     let octet0 =
       (tc_bits lsl 6) lor (pc_bit lsl 5) lor
         (if tag <= 30 then tag else 31) in
-    Buffer.add_char buf (Char.chr octet0);
+    Netbuffer.add_char buf (Char.chr octet0);
     if tag > 30 then
       encode_base128 buf tag;
     if length < 128 then
-      Buffer.add_char buf (Char.chr length)
+      Netbuffer.add_char buf (Char.chr length)
     else (
       if length <= 0xff then (
-        Buffer.add_char buf '\x81';
-        Buffer.add_char buf (Char.chr length);
+        Netbuffer.add_char buf '\x81';
+        Netbuffer.add_char buf (Char.chr length);
       )
       else if length <= 0xffff then (
-        Buffer.add_char buf '\x82';
-        Buffer.add_char buf (Char.chr (length lsl 8));
-        Buffer.add_char buf (Char.chr (length land 0xff));
+        Netbuffer.add_char buf '\x82';
+        Netbuffer.add_char buf (Char.chr (length lsl 8));
+        Netbuffer.add_char buf (Char.chr (length land 0xff));
       )
       else (
         let i = Value.int length in
@@ -195,10 +196,10 @@ let rec encode_ber_contents buf v =
             String.sub s0 1 (String.length s0 - 1)
           else
             s0 in
-        Buffer.add_char buf (Char.chr (0x80 + String.length s1));
-        Buffer.add_string buf s1;
+        Netbuffer.add_char buf (Char.chr (0x80 + String.length s1));
+        Netbuffer.add_string buf s1;
       )
     );
-    Buffer.add_buffer buf buf';
+    Netbuffer.add_buffer buf buf';
     pc
 

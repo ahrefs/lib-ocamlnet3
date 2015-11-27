@@ -194,6 +194,14 @@ let add_subtstring b ts k l =
 let add_tstring b ts =
   add_subtstring b ts 0 (Netsys_impl_util.tstring_length ts)
 
+let add_subtstring_poly b ops s k l =
+  let open Netstring_tstring in
+  add_internal ops.blit_to_bytes b s k l
+
+let add_tstring_poly b ops s =
+  let open Netstring_tstring in
+  add_subtstring_poly b ops s 0 (ops.length s)
+
 let add_buffer b1 b2 =
   add_internal Bytes.blit b1 b2.buffer 0 b2.length
 

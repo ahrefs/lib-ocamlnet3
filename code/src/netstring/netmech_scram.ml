@@ -623,12 +623,12 @@ let hmac_mstrings h key ms_list =
   Netsys_digests.digest_mstrings dg ms_list
 
 let int_s i =
-  let s = String.make 4 '\000' in
-  s.[0] <- Char.chr ((i lsr 24) land 0xff);
-  s.[1] <- Char.chr ((i lsr 16) land 0xff);
-  s.[2] <- Char.chr ((i lsr 8) land 0xff);
-  s.[3] <- Char.chr (i land 0xff);
-  s
+  let s = Bytes.make 4 '\000' in
+  Bytes.set s 0 (Char.chr ((i lsr 24) land 0xff));
+  Bytes.set s 1 (Char.chr ((i lsr 16) land 0xff));
+  Bytes.set s 2 (Char.chr ((i lsr 8) land 0xff));
+  Bytes.set s 3 (Char.chr (i land 0xff));
+  Bytes.unsafe_to_string s
 
 let hi h str salt i =
   let rec uk k =
@@ -654,9 +654,9 @@ let lsb128 s =
 
 
 let create_random() =
-  let s = String.make 16 ' ' in
+  let s = Bytes.make 16 ' ' in
   Netsys_rng.fill_random s;
-  Digest.to_hex s
+  Digest.to_hex (Bytes.to_string s)
 
 
 let create_nonce() =
@@ -1533,8 +1533,9 @@ module Cryptosystem = struct
 
   let encrypt_and_sign s_keys message =
     let c_bytes = C.c/8 in
-    let conf = String.make c_bytes '\000' in
-    Netsys_rng.fill_random conf;
+    let confbuf = Bytes.make c_bytes '\000' in
+    Netsys_rng.fill_random confbuf;
+    let conf = Bytes.to_string confbuf in
     let l = String.length message in
     let p = (l + c_bytes) mod (identity C.m) in
       (* Due to a bug in the ARM code generator, avoid "... mod 1" *)
@@ -1547,8 +1548,9 @@ module Cryptosystem = struct
 
   let encrypt_and_sign_mstrings s_keys message =
     let c_bytes = C.c/8 in
-    let conf = String.make c_bytes '\000' in
-    Netsys_rng.fill_random conf;
+    let confbuf = Bytes.make c_bytes '\000' in
+    Netsys_rng.fill_random confbuf;
+    let conf = Bytes.to_string confbuf in
     let l = Netxdr_mstring.length_mstrings message in
     let p = (l + c_bytes) mod C.m in
     let pad = 

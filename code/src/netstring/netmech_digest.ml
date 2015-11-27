@@ -78,9 +78,9 @@ type server_session =
     }
 
 let create_nonce() =
-  let nonce_data = String.create 16 in
+  let nonce_data = Bytes.create 16 in
   Netsys_rng.fill_random nonce_data;
-  Netencoding.to_hex nonce_data
+  Netencoding.to_hex (Bytes.to_string nonce_data)
                      
 let hash iana_name =
   if iana_name = `MD5 then

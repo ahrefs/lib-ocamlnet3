@@ -4,6 +4,8 @@
 
 (** See below for a little intro into ASN.1: {!Netasn1.intro} *)
 
+open Netsys_types
+
 exception Out_of_range
 exception Parse_error of int (** Byte position in string *)
 exception Header_too_short
@@ -63,7 +65,8 @@ module Value : sig
         (** Sequences (records or arrays) (constructed) *)
     | Set of value list
         (** Sets (constructed) *)
-    | Tagptr of tag_class * int * pc * string * int * int
+    | Tagptr of tag_class * int * pc * Netstring_tstring.tstring_polybox *
+                  int * int
         (** Pointer to an undecoded value that was implicitly tagged *)
     | Tag of tag_class * int * pc * value
         (** Explicit tag (primitive or constructed depending on inner value) *)
@@ -257,6 +260,21 @@ val decode_ber :
          [GeneralizedTime]).
    *)
 
+val decode_ber_tstring :
+      ?pos:int ->
+      ?len:int ->
+      tstring ->
+        int * Value.value
+  (** Same for tagged strings *)
+
+val decode_ber_poly :
+      ?pos:int ->
+      ?len:int ->
+      's Netstring_tstring.tstring_ops ->
+      's ->
+        int * Value.value
+  (** polymorphic version *)
+
 val decode_ber_contents :
       ?pos:int ->
       ?len:int ->
@@ -292,12 +310,39 @@ val decode_ber_contents :
       explicit, so the decode cannot do by itself the right thing here.
    *)
 
+val decode_ber_contents_tstring :
+      ?pos:int ->
+      ?len:int ->
+      ?indefinite:bool ->
+      tstring ->
+      Value.pc ->
+      Type_name.type_name ->
+        int * Value.value
+  (** Same for tagged strings *)
       
+val decode_ber_contents_poly :
+      ?pos:int ->
+      ?len:int ->
+      ?indefinite:bool ->
+      's Netstring_tstring.tstring_ops ->
+      's ->
+      Value.pc ->
+      Type_name.type_name ->
+        int * Value.value
+  (** Polymorphic version *)
+
 val decode_ber_length : ?pos:int -> ?len:int -> string -> int
   (** Like [decode_ber], but returns only the length.
 
       This function skips many consistency checks.
    *)
+
+val decode_ber_length_tstring : ?pos:int -> ?len:int -> tstring -> int
+  (** Same for tagged strings *)
+
+val decode_ber_length_poly : ?pos:int -> ?len:int -> 
+                             's Netstring_tstring.tstring_ops -> 's -> int
+  (** Polymorphic version *)
 
 val decode_ber_header : ?pos:int -> ?len:int -> ?skip_length_check:bool ->
                         string -> 
@@ -318,6 +363,17 @@ val decode_ber_header : ?pos:int -> ?len:int -> ?skip_length_check:bool ->
       [Header_too_short] is raised (instead of [Parse_error]).
    *)
 
+val decode_ber_header_tstring
+    : ?pos:int -> ?len:int -> ?skip_length_check:bool ->
+      tstring -> 
+      (int * Value.tag_class * Value.pc * int * int option)
+  (** Same for tagged strings *)
+
+val decode_ber_header_poly
+    : ?pos:int -> ?len:int -> ?skip_length_check:bool ->
+      's Netstring_tstring.tstring_ops -> 's ->
+      (int * Value.tag_class * Value.pc * int * int option)
+  (** Polymorphic version *)
 
 (** {1:intro The Abstract Syntax Notation 1 (ASN.1)}
 

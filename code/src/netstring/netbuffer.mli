@@ -79,6 +79,9 @@ val add_bytes : t -> Bytes.t -> unit
 val add_tstring : t -> tstring -> unit
     (** Same for tagged string *)
 
+val add_tstring_poly : t -> 's Netstring_tstring.tstring_ops -> 's -> unit
+    (** Polymorphic version *)
+
 val add_substring : t -> string -> int -> int -> unit
     (** [add_substring nb s k n]: Adds the substring of [s] starting at position
      * [k] with length [n] to the logical end of the netbuffer [nb]. If necessary,
@@ -102,6 +105,10 @@ val add_submemory : t -> Netsys_mem.memory -> int -> int -> unit
 
 val add_sub_memory : t -> Netsys_mem.memory -> int -> int -> unit
   DEPRECATED("Use add_submemory instead.")
+
+val add_subtstring_poly : t -> 's Netstring_tstring.tstring_ops -> 's ->
+                          int -> int -> unit
+    (** Polymorphic version *)
 
 val add_char : t -> char -> unit
     (** [add_char nb c]: Adds a single char at the end of the buffer *)

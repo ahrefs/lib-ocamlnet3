@@ -49,7 +49,8 @@ module Value = struct
     | Null
     | Seq of value list
     | Set of value list
-    | Tagptr of tag_class * int * pc * string * int * int
+    | Tagptr of tag_class * int * pc * Netstring_tstring.tstring_polybox *
+                  int * int
     | Tag of tag_class * int * pc * value
     | ITag of tag_class * int * value
     | OID of int array
@@ -83,6 +84,7 @@ module Value = struct
   type time_subtype = [ `U | `G ]
 
   let rec equal v1 v2 =
+    let open Netstring_tstring in
     match (v1, v2) with
       | (Seq s1, Seq s2) ->
            List.length s1 = List.length s2 &&
@@ -93,9 +95,11 @@ module Value = struct
              List.for_all2 equal s1 s2
       | (Tag(c1,t1,pc1,sub1), Tag(c2,t2,pc2,sub2)) ->
            c1=c2 && t1=t2 && pc1=pc2 && equal sub1 sub2
-      | (Tagptr(c1,t1,pc1,s1,pos1,len1), Tagptr(c2,t2,pc2,s2,pos2,len2)) ->
-           c1=c2 && t1=t2 && pc1=pc2 && 
-             String.sub s1 pos1 len1 = String.sub s2 pos2 len2
+      | (Tagptr(c1,t1,pc1,box1,pos1,len1), Tagptr(c2,t2,pc2,box2,pos2,len2)) ->
+          let Tstring_polybox(ops1,s1) = box1 in
+          let Tstring_polybox(ops2,s2) = box2 in
+          c1=c2 && t1=t2 && pc1=pc2 && 
+            ops1.substring s1 pos1 len1 = ops2.substring s2 pos2 len2
       | (External s1, External s2) ->
            List.length s1 = List.length s2 &&
              List.for_all2 equal s1 s2
@@ -179,11 +183,11 @@ module Value = struct
 
   let intstr a =
     let l = Array.length a in
-    let s = String.make l '\x00' in
+    let s = Bytes.make l '\x00' in
     for k = 0 to l-1 do
-      s.[k] <- Char.chr a.(k)
+      Bytes.set s k (Char.chr a.(k))
     done;
-    s
+    Bytes.unsafe_to_string s
 
   let int64 n =
     intstr(int64_a n)
@@ -515,20 +519,22 @@ let decode_rel_oid s =
 
 
 
-let decode_region ?(pos=0) ?len s =
+let decode_region_poly ?(pos=0) ?len ops s =
+  let open Netstring_tstring in
   let pos_end =
     match len with
-      | None -> String.length s
+      | None -> ops.length s
       | Some n -> pos+n in
   (pos, pos_end)
 
 
-let decode_ber_header ?pos ?len ?(skip_length_check=false) s =
-  let pos, pos_end = decode_region ?pos ?len s in
+let decode_ber_header_poly ?pos ?len ?(skip_length_check=false) ops s =
+  let open Netstring_tstring in
+  let pos, pos_end = decode_region_poly ?pos ?len ops s in
   let cur = ref pos in
   let next() =
     if !cur < pos_end then (
-      let c = Char.code s.[!cur] in
+      let c = Char.code (ops.get s !cur) in
       incr cur;
       c
     )
@@ -591,11 +597,12 @@ let decode_ber_header ?pos ?len ?(skip_length_check=false) s =
   (hdr_len, tc, pc, tag, length_opt)
 
 
-let rec decode_ber_length ?pos ?len s =
-  let pos, pos_end = decode_region ?pos ?len s in
+let rec decode_ber_length_poly ?pos ?len ops s =
+  let open Netstring_tstring in
+  let pos, pos_end = decode_region_poly ?pos ?len ops s in
   let (hdr_len, tc, pc, tag, length_opt) =
     try
-      decode_ber_header ~pos ~len:(pos_end - pos) s
+      decode_ber_header_poly ~pos ~len:(pos_end - pos) ops s
     with
       | Header_too_short -> raise(Parse_error pos_end) in
   match length_opt with
@@ -605,31 +612,34 @@ let rec decode_ber_length ?pos ?len s =
         let cur = ref (pos + hdr_len) in
         let at_end_marker() =
           !cur+2 <= pos_end && 
-            s.[ !cur ] = '\000' && s.[ !cur+1 ] = '\000' in
+            ops.get s !cur = '\000' && ops.get s (!cur+1) = '\000' in
         while not (at_end_marker()) do
           assert(!cur < pos_end);
-          let n = decode_ber_length ~pos:!cur ~len:(pos_end - !cur) s in
+          let n =
+            decode_ber_length_poly ~pos:!cur ~len:(pos_end - !cur) ops s in
           cur := !cur + n;
         done;
         (!cur - pos) + 2
 
 
-let rec decode_homo_construction f pos pos_end indefinite expected_tag s =
+let rec decode_homo_construction_poly f pos pos_end indefinite expected_tag
+                                      ops s =
   (* A construction where the primitives have all the same tag. The
      depth is arbitrary. [f] is called for every found primitive.
    *)
+  let open Netstring_tstring in
   let cur = ref pos in
   let at_end() =
     if indefinite then
       !cur+2 <= pos_end && 
-        s.[ !cur ] = '\000' && s.[ !cur+1 ] = '\000'
+        ops.get s !cur = '\000' && ops.get s (!cur+1) = '\000'
     else
       !cur = pos_end in
   while not (at_end()) do
     assert(!cur < pos_end);
     let (hdr_len, tc, pc, tag, length_opt) =
       try
-        decode_ber_header ~pos:!cur ~len:(pos_end - !cur) s
+        decode_ber_header_poly ~pos:!cur ~len:(pos_end - !cur) ops s
       with
         | Header_too_short -> raise (Parse_error pos_end) in
     if tc <> Value.Universal then raise (Parse_error !cur);
@@ -648,9 +658,9 @@ let rec decode_homo_construction f pos pos_end indefinite expected_tag s =
                 | None -> pos_end
                 | Some n -> !cur + hdr_len + n in
             let real_n =
-              decode_homo_construction
+              decode_homo_construction_poly
                 f (!cur + hdr_len) sub_pos_end
-                (length_opt = None) expected_tag s in
+                (length_opt = None) expected_tag ops s in
             ( match length_opt with
                 | None -> ()
                 | Some n -> if n <> real_n then raise (Parse_error !cur)
@@ -663,11 +673,11 @@ let rec decode_homo_construction f pos pos_end indefinite expected_tag s =
   !cur - pos
 
 
-let rec decode_ber ?pos ?len s =
-  let pos, pos_end = decode_region ?pos ?len s in
+let rec decode_ber_poly ?pos ?len ops s =
+  let pos, pos_end = decode_region_poly ?pos ?len ops s in
   let (hdr_len, tc, pc, tag, length_opt) =
     try
-      decode_ber_header ~pos ~len:(pos_end - pos) s
+      decode_ber_header_poly ~pos ~len:(pos_end - pos) ops s
     with
       | Header_too_short -> raise (Parse_error pos_end) in
   match tc with
@@ -681,11 +691,11 @@ let rec decode_ber ?pos ?len s =
             | None -> pos_end - cur
             | Some n -> n in
         let content_len, value =
-          decode_ber_contents
+          decode_ber_contents_poly
             ~pos:cur
             ~len
             ~indefinite:(length_opt = None)
-            s pc ty_name in
+            ops s pc ty_name in
         ( match length_opt with
             | None -> ()
             | Some n ->
@@ -696,15 +706,18 @@ let rec decode_ber ?pos ?len s =
         let content_len =
           match length_opt with
             | None -> 
-                decode_ber_length ~pos ~len:(pos_end - pos) s - hdr_len - 2
+                (decode_ber_length_poly
+                  ~pos ~len:(pos_end - pos) ops s) - hdr_len - 2
             | Some n -> n in
+        let box = Netstring_tstring.Tstring_polybox(ops,s) in
         let value =
-          Value.Tagptr(tc, tag, pc, s, pos+hdr_len, content_len) in
+          Value.Tagptr(tc, tag, pc, box, pos+hdr_len, content_len) in
         (content_len + hdr_len, value)
 
 
-and decode_ber_contents ?pos ?len ?(indefinite=false) s pc ty =
-  let pos, pos_end = decode_region ?pos ?len s in
+and decode_ber_contents_poly ?pos ?len ?(indefinite=false) ops s pc ty =
+  let open Netstring_tstring in
+  let pos, pos_end = decode_region_poly ?pos ?len ops s in
   let len = pos_end - pos in
   if indefinite && pc=Value.Primitive then
     invalid_arg "Netasn1.decode_ber_contents: only constructed values \
@@ -717,31 +730,31 @@ and decode_ber_contents ?pos ?len ?(indefinite=false) s pc ty =
     | Type_name.Bool ->
         if pc <> Value.Primitive then raise(Parse_error pos);
         if len=0 then raise(Parse_error pos);
-        let v = Value.Bool( s.[pos] <> '\000' ) in
+        let v = Value.Bool( ops.get s pos <> '\000' ) in
         (1, v)
     | Type_name.Integer ->
         if pc <> Value.Primitive then raise(Parse_error pos);
         if len=0 then raise(Parse_error pos);
-        let u = String.sub s pos len in
+        let u = ops.substring s pos len in
         (* FIXME: value check *)
         let v = Value.Integer u in
         (len, v)
     | Type_name.Enum ->
         if pc <> Value.Primitive then raise(Parse_error pos);
         if len=0 then raise(Parse_error pos);
-        let u = String.sub s pos len in
+        let u = ops.substring s pos len in
         (* FIXME: value check *)
         let v = Value.Enum u in
         (len, v)
     | Type_name.Real ->
         if pc <> Value.Primitive then raise(Parse_error pos);
-        let u = String.sub s pos len in
+        let u = ops.substring s pos len in
         (* FIXME: value check *)
         let v = Value.Real u in
         (len, v)
     | Type_name.OID ->
         if pc <> Value.Primitive then raise(Parse_error pos);
-        let u = String.sub s pos len in
+        let u = ops.substring s pos len in
         let r = 
           try decode_rel_oid u
           with Not_found -> raise(Parse_error pos) in
@@ -754,140 +767,216 @@ and decode_ber_contents ?pos ?len ?(indefinite=false) s pc ty =
         (len, v)
     | Type_name.ROID ->
         if pc <> Value.Primitive then raise(Parse_error pos);
-        let u = String.sub s pos len in
+        let u = ops.substring s pos len in
         let r = 
           try decode_rel_oid u
           with Not_found -> raise(Parse_error pos) in
         let v = Value.ROID r in
         (len, v)
     | Type_name.Octetstring ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.Octetstring octets)
     | Type_name.ObjectDescriptor ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.ObjectDescriptor octets)
     | Type_name.UTF8String ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.UTF8String octets)
     | Type_name.NumericString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.NumericString octets)
     | Type_name.PrintableString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.PrintableString octets)
     | Type_name.TeletexString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.TeletexString octets)
     | Type_name.VideotexString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.VideotexString octets)
     | Type_name.IA5String ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.IA5String octets)
     | Type_name.GraphicString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.GraphicString octets)
     | Type_name.VisibleString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.VisibleString octets)
     | Type_name.GeneralString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.GeneralString octets)
     | Type_name.UniversalString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.UniversalString octets)
     | Type_name.CharString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.CharString octets)
     | Type_name.BMPString ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.BMPString octets)
     | Type_name.UTCTime ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.UTCTime (Value.U octets))
     | Type_name.GeneralizedTime ->
-        let (len, octets) = decode_ber_octets pos pos_end indefinite s pc in
+        let (len, octets) =
+          decode_ber_octets_poly pos pos_end indefinite ops s pc in
         (len, Value.GeneralizedTime (Value.G octets))
     | Type_name.Bitstring ->
-        let (len, bitstring) = decode_ber_bits pos pos_end indefinite s pc in
+        let (len, bitstring) =
+          decode_ber_bits_poly pos pos_end indefinite ops s pc in
         (len, Value.Bitstring bitstring)
     | Type_name.Seq ->
         if pc <> Value.Constructed then raise(Parse_error pos);
-        let (len, list) = decode_list_construction pos pos_end indefinite s in
+        let (len, list) =
+          decode_list_construction_poly pos pos_end indefinite ops s in
         (len, Value.Seq list)
     | Type_name.Set ->
         if pc <> Value.Constructed then raise(Parse_error pos);
-        let (len, list) = decode_list_construction pos pos_end indefinite s in
+        let (len, list) =
+          decode_list_construction_poly pos pos_end indefinite ops s in
         (len, Value.Set list)
     | Type_name.External ->
         if pc <> Value.Constructed then raise(Parse_error pos);
-        let (len, list) = decode_list_construction pos pos_end indefinite s in
+        let (len, list) =
+          decode_list_construction_poly pos pos_end indefinite ops s in
         (len, Value.External list)
     | Type_name.Embedded_PDV ->
         if pc <> Value.Constructed then raise(Parse_error pos);
-        let (len, list) = decode_list_construction pos pos_end indefinite s in
+        let (len, list) =
+          decode_list_construction_poly pos pos_end indefinite ops s in
         (len, Value.Embedded_PDV list)
 
 
         
-and decode_ber_octets pos pos_end indefinite s pc =
+and decode_ber_octets_poly pos pos_end indefinite ops s pc =
+  let open Netstring_tstring in
   let len = pos_end - pos in
   match pc with
     | Value.Primitive ->
-        (len, String.sub s pos len)
+        (len, ops.substring s pos len)
     | Value.Constructed ->
-        let buf = Buffer.create 500 in
+        let buf = Netbuffer.create 500 in
         let f p l =
-          Buffer.add_substring buf s p l in
+          Netbuffer.add_subtstring_poly buf ops s p l in
         let n =
-          decode_homo_construction
-            f pos pos_end indefinite 4 s in
-        (n, Buffer.contents buf)
+          decode_homo_construction_poly
+            f pos pos_end indefinite 4 ops s in
+        (n, Netbuffer.contents buf)
 
-and decode_ber_bits pos pos_end indefinite s pc =
+and decode_ber_bits_poly pos pos_end indefinite ops s pc =
+  let open Netstring_tstring in
   let len = pos_end - pos in
   match pc with
     | Value.Primitive ->
         if len = 0 then raise(Parse_error pos);
-        let c0 = s.[pos] in
+        let c0 = ops.get s pos in
         if c0 >= '\008' || (len = 1 && c0 <> '\000') then
           raise(Parse_error pos);
-        (len, String.sub s pos len)
+        (len, ops.substring s pos len)
     | Value.Constructed ->
         let c0_prev = ref '\000' in
-        let buf = Buffer.create 500 in
-        Buffer.add_char buf '\000';
+        let buf = Netbuffer.create 500 in
+        Netbuffer.add_char buf '\000';
         let f p l =
           if !c0_prev <> '\000' then raise(Parse_error pos);
           if l = 0 then raise(Parse_error pos);
-          let c0 = s.[p] in
+          let c0 = ops.get s p in
           if c0 >= '\008' || (l = 1 && c0 <> '\000') then
             raise(Parse_error pos);
           c0_prev := c0;
-          Buffer.add_substring buf s (p+1) (l-1) in
+          Netbuffer.add_subtstring_poly buf ops s (p+1) (l-1) in
         let n =
-          decode_homo_construction
-            f pos pos_end indefinite 3 s in
-        let bitstring = Buffer.contents buf in
-        bitstring.[0] <- !c0_prev;
-        (n, bitstring)
+          decode_homo_construction_poly
+            f pos pos_end indefinite 3 ops s in
+        let bitstring = Netbuffer.to_bytes buf in
+        Bytes.set bitstring 0 !c0_prev;
+        (n, Bytes.unsafe_to_string bitstring)
 
-and decode_list_construction pos pos_end indefinite s =
+and decode_list_construction_poly pos pos_end indefinite ops s =
+  let open Netstring_tstring in
   let acc = ref [] in
   let cur = ref pos in
   let at_end() =
     if indefinite then
       !cur+2 <= pos_end && 
-        s.[ !cur ] = '\000' && s.[ !cur+1 ] = '\000'
+        ops.get s !cur = '\000' && ops.get s (!cur+1) = '\000'
     else
       !cur = pos_end in
   while not(at_end()) do
     assert(!cur < pos_end);
     let (ber_len, value) =
-      decode_ber ~pos:!cur ~len:(pos_end - !cur) s in
+      decode_ber_poly ~pos:!cur ~len:(pos_end - !cur) ops s in
     acc := value :: !acc;
     cur := !cur + ber_len;
   done;
   if indefinite then cur := !cur + 2;
   if not indefinite && !cur <> pos_end then raise (Parse_error !cur);
   (!cur - pos, List.rev !acc)
+
+
+let decode_ber ?pos ?len s =
+  decode_ber_poly ?pos ?len Netstring_tstring.string_ops s
+
+let decode_ber_tstring ?pos ?len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           decode_ber_poly ?pos ?len ops s
+        )
+    }
+    ts
+
+let decode_ber_contents ?pos ?len ?indefinite s v ty =
+  let ops = Netstring_tstring.string_ops in
+  decode_ber_contents_poly ?pos ?len ?indefinite ops s v ty
+
+let decode_ber_contents_tstring ?pos ?len ?indefinite ts v ty =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           decode_ber_contents_poly ?pos ?len ?indefinite ops s v ty
+        )
+    }
+    ts
+
+let decode_ber_length ?pos ?len s =
+  let ops = Netstring_tstring.string_ops in
+  decode_ber_length_poly ?pos ?len ops s
+
+let decode_ber_length_tstring ?pos ?len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           decode_ber_length_poly ?pos ?len ops s
+        )
+    }
+    ts
+
+let decode_ber_header ?pos ?len ?skip_length_check s =
+  let ops = Netstring_tstring.string_ops in
+  decode_ber_header_poly ?pos ?len ?skip_length_check ops s
+
+let decode_ber_header_tstring ?pos ?len ?skip_length_check ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           decode_ber_header_poly ?pos ?len ?skip_length_check ops s
+        )
+    }
+    ts

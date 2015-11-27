@@ -43,9 +43,9 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     let req_mutual =
       try List.assoc "mutual" params = "true" with Not_found -> false in
     (* Ignore "secure" *)
-    let r = String.create 16 in
+    let r = Bytes.create 16 in
     Netsys_rng.fill_random r;
-    let c1 = Netencoding.to_hex ~lc:true r in
+    let c1 = Netencoding.to_hex ~lc:true (Bytes.to_string r) in
     let c =
       match !next_challenge with
         | None -> c1

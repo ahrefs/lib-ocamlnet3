@@ -249,9 +249,10 @@ class x509_certificate_from_ASN1 asn1 =
     match tbs_cert_l0 with
       | Tag(Context, 0, Constructed, version_asn1) :: tbs_cert_l1 ->
            (Some version_asn1, tbs_cert_l1)
-      | Tagptr(Context, 0, Constructed, s, pos, len) :: tbs_cert_l1 ->
+      | Tagptr(Context, 0, Constructed, box, pos, len) :: tbs_cert_l1 ->
+           let Netstring_tstring.Tstring_polybox(ops,s) = box in
            let (k, version_asn1) =
-             Netasn1.decode_ber ~pos ~len s in
+             Netasn1.decode_ber_poly ~pos ~len ops s in
            if k <> len then fail();
            (Some version_asn1, tbs_cert_l1)
       | _ ->
@@ -315,10 +316,11 @@ class x509_certificate_from_ASN1 asn1 =
   let issuer_uqid_asn1, tbs_cert_l3 =
     (* implicitly tagged *)
     match tbs_cert_l2 with
-      | Tagptr(Context, 1, Primitive, s, pos, len) :: tbs_cert_l3 ->
+      | Tagptr(Context, 1, Primitive, box, pos, len) :: tbs_cert_l3 ->
+           let Netstring_tstring.Tstring_polybox(ops, s) = box in
            let n, issuer_uqid_asn1 =
-             Netasn1.decode_ber_contents
-               ~pos ~len s Primitive Netasn1.Type_name.Bitstring in
+             Netasn1.decode_ber_contents_poly
+               ~pos ~len ops s Primitive Netasn1.Type_name.Bitstring in
            if n <> len then fail();
            (Some issuer_uqid_asn1, tbs_cert_l3)
       | Tag(Context, 1, Primitive, issuer_uqid_asn1) :: tbs_cert_l3 ->
@@ -337,10 +339,11 @@ class x509_certificate_from_ASN1 asn1 =
   let subject_uqid_asn1, tbs_cert_l4 =
     (* implicitly tagged *)
     match tbs_cert_l3 with
-      | Tagptr(Context, 2, Primitive, s, pos, len) :: tbs_cert_l4 ->
+      | Tagptr(Context, 2, Primitive, box, pos, len) :: tbs_cert_l4 ->
+           let Netstring_tstring.Tstring_polybox(ops, s) = box in
            let n, subject_uqid_asn1 =
-             Netasn1.decode_ber_contents
-               ~pos ~len s Primitive Netasn1.Type_name.Bitstring in
+             Netasn1.decode_ber_contents_poly
+               ~pos ~len ops s Primitive Netasn1.Type_name.Bitstring in
            if n <> len then fail();
            (Some subject_uqid_asn1, tbs_cert_l4)
       | Tag(Context, 2, Primitive, subject_uqid_asn1) :: tbs_cert_l4 ->
@@ -361,9 +364,10 @@ class x509_certificate_from_ASN1 asn1 =
     match tbs_cert_l4 with
       | [ Tag(Context, 3, Constructed, exts_asn1) ] ->
            Some exts_asn1
-      | [ Tagptr(Context, 3, Constructed, s, pos, len) ] ->
+      | [ Tagptr(Context, 3, Constructed, box, pos, len) ] ->
+           let Netstring_tstring.Tstring_polybox(ops, s) = box in
            let (k, exts_asn1) =
-             Netasn1.decode_ber ~pos ~len s in
+             Netasn1.decode_ber_poly ~pos ~len ops s in
            if k <> len then fail();
            Some exts_asn1
       | [] ->
@@ -563,8 +567,9 @@ let directory_string_from_ASN1 v =
 let resolve_explicit_tag fail =
   function
   | Tag(_,_,_,v) -> v
-  | Tagptr(_,_,_,s,pos,len) -> 
-       let (k, inner) = Netasn1.decode_ber ~pos ~len s in
+  | Tagptr(_,_,_,box,pos,len) -> 
+       let Netstring_tstring.Tstring_polybox(ops, s) = box in
+       let (k, inner) = Netasn1.decode_ber_poly ~pos ~len ops s in
        if k <> len then fail();
        inner
   | _ -> assert false
@@ -572,8 +577,9 @@ let resolve_explicit_tag fail =
 let resolve_implicit_tag fail t =
   function
   | Tag(_,_,_,v) -> v
-  | Tagptr(_,_,pc,s,pos,len) -> 
-       let (k,inner) = Netasn1.decode_ber_contents ~pos ~len s pc t in
+  | Tagptr(_,_,pc,box,pos,len) -> 
+       let Netstring_tstring.Tstring_polybox(ops, s) = box in
+       let (k,inner) = Netasn1.decode_ber_contents_poly ~pos ~len ops s pc t in
        if k <> len then fail();
        inner
   | _ -> assert false
@@ -656,44 +662,48 @@ let general_name_from_ASN1 v : general_name =
 
   (* implicitly tagged except for directory strings *)
   match v with
-    | Tagptr(Context, 0, Primitive, s, pos, len) ->
+    | Tagptr(Context, 0, Primitive, box, pos, len) ->
          (* other_name *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.Seq in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.Seq in
          if k <> len then fail();
          parse_other_name w
  
    | Tag(Context, 0, Primitive, w) ->
          parse_other_name w
          
-    | Tagptr(Context, 1, Primitive, s, pos, len) ->
+    | Tagptr(Context, 1, Primitive, box, pos, len) ->
          (* rfc822_name *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.IA5String in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.IA5String in
          if k <> len then fail();
          parse_rfc822_name w
 
     | Tag(Context, 1, Primitive, w) ->
          parse_rfc822_name w
 
-    | Tagptr(Context, 2, Primitive, s, pos, len) ->
+    | Tagptr(Context, 2, Primitive, box, pos, len) ->
          (* dns_name *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.IA5String in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.IA5String in
          if k <> len then fail();
          parse_dns_name w
 
     | Tag(Context, 2, Primitive, w) ->
          parse_dns_name w
 
-    | Tagptr(Context, 3, Primitive, s, pos, len) ->
+    | Tagptr(Context, 3, Primitive, box, pos, len) ->
          (* x400_address *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.IA5String in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.IA5String in
          if k <> len then fail();
          `X400_address w
 
@@ -709,44 +719,48 @@ let general_name_from_ASN1 v : general_name =
          let w = resolve_explicit_tag fail tagged in
          `Directory_name(new x509_dn_from_ASN1 w)
 
-    | Tagptr(Context, 5, Primitive, s, pos, len) ->
+    | Tagptr(Context, 5, Primitive, box, pos, len) ->
          (* edi_party_name *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.Seq in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.Seq in
          if k <> len then fail();
          parse_edi_party_name w
 
     | Tag(Context, 5, Primitive, w) ->
          parse_edi_party_name w
 
-    | Tagptr(Context, 6, Primitive, s, pos, len) ->
+    | Tagptr(Context, 6, Primitive, box, pos, len) ->
          (* uniform_resource_identifier *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.IA5String in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.IA5String in
          if k <> len then fail();
          parse_url w
 
     | Tag(Context, 6, Primitive, w) ->
          parse_url w
 
-    | Tagptr(Context, 7, Primitive, s, pos, len) ->
+    | Tagptr(Context, 7, Primitive, box, pos, len) ->
          (* ip_address *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.Octetstring in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.Octetstring in
          if k <> len then fail();
          parse_ip_address w
 
     | Tag(Context, 7, Primitive, w) ->
          parse_ip_address w
 
-    | Tagptr(Context, 8, Primitive, s, pos, len) ->
+    | Tagptr(Context, 8, Primitive, box, pos, len) ->
          (* registered_id *)
+         let Netstring_tstring.Tstring_polybox(ops, s) = box in
          let k, w = 
-           Netasn1.decode_ber_contents ~pos ~len s Primitive 
-                                       Netasn1.Type_name.OID in
+           Netasn1.decode_ber_contents_poly ~pos ~len ops s Primitive 
+                                            Netasn1.Type_name.OID in
          if k <> len then fail();
          parse_registered_id w
 

@@ -287,16 +287,16 @@ let encode_seq_nr x =
   let n1 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 8)
                            0xffL) in
   let n0 = Int64.to_int (Int64.logand x 0xffL) in
-  let s = String.create 8 in
-  s.[0] <- Char.chr n7;
-  s.[1] <- Char.chr n6;
-  s.[2] <- Char.chr n5;
-  s.[3] <- Char.chr n4;
-  s.[4] <- Char.chr n3;
-  s.[5] <- Char.chr n2;
-  s.[6] <- Char.chr n1;
-  s.[7] <- Char.chr n0;
-  s
+  let s = Bytes.create 8 in
+  Bytes.set s 0 (Char.chr n7);
+  Bytes.set s 1 (Char.chr n6);
+  Bytes.set s 2 (Char.chr n5);
+  Bytes.set s 3 (Char.chr n4);
+  Bytes.set s 4 (Char.chr n3);
+  Bytes.set s 5 (Char.chr n2);
+  Bytes.set s 6 (Char.chr n1);
+  Bytes.set s 7 (Char.chr n0);
+  Bytes.unsafe_to_string s
 
 
 let decode_seq_nr s =

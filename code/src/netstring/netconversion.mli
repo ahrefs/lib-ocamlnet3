@@ -1639,8 +1639,14 @@ type poly_reader =
 val read_iso88591_ref :
   (int -> encoding -> poly_reader) ref
 
+val read_iso88591 :
+  int -> encoding -> poly_reader
+
 val read_utf8_ref :
   (bool -> poly_reader) ref
+
+val read_utf8 :
+  bool -> poly_reader
 
  (* The two read_* variables are initialised with default implementations.
   * They are overriden by Netaccel (if linked)
