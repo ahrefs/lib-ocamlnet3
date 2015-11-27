@@ -20,7 +20,7 @@ module KMP : sig
   val make_pattern : string -> pattern
     (* Prepares the passed pattern *)
 
-  val find_pattern : pattern -> ?pos:int -> ?len:int -> string -> int
+  val find_pattern : pattern -> ?pos:int -> ?len:int -> Bytes.t -> int
     (* Searches the position where the pattern or a prefix of the pattern
      * occurs in the substring from position [pos] to [pos+len-1]. 
      * Possible return values p:

@@ -12,6 +12,8 @@
     can often be accelerated by the OS ("zero copy network I/O").
  *)
 
+open Netsys_types
+
 type t
 
 val create : int -> t
@@ -29,26 +31,57 @@ val create : int -> t
 val contents : t -> string
   (** Returns the contents as string *)
 
+val to_bytes : t -> Bytes.t
+    (** Returns the contents of the buffer as fresh string. *)
+
+val to_tstring_poly : t -> 's Netstring_tstring.tstring_kind -> 's
+    (** Return the buffer in the format as selected by the arg *)
+
+val to_tstring : t -> _ Netstring_tstring.tstring_kind -> tstring
+    (** Returns the buffer as tagged string, selecting the chosen representation
+     *)
+
 val length : t -> int
   (** The length *)
 
 val sub : t -> int -> int -> string
   (** Returns a substring *)
 
-val blit_to_string : t -> int -> string -> int -> int -> unit
+val sub_bytes : t -> int -> int -> Bytes.t
+    (** Same for bytes *)
+
+val blit_to_bytes : t -> int -> Bytes.t -> int -> int -> unit
   (** Blits contents to a string *)
+
+val blit_to_string : t -> int -> Bytes.t -> int -> int -> unit
+  DEPRECATED("Use blit_to_bytes instead.")
 
 val blit_to_memory : t -> int -> Netsys_mem.memory -> int -> int -> unit
   (** Blits contents to another memory buffer *)
 
+val blit : t -> int -> Bytes.t -> int -> int -> unit
+    (** Compatibility name for [blit_to_bytes] *)
+
 val add_string : t -> string -> unit
   (** Adds a string to the end of the buffer *)
 
-val add_sub_string : t -> string -> int -> int -> unit
+val add_bytes : t -> Bytes.t -> unit
+    (** Same for bytes *)
+
+val add_tstring : t -> tstring -> unit
+    (** Same for tagged string *)
+
+val add_substring : t -> string -> int -> int -> unit
   (** Adds a sub string to the end of the buffer *)
 
-val add_sub_memory : t -> Netsys_mem.memory -> int -> int -> unit
+val add_sub_string : t -> string -> int -> int -> unit
+    DEPRECATED("Use add_substring instead.")
+
+val add_submemory : t -> Netsys_mem.memory -> int -> int -> unit
   (** Adds a sub memory buffer to the end of the buffer *)
+
+val add_sub_memory : t -> Netsys_mem.memory -> int -> int -> unit
+  DEPRECATED("Use add_submemory instead.")
 
 val add_inplace : t -> (Netsys_mem.memory -> int -> int -> int) -> int
   (** [add_inplace b f]: Calls [f m pos len] where [m] is the last page

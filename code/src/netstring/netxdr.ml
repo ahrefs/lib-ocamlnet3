@@ -181,8 +181,8 @@ type xdr_type_term =
   | X_rec of (string * xdr_type_term)      (* define a recursive type *)
   | X_refer of string                      (* refer to a recursive type *)
   | X_direct of xdr_type_term * 
-                (string -> int ref -> int -> exn) *
-                (exn -> string -> int ref -> unit) *
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
                 (exn -> int)
 ;;
 
@@ -230,8 +230,8 @@ and xdr_term =
   | T_rec of (string * xdr_type0)
   | T_refer of (string * xdr_type0)
   | T_direct of xdr_type0 * 
-                (string -> int ref -> int -> exn) *
-                (exn -> string -> int ref -> unit) *
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
                 (exn -> int)
 ;;
 
@@ -1151,7 +1151,7 @@ let are_compatible (s1:xdr_type) (s2:xdr_type) : bool =
  *)
 
 type encoder = Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
-type decoder = string -> int -> int -> (string * int)
+type decoder = Bytes.t -> int -> int -> (Bytes.t * int)
 
 
 let overflow() =
@@ -1344,9 +1344,9 @@ let print_string_padding l buf pos =
   let n = 4-(l land 3) in
   if n < 4 then begin
     let p = !pos in
-    if n >= 1 then String.unsafe_set buf p '\000';
-    if n >= 2 then String.unsafe_set buf (p + 1) '\000';
-    if n >= 3 then String.unsafe_set buf (p + 2) '\000';
+    if n >= 1 then Bytes.unsafe_set buf p '\000';
+    if n >= 2 then Bytes.unsafe_set buf (p + 1) '\000';
+    if n >= 3 then Bytes.unsafe_set buf (p + 2) '\000';
     pos := p + n
   end
 
@@ -1365,7 +1365,7 @@ let rec pack_mstring
      not include encoded parameters
    *)
 
-  let buf = String.create size in
+  let buf = Bytes.create size in
   let buf_start = ref 0 in
   let buf_pos = ref 0 in
 
@@ -1375,7 +1375,7 @@ let rec pack_mstring
   let save_buf() =
     if !buf_pos > !buf_start then (
       let x =
-	Netxdr_mstring.string_based_mstrings # create_from_string
+	Netxdr_mstring.string_based_mstrings # create_from_bytes
 	  buf !buf_start (!buf_pos - !buf_start) false in
       result := x :: !result;
       buf_start := !buf_pos
@@ -1383,7 +1383,7 @@ let rec pack_mstring
   in
 
   let print_string s l =
-    String.unsafe_blit s 0 buf !buf_pos l;
+    Bytes.blit_string s 0 buf !buf_pos l;  (* FIXME: unsafe_blit_string ? *)
     buf_pos := !buf_pos + l;
     print_string_padding l buf buf_pos
   in
@@ -1601,86 +1601,8 @@ let value_matches_type
 (* pack and unpack values                                             *)
 (**********************************************************************)
 
-let pack_xdr_value
-    ?(encode = [])
-    (v:xdr_value)
-    ((_,t):xdr_type)
-    (p:(string * xdr_type) list)
-    (print:string->unit)
-  : unit =
-
-  (* DEBUG *)
-  (* List.iter (fun pn -> prerr_endline ("param " ^ pn)) t.params; *)
-
-  if StringSet.for_all (fun n -> List.mem_assoc n p) t.params &&
-     List.for_all (fun (n,t') -> StringSet.is_empty (fst t').params) p then
-    try
-      let mstrings = 
-	pack_mstring v t
-	  (fun n -> List.assoc n p) 
-	  (fun n -> try Some(List.assoc n encode) with Not_found -> None) in
-      List.iter
-	(fun ms ->
-	   let (s,p) = ms#as_string in
-	   print (String.sub s p ms#length)
-	)
-	mstrings
-    with
-      | Dest_failure ->
-	  raise(Xdr_failure "Netxdr.pack_xdr_value [2]: XDR type mismatch")
-      | Netnumber.Cannot_represent _ ->
-	  raise(Xdr_failure "Netxdr.pack_xdr_value [3]: integer not representable")
-      | Netnumber.Out_of_range ->
-	  raise(Xdr_failure "Netxdr.pack_xdr_value [4]: index out of range")
-      | Failure s ->
-	  raise(Xdr_failure ("Netxdr.pack_xdr_value [5]: " ^ s))
-  else
-    raise(Xdr_failure "Netxdr.pack_xdr_value [1]")
-;;
-
-
-let pack_xdr_value_as_string
-    ?(rm = false)
-    ?(encode = [])
-    (v:xdr_value)
-    ((_,t):xdr_type)
-    (p:(string * xdr_type) list)
-  : string =
-
-  if StringSet.for_all (fun n -> List.mem_assoc n p) t.params &&
-     List.for_all (fun (n,t') -> StringSet.is_empty (fst t').params) p then
-    try
-      let mstrings0 = 
-	pack_mstring v t 
-	  (fun n -> List.assoc n p) 
-	  (fun n -> try Some(List.assoc n encode) with Not_found -> None) in
-      let rm_prefix =
-	if rm then
-	  let s = "\000\000\000\000" in
-	  [ Netxdr_mstring.string_based_mstrings # create_from_string s 0 4 false ]
-	else
-	  [] in
-      let mstrings = rm_prefix @ mstrings0 in
-      Netxdr_mstring.concat_mstrings mstrings
-    with
-      | Dest_failure ->
-(*let bt = Printexc.get_backtrace() in
-eprintf "Backtrace: %s\n" bt; *)
-	  raise(Xdr_failure
-		  "Netxdr.pack_xdr_value_as_string [2]: XDR type mismatch")
-      | Netnumber.Cannot_represent _ ->
-	  raise(Xdr_failure
-		  "Netxdr.pack_xdr_value_as_string [3]: integer not representable")
-      | Netnumber.Out_of_range ->
-	  raise(Xdr_failure
-		  "Netxdr.pack_xdr_value_as_string [4]: index out of range")
-      | Failure s ->
-	  raise(Xdr_failure ("Netxdr.pack_xdr_value_as_string [5]: " ^ s))
-  else
-    raise(Xdr_failure "Netxdr.pack_xdr_value_as_string [1]")
-;;
-
 let pack_xdr_value_as_mstrings
+    ?(rm = false)
     ?(encode = [])
     (v:xdr_value)
     ((_,t):xdr_type)
@@ -1690,9 +1612,17 @@ let pack_xdr_value_as_mstrings
   if StringSet.for_all (fun n -> List.mem_assoc n p) t.params &&
      List.for_all (fun (n,t') -> StringSet.is_empty (fst t').params) p then
     try
-      pack_mstring v t 
-	(fun n -> List.assoc n p)
-	(fun n -> try Some(List.assoc n encode) with Not_found -> None)
+      let mstrings0 = 
+        pack_mstring v t 
+	  (fun n -> List.assoc n p)
+	  (fun n -> try Some(List.assoc n encode) with Not_found -> None) in
+      let rm_prefix =
+	if rm then
+	  let s = "\000\000\000\000" in
+	  [ Netxdr_mstring.string_based_mstrings # create_from_string s 0 4 false ]
+	else
+	  [] in
+      rm_prefix @ mstrings0
     with
       | Dest_failure ->
 	  raise(Xdr_failure
@@ -1709,6 +1639,30 @@ let pack_xdr_value_as_mstrings
   else
     raise(Xdr_failure "Netxdr.pack_xdr_value_as_mstring [1]")
 ;;
+
+
+let pack_xdr_value_as_bytes ?rm ?encode v ty p =
+  let mstrings =
+    pack_xdr_value_as_mstrings ?rm ?encode v ty p in
+  Netxdr_mstring.concat_mstrings_bytes mstrings
+
+
+let pack_xdr_value_as_string ?rm ?encode v ty p =
+  let mstrings =
+    pack_xdr_value_as_mstrings ?rm ?encode v ty p in
+  Netxdr_mstring.concat_mstrings mstrings
+
+
+let pack_xdr_value ?encode v ty p print =
+  let mstrings =
+    pack_xdr_value_as_mstrings ?encode v ty p in
+  List.iter
+    (fun ms ->
+       let (s,p) = ms#as_bytes in
+       print (Bytes.sub s p ms#length)
+    )
+    mstrings
+
 
 (* "let rec" prevents that these functions are inlined. This is wanted here,
    because these are error cases, and for a function call less code
@@ -1762,10 +1716,10 @@ let read_string_fixed n str k k_end = (* exported *)
   let k0 = !k in
   let m = if n land 3 = 0 then n else n+4-(n land 3) in
   if k0 > k_end - m then raise_xdr_format_too_short ();
-  let s = String.create n in
-  String.unsafe_blit str k0 s 0 n;
+  let s = Bytes.create n in
+  Bytes.unsafe_blit str k0 s 0 n;
   k := k0 + m;
-  s
+  Bytes.unsafe_to_string s
 
 let read_string n str k k_end = (* exported *)
   let k0 = !k in
@@ -1778,7 +1732,8 @@ let read_string n str k k_end = (* exported *)
   read_string_fixed (int_of_uint4 m) str k k_end
   
 
-let empty_mf = Hashtbl.create 1
+let empty_mf = (Hashtbl.create 1 :
+                  (string, Netxdr_mstring.mstring_factory) Hashtbl.t)
 
 let rec unpack_term
     ?(pos = 0)
@@ -1787,7 +1742,7 @@ let rec unpack_term
     ?(prefix = false)
     ?(mstring_factories = empty_mf)
     ?(xv_version = if fast then `Ocamlrpcgen else `V1)
-    (str:string)
+    (str:Bytes.t)
     (t:xdr_type0)
     (get_param:string->xdr_type)
     (get_decoder:string->decoder option)
@@ -1806,11 +1761,11 @@ let rec unpack_term
 
   let len =
     match len with
-	None -> String.length str - pos
+	None -> Bytes.length str - pos
       | Some l -> l
   in
 
-  if pos < 0 || len < 0 || len > String.length str - pos then
+  if pos < 0 || len < 0 || len > Bytes.length str - pos then
     invalid_arg "Netxdr.unpack_xdr_value";
 
   let k_end = pos+len in
@@ -1866,7 +1821,7 @@ let rec unpack_term
     let m = int_of_uint4 m in
     let p = if m land 3 = 0 then m else m+4-(m land 3) in
     if !k > k_end - p then raise_xdr_format_too_short ();
-    let ms = factory # create_from_string str !k m false in
+    let ms = factory # create_from_bytes str !k m false in
     k := !k + p;
     ms
   in
@@ -2061,7 +2016,7 @@ let rec unpack_term
 
 let unpack_xdr_value
     ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?(decode=[])
-    (str:string)
+    (str:Bytes.t)
     ((_,t):xdr_type)
     (p:(string * xdr_type) list)
   : xdr_value =
@@ -2083,7 +2038,7 @@ let unpack_xdr_value
 
 let unpack_xdr_value_l
     ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?(decode=[])
-    (str:string)
+    (str:Bytes.t)
     ((_,t):xdr_type)
     (p:(string * xdr_type) list)
   : xdr_value * int =

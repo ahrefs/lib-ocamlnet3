@@ -9,7 +9,7 @@ object
   method blit_to_string :  int -> Bytes.t -> int -> int -> unit
   method blit_to_memory : int -> memory -> int -> int -> unit
   method as_bytes : Bytes.t * int
-  method as_string : Bytes.t * int
+  method as_string : string * int
   method as_memory : memory * int
   method preferred : [ `Memory | `Bytes ]
 end
@@ -22,15 +22,16 @@ let _ =
 class type mstring_factory =
 object
   method create_from_string : string -> int -> int -> bool -> mstring
+  method create_from_bytes : Bytes.t -> int -> int -> bool -> mstring
   method create_from_memory : memory -> int -> int -> bool -> mstring
 end
 
 type named_mstring_factories =
     (string, mstring_factory) Hashtbl.t
 
-let sbm s pos len : mstring =
-  if len < 0 || pos < 0 || pos > String.length s - len then
-    invalid_arg "Netxdr_mstring.sbm";
+let bbm s pos len : mstring =
+  if len < 0 || pos < 0 || pos > Bytes.length s - len then
+    invalid_arg "Netxdr_mstring.bbm";
   ( object(self)
       method length = len
       method blit_to_bytes mpos u upos l =
@@ -38,7 +39,7 @@ let sbm s pos len : mstring =
 	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	if mpos < 0 || mpos > len - l then
 	  invalid_arg "Netxdr_mstring#blit_to_bytes";
-	if upos < 0 || upos > String.length u - l then
+	if upos < 0 || upos > Bytes.length u - l then
 	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	Bytes.blit s (pos+mpos) u upos l
       method blit_to_string = self # blit_to_bytes
@@ -49,12 +50,12 @@ let sbm s pos len : mstring =
 	  invalid_arg "Netxdr_mstring#blit_to_memory";
 	if upos < 0 || upos > Bigarray.Array1.dim u - l then
 	  invalid_arg "Netxdr_mstring#blit_to_memory";
-	Netsys_mem.blit_string_to_memory s (pos+mpos) u upos l
-      method as_bytes = (s,pos)
-      method as_string = self#as_bytes
+	Netsys_mem.blit_bytes_to_memory s (pos+mpos) u upos l
+      method as_bytes = (s,pos) 
+      method as_string = (Bytes.sub_string s pos len,0)
       method as_memory =
 	let m = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
-	Netsys_mem.blit_string_to_memory s pos m 0 len;
+	Netsys_mem.blit_bytes_to_memory s pos m 0 len;
 	(m,0)
       method preferred = `Bytes
     end
@@ -71,7 +72,7 @@ let mbm m pos len : mstring =
 	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	if mpos < 0 || mpos > len - l then
 	  invalid_arg "Netxdr_mstring#blit_to_bytes";
-	if upos < 0 || upos > String.length u - l then
+	if upos < 0 || upos > Bytes.length u - l then
 	  invalid_arg "Netxdr_mstring#blit_to_bytes";
 	Netsys_mem.blit_memory_to_bytes m (pos+mpos) u upos l
       method blit_to_string = self # blit_to_bytes
@@ -90,42 +91,57 @@ let mbm m pos len : mstring =
 	Netsys_mem.blit_memory_to_bytes m pos s 0 len;
 	(s,0)
       method as_string =
-        self # as_bytes
+        let (b,p) = self # as_bytes in
+        (Bytes.unsafe_to_string b,p)
       method as_memory = (m,pos)
       method preferred = `Memory
     end
   )
 
 
-let string_based_mstrings : mstring_factory =
-  (* NOT YET PORTED TO BYTES *)
+let bytes_based_mstrings : mstring_factory =
   ( object
       method create_from_string s pos len must_copy =
-	if must_copy then
-	  let s' = String.sub s pos len in
-	  sbm s' 0 len
-	else
-	  sbm s pos len
+        let b = Bytes.create len in
+        Bytes.blit_string s pos b 0 len;
+	bbm b 0 len
+      method create_from_bytes s pos len must_copy =
+        if must_copy then
+          bbm (Bytes.sub s pos len) 0 len
+        else
+          bbm s pos len
       method create_from_memory m pos len must_copy =
-	let s = String.create len in
+	let s = Bytes.create len in
 	Netsys_mem.blit_memory_to_string m pos s 0 len;
-	sbm s 0 len
+	bbm s 0 len
     end
   )
+
+let string_based_mstrings =
+  bytes_based_mstrings
 
 
 let string_to_mstring ?(pos=0) ?len s =
   let s_len = String.length s in
   let len = match len with Some n -> n | None -> s_len - pos in
-  string_based_mstrings # create_from_string s pos len false
+  bytes_based_mstrings # create_from_string s pos len false
+
+
+let bytes_to_mstring ?(pos=0) ?len s =
+  let s_len = Bytes.length s in
+  let len = match len with Some n -> n | None -> s_len - pos in
+  bytes_based_mstrings # create_from_bytes s pos len false
 	  
 
 let memory_based_mstrings_1 create : mstring_factory =
-  (* NOT YET PORTED TO BYTES *)
   ( object
       method create_from_string s pos len must_copy =
 	let m = create len in
 	Netsys_mem.blit_string_to_memory s pos m 0 len;
+	mbm m 0 len
+      method create_from_bytes s pos len must_copy =
+	let m = create len in
+	Netsys_mem.blit_bytes_to_memory s pos m 0 len;
 	mbm m 0 len
       method create_from_memory m pos len must_copy =
 	if must_copy then (
@@ -169,26 +185,30 @@ let memory_pool_based_mstrings pool =
 let length_mstrings mstrings =
   List.fold_left (fun acc ms -> acc + ms#length) 0 mstrings
 
-let concat_mstrings (mstrings : mstring list) =
+let concat_mstrings_bytes (mstrings : mstring list) =
   match mstrings with
-    | [] -> ""
+    | [] -> Bytes.create 0
     | _ ->
 	let length = length_mstrings mstrings in
-	let s = String.create length in
+	let s = Bytes.create length in
 	let p = ref 0 in
 	List.iter
 	  (fun ms ->
 	     let l = ms#length in
-	     ms # blit_to_string 0 s !p l;
+	     ms # blit_to_bytes 0 s !p l;
 	     p := !p + l
 	  )
 	  mstrings;
 	s
 
-let prefix_mstrings mstrings n =
+let concat_mstrings mstrings =
+  Bytes.unsafe_to_string (concat_mstrings_bytes mstrings)
+
+
+let prefix_mstrings_bytes mstrings n =
   let length = length_mstrings mstrings in
   if n < 0 || n > length then failwith "prefix_mstrings";
-  let s = String.create n in
+  let s = Bytes.create n in
   let p = ref 0 in
   ( try
       List.iter
@@ -196,13 +216,16 @@ let prefix_mstrings mstrings n =
 	   if !p >= n then raise Exit;
 	   let l = ms#length in
 	   let l' = min l (n - !p) in
-	   ms # blit_to_string 0 s !p l';
+	   ms # blit_to_bytes 0 s !p l';
 	   p := !p + l'
 	)
 	mstrings
     with Exit -> ()
   );
   s
+
+let prefix_mstrings mstrings n =
+  Bytes.unsafe_to_string (prefix_mstrings_bytes mstrings n)
 
 let blit_mstrings_to_memory mstrings mem =
   let length = length_mstrings mstrings in
@@ -237,7 +260,9 @@ let shared_sub_mstring (ms : mstring)
       method as_bytes =
         let (s,pos) = ms#as_bytes in
         (s,pos+sub_pos)
-      method as_string = self#as_bytes
+      method as_string =
+        let (s,pos) = ms#as_string in
+        (s,pos+sub_pos)
       method as_memory =
         let (m,pos) = ms#as_memory in
         (m,pos+sub_pos)
@@ -338,7 +363,7 @@ let in_channel_of_mstrings ms_list =
 let mstrings_of_in_channel ch =
   let len = 1024 in
   let acc = ref [] in
-  let buf = ref (String.create len) in
+  let buf = ref (Bytes.create len) in
   let pos = ref 0 in
   let rec loop() : unit =
     let n = ch # input !buf !pos (len - !pos) in (* or End_of_file *)
@@ -346,13 +371,13 @@ let mstrings_of_in_channel ch =
     if !pos < len then 
       loop()
     else (
-      acc := string_to_mstring !buf :: !acc;
-      buf := String.create len;
+      acc := bytes_to_mstring !buf :: !acc;
+      buf := Bytes.create len;
       pos := 0;
       loop()
     ) in
   try loop(); assert false
   with End_of_file ->
     if !pos > 0 then
-      acc := string_to_mstring ~pos:0 ~len:!pos !buf :: !acc;
+      acc := bytes_to_mstring ~pos:0 ~len:!pos !buf :: !acc;
     List.rev !acc

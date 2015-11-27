@@ -32,7 +32,7 @@ module KMP = struct
     let rec run_loop state pos =
       if (state = len) || (pos = endpos) then (state,pos)
       else 
-	if p.[state] = s.[pos] then
+	if p.[state] = (Bytes.get s pos) then
 	  run_loop (state+1) (pos+1)
 	else
 	  if state = 0 then
@@ -43,7 +43,7 @@ module KMP = struct
 	    run_delta p.[state'] state' pos
 	      
     and run_delta c state pos =
-      if c = s.[pos] then 
+      if c = Bytes.get s pos then 
 	run_loop (state+1) (pos+1)
       else 
 	if state = 0 then 
@@ -64,7 +64,7 @@ module KMP = struct
 	   * So we don't do it here. Better fix Pcre someday...
 	   *)
 	  let p, _ =
-	    Netstring_str.search_forward rex s pos in (* FIXME: no ~len *)
+	    Netstring_str.search_forward_bytes rex s pos in (* FIXME: no ~len *)
 	  p
 	with
 	    Not_found -> endpos
@@ -79,9 +79,9 @@ module KMP = struct
   let find_pattern pat ?(pos=0) ?len s =
     let endpos = 
       match len with
-	  None -> String.length s
+	  None -> Bytes.length s
 	| Some l -> pos+l in
-    if pos < 0 || endpos > String.length s || pos > endpos then
+    if pos < 0 || endpos > Bytes.length s || pos > endpos then
       invalid_arg "Netaux.KMP.find_pattern";
     let (state,pos) = run pat.rex pat.len pat.p pat.fail s endpos 0 pos in
     pos - state

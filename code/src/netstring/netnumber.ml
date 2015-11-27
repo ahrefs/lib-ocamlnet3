@@ -30,40 +30,59 @@ exception Cannot_represent of string
 exception Out_of_range
 
 module type ENCDEC = sig
-  val read_int4 : string -> int -> int4
-  val read_int8 : string -> int -> int8
-  val read_uint4 : string -> int -> uint4
-  val read_uint8 : string -> int -> uint8
+  val read_int4 : Bytes.t -> int -> int4
+  val read_int8 : Bytes.t -> int -> int8
+  val read_uint4 : Bytes.t -> int -> uint4
+  val read_uint8 : Bytes.t -> int -> uint8
 
-  val read_int4_unsafe : string -> int -> int4
-  val read_int8_unsafe : string -> int -> int8
-  val read_uint4_unsafe : string -> int -> uint4
-  val read_uint8_unsafe : string -> int -> uint8
+  val read_int4_unsafe : Bytes.t -> int -> int4
+  val read_int8_unsafe : Bytes.t -> int -> int8
+  val read_uint4_unsafe : Bytes.t -> int -> uint4
+  val read_uint8_unsafe : Bytes.t -> int -> uint8
 
-  val write_int4 : string -> int -> int4 -> unit
-  val write_int8 : string -> int -> int8 -> unit
-  val write_uint4 : string -> int -> uint4 -> unit
-  val write_uint8 : string -> int -> uint8 -> unit
+  val read_string_int4 : string -> int -> int4
+  val read_string_int8 : string -> int -> int8
+  val read_string_uint4 : string -> int -> uint4
+  val read_string_uint8 : string -> int -> uint8
 
-  val write_int4_unsafe : string -> int -> int4 -> unit
-  val write_int8_unsafe : string -> int -> int8 -> unit
-  val write_uint4_unsafe : string -> int -> uint4 -> unit
-  val write_uint8_unsafe : string -> int -> uint8 -> unit
+  val read_string_int4_unsafe : string -> int -> int4
+  val read_string_int8_unsafe : string -> int -> int8
+  val read_string_uint4_unsafe : string -> int -> uint4
+  val read_string_uint8_unsafe : string -> int -> uint8
+
+  val write_int4 : Bytes.t -> int -> int4 -> unit
+  val write_int8 : Bytes.t -> int -> int8 -> unit
+  val write_uint4 : Bytes.t -> int -> uint4 -> unit
+  val write_uint8 : Bytes.t -> int -> uint8 -> unit
+
+  val write_int4_unsafe : Bytes.t -> int -> int4 -> unit
+  val write_int8_unsafe : Bytes.t -> int -> int8 -> unit
+  val write_uint4_unsafe : Bytes.t -> int -> uint4 -> unit
+  val write_uint8_unsafe : Bytes.t -> int -> uint8 -> unit
+
+  val int4_as_bytes : int4 -> Bytes.t
+  val int8_as_bytes : int8 -> Bytes.t
+  val uint4_as_bytes : uint4 -> Bytes.t
+  val uint8_as_bytes : uint8 -> Bytes.t
 
   val int4_as_string : int4 -> string
   val int8_as_string : int8 -> string
   val uint4_as_string : uint4 -> string
   val uint8_as_string : uint8 -> string
 
-  val write_fp4 : string -> int -> fp4 -> unit
-  val write_fp8 : string -> int -> fp8 -> unit
+  val write_fp4 : Bytes.t -> int -> fp4 -> unit
+  val write_fp8 : Bytes.t -> int -> fp8 -> unit
 
   val fp4_as_string : fp4 -> string
   val fp8_as_string : fp8 -> string
-    
-  val read_fp4 : string -> int -> fp4
-  val read_fp8 : string -> int -> fp8
-    
+
+  val fp4_as_bytes : fp4 -> Bytes.t
+  val fp8_as_bytes : fp8 -> Bytes.t
+
+  val read_fp4 : Bytes.t -> int -> fp4
+  val read_fp8 : Bytes.t -> int -> fp8
+  val read_string_fp4 : string -> int -> fp4
+  val read_string_fp8 : string -> int -> fp8
 end
 
 
@@ -558,24 +577,24 @@ module BE : ENCDEC = struct
     Netsys_xdr.s_read_int4_64_unsafe
     #else
   let read_int4_unsafe s pos =
-    let n3 = Char.code (String.unsafe_get s pos) in
+    let n3 = Char.code (Bytes.unsafe_get s pos) in
     let x = (n3 lsl 55) asr 31 in  (* sign! *)
-    let n2 = Char.code (String.unsafe_get s (pos+1)) in
+    let n2 = Char.code (Bytes.unsafe_get s (pos+1)) in
     let x = x lor (n2 lsl 16) in
-    let n1 = Char.code (String.unsafe_get s (pos+2)) in
+    let n1 = Char.code (Bytes.unsafe_get s (pos+2)) in
     let x = x lor (n1 lsl 8) in
-    let n0 = Char.code (String.unsafe_get s (pos+3)) in
+    let n0 = Char.code (Bytes.unsafe_get s (pos+3)) in
     x lor n0
     #endif
    #else
   let read_int4_unsafe s pos =
-    let n3 = Int32.of_int (Char.code (String.unsafe_get s pos)) in
+    let n3 = Int32.of_int (Char.code (Bytes.unsafe_get s pos)) in
     let x = Int32.shift_left n3 24 in
-    let n2 = Int32.of_int (Char.code (String.unsafe_get s (pos+1))) in
+    let n2 = Int32.of_int (Char.code (Bytes.unsafe_get s (pos+1))) in
     let x = Int32.logor x (Int32.shift_left n2 16) in
-    let n1 = Int32.of_int (Char.code (String.unsafe_get s (pos+2))) in
+    let n1 = Int32.of_int (Char.code (Bytes.unsafe_get s (pos+2))) in
     let x = Int32.logor x (Int32.shift_left n1 8) in
-    let n0 = Int32.of_int (Char.code (String.unsafe_get s (pos+3))) in
+    let n0 = Int32.of_int (Char.code (Bytes.unsafe_get s (pos+3))) in
     Int32.logor x n0
    #endif
 (*
@@ -592,7 +611,7 @@ module BE : ENCDEC = struct
 
 
   let read_int4 s pos =
-    if pos < 0 || pos + 4 > String.length s then
+    if pos < 0 || pos + 4 > Bytes.length s then
       raise Out_of_range;
     read_int4_unsafe s pos
       
@@ -612,34 +631,34 @@ module BE : ENCDEC = struct
       (Int64.shift_left (Int64.of_int x1) 32)
   #else
   let read_int8_unsafe s pos =
-    let n7 = Int64.of_int (Char.code (String.unsafe_get s pos)) in
+    let n7 = Int64.of_int (Char.code (Bytes.unsafe_get s pos)) in
     let x = Int64.shift_left n7 56 in
     
-    let n6 = Int64.of_int (Char.code (String.unsafe_get s (pos+1))) in
+    let n6 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+1))) in
     let x = Int64.logor x (Int64.shift_left n6 48) in
     
-    let n5 = Int64.of_int (Char.code (String.unsafe_get s (pos+2))) in
+    let n5 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+2))) in
     let x = Int64.logor x (Int64.shift_left n5 40) in
     
-    let n4 = Int64.of_int (Char.code (String.unsafe_get s (pos+3))) in
+    let n4 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+3))) in
     let x = Int64.logor x (Int64.shift_left n4 32) in
     
-    let n3 = Int64.of_int (Char.code (String.unsafe_get s (pos+4))) in
+    let n3 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+4))) in
     let x = Int64.logor x (Int64.shift_left n3 24) in
     
-    let n2 = Int64.of_int (Char.code (String.unsafe_get s (pos+5))) in
+    let n2 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+5))) in
     let x = Int64.logor x (Int64.shift_left n2 16) in
     
-    let n1 = Int64.of_int (Char.code (String.unsafe_get s (pos+6))) in
+    let n1 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+6))) in
     let x = Int64.logor x (Int64.shift_left n1 8) in
     
-    let n0 = Int64.of_int (Char.code (String.unsafe_get s (pos+7))) in
+    let n0 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+7))) in
     Int64.logor x n0
   #endif      
 
 
   let read_int8 s pos =
-    if pos < 0 || pos + 8 > String.length s then
+    if pos < 0 || pos + 8 > Bytes.length s then
       raise Out_of_range;
     read_int8_unsafe s pos
       
@@ -649,6 +668,20 @@ module BE : ENCDEC = struct
   let read_uint4_unsafe = read_int4_unsafe
   let read_uint8_unsafe = read_int8_unsafe;;
     
+  let read_string_int4 s p = read_int4 (Bytes.unsafe_of_string s) p
+  let read_string_int8 s p = read_int8 (Bytes.unsafe_of_string s) p
+  let read_string_uint4 s p = read_uint4 (Bytes.unsafe_of_string s) p
+  let read_string_uint8 s p = read_uint8 (Bytes.unsafe_of_string s) p
+
+  let read_string_int4_unsafe s p =
+    read_int4_unsafe (Bytes.unsafe_of_string s) p
+  let read_string_int8_unsafe s p =
+    read_int8_unsafe (Bytes.unsafe_of_string s) p
+  let read_string_uint4_unsafe s p =
+    read_uint4_unsafe (Bytes.unsafe_of_string s) p
+  let read_string_uint8_unsafe s p =
+    read_uint8_unsafe (Bytes.unsafe_of_string s) p
+
 
   (**********************************************************************)
   (* write_[u]intn                                                      *)
@@ -661,32 +694,32 @@ module BE : ENCDEC = struct
     #else
   let write_int4_unsafe s pos x =
     let n3 = (x lsr 24) land 0xff in
-    String.unsafe_set s pos (Char.unsafe_chr n3);
+    Bytes.unsafe_set s pos (Char.unsafe_chr n3);
     let n2 = (x lsr 16) land 0xff in
-    String.unsafe_set s (pos+1) (Char.unsafe_chr n2);
+    Bytes.unsafe_set s (pos+1) (Char.unsafe_chr n2);
     let n1 = (x lsr 8) land 0xff in
-    String.unsafe_set s (pos+2) (Char.unsafe_chr n1);
+    Bytes.unsafe_set s (pos+2) (Char.unsafe_chr n1);
     let n0 = x land 0xff in
-    String.unsafe_set s (pos+3) (Char.unsafe_chr n0);
+    Bytes.unsafe_set s (pos+3) (Char.unsafe_chr n0);
     ()
     #endif
   #else
   let write_int4_unsafe s pos x =
     let n3 = Int32.to_int (Int32.shift_right_logical x 24) land 0xff in
-    String.unsafe_set s pos (Char.unsafe_chr n3);
+    Bytes.unsafe_set s pos (Char.unsafe_chr n3);
     let n2 = Int32.to_int (Int32.shift_right_logical x 16) land 0xff in
-    String.unsafe_set s (pos+1) (Char.unsafe_chr n2);
+    Bytes.unsafe_set s (pos+1) (Char.unsafe_chr n2);
     let n1 = Int32.to_int (Int32.shift_right_logical x 8) land 0xff in
-    String.unsafe_set s (pos+2) (Char.unsafe_chr n1);
+    Bytes.unsafe_set s (pos+2) (Char.unsafe_chr n1);
     let n0 = Int32.to_int (Int32.logand x 0xffl) in
-    String.unsafe_set s (pos+3) (Char.unsafe_chr n0);
+    Bytes.unsafe_set s (pos+3) (Char.unsafe_chr n0);
     ()
    #endif
    ;;
 
 
   let write_int4 s pos x =
-    if pos < 0 || pos + 4 > String.length s then
+    if pos < 0 || pos + 4 > Bytes.length s then
       raise Out_of_range;
     write_int4_unsafe s pos x
 
@@ -706,40 +739,40 @@ module BE : ENCDEC = struct
   let write_int8_unsafe s pos x =
     let n7 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 56)
 			     0xffL) in
-    String.unsafe_set s pos (Char.unsafe_chr n7);
+    Bytes.unsafe_set s pos (Char.unsafe_chr n7);
     
     let n6 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 48)
 			     0xffL) in
-    String.unsafe_set s (pos+1) (Char.unsafe_chr n6);
+    Bytes.unsafe_set s (pos+1) (Char.unsafe_chr n6);
     
     let n5 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 40)
 			     0xffL) in
-    String.unsafe_set s (pos+2) (Char.unsafe_chr n5);
+    Bytes.unsafe_set s (pos+2) (Char.unsafe_chr n5);
     
     let n4 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 32)
 			     0xffL) in
-    String.unsafe_set s (pos+3) (Char.unsafe_chr n4);
+    Bytes.unsafe_set s (pos+3) (Char.unsafe_chr n4);
     
     let n3 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 24)
 			     0xffL) in
-    String.unsafe_set s (pos+4) (Char.unsafe_chr n3);
+    Bytes.unsafe_set s (pos+4) (Char.unsafe_chr n3);
     
     let n2 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 16)
 			     0xffL) in
-    String.unsafe_set s (pos+5) (Char.unsafe_chr n2);
+    Bytes.unsafe_set s (pos+5) (Char.unsafe_chr n2);
     
     let n1 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 8)
 			     0xffL) in
-    String.unsafe_set s (pos+6) (Char.unsafe_chr n1);
+    Bytes.unsafe_set s (pos+6) (Char.unsafe_chr n1);
     
     let n0 = Int64.to_int (Int64.logand x 0xffL) in
-    String.unsafe_set s (pos+7) (Char.unsafe_chr n0);
+    Bytes.unsafe_set s (pos+7) (Char.unsafe_chr n0);
     ()
   #endif
 
 
   let write_int8 s pos x =
-    if pos < 0 || pos + 8 > String.length s then
+    if pos < 0 || pos + 8 > Bytes.length s then
       raise Out_of_range;
     write_int8_unsafe s pos x
       
@@ -754,28 +787,33 @@ module BE : ENCDEC = struct
   (* [u]intn_as_string                                                  *)
   (**********************************************************************)
     
-  let int4_as_string x =
-    let s = String.create 4 in
+  let int4_as_bytes x =
+    let s = Bytes.create 4 in
     write_int4 s 0 x;
     s
 
 
-  let uint4_as_string x =
-    let s = String.create 4 in
+  let uint4_as_bytes x =
+    let s = Bytes.create 4 in
     write_uint4 s 0 x;
     s
 
 
-  let int8_as_string x =
-    let s = String.create 8 in
+  let int8_as_bytes x =
+    let s = Bytes.create 8 in
     write_int8 s 0 x;
     s
 
 
-  let uint8_as_string x =
-    let s = String.create 8 in
+  let uint8_as_bytes x =
+    let s = Bytes.create 8 in
     write_int8 s 0 x;
     s
+
+  let int4_as_string x = Bytes.unsafe_to_string(int4_as_bytes x)
+  let int8_as_string x = Bytes.unsafe_to_string(int8_as_bytes x)
+  let uint4_as_string x = Bytes.unsafe_to_string(uint4_as_bytes x)
+  let uint8_as_string x = Bytes.unsafe_to_string(uint8_as_bytes x)
 
 
   (**********************************************************************)
@@ -784,12 +822,20 @@ module BE : ENCDEC = struct
       
   let fp4_as_string x = int4_as_string (int4_of_int32 x)
   let fp8_as_string x = int8_as_string (int8_of_int64 x)
+  let fp4_as_bytes x = int4_as_bytes (int4_of_int32 x)
+  let fp8_as_bytes x = int8_as_bytes (int8_of_int64 x)
     
   let read_fp4 s pos =
     int32_of_int4(read_int4 s pos)
 
+  let read_string_fp4 s pos =
+    int32_of_int4(read_string_int4 s pos)
+
   let read_fp8 s pos =
     int64_of_int8(read_int8 s pos)
+
+  let read_string_fp8 s pos =
+    int64_of_int8(read_string_int8 s pos)
 
   let write_fp4 s pos x =
     write_int4 s pos (int4_of_int32 x)
@@ -812,63 +858,63 @@ module LE : ENCDEC = struct
     ELSE
  *)
   let read_int4_unsafe s pos =
-    let n3 = Char.code (String.unsafe_get s (pos+3)) in
+    let n3 = Char.code (Bytes.unsafe_get s (pos+3)) in
     let x = (n3 lsl 55) asr 31 in  (* sign! *)
-    let n2 = Char.code (String.unsafe_get s (pos+2)) in
+    let n2 = Char.code (Bytes.unsafe_get s (pos+2)) in
     let x = x lor (n2 lsl 16) in
-    let n1 = Char.code (String.unsafe_get s (pos+1)) in
+    let n1 = Char.code (Bytes.unsafe_get s (pos+1)) in
     let x = x lor (n1 lsl 8) in
-    let n0 = Char.code (String.unsafe_get s pos) in
+    let n0 = Char.code (Bytes.unsafe_get s pos) in
     x lor n0
     (* END *)
    #else
   let read_int4_unsafe s pos =
-    let n3 = Int32.of_int (Char.code (String.unsafe_get s (pos+3))) in
+    let n3 = Int32.of_int (Char.code (Bytes.unsafe_get s (pos+3))) in
     let x = Int32.shift_left n3 24 in
-    let n2 = Int32.of_int (Char.code (String.unsafe_get s (pos+2))) in
+    let n2 = Int32.of_int (Char.code (Bytes.unsafe_get s (pos+2))) in
     let x = Int32.logor x (Int32.shift_left n2 16) in
-    let n1 = Int32.of_int (Char.code (String.unsafe_get s (pos+1))) in
+    let n1 = Int32.of_int (Char.code (Bytes.unsafe_get s (pos+1))) in
     let x = Int32.logor x (Int32.shift_left n1 8) in
-    let n0 = Int32.of_int (Char.code (String.unsafe_get s pos)) in
+    let n0 = Int32.of_int (Char.code (Bytes.unsafe_get s pos)) in
     Int32.logor x n0
    #endif
 
   let read_int4 s pos =
-    if pos < 0 || pos + 4 > String.length s then
+    if pos < 0 || pos + 4 > Bytes.length s then
       raise Out_of_range;
     read_int4_unsafe s pos
       
 
 
   let read_int8_unsafe s pos =
-    let n7 = Int64.of_int (Char.code (String.unsafe_get s (pos+7))) in
+    let n7 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+7))) in
     let x = Int64.shift_left n7 56 in
     
-    let n6 = Int64.of_int (Char.code (String.unsafe_get s (pos+6))) in
+    let n6 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+6))) in
     let x = Int64.logor x (Int64.shift_left n6 48) in
     
-    let n5 = Int64.of_int (Char.code (String.unsafe_get s (pos+5))) in
+    let n5 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+5))) in
     let x = Int64.logor x (Int64.shift_left n5 40) in
     
-    let n4 = Int64.of_int (Char.code (String.unsafe_get s (pos+4))) in
+    let n4 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+4))) in
     let x = Int64.logor x (Int64.shift_left n4 32) in
     
-    let n3 = Int64.of_int (Char.code (String.unsafe_get s (pos+3))) in
+    let n3 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+3))) in
     let x = Int64.logor x (Int64.shift_left n3 24) in
     
-    let n2 = Int64.of_int (Char.code (String.unsafe_get s (pos+2))) in
+    let n2 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+2))) in
     let x = Int64.logor x (Int64.shift_left n2 16) in
     
-    let n1 = Int64.of_int (Char.code (String.unsafe_get s (pos+1))) in
+    let n1 = Int64.of_int (Char.code (Bytes.unsafe_get s (pos+1))) in
     let x = Int64.logor x (Int64.shift_left n1 8) in
     
-    let n0 = Int64.of_int (Char.code (String.unsafe_get s pos)) in
+    let n0 = Int64.of_int (Char.code (Bytes.unsafe_get s pos)) in
     Int64.logor x n0
       
 
 
   let read_int8 s pos =
-    if pos < 0 || pos + 8 > String.length s then
+    if pos < 0 || pos + 8 > Bytes.length s then
       raise Out_of_range;
     read_int8_unsafe s pos
       
@@ -878,6 +924,19 @@ module LE : ENCDEC = struct
   let read_uint4_unsafe = read_int4_unsafe
   let read_uint8_unsafe = read_int8_unsafe;;
     
+  let read_string_int4 s p = read_int4 (Bytes.unsafe_of_string s) p
+  let read_string_int8 s p = read_int8 (Bytes.unsafe_of_string s) p
+  let read_string_uint4 s p = read_uint4 (Bytes.unsafe_of_string s) p
+  let read_string_uint8 s p = read_uint8 (Bytes.unsafe_of_string s) p
+
+  let read_string_int4_unsafe s p =
+    read_int4_unsafe (Bytes.unsafe_of_string s) p
+  let read_string_int8_unsafe s p =
+    read_int8_unsafe (Bytes.unsafe_of_string s) p
+  let read_string_uint4_unsafe s p =
+    read_uint4_unsafe (Bytes.unsafe_of_string s) p
+  let read_string_uint8_unsafe s p =
+    read_uint8_unsafe (Bytes.unsafe_of_string s) p
 
   (**********************************************************************)
   (* write_[u]intn                                                      *)
@@ -892,32 +951,32 @@ module LE : ENCDEC = struct
  *)
   let write_int4_unsafe s pos x =
     let n3 = (x lsr 24) land 0xff in
-    String.unsafe_set s (pos+3) (Char.unsafe_chr n3);
+    Bytes.unsafe_set s (pos+3) (Char.unsafe_chr n3);
     let n2 = (x lsr 16) land 0xff in
-    String.unsafe_set s (pos+2) (Char.unsafe_chr n2);
+    Bytes.unsafe_set s (pos+2) (Char.unsafe_chr n2);
     let n1 = (x lsr 8) land 0xff in
-    String.unsafe_set s (pos+1) (Char.unsafe_chr n1);
+    Bytes.unsafe_set s (pos+1) (Char.unsafe_chr n1);
     let n0 = x land 0xff in
-    String.unsafe_set s pos (Char.unsafe_chr n0);
+    Bytes.unsafe_set s pos (Char.unsafe_chr n0);
     ()
    (* END *)
   #else
   let write_int4_unsafe s pos x =
     let n3 = Int32.to_int (Int32.shift_right_logical x 24) land 0xff in
-    String.unsafe_set s (pos+3) (Char.unsafe_chr n3);
+    Bytes.unsafe_set s (pos+3) (Char.unsafe_chr n3);
     let n2 = Int32.to_int (Int32.shift_right_logical x 16) land 0xff in
-    String.unsafe_set s (pos+2) (Char.unsafe_chr n2);
+    Bytes.unsafe_set s (pos+2) (Char.unsafe_chr n2);
     let n1 = Int32.to_int (Int32.shift_right_logical x 8) land 0xff in
-    String.unsafe_set s (pos+1) (Char.unsafe_chr n1);
+    Bytes.unsafe_set s (pos+1) (Char.unsafe_chr n1);
     let n0 = Int32.to_int (Int32.logand x 0xffl) in
-    String.unsafe_set s pos (Char.unsafe_chr n0);
+    Bytes.unsafe_set s pos (Char.unsafe_chr n0);
     ()
    #endif
     ;;
 
 
   let write_int4 s pos x =
-    if pos < 0 || pos + 4 > String.length s then
+    if pos < 0 || pos + 4 > Bytes.length s then
       raise Out_of_range;
     write_int4_unsafe s pos x
 
@@ -926,40 +985,40 @@ module LE : ENCDEC = struct
   let write_int8_unsafe s pos x =
     let n7 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 56)
 			     0xffL) in
-    String.unsafe_set s (pos+7) (Char.unsafe_chr n7);
+    Bytes.unsafe_set s (pos+7) (Char.unsafe_chr n7);
     
     let n6 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 48)
 			     0xffL) in
-    String.unsafe_set s (pos+6) (Char.unsafe_chr n6);
+    Bytes.unsafe_set s (pos+6) (Char.unsafe_chr n6);
     
     let n5 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 40)
 			     0xffL) in
-    String.unsafe_set s (pos+5) (Char.unsafe_chr n5);
+    Bytes.unsafe_set s (pos+5) (Char.unsafe_chr n5);
     
     let n4 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 32)
 			     0xffL) in
-    String.unsafe_set s (pos+4) (Char.unsafe_chr n4);
+    Bytes.unsafe_set s (pos+4) (Char.unsafe_chr n4);
     
     let n3 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 24)
 			     0xffL) in
-    String.unsafe_set s (pos+3) (Char.unsafe_chr n3);
+    Bytes.unsafe_set s (pos+3) (Char.unsafe_chr n3);
     
     let n2 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 16)
 			     0xffL) in
-    String.unsafe_set s (pos+2) (Char.unsafe_chr n2);
+    Bytes.unsafe_set s (pos+2) (Char.unsafe_chr n2);
     
     let n1 = Int64.to_int (Int64.logand (Int64.shift_right_logical x 8)
 			     0xffL) in
-    String.unsafe_set s (pos+1) (Char.unsafe_chr n1);
+    Bytes.unsafe_set s (pos+1) (Char.unsafe_chr n1);
     
     let n0 = Int64.to_int (Int64.logand x 0xffL) in
-    String.unsafe_set s pos (Char.unsafe_chr n0);
+    Bytes.unsafe_set s pos (Char.unsafe_chr n0);
     ()
 
 
 
   let write_int8 s pos x =
-    if pos < 0 || pos + 8 > String.length s then
+    if pos < 0 || pos + 8 > Bytes.length s then
       raise Out_of_range;
     write_int8_unsafe s pos x
       
@@ -974,28 +1033,33 @@ module LE : ENCDEC = struct
   (* [u]intn_as_string                                                  *)
   (**********************************************************************)
     
-  let int4_as_string x =
-    let s = String.create 4 in
+  let int4_as_bytes x =
+    let s = Bytes.create 4 in
     write_int4 s 0 x;
     s
 
 
-  let uint4_as_string x =
-    let s = String.create 4 in
+  let uint4_as_bytes x =
+    let s = Bytes.create 4 in
     write_uint4 s 0 x;
     s
 
 
-  let int8_as_string x =
-    let s = String.create 8 in
+  let int8_as_bytes x =
+    let s = Bytes.create 8 in
     write_int8 s 0 x;
     s
 
 
-  let uint8_as_string x =
-    let s = String.create 8 in
+  let uint8_as_bytes x =
+    let s = Bytes.create 8 in
     write_int8 s 0 x;
     s
+
+  let int4_as_string x = Bytes.unsafe_to_string(int4_as_bytes x)
+  let int8_as_string x = Bytes.unsafe_to_string(int8_as_bytes x)
+  let uint4_as_string x = Bytes.unsafe_to_string(uint4_as_bytes x)
+  let uint8_as_string x = Bytes.unsafe_to_string(uint8_as_bytes x)
 
 
   (**********************************************************************)
@@ -1004,12 +1068,20 @@ module LE : ENCDEC = struct
       
   let fp4_as_string x = int4_as_string (int4_of_int32 x)
   let fp8_as_string x = int8_as_string (int8_of_int64 x)
+  let fp4_as_bytes x = int4_as_bytes (int4_of_int32 x)
+  let fp8_as_bytes x = int8_as_bytes (int8_of_int64 x)
     
   let read_fp4 s pos =
     int32_of_int4(read_int4 s pos)
 
+  let read_string_fp4 s pos =
+    int32_of_int4(read_string_int4 s pos)
+
   let read_fp8 s pos =
     int64_of_int8(read_int8 s pos)
+
+  let read_string_fp8 s pos =
+    int64_of_int8(read_string_int8 s pos)
 
   let write_fp4 s pos x =
     write_int4 s pos (int4_of_int32 x)

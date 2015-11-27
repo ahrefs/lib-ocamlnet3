@@ -23,7 +23,9 @@ type 't tstring_ops =
       blit_to_bytes : 't -> int -> Bytes.t -> int -> int -> unit;
       blit_to_memory : 't -> int -> memory -> int -> int -> unit;
       index_from : 't -> int -> char -> int;
+      index_from3 : 't -> int -> int -> char -> char -> char -> int;
       rindex_from : 't -> int -> char -> int;
+      rindex_from3 : 't -> int -> int -> char -> char -> char -> int;
     }
 
 type tstring_ops_box =
@@ -45,6 +47,37 @@ let str_subpoly : type u . u tstring_kind -> string -> int -> int -> u =
                       m
                    )
 
+
+let str_index_from3 s p n c1 c2 c3 =
+  (* FIXME: implement in C *)
+  let sn = String.length s in
+  if n < 0 || p < 0 || p > sn-n then
+    invalid_arg "index_from3";
+  let lim = p+n in
+  let p = ref p in
+  while !p < lim &&
+          (let c = String.unsafe_get s !p in c <> c1 && c <> c2 && c <> c3)
+  do
+    incr p
+  done;
+  if !p >= lim then raise Not_found;
+  !p
+
+let str_rindex_from3 s p n c1 c2 c3 =
+  (* FIXME: implement in C *)
+  let sn = String.length s in
+  if n < 0 || p < -1 || p >= sn || n-1 > p then
+    invalid_arg "rindex_from";
+  let lim = p-n+1 in
+  let p = ref p in
+  while !p >= lim && 
+           (let c = String.unsafe_get s !p in c <> c1 && c <> c2 && c <> c3)
+  do
+    decr p
+  done;
+  if !p < lim then raise Not_found;
+  !p
+
 let string_ops =
   { kind = Some String_kind;
     length = String.length;
@@ -57,7 +90,7 @@ let string_ops =
                      (c0 lsl 16) lor (c1 lsl 8) lor c2
                   );
     copy = String.copy;
-    string = String.copy;    (* for the time being; later: identity (TODO) *)
+    string = (fun s -> s);
     bytes = Bytes.of_string;
     sub = String.sub;
     substring = String.sub;
@@ -70,8 +103,16 @@ let string_ops =
     blit_to_bytes = Bytes.blit_string;
     blit_to_memory = Netsys_mem.blit_string_to_memory;
     index_from = String.index_from;
+    index_from3 = str_index_from3;
     rindex_from = String.rindex_from;
+    rindex_from3 = str_rindex_from3;
   }
+
+let bytes_index_from3 s p n c1 c2 c3 =
+  str_index_from3 (Bytes.unsafe_to_string s) p n c1 c2 c3
+
+let bytes_rindex_from3 s p n c1 c2 c3 =
+  str_rindex_from3 (Bytes.unsafe_to_string s) p n c1 c2 c3
 
 let bytes_subpoly : type u . u tstring_kind -> Bytes.t -> int -> int -> u =
   function
@@ -106,32 +147,49 @@ let bytes_ops =
     blit_to_bytes = Bytes.blit;
     blit_to_memory = Netsys_mem.blit_bytes_to_memory;
     index_from = Bytes.index_from;
+    index_from3 = bytes_index_from3;
     rindex_from = Bytes.rindex_from;
+    rindex_from3 = bytes_rindex_from3;
   }
 
-let mem_index_from m p c =
+let mem_index_from3 m p n c1 c2 c3 =
   (* FIXME: implement in C *)
-  let n = Bigarray.Array1.dim m in
-  if p < 0 || p > n then
+  let sn = Bigarray.Array1.dim m in
+  if n < 0 || p < 0 || p > sn-n then
     invalid_arg "index_from";
+  let lim = p+n in
   let p = ref p in
-  while !p < n && Bigarray.Array1.unsafe_get m !p <> c do
+  while
+    !p < lim &&
+      (let c = Bigarray.Array1.unsafe_get m !p in c <> c1 && c <> c2 && c <> c3)
+  do
     incr p
   done;
-  if !p >= n then raise Not_found;
+  if !p >= lim then raise Not_found;
+  !p
+
+let mem_index_from m p c =
+  let sn = Bigarray.Array1.dim m in
+  mem_index_from3 m p (sn-p) c c c
+
+let mem_rindex_from3 m p n c1 c2 c3 =
+  (* FIXME: implement in C *)
+  let sn = Bigarray.Array1.dim m in
+  if n < 0 || p < -1 || p >= sn || n-1 > p then
+    invalid_arg "rindex_from";
+  let lim = p-n+1 in
+  let p = ref p in
+  while
+    !p >= lim &&
+      (let c = Bigarray.Array1.unsafe_get m !p in c <> c1 && c <> c2 && c <> c3)
+  do
+    decr p
+  done;
+  if !p < lim then raise Not_found;
   !p
 
 let mem_rindex_from m p c =
-  (* FIXME: implement in C *)
-  let n = Bigarray.Array1.dim m in
-  if p < -1 || p >= n then
-    invalid_arg "rindex_from";
-  let p = ref p in
-  while !p >= 0 && Bigarray.Array1.unsafe_get m !p <> c do
-    decr p
-  done;
-  if !p < 0 then raise Not_found;
-  !p
+  mem_rindex_from3 m p (p+1) c c c
 
 let mem_sub m1 p len = 
   let m2 =
@@ -187,7 +245,9 @@ let memory_ops =
                         Bigarray.Array1.blit sub1 sub2
                      );
     index_from = mem_index_from;
+    index_from3 = mem_index_from3;
     rindex_from = mem_rindex_from;
+    rindex_from3 = mem_rindex_from3;
   }
 
 let ops_of_tstring =
@@ -213,3 +273,15 @@ let with_tstring : 'a with_fun -> tstring -> 'a =
     | `Memory s ->
         f.with_fun memory_ops s
 
+let polymorph_string_transformation
+  : type s t . (string->string) -> s tstring_ops -> t tstring_kind -> s -> t =
+  (fun f ops out_kind s ->
+     let s' = f (ops.string s) in
+     match out_kind with
+       | String_kind ->
+           s'
+       | Bytes_kind ->
+           Bytes.of_string s'
+       | Memory_kind ->
+           Netsys_mem.memory_of_string s'
+  )

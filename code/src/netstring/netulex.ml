@@ -12,7 +12,7 @@ module ULB = struct
   type unicode_lexbuf =
 	{ mutable ulb_encoding : encoding;
 	  mutable ulb_encoding_start : int;
-	  mutable ulb_rawbuf : string;
+	  mutable ulb_rawbuf : Bytes.t;
 	  mutable ulb_rawbuf_len : int;
 	  mutable ulb_rawbuf_end : int;
 	  mutable ulb_rawbuf_const : bool;
@@ -20,17 +20,19 @@ module ULB = struct
 	  mutable ulb_chars_pos : int array;
 	  mutable ulb_chars_len : int;
 	  mutable ulb_eof : bool;
-	  mutable ulb_refill : string -> int -> int -> int;
+	  mutable ulb_refill : Bytes.t -> int -> int -> int;
 	  mutable ulb_enc_change_hook : unicode_lexbuf -> unit;
-	  mutable ulb_cursor : cursor
+	  mutable ulb_cursor : Bytes.t poly_cursor
 	}
+
+  let empty = Bytes.create 0
 
   let from_function ?(raw_size = 512) ?(char_size = 250) 
                     ?(enc_change_hook = fun _ -> ())
                     ~refill enc =
     { ulb_encoding = enc;
       ulb_encoding_start = 0;
-      ulb_rawbuf = String.create raw_size;
+      ulb_rawbuf = Bytes.create raw_size;
       ulb_rawbuf_len = 0;
       ulb_rawbuf_end = 0;
       ulb_rawbuf_const = false;
@@ -42,7 +44,7 @@ module ULB = struct
       ulb_eof = false;
       ulb_refill = refill;
       ulb_enc_change_hook = enc_change_hook;
-      ulb_cursor = create_cursor enc "";
+      ulb_cursor = create_poly_cursor enc Netstring_tstring.bytes_ops empty;
     }
 
   let from_in_obj_channel ?raw_size ?char_size ?enc_change_hook enc inch =
@@ -57,31 +59,12 @@ module ULB = struct
     in
     from_function ?raw_size ?char_size ?enc_change_hook ~refill enc
 
-  let from_string ?(enc_change_hook = fun _ -> ()) enc s =
-    let char_size = 250 in
-    { ulb_encoding = enc;
-      ulb_encoding_start = 0;
-      ulb_rawbuf = String.copy s;
-      ulb_rawbuf_len = String.length s;
-      ulb_rawbuf_end = 0;
-      ulb_rawbuf_const = true;
-      ulb_chars = Array.make char_size (-1);
-      ulb_chars_pos = ( let cp = Array.make (char_size+1) (-1) in
-			cp.(0) <- 0;
-			cp );
-      ulb_chars_len = 0;
-      ulb_eof = true;
-      ulb_refill = (fun _ _ _ -> assert false);
-      ulb_enc_change_hook = enc_change_hook;
-      ulb_cursor = create_cursor enc "";
-    }
-
-  let from_string_inplace ?(enc_change_hook = fun _ -> ()) enc s =
+  let from_bytes_inplace ?(enc_change_hook = fun _ -> ()) enc s =
     let char_size = 250 in
     { ulb_encoding = enc;
       ulb_encoding_start = 0;
       ulb_rawbuf = s;
-      ulb_rawbuf_len = String.length s;
+      ulb_rawbuf_len = Bytes.length s;
       ulb_rawbuf_end = 0;
       ulb_rawbuf_const = true;
       ulb_chars = Array.make char_size (-1);
@@ -92,8 +75,14 @@ module ULB = struct
       ulb_eof = true;
       ulb_refill = (fun _ _ _ -> assert false);
       ulb_enc_change_hook = enc_change_hook;
-      ulb_cursor = create_cursor enc "";
+      ulb_cursor = create_poly_cursor enc Netstring_tstring.bytes_ops empty;
     }
+
+  let from_bytes ?enc_change_hook enc s =
+    from_bytes_inplace ?enc_change_hook enc (Bytes.copy s)
+
+  let from_string ?enc_change_hook enc s =
+    from_bytes_inplace ?enc_change_hook enc (Bytes.of_string s)
 
   let delete n ulb =
     if n < 0 || n > ulb.ulb_chars_len then
@@ -106,7 +95,7 @@ module ULB = struct
       let k = ulb.ulb_chars_pos.(0) in
       assert (ulb.ulb_rawbuf_end >= k);
       let m' = ulb.ulb_rawbuf_len - k in
-      String.blit ulb.ulb_rawbuf k ulb.ulb_rawbuf 0 m';
+      Bytes.blit ulb.ulb_rawbuf k ulb.ulb_rawbuf 0 m';
       let cp = ulb.ulb_chars_pos in
       for i = 0 to m do
 	cp.(i) <- cp.(i) - k
@@ -137,7 +126,7 @@ module ULB = struct
       (* Extract the substring from [ulb_rawbuf] ! *)
       let k' = ulb.ulb_chars_pos.(k) in
       let n' = ulb.ulb_chars_pos.(k+n) - k' in
-      String.sub ulb.ulb_rawbuf k' n'
+      Bytes.sub_string ulb.ulb_rawbuf k' n'
     )
     else (
       (* Create the UTF-8 string from [ulb_chars] *)
@@ -267,20 +256,20 @@ module ULB = struct
 	 * 50 bytes (quite arbitrary...). Then call the [ulb_refill] function
 	 * to get the data.
 	 *)
-	if ulb.ulb_rawbuf_len + 50 >= String.length ulb.ulb_rawbuf then (
-	  let n = min Sys.max_string_length (2 * (String.length ulb.ulb_rawbuf)) in
-	  if n = String.length ulb.ulb_rawbuf then
+	if ulb.ulb_rawbuf_len + 50 >= Bytes.length ulb.ulb_rawbuf then (
+	  let n = min Sys.max_string_length (2 * (Bytes.length ulb.ulb_rawbuf)) in
+	  if n = Bytes.length ulb.ulb_rawbuf then
 	    failwith "Netulex.ULB.refill: string too large";
 	  
-	  let s = String.create n in
-	  String.blit ulb.ulb_rawbuf 0 s 0 ulb.ulb_rawbuf_len;
+	  let s = Bytes.create n in
+	  Bytes.blit ulb.ulb_rawbuf 0 s 0 ulb.ulb_rawbuf_len;
 	  ulb.ulb_rawbuf <- s;
 	);
 	
 	(* Call now [ulb_refill]. If we detect EOF, record this. Anyway,
 	 * start over.
 	 *)
-	let space = (String.length ulb.ulb_rawbuf) - ulb.ulb_rawbuf_len in
+	let space = (Bytes.length ulb.ulb_rawbuf) - ulb.ulb_rawbuf_len in
 	let n = ulb.ulb_refill ulb.ulb_rawbuf ulb.ulb_rawbuf_len space in
 	assert(n>=0);
 	if n=0 then (

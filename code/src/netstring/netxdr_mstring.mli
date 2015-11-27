@@ -137,13 +137,13 @@ object
      *)
 
   method as_bytes : Bytes.t * int
-    (** Returns the contents as string. It is undefined whether the returned
+    (** Returns the contents as bytes. It is undefined whether the returned
 	string is a copy or the underlying buffer. The int is the position
 	where the contents start
      *)
 
-  method as_string : Bytes.t * int
-    (* DEPRECATED("Use as_bytes instead.") *)
+  method as_string : string * int
+    (** Returns the contents as string (this is always a copy) *)
 
   method as_memory : memory * int
     (** Returns the contents as memory. It is undefined whether the returned
@@ -164,6 +164,14 @@ object
     (** [create_from_string s pos len must_copy]: Creates the [mstring] from the
 	sub string of s starting at [pos] with length [len]
 
+        The [must_copy] flag is ignored (and exists for backwards
+        compatibility).
+     *)
+
+  method create_from_bytes : Bytes.t -> int -> int -> bool -> mstring
+    (** [create_from_string s pos len must_copy]: Creates the [mstring] from the
+	sub string of s starting at [pos] with length [len]
+
 	If [must_copy] the mstring object must create a copy. Otherwise
 	it can just keep the string passed in.
      *)
@@ -178,11 +186,17 @@ object
 
 end
 
+val bytes_based_mstrings : mstring_factory
+  (** Uses bytes to represent mstrings *)
+
 val string_based_mstrings : mstring_factory
-  (** Uses strings to represent mstrings *)
+  DEPRECATED("Use bytes_based_mstrings instead.")
 
 val string_to_mstring : ?pos:int -> ?len:int -> string -> mstring
   (** Represent a string as mstring (no copy) *)
+
+val bytes_to_mstring : ?pos:int -> ?len:int -> Bytes.t -> mstring
+  (** Represent bytes as mstring (no copy) *)
 
 val memory_based_mstrings : mstring_factory
   (** Uses memory to represent mstrings. The memory bigarrays are allocated
@@ -191,7 +205,6 @@ val memory_based_mstrings : mstring_factory
 
 val memory_to_mstring : ?pos:int -> ?len:int -> memory -> mstring
   (** Represent memory as mstring (no copy) *)
-
 val paligned_memory_based_mstrings : mstring_factory
   (** Uses memory to represent mstrings. The memory bigarrays are allocated
       with {!Netsys_mem.alloc_memory_pages} if available, and 
@@ -212,10 +225,16 @@ val concat_mstrings : mstring list -> string
       string may be shared with one of the mstrings passed in.
    *)
 
+val concat_mstrings_bytes : mstring list -> Bytes.t
+  (** Same, returning bytes *)
+
 val prefix_mstrings : mstring list -> int -> string
   (** [prefix_mstrings l n]: returns the first [n] chars of the 
       concatenated mstrings [l] as single string
    *)
+
+val prefix_mstrings_bytes : mstring list -> int -> Bytes.t
+  (** Same, returning bytes *)
 
 val blit_mstrings_to_memory : mstring list -> memory -> unit
   (** blits the mstrings one after the other to the memory, so that

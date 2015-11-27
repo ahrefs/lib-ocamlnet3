@@ -48,7 +48,7 @@ module ULB : sig
 		 * applies (the encoding of earlier positions is
 		 * lost)
 		 *)
-	  mutable ulb_rawbuf : string;
+	  mutable ulb_rawbuf : Bytes.t;
                 (** The encoded string to analyse *)
 	  mutable ulb_rawbuf_len : int;
                 (** The filled part of [ulb_rawbuf] *)
@@ -80,11 +80,11 @@ module ULB : sig
                 (** The filled part of [ulb_chars] *)
 	  mutable ulb_eof : bool;
                 (** Whether EOF has been seen *)
-	  mutable ulb_refill : string -> int -> int -> int;
+	  mutable ulb_refill : Bytes.t -> int -> int -> int;
 	        (** The refill function *)
 	  mutable ulb_enc_change_hook : unicode_lexbuf -> unit;
 	        (** This function is called when the encoding changes *)
-	  mutable ulb_cursor : Netconversion.cursor;
+	  mutable ulb_cursor : Bytes.t Netconversion.poly_cursor;
 	        (** Internally used by the implementation *)
 	}
 
@@ -92,7 +92,7 @@ module ULB : sig
     ?raw_size:int -> 
     ?char_size:int -> 
     ?enc_change_hook:(unicode_lexbuf -> unit) ->
-    refill:(string -> int -> int -> int) ->
+    refill:(Bytes.t -> int -> int -> int) ->
     Netconversion.encoding -> 
       unicode_lexbuf
   (** Creates a [unicode_lexbuf] to analyse strings of the 
@@ -139,9 +139,14 @@ module ULB : sig
    *   [set_encoding]
    *)
 
-  val from_string_inplace :
+  val from_bytes :
         ?enc_change_hook:(unicode_lexbuf -> unit) ->
-        Netconversion.encoding -> string -> unicode_lexbuf
+        Netconversion.encoding -> Bytes.t -> unicode_lexbuf
+  (** Same for bytes *)
+
+  val from_bytes_inplace :
+        ?enc_change_hook:(unicode_lexbuf -> unit) ->
+        Netconversion.encoding -> Bytes.t -> unicode_lexbuf
   (** Creates a [unicode_lexbuf] analysing the passed string encoded in
    * the passed encoding. This function does not copy the input string,
    * but uses it directly as [ulb_rawbuf]. The string is not modified by [ULB],
@@ -151,6 +156,10 @@ module ULB : sig
    * @param enc_change_hook This function is called when the encoding
    *   is changed, either by this module, or by the user calling
    *   [set_encoding]
+   *)
+
+  (** Regarding [from_string_inplace], this function has been removed
+      as strings are now considered immutable.
    *)
 
   val delete :

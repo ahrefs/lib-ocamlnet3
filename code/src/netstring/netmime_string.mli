@@ -20,6 +20,8 @@
  * 
  *)
 
+open Netsys_types
+
 (** {1:lines Splitting a string into lines} *)
 
 (** These functions are all CR/LF-aware, i.e. lines can be terminated
@@ -267,6 +269,23 @@ val scan_header :
      Also, this function is different because [downcase] and [unfold] are
      enabled by default, and only [strip] is not enabled.
      *)
+
+val scan_header_tstring : 
+       ?downcase:bool ->              (* default: true *)
+       ?unfold:bool ->                (* default: true *)
+       ?strip:bool ->                 (* default: false *)
+       tstring -> start_pos:int -> end_pos:int -> 
+         ((string * string) list * int)
+  (** The same for tagged strings *)
+
+val scan_header_poly : 
+       ?downcase:bool ->              (* default: true *)
+       ?unfold:bool ->                (* default: true *)
+       ?strip:bool ->                 (* default: false *)
+       's Netstring_tstring.tstring_ops ->
+       's -> start_pos:int -> end_pos:int -> 
+         ((string * string) list * int)
+  (** Polymorphic version *)
 
 val read_header : 
       ?downcase:bool ->

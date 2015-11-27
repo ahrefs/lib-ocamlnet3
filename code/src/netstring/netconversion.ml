@@ -2623,6 +2623,13 @@ let convert ?subst ~in_enc ~out_enc ?range_pos ?range_len s =
     ~out_kind:Netstring_tstring.String_kind
     ~in_enc ~out_enc ?range_pos ?range_len s
 
+let convert_bytes ?subst ~in_enc ~out_enc ?range_pos ?range_len s =
+  convert_poly
+    ?subst
+    ~in_ops:Netstring_tstring.bytes_ops
+    ~out_kind:Netstring_tstring.Bytes_kind
+    ~in_enc ~out_enc ?range_pos ?range_len s
+
 let convert_tstring ?subst ~in_enc ~out_enc ~out_kind ?range_pos ?range_len ts =
   let f =
     { Netstring_tstring.with_fun =

@@ -9,6 +9,8 @@
 (* Several encodings important for the net                             *)
 (* *********************************************************************)
 
+open Netsys_types
+
 
 (* *********************************************************************)
 (* Base 64 encoding                                                    *)
@@ -25,6 +27,7 @@ module Base64 : sig
   (** Base64 encoding as described in RFC 2045 *)
 
   val encode : ?pos:int -> ?len:int -> ?linelength:int -> ?crlf:bool ->
+               ?plus:char -> ?slash:char ->
                string -> string
       (** Compute the "base 64" encoding of the given string argument.
        * Note that the result is a string that only contains the characters
@@ -43,48 +46,66 @@ module Base64 : sig
        * If [crlf] (default: false) the lines are ended by CRLF; otherwise 
        * they are only ended by LF.
        * (You need the crlf option to produce correct MIME messages.)
+       *
+       * By default, the 63rd character of the alphabet is '+', and the
+       * 64th character is '/'. By passing [plus] and [slash] you can
+       * choose different characters.
        * 
        *)
 
-  val url_encode : ?pos:int -> ?len:int -> ?linelength:int -> ?crlf:bool ->
-                   string -> string
-      (** Same as [encode] but use slightly different characters that can be
-       * part of URLs without additional encodings.
-       * The encoded string consists only of the characters a-z, A-Z, 0-9, 
-       * -, /, .
-       * [url_encode] does {b not} implement the Base 64 encoding as described
-       * in the standard!
-       *
-       * @deprecated Since Ocamlnet 0.98, this function is deprecated,
-       *   as it is non-standard, and it has a confusing name.
-       *)
+  val encode_tstring :  ?pos:int -> ?len:int -> ?linelength:int -> ?crlf:bool ->
+                        ?plus:char -> ?slash:char ->
+                        tstring -> Bytes.t
+    (** Same for tagged string inputs. The result are always bytes, though *)
 
-  val decode : ?pos:int -> ?len:int -> ?url_variant:bool -> 
-               ?accept_spaces:bool -> string -> string
+  val encode_poly :  ?pos:int -> ?len:int -> ?linelength:int -> ?crlf:bool ->
+                     ?plus:char -> ?slash:char ->
+                     's Netstring_tstring.tstring_ops -> 's -> Bytes.t
+    (** Polymorphic version *)
+
+
+  val decode : ?pos:int -> ?len:int -> ?accept_spaces:bool -> 
+               ?plus:char -> ?slash:char ->
+               string -> string
       (** Decodes the given string argument. 
        *
        * If [pos] and/or [len] are passed, only the substring starting at
        * [pos] (default: 0) with length [len] (default: rest of the string)
        * is decoded.
        * 
-       * If [url_variant] (default: [true]) is set, the functions also
-       * accepts the characters '-' and '.' as produced by [url_encode].
-       *
        * If [accept_spaces] (default: [false]) is set, the function ignores
        * white space contained in the string to decode (otherwise the
        * function fails if it finds white space). Furthermore, the character
        * '>' is considered as "space", too (so you don't have trouble with
        * mbox mailboxes that accidentally quote "From").
+       *
+       * By default, the 63rd character of the alphabet is '+', and the
+       * 64th character is '/'. By passing [plus] and [slash] you can
+       * choose different characters.
        *)
 
+  val decode_tstring :  ?pos:int -> ?len:int -> ?accept_spaces:bool -> 
+                        ?plus:char -> ?slash:char ->
+                        tstring -> Bytes.t
+    (** Same for tagged string inputs. The result are always bytes, though *)
 
-  class encoding_pipe : ?linelength:int -> ?crlf:bool -> unit ->
+  val decode_poly : ?pos:int -> ?len:int -> ?accept_spaces:bool -> 
+                    ?plus:char -> ?slash:char ->
+                    's Netstring_tstring.tstring_ops -> 's -> Bytes.t
+    (** Polymorphic version *)
+
+
+
+  class encoding_pipe : ?linelength:int -> ?crlf:bool -> 
+                        ?plus:char -> ?slash:char ->
+                        unit ->
                           Netchannels.pipe
       (** This pipe encodes the data written into the pipe. 
        * [linelength] and [crlf] work as in [encode].
        *)
 
-  class decoding_pipe : ?url_variant:bool -> ?accept_spaces:bool -> unit ->
+  class decoding_pipe : ?accept_spaces:bool -> ?plus:char -> ?slash:char ->
+                        unit ->
                           Netchannels.pipe
       (** This pipe decodes the data written into the pipe.
        * [url_variant] and [accept_spaces] work as in [decode].
@@ -135,6 +156,14 @@ module QuotedPrintable :
 	 * line separator. Otherwise only LF is used.
 	 *)
 
+    val encode_tstring : ?crlf:bool -> ?pos:int -> ?len:int -> tstring ->
+                         Bytes.t
+    (** Same for tagged string inputs. The result are always bytes, though *)
+
+    val encode_poly : ?crlf:bool -> ?pos:int -> ?len:int -> 
+                      's Netstring_tstring.tstring_ops -> 's -> Bytes.t
+    (** Polymorphic version *)
+
     val decode : ?pos:int -> ?len:int -> string -> string
 	(** Decodes the string and returns it.
 	 *
@@ -144,6 +173,13 @@ module QuotedPrintable :
 	 * [pos] (default: 0) with length [len] (default: rest of the string)
 	 * is decoded.
 	 *)
+
+    val decode_tstring : ?pos:int -> ?len:int -> tstring -> Bytes.t
+    (** Same for tagged string inputs. The result are always bytes, though *)
+
+    val decode_poly : ?pos:int -> ?len:int -> 
+                      's Netstring_tstring.tstring_ops -> 's -> Bytes.t
+    (** Polymorphic version *)
 
     class encoding_pipe : ?crlf:bool -> unit -> Netchannels.pipe
       (** This pipe encodes the data written into the pipe. *)
@@ -176,7 +212,23 @@ module Q :
 	 * In particular, spaces are represented as "=20", not as "_".
 	 *)
 
+    val encode_tstring : ?pos:int -> ?len:int -> tstring -> Bytes.t
+      (** Same for tagged string inputs. The result are always bytes, though *)
+
+    val encode_poly : ?pos:int -> ?len:int -> 
+                      's Netstring_tstring.tstring_ops -> 's -> Bytes.t
+    (** Polymorphic version *)
+
     val decode : ?pos:int -> ?len:int -> string -> string
+     (** Q-decode a string *)
+
+    val decode_tstring : ?pos:int -> ?len:int -> tstring -> Bytes.t
+      (** Same for tagged string inputs. The result are always bytes, though *)
+
+    val decode_poly : ?pos:int -> ?len:int -> 
+                      's Netstring_tstring.tstring_ops -> 's -> Bytes.t
+    (** Polymorphic version *)
+
 
   end
 
@@ -211,6 +263,11 @@ module Url :
      * compliant definition.
      *)
 
+    (** There are no tstring and polymorphic versions of the encode and
+        decode functions, as URLs are comparatively short, and it is
+        considered as acceptable for the user to convert types as needed,
+        even if strings need to be copied for that.
+     *)
 
     val decode : ?plus:bool -> ?pos:int -> ?len:int -> string -> string
 	(** Option [plus]: Whether '+' is converted to space. The default
@@ -324,6 +381,30 @@ module Html :
        * ]}
        *)
 
+    val encode_tstring : in_enc:Netconversion.encoding ->
+                         out_kind:'s Netstring_tstring.tstring_kind ->
+                         ?out_enc:Netconversion.encoding ->
+		         ?prefer_name:bool ->
+                         ?unsafe_chars:string ->
+		         unit ->
+                         tstring ->
+                           's
+      (** This version takes a tstring argument, and returns the string type
+          chosen by the [out_kind] arg.
+       *)
+
+    val encode_poly : in_enc:Netconversion.encoding ->
+                      in_ops:'s Netstring_tstring.tstring_ops ->
+                      out_kind:'t Netstring_tstring.tstring_kind ->
+                      ?out_enc:Netconversion.encoding ->
+		      ?prefer_name:bool ->
+                      ?unsafe_chars:string ->
+		      unit ->
+                      's ->
+                         't
+      (** Fully polymorphic version *)
+
+
     type entity_set = [ `Html | `Xml | `Empty ];;
 
     val decode : in_enc:Netconversion.encoding ->
@@ -358,6 +439,31 @@ module Html :
        * and [&apos;],
        * and [`Empty] selects the empty set (i.e. [lookup] is always called).
        *)
+
+    val decode_tstring : in_enc:Netconversion.encoding ->
+                         out_kind:'s Netstring_tstring.tstring_kind ->
+                         out_enc:Netconversion.encoding ->
+		         ?lookup:(string -> string) -> (* default: see below *)
+		         ?subst:(int -> string) ->     (* default: see below *)
+		         ?entity_base:entity_set ->    (* default: `Html *)
+		         unit -> 
+		         tstring ->
+		           's
+      (** This version takes a tstring argument, and returns the string type
+          chosen by the [out_kind] arg.
+       *)
+
+    val decode_poly : in_enc:Netconversion.encoding ->
+                       in_ops:'s Netstring_tstring.tstring_ops ->
+                       out_kind:'t Netstring_tstring.tstring_kind ->
+                       out_enc:Netconversion.encoding ->
+		       ?lookup:(string -> string) -> (* default: see below *)
+                       ?subst:(int -> string) ->     (* default: see below *)
+	               ?entity_base:entity_set ->    (* default: `Html *)
+	               unit -> 
+		       's ->
+		           't
+      (** Fully polymorphic version *)
 
   end
 

@@ -150,8 +150,8 @@ type xdr_type_term =
   | X_rec of (string * xdr_type_term)      (* define a recursive type *)
   | X_refer of string                      (* refer to a recursive type *)
   | X_direct of xdr_type_term * 
-                (string -> int ref -> int -> exn) *
-                (exn -> string -> int ref -> unit) *
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
                 (exn -> int)
 ;;
 
@@ -403,12 +403,17 @@ val value_matches_type : xdr_value -> xdr_type -> (string*xdr_type) list -> bool
 
 type encoder = Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
   (** see text above *)
-type decoder = string -> int -> int -> (string * int)
+type decoder = Bytes.t -> int -> int -> (Bytes.t * int)
   (** see text above *)
 
 val pack_xdr_value : ?encode:(string * encoder) list ->
                      xdr_value -> xdr_type -> (string*xdr_type) list ->
-                     (string -> unit) -> unit
+                     (Bytes.t -> unit) -> unit
+val pack_xdr_value_as_bytes :
+                     ?rm:bool ->
+                     ?encode:(string * encoder) list ->
+                     xdr_value -> xdr_type -> (string*xdr_type) list ->
+                       Bytes.t
 val pack_xdr_value_as_string :
                      ?rm:bool ->
                      ?encode:(string * encoder) list ->
@@ -422,6 +427,7 @@ val pack_xdr_value_as_string :
    *)
 
 val pack_xdr_value_as_mstrings :
+       ?rm:bool ->
        ?encode:(string * encoder) list ->
        xdr_value -> xdr_type -> (string*xdr_type) list -> 
          Netxdr_mstring.mstring list
@@ -461,13 +467,13 @@ val unpack_xdr_value : ?pos:int -> ?len:int -> ?fast:bool -> ?prefix:bool ->
                        ?mstring_factories:Netxdr_mstring.named_mstring_factories->
                        ?xv_version:xdr_value_version ->
                        ?decode:(string * decoder) list ->
-                       string -> xdr_type -> (string * xdr_type) list ->
+                       Bytes.t -> xdr_type -> (string * xdr_type) list ->
                        xdr_value
 val unpack_xdr_value_l : ?pos:int -> ?len:int -> ?fast:bool -> ?prefix:bool ->
                        ?mstring_factories:Netxdr_mstring.named_mstring_factories-> 
                          ?xv_version:xdr_value_version ->
                          ?decode:(string * decoder) list ->
-                         string -> xdr_type -> (string * xdr_type) list ->
+                         Bytes.t -> xdr_type -> (string * xdr_type) list ->
                          (xdr_value * int)
   (** [prefix]: whether it is ok that the string is longer than the message
    *   (default: false)
@@ -506,12 +512,12 @@ val sizefn_string : Netnumber.uint4 -> string -> int
 val sizefn_mstring : Netnumber.uint4 -> Netxdr_mstring.mstring -> int
   (* Return the packed size of an mstring *)
 
-val write_string_fixed : int -> string -> string -> int ref -> unit
-val write_string : string -> string -> int ref -> unit
+val write_string_fixed : int -> string -> Bytes.t -> int ref -> unit
+val write_string : string -> Bytes.t -> int ref -> unit
   (* [write_* s1 s2 p]: write the string s1 as XDR to s2 at position p *)
 
-val read_string_fixed : int -> string -> int ref -> int -> string
-val read_string : Netnumber.uint4 -> string -> int ref -> int -> string
+val read_string_fixed : int -> Bytes.t -> int ref -> int -> string
+val read_string : Netnumber.uint4 -> Bytes.t -> int ref -> int -> string
 
 val raise_xdr_format_too_short : unit -> 'a
 val raise_xdr_format_value_not_included : unit -> 'a

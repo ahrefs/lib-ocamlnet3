@@ -4,11 +4,11 @@ let xor_s s u =
   let s_len = String.length s in
   let u_len = String.length u in
   assert(s_len = u_len);
-  let x = String.create s_len in
+  let x = Bytes.create s_len in
   for k = 0 to s_len-1 do
-    x.[k] <- Char.chr ((Char.code s.[k]) lxor (Char.code u.[k]))
+    Bytes.set x k (Char.chr ((Char.code s.[k]) lxor (Char.code u.[k])))
   done;
-  x
+  Bytes.unsafe_to_string x
 
 let hmac ~h ~b ~l ~k ~message =
   if String.length k > b then
@@ -27,24 +27,24 @@ let add_1_complement s1 s2 =
   let l2 = String.length s2 in
   if l1 <> l2 then
     invalid_arg "Netauth.add_1_complement";
-  let r = String.make l1 '\000' in
+  let r = Bytes.make l1 '\000' in
   let carry = ref 0 in
   for k = l1-1 downto 0 do
     let i1 = Char.code s1.[k] in
     let i2 = Char.code s2.[k] in
     let sum = i1 + i2 + !carry in
-    r.[k] <- Char.chr (sum land 0xff);
+    Bytes.set r k (Char.chr (sum land 0xff));
     carry := if sum > 0xff then 1 else 0;
   done;
   if !carry > 0 then (
     for k = l1-1 downto 0 do
-      let i = Char.code r.[k] in
+      let i = Char.code (Bytes.get r k) in
       let sum = i + !carry in
-      r.[k] <- Char.chr (sum land 0xff);
+      Bytes.set r k (Char.chr (sum land 0xff));
       carry := if sum > 0xff then 1 else 0;
     done
   );
-  r
+  Bytes.unsafe_to_string r
 
 
 let rotate_right n s =
@@ -53,13 +53,13 @@ let rotate_right n s =
   let b = 8 * l in  (* bit length of s *)
   let n' = n mod b in
   let n' = if n' < 0 then b+n' else n' in
-  let u = String.create l in
+  let u = Bytes.create l in
   (* First byte-shift the string, then bit-shift the remaining 0-7 bits *)
   let bytes = n' lsr 3 in
   let bits = n' land 7 in
-  String.blit s 0 u bytes (l-bytes);
+  Bytes.blit_string s 0 u bytes (l-bytes);
   if bytes > 0 then
-    String.blit s (l-bytes) u 0 bytes;
+    Bytes.blit_string s (l-bytes) u 0 bytes;
   let mask =
     match bits with
       | 0 -> 0
@@ -74,13 +74,14 @@ let rotate_right n s =
   let carry = ref 0 in
   if bits > 0 && l > 0 then (
     for k = 0 to l-1 do
-      let x = Char.code u.[k] in
-      u.[k] <- Char.chr ((x lsr bits) lor (!carry lsl (8-bits)));
+      let x = Char.code (Bytes.get u k) in
+      Bytes.set u k (Char.chr ((x lsr bits) lor (!carry lsl (8-bits))));
       carry := x land mask;
     done;
-    u.[0] <- Char.chr((Char.code u.[0]) lor (!carry lsl (8-bits)));
+    let u0 = Bytes.get u 0 in
+    Bytes.set u 0 (Char.chr((Char.code u0) lor (!carry lsl (8-bits))));
   );
-  u
+  Bytes.unsafe_to_string u
 
 let n_fold n s =
   (** n-fold the number given by the bitstring s. The length of the number

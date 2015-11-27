@@ -33,7 +33,7 @@ let create_address_tokens
    * address. hr_addr must be encoded by [charset].
    *)
   let hr_addr = 
-    Netconversion.recode_string ~in_enc:in_charset ~out_enc:out_charset hr_addr in
+    Netconversion.convert ~in_enc:in_charset ~out_enc:out_charset hr_addr in
   let hr_words =
     if Netstring_str.string_match only_usascii_re hr_addr 0 <> None then begin
       (* Use double quotes to protect meta characters *)
@@ -94,7 +94,7 @@ let format_field_value fieldname tokens =
 let create_text_tokens
       ?(in_charset = `Enc_iso88591) ?(out_charset = `Enc_iso88591) value =
   let value =
-    Netconversion.recode_string ~in_enc:in_charset ~out_enc:out_charset value in
+    Netconversion.convert ~in_enc:in_charset ~out_enc:out_charset value in
   let words =
     if Netstring_str.string_match only_usascii_re value 0 <> None then
       List.map (fun s -> Atom s) (Netstring_str.split ws_re value)
@@ -360,7 +360,7 @@ let compose
   (* First generate/cleanup (hdr,body) for the main text of the message: *)
   let body = 
     if content_type = None then
-      Netconversion.recode_string 
+      Netconversion.convert
 	~in_enc:in_charset ~out_enc:out_charset body
     else
       body 
