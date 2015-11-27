@@ -180,6 +180,11 @@ object(self)
       len := !len - r
     done
 
+  method really_input_string len =
+    let b = Bytes.create len in
+    self # really_input b 0 len;
+    Bytes.unsafe_to_string b
+
   method input_char () =
     if in1 < 0 then raise Netchannels.Closed_channel;
     self#fill_in_buf;
@@ -215,6 +220,7 @@ object
   method close_in () = invalid_arg "dummy_in_obj"
   method pos_in = invalid_arg "dummy_in_obj"
   method really_input (_:string) (_:int) (_:int) = invalid_arg "dummy_in_obj"
+  method really_input_string (_:int) = invalid_arg "dummy_in_obj"
   method input_char () = invalid_arg "dummy_in_obj"
   method input_byte () = invalid_arg "dummy_in_obj"
   method input_line () = invalid_arg "dummy_in_obj"
@@ -282,12 +288,22 @@ object(self)
     if closed then raise Netchannels.Closed_channel;
     self#unsafe_really_output s 0 (String.length s)
 
+  method output_bytes s =
+    if closed then raise Netchannels.Closed_channel;
+    self#unsafe_really_output s 0 (String.length s)
+
   method output_buffer b = self#output_string(Buffer.contents b)
 
   method really_output s ofs len =
     if closed then raise Netchannels.Closed_channel;
     if ofs < 0 || len < 0 || ofs + len > String.length s then
       invalid_arg "Netcgi_apache#out_channel#really_output";
+    self#unsafe_really_output s ofs len
+
+  method really_output_string s ofs len =
+    if closed then raise Netchannels.Closed_channel;
+    if ofs < 0 || len < 0 || ofs + len > String.length s then
+      invalid_arg "Netcgi_apache#out_channel#really_output_string";
     self#unsafe_really_output s ofs len
 
   method output_channel ?len in_obj =

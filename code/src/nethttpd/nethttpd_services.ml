@@ -531,6 +531,9 @@ object(self)
   method really_output s p len =
     if !enabled then
       out_ch # really_output s p len
+  method really_output_string s p len =
+    if !enabled then
+      out_ch # really_output_string s p len
   method output_char c =
     if !enabled then
       out_ch # output_char c
@@ -540,6 +543,9 @@ object(self)
   method output_byte b =
     if !enabled then
       out_ch # output_byte b
+  method output_bytes b =
+    if !enabled then
+      out_ch # output_bytes b
   method output_buffer b =
     if !enabled then
       out_ch # output_buffer b

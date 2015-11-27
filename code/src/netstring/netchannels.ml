@@ -883,7 +883,7 @@ object (self)
 
   method private enhanced_input_line() =
     if closed then raise Closed_channel;
-    let b = Buffer.create 80 in
+    let b = Netbuffer.create 80 in
     let eol_found = ref false in
     if bufpos = buflen then (
       self # refill();  (* may raise End_of_file *)
@@ -893,15 +893,15 @@ object (self)
       try
 	match best with
 	    EOL_not_found ->
-	      Buffer.add_subbytes b buf bufpos (buflen-bufpos);
+	      Netbuffer.add_subbytes b buf bufpos (buflen-bufpos);
 	      bufpos <- buflen;
 	      self # refill();     (* may raise End_of_file *)
 	  | EOL_partially_found pos ->
-	      Buffer.add_subbytes b buf bufpos (pos-bufpos);
+	      Netbuffer.add_subbytes b buf bufpos (pos-bufpos);
 	      bufpos <- pos;
 	      self # refill();     (* may raise End_of_file *)
 	  | EOL_found(pos,len) ->
-	      Buffer.add_subbytes b buf bufpos (pos-bufpos);
+	      Netbuffer.add_subbytes b buf bufpos (pos-bufpos);
 	      bufpos <- pos+len;
 	      eol_found := true
 	with
@@ -911,7 +911,7 @@ object (self)
 	      eof <- true;
 	      eol_found := true
     done;
-    Buffer.contents b
+    Netbuffer.contents b
 end
 ;;
 
