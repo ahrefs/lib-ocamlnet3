@@ -68,7 +68,7 @@ object(self)
 end
 
 
-let buffer_body ?(add_sub_string = Netpagebuffer.add_sub_string)
+let buffer_body ?(add_subbytes = Netpagebuffer.add_subbytes)
                 buf eof ondata onempty drop : Netmime.mime_body =
   (* ondata: is called whenever new data becomes available. The arg is
      the number of buffered bytes
@@ -88,7 +88,7 @@ let buffer_body ?(add_sub_string = Netpagebuffer.add_sub_string)
 		);
 		let buf_len = Netpagebuffer.length buf in
 		let n = min len buf_len in
-		Netpagebuffer.blit_to_string buf 0 s pos n;
+		Netpagebuffer.blit_to_bytes buf 0 s pos n;
 		Netpagebuffer.delete_hd buf n;
 		n
 	      method close_in() =
@@ -106,7 +106,7 @@ let buffer_body ?(add_sub_string = Netpagebuffer.add_sub_string)
 		drop := Int64.sub !drop (Int64.of_int d);
 		let len' = len - d in
 		if len' > 0 then (
-		  add_sub_string buf s (pos + d) len';
+		  add_subbytes buf s (pos + d) len';
 		  ondata(Netpagebuffer.length buf)
 		);
 		len

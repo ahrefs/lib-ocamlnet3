@@ -88,7 +88,7 @@ let status_of_bad_request_error =
     | _ -> `Bad_request
 
 
-type data_chunk = string * int * int
+type data_chunk = Bytes.t * int * int
 type status_line = int * string
 
 type transfer_coding =
@@ -133,7 +133,7 @@ let string_of_front_token_x =
 	let n = min len 20 in
 	sprintf 
 	  "Resp_wire_data(%s%s)"
-	  (String.escaped (String.sub s pos n))
+	  (String.escaped (Bytes.sub_string s pos n))
 	  (if len > n then "..." else "")
     | `Resp_end ->
 	"Resp_end"
@@ -233,7 +233,8 @@ object(self)
 		  let s = 
 		    Printf.sprintf "%s %3d %s\r\n" 
 		      (string_of_protocol resp_version) code phrase in
-		  Queue.push (`Resp_wire_data (s, 0, String.length s)) queue;
+                  let s = Bytes.of_string s in
+		  Queue.push (`Resp_wire_data (s, 0, Bytes.length s)) queue;
 		  (* Convert the header to a data chunk: *)
 		  let b = Netbuffer.create 256 in 
 		     (* Expect a short/empty header in most cases *)
@@ -256,10 +257,11 @@ object(self)
 	  let s = 
 	    Printf.sprintf "%s %03d %s\r\n" 
 	      (string_of_protocol resp_version) code phrase in
+          let s = Bytes.of_string s in
 	  Queue.push
 	    (`Resp_wire_action (fun () -> bidirectional_phase <- false))
 	    queue;
-	  Queue.push (`Resp_wire_data (s, 0, String.length s)) queue;
+	  Queue.push (`Resp_wire_data (s, 0, Bytes.length s)) queue;
 	  accept <- `Header
       | `Resp_header resp_header ->
 	  if accept <> `Header then 
@@ -334,7 +336,7 @@ object(self)
       | `Resp_body ((s,pos,len) as data) ->
 	  if accept <> `Body then 
 	    failwith "Nethttpd_kernel.http_response: Cannot send body now";
-	  if pos < 0 || len < 0 || pos + len > String.length s then
+	  if pos < 0 || len < 0 || pos + len > Bytes.length s then
 	    invalid_arg "Nethttpd_kernel.http_response#send";
 	  if not suppress_body then ( 
 	    match transfer_encoding with
@@ -360,11 +362,13 @@ object(self)
 		    (* Generate the chunk header: *)
 		    let u = 
 		      Printf.sprintf "%x\r\n" len in
-		    Queue.push (`Resp_wire_data(u,0,String.length u)) queue;
+                    let u = Bytes.of_string u in
+		    Queue.push (`Resp_wire_data(u,0,Bytes.length u)) queue;
 		    (* Output the chunk: *)
 		    Queue.push (`Resp_wire_data data) queue;
 		    (* Framing: *)
-		    Queue.push (`Resp_wire_data ("\r\n", 0, 2)) queue;
+                    let v = Bytes.of_string "\r\n" in
+		    Queue.push (`Resp_wire_data (v, 0, 2)) queue;
 		  )
 	  );
 	  real_length <- Int64.add real_length (Int64.of_int len);
@@ -391,8 +395,8 @@ object(self)
 		  Queue.push `Resp_end queue
 	      | `Chunked ->
 		  (* Add the last-chunk: *)
-		  let s = "0\r\n\r\n" in
-		  Queue.push (`Resp_wire_data(s,0,String.length s)) queue;
+		  let s = Bytes.of_string "0\r\n\r\n" in
+		  Queue.push (`Resp_wire_data(s,0,Bytes.length s)) queue;
 		  Queue.push `Resp_end queue;
 	  );
 	  accept <- `None
@@ -462,10 +466,10 @@ let send_static_response resp status hdr_opt body =
   ( try ignore(h # field "Content-Type")
     with Not_found -> h # update_field "Content-type" "text/html";
   );
-  h # update_field "Content-Length" (string_of_int (String.length body));
+  h # update_field "Content-Length" (string_of_int (Bytes.length body));
   resp # send (`Resp_status_line(code, text));
   resp # send (`Resp_header h);
-  resp # send (`Resp_body(body, 0, String.length body));
+  resp # send (`Resp_body(body, 0, Bytes.length body));
   resp # send `Resp_end
 ;;
 
@@ -495,7 +499,7 @@ let send_file_response resp status hdr_opt fd length =
   resp # send (`Resp_status_line (code, phrase));
   resp # send (`Resp_header hdr);
   let fd_open = ref true in
-  let buf = String.create 8192 in
+  let buf = Bytes.create 8192 in
   let len = ref length in
   let rec feed() =
     match resp # state with
@@ -555,7 +559,7 @@ let string_of_req_token =
     | `Req_body(s,pos,len) ->
 	let n = min len 20 in
 	sprintf "Req_body_data(%s%s)"
-	  (String.escaped (String.sub s pos n))
+	  (String.escaped (Bytes.sub_string s pos n))
 	  (if len > n then "..." else "")
     | `Req_trailer tr ->
 	"Req_trailer"
@@ -610,12 +614,14 @@ end
 
 
 let http_find_line_start s pos len =
-  try Netmime_string.find_line_start s pos len
+  let ops = Netstring_tstring.bytes_ops in
+  try Netmime_string.find_line_start_poly ops s pos len
   with Not_found -> raise Buffer_exceeded
 
 
 let http_find_double_line_start s pos len =
-  try Netmime_string.find_double_line_start s pos len
+  let ops = Netstring_tstring.bytes_ops in
+  try Netmime_string.find_double_line_start_poly ops s pos len
   with Not_found -> raise Buffer_exceeded
 
 
@@ -633,18 +639,18 @@ let parse_req_line s pos len =
   let e = pos+len in
   let rec next_sep p =
     if p >= e then raise Not_found else
-      let c = s.[p] in
+      let c = Bytes.get s p in
       if c = ' ' || c = '\t' then p else
 	if c = '\r' || c = '\n' then raise Not_found
 	else next_sep(p+1) in
   let rec next_end p =
     if p >= e then raise Not_found else
-      let c = s.[p] in
+      let c = Bytes.get s p in
       if c = '\r' || c = '\n' then p 
       else next_end(p+1) in
   let rec skip_sep p =
     if p >= e then raise Not_found else
-      let c = s.[p] in
+      let c = Bytes.get s p in
       if c = ' ' || c = '\t' 
       then skip_sep(p+1)
       else p in
@@ -653,16 +659,16 @@ let parse_req_line s pos len =
   let p2 = next_sep q1 in
   let q2 = skip_sep p2 in
   let p3 = next_end q2 in
-  if s.[p3] = '\n' then (
+  if Bytes.get s p3 = '\n' then (
     if p3+1 <> e then raise Not_found
   ) else (
-    if s.[p3] <> '\r' then raise Not_found;
+    if Bytes.get s p3 <> '\r' then raise Not_found;
     if p3+2 <> e then raise Not_found;
-    if s.[p3+1] <> '\n' then raise Not_found;
+    if Bytes.get s (p3+1) <> '\n' then raise Not_found;
   );
-  let w1 = String.sub s pos (p1-pos) in
-  let w2 = String.sub s q1 (p2-q1) in
-  let w3 = String.sub s q2 (p3-q2) in
+  let w1 = Bytes.sub_string s pos (p1-pos) in
+  let w2 = Bytes.sub_string s q1 (p2-q1) in
+  let w3 = Bytes.sub_string s q2 (p3-q2) in
   (w1, w2, w3)
 
   
@@ -676,18 +682,19 @@ let parse_chunk_header s pos len =
   (* Parses "HEXNUMBER OPTIONAL_SEMI_AND_IGNORED_EXTENSION CRLF",
      or raises Not_found.
    *)
+  let ops = Netstring_tstring.bytes_ops in
   let e = pos+len in
   let rec skip_hex_number p =
     if p >= e then raise Not_found else
-      let c = s.[p] in
+      let c = Bytes.get s p in
       if is_hex c then skip_hex_number(p+1)
       else p in
   let p1 = skip_hex_number pos in
   if p1 = pos || p1 >= e then raise Not_found;
-  let c1 = s.[p1] in
+  let c1 = Bytes.get s p1 in
   if c1=';' then (
     let p2 =
-      Netmime_string.find_line_start s p1 (e - p1) in
+      Netmime_string.find_line_start_poly ops s p1 (e - p1) in
     if p2 <> e then raise Not_found
   )
   else (
@@ -695,10 +702,10 @@ let parse_chunk_header s pos len =
       if p1+1 <> e then raise Not_found
     ) else (
       if p1+2 <> e then raise Not_found;
-      if s.[p1+1] <> '\n' then raise Not_found
+      if Bytes.get s (p1+1) <> '\n' then raise Not_found
     )
   );
-  String.sub s pos (p1-pos)
+  Bytes.sub_string s pos (p1-pos)
 
 
 type cont =
@@ -795,7 +802,7 @@ object(self)
      * server side.
      *)
 
-  val linger_buf = String.create 256
+  val linger_buf = Bytes.create 256
     (* A small buffer for data thrown away *)
 
 
@@ -971,7 +978,7 @@ object(self)
 	    dlogr
 	      (fun () ->
 		 sprintf "FD %Ld: lingering for remaining input" fdi);
-	    let n = Unix.recv fd linger_buf 0 (String.length linger_buf) [] in
+	    let n = Unix.recv fd linger_buf 0 (Bytes.length linger_buf) [] in
 	       (* or Unix_error *)
 	    if n=0 then need_linger <- false  (* that's it! *)
 	  );
@@ -1085,11 +1092,15 @@ object(self)
     #endif
     waiting_for_next_message <- true;
     let l = Netbuffer.length recv_buf in
+    let ops = Netstring_tstring.bytes_ops in
     let s = Netbuffer.unsafe_buffer recv_buf in
-    let block_start = Netmime_string.skip_line_ends s pos (l - pos) in  (* (1) *)
+    let block_start =
+      Netmime_string.skip_line_ends_poly ops s pos (l - pos) in  (* (1) *)
     try
       (* (2) *)
-      if block_start = l || (block_start+1 = l && s.[block_start] = '\013') then (
+      if block_start = l ||
+           (block_start+1 = l && Bytes.get s block_start = '\013')
+      then (
 	#ifdef Testing
            self # case "accept_header/1";
         #endif
@@ -1154,7 +1165,7 @@ object(self)
       (* For simplicity, we create an in_obj_channel reading the portion of the
        * buffer.
        *)
-      let ch = new Netchannels.input_string 
+      let ch = new Netchannels.input_bytes 
 		 ~pos:reqline_end ~len:(block_end - reqline_end) s in
       let str = new Netstream.input_stream ch in
       (* TODO: This is quite expensive. Create a new netstream class for cheaper access 
@@ -1310,7 +1321,7 @@ object(self)
 	  let take_length = min rl have_length in
 	  let n = Int64.to_int take_length in
 	  if n > 0 then
-	    self # push_recv (`Req_body(Netbuffer.sub recv_buf pos n, 0, n), n);
+	    self # push_recv (`Req_body(Netbuffer.sub_bytes recv_buf pos n, 0, n), n);
 	  let rl' = Int64.sub rl take_length in
 	  if rl' > 0L then (
 	    #ifdef Testing
@@ -1432,7 +1443,7 @@ object(self)
       let rem_length' = remaining_length - take_length in
       if take_length > 0 then
 	self # push_recv
-	  (`Req_body(Netbuffer.sub recv_buf pos take_length, 0, take_length), take_length);
+	  (`Req_body(Netbuffer.sub_bytes recv_buf pos take_length, 0, take_length), take_length);
       if take_length = remaining_length then
 	`Continue
 	  (self # accept_body_chunked_contents req_h resp (pos+take_length) 0)
@@ -1459,14 +1470,16 @@ object(self)
         self # case "accept_body_chunked_contents/end";
       #endif
       (* End of chunk reached. There must a (single) line end at the end of the chunk *)
-      if (l > pos && s.[pos] = '\010') then (
+      if (l > pos && Bytes.get s pos = '\010') then (
 	#ifdef Testing
           self # case "accept_body_chunked_contents/lf";
         #endif
 	`Continue(self # accept_body_chunked req_h resp (pos+1))
       )
       else
-	if (l > pos+1 && s.[pos] = '\013' && s.[pos+1] = '\010') then (
+	if (l > pos+1 && Bytes.get s pos = '\013' &&
+              Bytes.get s (pos+1) = '\010')
+        then (
 	  #ifdef Testing
             self # case "accept_body_chunked_contents/crlf";
           #endif
@@ -1509,7 +1522,7 @@ object(self)
     let config_max_trailer_length = max 2 (config # config_max_trailer_length) in
     try
       (* Check if there is a trailer *)
-      if l > pos && s.[pos] = '\010' then (
+      if l > pos && Bytes.get s pos = '\010' then (
 	#ifdef Testing
           self # case "accept_body_chunked_end/lf";
         #endif
@@ -1520,7 +1533,9 @@ object(self)
 	`Continue(self # accept_header (pos+1))
       )
       else 
-	if l > pos+1 && s.[pos] = '\013' && s.[pos+1] = '\010' then (
+	if l > pos+1 && Bytes.get s pos = '\013' &&
+             Bytes.get s (pos+1) = '\010'
+        then (
 	  #ifdef Testing
             self # case "accept_body_chunked_end/crlf";
           #endif
@@ -1547,7 +1562,7 @@ object(self)
             #endif
 	    raise(Bad_request (`Format_error "Trailer too long"));
 	  );
-	  let ch = new Netchannels.input_string 
+	  let ch = new Netchannels.input_bytes
 		     ~pos:pos ~len:(trailer_end - pos) s in
 	  let str = new Netstream.input_stream ch in
 	  let req_tr =
@@ -1833,7 +1848,7 @@ class lingering_close ?(preclose = fun () -> ()) fd =
 object(self)
   val start_time = Unix.gettimeofday()
   val timeout = 60.0
-  val junk_buffer = String.create 256
+  val junk_buffer = Bytes.create 256
   val mutable lingering = true
 
   method cycle ?(block=false) () =
@@ -1846,7 +1861,7 @@ object(self)
 	()
       );
 
-      let n = Unix.recv fd junk_buffer 0 (String.length junk_buffer) [] in
+      let n = Unix.recv fd junk_buffer 0 (Bytes.length junk_buffer) [] in
       if n = 0 then (
 	lingering <- false;
 	preclose();

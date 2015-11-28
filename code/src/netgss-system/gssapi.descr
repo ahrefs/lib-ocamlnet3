@@ -545,7 +545,7 @@ let () =
 
        (* HACK for wrap/unwrap: *)
        if fn_name = "gss_unwrap" || fn_name = "gss_wrap" then (
-         fprintf f "%s    output_message_preferred_type:[`String|`Memory] ->\n"
+         fprintf f "%s    output_message_preferred_type:[`Bytes|`Memory] ->\n"
                  indent
        );
 

@@ -1083,7 +1083,7 @@ let create2_srv prot esys =
   Hashtbl.add none "AUTH_NONE" auth_none;
 
   let mf = Hashtbl.create 1 in
-  Hashtbl.add mf "*" Netxdr_mstring.string_based_mstrings;
+  Hashtbl.add mf "*" Netxdr_mstring.bytes_based_mstrings;
   
   { main_socket_name = `Implied;
     dummy = false;

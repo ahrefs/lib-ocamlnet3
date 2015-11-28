@@ -168,7 +168,7 @@ let string_manager =
 	   raise(Netshm.Corrupt_file 
 		   "Netshm_data.string_manager: Cannot decode");
 	 let pos = ref !size in
-	 let s = String.create s_len in
+	 let s = Bytes.create s_len in
 	 let s_pos = ref s_len in
 	 List.iter
 	   (fun v ->
@@ -191,7 +191,7 @@ let string_manager =
 		     0
 		  ) in
 	      s_pos := !s_pos - bsize;
-	      Netsys_mem.blit_memory_to_string
+	      Netsys_mem.blit_memory_to_bytes
 		m
 		(if has_length_word then 4 else 0)
 		s
@@ -201,7 +201,7 @@ let string_manager =
 	   l;
 	 assert (!pos = 0);
 	 assert (!s_pos = 0);
-	 s
+	 Bytes.unsafe_to_string s
       );
  
     of_int32_array_prefix = None;

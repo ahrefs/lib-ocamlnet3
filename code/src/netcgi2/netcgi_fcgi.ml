@@ -98,12 +98,12 @@ let fcgi_web_server_addrs =
 let set_length4 s ofs n =
   (* 4 bytes encoding of the length [n] in the string [s] from
      position [ofs]. *)
-  s.[ofs+3] <- Char.unsafe_chr(n land 0xFF);
+  Bytes.set s (ofs+3) (Char.unsafe_chr(n land 0xFF));
   let n = n lsr 8 in
-  s.[ofs+2] <- Char.unsafe_chr(n land 0xFF);
+  Bytes.set s (ofs+2) (Char.unsafe_chr(n land 0xFF));
   let n = n lsr 8 in
-  s.[ofs+1] <- Char.unsafe_chr(n land 0xFF);
-  s.[ofs] <- Char.chr((n lsr 8) lor 0x80)
+  Bytes.set s (ofs+1) (Char.unsafe_chr(n land 0xFF));
+  Bytes.set s ofs (Char.chr((n lsr 8) lor 0x80))
 
 (* [lengths_of_key_val k v] returns a string encoding the lengths
    of the key-value pair [(k,v)] according to fcgi spec: 3.4
@@ -113,26 +113,26 @@ let lengths_of_key_val k v =
   and vlen = String.length v in
   if klen < 128 then
     if vlen < 128 then begin
-      let s = String.create 2 in
-      s.[0] <- Char.chr klen;
-      s.[1] <- Char.chr vlen;
+      let s = Bytes.create 2 in
+      Bytes.set s 0 (Char.chr klen);
+      Bytes.set s 1 (Char.chr vlen);
       s
     end
     else begin
-      let s = String.create 5 in
-      s.[0] <- Char.chr klen;
+      let s = Bytes.create 5 in
+      Bytes.set s 0 (Char.chr klen);
       set_length4 s 1 vlen;
       s
     end
   else
     if vlen < 128 then begin
-      let s = String.create 5 in
+      let s = Bytes.create 5 in
       set_length4 s 0 klen;
-      s.[4] <- Char.chr vlen;
+      Bytes.set s 4 (Char.chr vlen);
       s
     end
     else begin
-      let s = String.create 8 in
+      let s = Bytes.create 8 in
       set_length4 s 0 klen;
       set_length4 s 4 vlen;
       s
@@ -140,9 +140,9 @@ let lengths_of_key_val k v =
 
 (* Add the key-value pair [k], [v] to the buffer [buf]. *)
 let add_key_val buf k v =
-  Buffer.add_string buf (lengths_of_key_val k v);
-  Buffer.add_string buf k;
-  Buffer.add_string buf v
+  Netbuffer.add_bytes buf (lengths_of_key_val k v);
+  Netbuffer.add_string buf k;
+  Netbuffer.add_string buf v
 
 
 (* In the following, we stack several netchannels. The goal is to reduce
@@ -198,24 +198,27 @@ object (self)
   (* [output_packet ty id s ofs len] sends a request [id],
      a record of type [ty] whose data is the substring [s.[ofs .. ofs +
      len - 1]] where [len <= 65535].  *)
-  method output_packet ty id s ofs len =
+  method output_packet ty id ts ofs len =
     assert(len <= 0xFFFF);
     let padding_len = 
       let r = len mod 8 in
       if r = 0 then 0 else 8 - r in
     (* We keep total size a multiple of 8 bytes so the web server can
        easily align the data for efficency. *)
-    let r = String.create 8 in
-    r.[0] <- fcgi_version;
-    r.[1] <- ty;
-    r.[2] <- Char.chr(id lsr 8);
-    r.[3] <- Char.chr(id land 0xFF);  (* requestId *)
-    r.[4] <- Char.chr(len lsr 8);
-    r.[5] <- Char.chr(len land 0xFF); (* contentLength *)
-    r.[6] <- Char.chr(padding_len);  (* paddingLength *)
-    r.[7] <- '\000';
-    self # output_string r;
-    self # really_output s ofs len;
+    let r = Bytes.create 8 in
+    Bytes.set r 0 fcgi_version;
+    Bytes.set r 1 ty;
+    Bytes.set r 2 (Char.chr(id lsr 8));
+    Bytes.set r 3 (Char.chr(id land 0xFF));  (* requestId *)
+    Bytes.set r 4 (Char.chr(len lsr 8));
+    Bytes.set r 5 (Char.chr(len land 0xFF)); (* contentLength *)
+    Bytes.set r 6 (Char.chr(padding_len));  (* paddingLength *)
+    Bytes.set r 7 '\000';
+    self # output_bytes r;
+    ( match ts with
+        | `String s -> self # really_output_string s ofs len
+        | `Bytes s -> self # really_output s ofs len
+    );
     self # really_output r 0 padding_len  (* Padding (garbage) *)
 
   (* [send_user_data ty id s pos len] sends a request [id],
@@ -223,8 +226,12 @@ object (self)
      into several packets
    *)
   method send_user_data ty id s pos len =
+    let s_len =
+      match s with
+        | `String s -> String.length s
+        | `Bytes s -> Bytes.length s in
     let rec loop pos len =
-      let l = min (min len (String.length s - pos)) 0xFFFF in
+      let l = min (min len (s_len - pos)) 0xFFFF in
       if l > 0 then (
 	self # output_packet ty id s pos l;
 	loop (pos+l) (len-l)
@@ -238,48 +245,48 @@ object (self)
      status code (the meaning depends on the role).  [status] is a
      protocol-level status code. *)
   method send_end_request id exit_code status =
-    let r = String.make 8 '\000' in
-    r.[3] <- Char.chr(exit_code land 0xFF); (* appStatus (4 bytes) *)
+    let r = Bytes.make 8 '\000' in
+    Bytes.set r 3 (Char.chr(exit_code land 0xFF)); (* appStatus (4 bytes) *)
     let exit_code = exit_code lsr 8 in
-    r.[2] <- Char.chr(exit_code land 0xFF);
+    Bytes.set r 2 (Char.chr(exit_code land 0xFF));
     let exit_code = exit_code lsr 8 in
-    r.[1] <- Char.chr(exit_code land 0xFF);
-    r.[0] <- Char.chr(exit_code lsr 8);
-    r.[4] <- Char.chr(match status with
-			| REQUEST_COMPLETE -> 0
-			| CANT_MPX_CONN ->    1
-			| OVERLOADED ->       2
-			| UNKNOWN_ROLE ->     3); (* protocolStatus *)
-    self # output_packet fcgi_end_request id r 0 8
+    Bytes.set r 1 (Char.chr(exit_code land 0xFF));
+    Bytes.set r 0 (Char.chr(exit_code lsr 8));
+    Bytes.set r 4 (Char.chr(match status with
+			      | REQUEST_COMPLETE -> 0
+			      | CANT_MPX_CONN ->    1
+			      | OVERLOADED ->       2
+			      | UNKNOWN_ROLE ->     3)); (* protocolStatus *)
+    self # output_packet fcgi_end_request id (`Bytes r) 0 8
 
   (* Response to a managment record of type [t] that this library does
      not understand. *)
   method send_unknown_type t =
-    let r = String.make 8 '\000' in
-    r.[0] <- t;
-    self # output_packet fcgi_unknown_type 0 r 0 8
+    let r = Bytes.make 8 '\000' in
+    Bytes.set r 0 t;
+    self # output_packet fcgi_unknown_type 0 (`Bytes r) 0 8
 
   method send_stdout_end_response id =
     (* Close the stream FCGI_STDOUT by sending an empty record *)
-    self # output_packet fcgi_stdout id "" 0 0
+    self # output_packet fcgi_stdout id (`String "") 0 0
 
   method send_stderr_end_response id =
     (* Close the stream FCGI_STDERR by sending an empty record *)
-    self # output_packet fcgi_stderr id "" 0 0
+    self # output_packet fcgi_stderr id (`String "") 0 0
 
   (* [send_values props ~max_conns] send back (on [fd])
    an appropriate FCGI_GET_VALUES_RESULT response for a
    FCGI_GET_VALUES record [r]. *)
   method send_values (props : (string * string) list) ~max_conns =
-    let buf = Buffer.create 64 in
+    let buf = Netbuffer.create 64 in
     if List.mem_assoc "FCGI_MAX_CONNS" props then
       add_key_val buf "FCGI_MAX_CONNS" (string_of_int max_conns);
     if List.mem_assoc "FCGI_MAX_REQS" props then
       add_key_val buf "FCGI_MAX_REQS" "1"; (* no multiplexing! *)
     if List.mem_assoc "FCGI_MPXS_CONNS" props then
       add_key_val buf "FCGI_MPXS_CONNS" "0"; (* no multiplexing! *)
-    let s = Buffer.contents buf in
-    self # output_packet fcgi_get_values_result 0 s 0 (String.length s)
+    let s = Netbuffer.to_bytes buf in
+    self # output_packet fcgi_get_values_result 0 (`Bytes s) 0 (Bytes.length s)
 end
 
 
@@ -296,7 +303,7 @@ object(self)
      *)
 
   method output s pos len =
-    fcgi_ch # send_user_data fcgi_stdout id s pos len;
+    fcgi_ch # send_user_data fcgi_stdout id (`Bytes s) pos len;
     pos_out <- pos_out + len;
     len
 
@@ -342,15 +349,15 @@ type record = {
    It is assumed that [0 <= ofs < String.length s].
    @raise Failure if the spec is not respected.  *)
 let get_length data ofs =
-  let b = Char.code(data.[ofs]) in
+  let b = Char.code(Bytes.get data ofs) in
   if b lsr 7 = 0 then
     (b, ofs + 1)
   else begin
-    if ofs + 3 >= String.length data then
+    if ofs + 3 >= Bytes.length data then
       failwith "Netcgi_fcgi.update_props_inheader";
-    let b2 = Char.code(data.[ofs + 1])
-    and b1 = Char.code(data.[ofs + 2])
-    and b0 = Char.code(data.[ofs + 3]) in
+    let b2 = Char.code(Bytes.get data (ofs + 1))
+    and b1 = Char.code(Bytes.get data (ofs + 2))
+    and b0 = Char.code(Bytes.get data (ofs + 3)) in
     (* Note: this must also work on 64 bit platforms! *)
     (((b land 0x7F) lsl 24) + (b2 lsl 16) + (b1 lsl 8) + b0, ofs + 4)
   end
@@ -371,8 +378,8 @@ let get_props_inheader =
       let ofs_value = ofs + namelen in
       let ofs_next = ofs_value + valuelen in
       if  ofs_next > datalen then failwith "Netcgi_fcgi.get_props_inheader";
-      let name = String.uppercase(String.sub data ofs namelen)
-      and value = String.sub data ofs_value valuelen in
+      let name = String.uppercase(Bytes.sub_string data ofs namelen)
+      and value = Bytes.sub_string data ofs_value valuelen in
       let props_inheader =
 	Netcgi_common.update_props_inheader (name, value) props_inheader in
       add data ofs_next datalen props_inheader
@@ -417,13 +424,13 @@ object(self)
      *)
 
 
-  val padding_buffer = String.create 0xFF
+  val padding_buffer = Bytes.create 0xFF
 
   method input_padding len =
     self # really_input padding_buffer 0 len
 
 
-  val record_buffer = String.create 65536  (* 64K *)
+  val record_buffer = Bytes.create 65536  (* 64K *)
 
   method record_buffer = record_buffer
 
@@ -433,16 +440,18 @@ object(self)
      [record_buffer]
    *)
   method input_record() =
-    let header = String.create 8 in
+    let header = Bytes.create 8 in
     self # really_input header 0 8;
-    let version = Char.code(header.[0])
-    and id =  Char.code(header.[2]) lsl 8 + Char.code(header.[3])
-    and len = Char.code(header.[4]) lsl 8 + Char.code(header.[5])
-    and padding = Char.code(header.[6]) in
+    let version = Char.code(Bytes.get header 0)
+    and id =  Char.code(Bytes.get header 2) lsl 8 +
+                Char.code(Bytes.get header 3)
+    and len = Char.code(Bytes.get header 4) lsl 8 +
+                Char.code(Bytes.get header 5)
+    and padding = Char.code(Bytes.get header 6) in
     self # really_input record_buffer 0 len;
     self # input_padding padding;
     { version = version;
-      ty = header.[1];
+      ty = Bytes.get header 1;
       id = id;
       length = len }
 
@@ -504,9 +513,10 @@ object(self)
     let r = self # input_app_record ~max_conns in
     if r.ty = fcgi_begin_request && r.length = 8 then (
       let role = 
-	Char.code(record_buffer.[0]) lsl 8 + Char.code(record_buffer.[1])
+	Char.code(Bytes.get record_buffer 0) lsl 8 +
+          Char.code(Bytes.get record_buffer 1)
       and flags = 
-	Char.code(record_buffer.[2]) in
+	Char.code(Bytes.get record_buffer 2) in
       match role with
 	| 1 -> (r.id, `Responder, flags)
 	| 2 -> (r.id, `Authorizer, flags)
@@ -559,7 +569,7 @@ object(self)
       buf_len <- r.length
     );
     let l = min len buf_len in
-    String.blit (fcgi_ch # record_buffer) buf_pos s pos l;
+    Bytes.blit (fcgi_ch # record_buffer) buf_pos s pos l;
     buf_pos <- buf_pos + l;
     buf_len <- buf_len - l;
     pos_in <- pos_in + l;
@@ -578,10 +588,10 @@ end
    play the input channel role.  *)
 class closed_in_obj : Netchannels.in_obj_channel =
 object
-  method input (_:string) (_:int) (_:int) = raise Netchannels.Closed_channel
+  method input (_:Bytes.t) (_:int) (_:int) = raise Netchannels.Closed_channel
   method close_in () = ()
   method pos_in = raise Netchannels.Closed_channel
-  method really_input (_:string) (_:int) (_:int) =
+  method really_input (_:Bytes.t) (_:int) (_:int) =
     raise Netchannels.Closed_channel
   method really_input_string (_:int) =
     raise Netchannels.Closed_channel
@@ -601,7 +611,8 @@ class fcgi_environment ?log_error ~config ~properties ~input_header fcgi_ch id
   let user_ch = new user_out_channel fcgi_ch id in
 
   let fcgi_log_error id msg : unit =
-    fcgi_ch # send_user_data fcgi_stderr id msg 0 (String.length msg) in
+    fcgi_ch # send_user_data
+      fcgi_stderr id (`String msg) 0 (String.length msg) in
 
 object
   inherit cgi_environment ~config ~properties ~input_header user_ch

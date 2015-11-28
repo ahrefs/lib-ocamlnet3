@@ -119,9 +119,9 @@ let binop_inet_addr f (ip1 : Unix.inet_addr) (ip2 : Unix.inet_addr) =
   let l = String.length s1 in
   if l <> String.length s2 then
     failwith "logand_inet_addr";
-  let s3 = String.create l in
+  let s3 = Bytes.create l in
   for k = 0 to l-1 do
-    s3.[k] <- Char.chr(f (Char.code s1.[k]) (Char.code s2.[k]));
+    Bytes.set s3 k (Char.chr(f (Char.code s1.[k]) (Char.code s2.[k])));
   done;
   (Obj.magic s3 : Unix.inet_addr)
 
@@ -540,6 +540,14 @@ let gwrite_tstr fd_style fd ts pos len =
 let gwrite fd_style fd s pos len =
   gwrite_tstr fd_style fd (`Bytes s) pos len
 
+let gwrite_tbuf fd_style fd tb pos len =
+  let ts =
+    match tb with
+      | `Bytes s -> `Bytes s
+      | `String s -> `Bytes s
+      | `Memory m -> `Memory m in
+  gwrite_tstr fd_style fd ts pos len
+
 
 let rec really_gwrite_tstr fd_style fd ts pos len =
   try
@@ -559,6 +567,14 @@ let rec really_gwrite_tstr fd_style fd ts pos len =
 
 let really_gwrite fd_style fd s pos len =
   really_gwrite_tstr fd_style fd (`Bytes s) pos len
+
+let really_gwrite_tbuf fd_style fd tb pos len =
+  let ts =
+    match tb with
+      | `Bytes s -> `Bytes s
+      | `String s -> `Bytes s
+      | `Memory m -> `Memory m in
+  really_gwrite_tstr fd_style fd ts pos len
 
 
 let gread_tbuf fd_style fd buf pos len =

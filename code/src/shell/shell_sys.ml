@@ -3,6 +3,8 @@
  *
  *)
 
+(* FIXME: deprecated uses of String.copy in this module! *)
+
 
 open Printf
 
@@ -37,7 +39,7 @@ let create_env () = ref [| |];;
 let copy_env e =
   ref
     (Array.map
-       String.copy
+       String.copy          (* ... for the time being ... *)
        !e
     )
 ;;
@@ -1045,21 +1047,22 @@ let write_close fd_style fd =
   Netsys.gclose fd_style fd
 
 
-let from_string
+let from_tstring
       ?(pos = 0)
       ?len
       ?(epipe = fun () -> ())
       s =
-  if pos < 0 || pos > String.length s then
-    invalid_arg "Shell_sys.from_string";
+  let s_len = Netstring_tstring.length_tstring s in
+  if pos < 0 || pos > s_len then
+    invalid_arg "Shell_sys.from_tstring";
   let max_pos =
     match len with
-	None   -> String.length s
+	None   -> s_len
       | Some l ->
-	  if l < 0 then invalid_arg "Shell_sys.from_string";
+	  if l < 0 then invalid_arg "Shell_sys.from_tstring";
 	  pos + l
   in
-  if max_pos > String.length s then invalid_arg "Shell_sys.from_string";
+  if max_pos > s_len then invalid_arg "Shell_sys.from_string";
   (* ==> Take material from positions pos to max_pos-1 from s *)
 
   let current_pos = ref pos in
@@ -1075,7 +1078,7 @@ let from_string
     let n =
       if m > 0 then begin
 	try
-	  Netsys.gwrite !fd_style fd s (!current_pos) m
+	  Netsys.gwrite_tstr !fd_style fd s (!current_pos) m
 	with
 	    Unix.Unix_error(Unix.EPIPE,_,_) ->
 	      epipe();
@@ -1097,6 +1100,10 @@ let from_string
     else
       true
 ;;
+
+
+let from_string ?pos ?len ?epipe s =
+  from_tstring ?pos ?len ?epipe (`String s)
 
 
 let from_stream
@@ -1136,7 +1143,7 @@ let from_stream
 	  let m = String.length x - !current_pos in
 	  let n =
 	    try
-	      Netsys.gwrite !fd_style fd x (!current_pos) m
+	      Netsys.gwrite_tstr !fd_style fd (`String x) (!current_pos) m
 	    with
 		Unix.Unix_error(Unix.EPIPE,_,_) ->
 		  epipe();
@@ -1154,9 +1161,9 @@ let from_stream
 ;;
 
 
-let to_buffer b =
+let to_any_buffer add_subbytes =
   let m = 4096 in
-  let s = String.create m in
+  let s = Bytes.create m in
 
   let fd_style = ref `Read_write in
   let fd_style_set = ref false in
@@ -1181,12 +1188,25 @@ let to_buffer b =
       false
     end
     else begin
-      Buffer.add_substring b s 0 n;
+      add_subbytes s 0 n;
       true
     end
   in
   next
 ;;
+
+
+let to_buffer b =
+  #ifdef HAVE_BYTES
+    to_any_buffer (fun s pos len -> Buffer.add_subbytes b s pos len)
+  #else
+    to_any_buffer (fun s pos len -> Buffer.add_substring b s pos len)
+  #endif
+
+
+let to_netbuffer b =
+  to_any_buffer (fun s pos len -> Netbuffer.add_subbytes b s pos len)
+
 
 
 exception No_Unix_process_group;;

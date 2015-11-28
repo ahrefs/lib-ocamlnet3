@@ -54,7 +54,7 @@ struct
       with Failure msg -> raise(HTTP(`Internal_server_error, msg))
 
     let get_client_block_buf r buf ofs len =
-      if ofs < 0 || ofs + len > String.length buf then
+      if ofs < 0 || ofs + len > Bytes.length buf then
         invalid_arg "Netcgi_apache.Apache.Request.get_client_block_buf";
       let r = get_client_block_buffer r buf ofs len in
       if r < 0 then
@@ -99,7 +99,7 @@ let min (i:int) j = if i <= j then i else j
 let index_in_range s i0 i1 c =
   let rec examine i =
     if i < i1 then
-      if String.unsafe_get s i = c then i
+      if Bytes.unsafe_get s i = c then i
       else examine (i+1)
     else i1 in
   examine i0
@@ -120,7 +120,7 @@ let index_in_range s i0 i1 c =
 class in_obj (r:Apache.Request.t) : Netchannels.in_obj_channel =
 object(self)
   val r = r
-  val in_buf = String.create 8192 (* valid: buf.[in0 .. in1-1] *)
+  val in_buf = Bytes.create 8192 (* valid: buf.[in0 .. in1-1] *)
   val mutable in0 = 0
   val mutable in1 = 0 (* in1 < 0 indicates the channel is closed *)
   val mutable read = 0 (* number of byte delivered to the user *)
@@ -147,7 +147,7 @@ object(self)
   method private unsafe_input buf ofs len =
     self#fill_in_buf;
     let r = min len (in1 - in0) in
-    String.blit in_buf in0 buf ofs r;
+    Bytes.blit in_buf in0 buf ofs r;
     in0 <- in0 + r;
     read <- read + r;
     r
@@ -155,7 +155,7 @@ object(self)
   (* rec_in_channel *)
   method input buf ofs len =
     if in1 < 0 then raise Netchannels.Closed_channel;
-    if ofs < 0 || len < 0 || ofs + len > String.length buf then
+    if ofs < 0 || len < 0 || ofs + len > Bytes.length buf then
       invalid_arg "Netcgi_apache.in_obj#input";
     self#unsafe_input buf ofs len
 
@@ -170,7 +170,7 @@ object(self)
   (* Convenience methods *)
   method really_input buf ofs len =
     if in1 < 0 then raise Netchannels.Closed_channel;
-    if ofs < 0 || len < 0 || ofs + len > String.length buf then
+    if ofs < 0 || len < 0 || ofs + len > Bytes.length buf then
       invalid_arg "Netcgi_apache.in_obj#really_input";
     let ofs = ref ofs
     and len = ref len in
@@ -188,7 +188,7 @@ object(self)
   method input_char () =
     if in1 < 0 then raise Netchannels.Closed_channel;
     self#fill_in_buf;
-    let c = String.unsafe_get in_buf in0 in
+    let c = Bytes.unsafe_get in_buf in0 in
     in0 <- in0 + 1;
     read <- read + 1;
     c
@@ -203,7 +203,7 @@ object(self)
       self#fill_in_buf; (* => in0 < in1 *)
       i := index_in_range in_buf in0 in1 '\n';
       let r = !i - in0 in
-      line := !line ^ (String.sub in_buf in0 r);
+      line := !line ^ (Bytes.sub_string in_buf in0 r);
       read <- read + r + 1; (* +1 for '\n' *)
       in0 <- !i + 1; (* skip '\n' *)
     done;
@@ -216,10 +216,10 @@ end
    information in case of misuse. *)
 class dummy_in_obj : Netchannels.in_obj_channel =
 object
-  method input (_:string) (_:int) (_:int) = invalid_arg "dummy_in_obj"
+  method input (_:Bytes.t) (_:int) (_:int) = invalid_arg "dummy_in_obj"
   method close_in () = invalid_arg "dummy_in_obj"
   method pos_in = invalid_arg "dummy_in_obj"
-  method really_input (_:string) (_:int) (_:int) = invalid_arg "dummy_in_obj"
+  method really_input (_:Bytes.t) (_:int) (_:int) = invalid_arg "dummy_in_obj"
   method really_input_string (_:int) = invalid_arg "dummy_in_obj"
   method input_char () = invalid_arg "dummy_in_obj"
   method input_byte () = invalid_arg "dummy_in_obj"
@@ -286,17 +286,17 @@ object(self)
 
   method output_string s =
     if closed then raise Netchannels.Closed_channel;
-    self#unsafe_really_output s 0 (String.length s)
+    self#unsafe_really_output (Bytes.unsafe_of_string s) 0 (String.length s)
 
   method output_bytes s =
     if closed then raise Netchannels.Closed_channel;
-    self#unsafe_really_output s 0 (String.length s)
+    self#unsafe_really_output s 0 (Bytes.length s)
 
   method output_buffer b = self#output_string(Buffer.contents b)
 
   method really_output s ofs len =
     if closed then raise Netchannels.Closed_channel;
-    if ofs < 0 || len < 0 || ofs + len > String.length s then
+    if ofs < 0 || len < 0 || ofs + len > Bytes.length s then
       invalid_arg "Netcgi_apache#out_channel#really_output";
     self#unsafe_really_output s ofs len
 
@@ -304,11 +304,11 @@ object(self)
     if closed then raise Netchannels.Closed_channel;
     if ofs < 0 || len < 0 || ofs + len > String.length s then
       invalid_arg "Netcgi_apache#out_channel#really_output_string";
-    self#unsafe_really_output s ofs len
+    self#unsafe_really_output (Bytes.unsafe_of_string s) ofs len
 
   method output_channel ?len in_obj =
     if closed then raise Netchannels.Closed_channel;
-    let buf = String.create 8192 in
+    let buf = Bytes.create 8192 in
     match len with
     | None -> (* read till the end *)
 	(try

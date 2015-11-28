@@ -5,9 +5,11 @@ exception Null_pointer
 type memory = 
     (char,Bigarray.int8_unsigned_elt,Bigarray.c_layout) Bigarray.Array1.t
 
-val buffer_of_string : string -> int -> int -> gss_buffer_t  (* FIXME: bytes *)
+val buffer_of_string : string -> int -> int -> gss_buffer_t
+val buffer_of_bytes : Bytes.t -> int -> int -> gss_buffer_t
 val buffer_of_memory : memory -> gss_buffer_t
-val string_of_buffer : gss_buffer_t -> string                (* FIXME: bytes *)
+val string_of_buffer : gss_buffer_t -> string
+val bytes_of_buffer : gss_buffer_t -> Bytes.t
 val memory_of_buffer : gss_buffer_t -> memory
 val release_buffer : gss_buffer_t -> unit
 val oid_of_der : string -> gss_OID

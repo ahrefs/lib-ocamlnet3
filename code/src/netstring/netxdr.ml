@@ -1375,7 +1375,7 @@ let rec pack_mstring
   let save_buf() =
     if !buf_pos > !buf_start then (
       let x =
-	Netxdr_mstring.string_based_mstrings # create_from_bytes
+	Netxdr_mstring.bytes_based_mstrings # create_from_bytes
 	  buf !buf_start (!buf_pos - !buf_start) false in
       result := x :: !result;
       buf_start := !buf_pos
@@ -1619,7 +1619,7 @@ let pack_xdr_value_as_mstrings
       let rm_prefix =
 	if rm then
 	  let s = "\000\000\000\000" in
-	  [ Netxdr_mstring.string_based_mstrings # create_from_string s 0 4 false ]
+	  [ Netxdr_mstring.bytes_based_mstrings # create_from_string s 0 4 false ]
 	else
 	  [] in
       rm_prefix @ mstrings0
@@ -2056,3 +2056,10 @@ let unpack_xdr_value_l
     failwith "Netxdr.unpack_xdr_value"
 ;;
 
+
+let unpack_xdr_value_str
+    ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?decode
+    (str:string) ty p =
+  unpack_xdr_value_l
+    ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?decode
+    (Bytes.unsafe_of_string str) ty p

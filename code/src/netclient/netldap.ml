@@ -137,6 +137,8 @@ let new_msg_id conn =
   id
 
 
+let ops = Netstring_tstring.bytes_ops
+
 let rec receive_messages_e conn buf_eof =
   if Uq_io.in_buffer_length conn.dev_in_buf = 0 && not buf_eof then (
     (* Nothing received yet *)
@@ -147,23 +149,23 @@ let rec receive_messages_e conn buf_eof =
   )
   else (
     (* Check whether there is a full header in the buffer *)
-    let s = String.create 32 in
+    let s = Bytes.create 32 in
     let n = min 32 (Uq_io.in_buffer_length conn.dev_in_buf) in
-    Uq_io.in_buffer_blit conn.dev_in_buf 0 (`String s) 0 n;
+    Uq_io.in_buffer_blit conn.dev_in_buf 0 (`Bytes s) 0 n;
     try
       let (hdr_len, _, _, _, data_len_opt) =
-        Netasn1.decode_ber_header ~len:n ~skip_length_check:true s in
+        Netasn1.decode_ber_header_poly ~len:n ~skip_length_check:true ops s in
       let data_len =
         match data_len_opt with
           | None ->
               failwith "LDAP protocol: message with implicit length found"
           | Some l -> l in
       let total_len = hdr_len + data_len in
-      let msg_buf = String.make total_len '\x00' in
-      Uq_io.really_input_e conn.dev_in (`String msg_buf) 0 total_len
+      let msg_buf = Bytes.make total_len '\x00' in
+      Uq_io.really_input_e conn.dev_in (`Bytes msg_buf) 0 total_len
       ++ (fun () ->
             let _, msg =
-              Netasn1.decode_ber msg_buf in
+              Netasn1.decode_ber_poly ops msg_buf in
             match msg with
               | Netasn1.Value.Seq (Netasn1.Value.Integer msg_id_asn1 :: _) ->
                   let msg_id =
@@ -245,8 +247,8 @@ let connect_e ?proxy ?peer_name ?tls_config addr esys =
 let send_message_e conn msg =
   let buf = Netbuffer.create 80 in
   ignore(Netasn1_encode.encode_ber buf msg);
-  let data = Netbuffer.contents buf in
-  Uq_io.really_output_e conn.dev_out (`String data) 0 (String.length data)
+  let data = Netbuffer.to_bytes buf in
+  Uq_io.really_output_e conn.dev_out (`Bytes data) 0 (Bytes.length data)
 
 
 let close_e conn =

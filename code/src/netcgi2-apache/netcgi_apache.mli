@@ -213,7 +213,7 @@ sig
     val get_client_block : t -> string
       (** Get client request data.
           @raise Netcgi_common.HTTP in case of reading error. *)
-    val get_client_block_buf : t -> string -> int -> int -> int
+    val get_client_block_buf : t -> Bytes.t -> int -> int -> int
       (** [get_client_block_buf r buf ofs len] read a chunk of data
 	  and puts it in [buf.[ofs .. ofs+len-1]].  The return value
 	  [i] is the number of bytes actually read -- thus only
@@ -263,7 +263,7 @@ sig
       (** Send a character back to the client.  *)
     val print_string : t -> string -> unit
       (** Send a string back to the client. *)
-    val output : t -> string -> int -> int -> int
+    val output : t -> Bytes.t -> int -> int -> int
       (** [output r s ofs len] send [s[ofs .. len-1]] back to the
 	  client.  Returns the number of bytes actually written, which
 	  is smaller than the number of bytes in the string if there

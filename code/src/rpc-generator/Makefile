@@ -14,6 +14,11 @@ PACKLIST = rpcgen-packlist
 
 INCLUDES += $(INC_NETSTRING)
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
 include $(TOP_DIR)/Makefile.rules
 
 ocamlrpcgen$(EXEC_SUFFIX): $(ARCHIVE).cma main.cmo

@@ -168,11 +168,11 @@ let heap_of_descr pool ptr =
   try
     let size = Netmcore_mempool.size_mem_at_addr pool addr in
     let mem = Netsys_mem.grab addr size in
-    let u = String.create magic_len in
-    Netsys_mem.blit_memory_to_string mem 0 u 0 magic_len;
-    if u <> magic then raise Not_found;
-    let hoffs_s = String.create 8 in
-    Netsys_mem.blit_memory_to_string mem 8 hoffs_s 0 8;
+    let u = Bytes.create magic_len in
+    Netsys_mem.blit_memory_to_bytes mem 0 u 0 magic_len;
+    if Bytes.to_string u <> magic then raise Not_found;
+    let hoffs_s = Bytes.create 8 in
+    Netsys_mem.blit_memory_to_bytes mem 8 hoffs_s 0 8;
     let hoffs =
       Netnumber.int_of_int8 (Netnumber.HO.read_int8 hoffs_s 0) in
     Netsys_mem.as_value mem hoffs
@@ -197,9 +197,9 @@ let ext_block heap (ptr:int) : ext_block =
   else (
     let nat_ptr = Nativeint.shift_left (Nativeint.of_int ptr) 1 in
     let mem = Netsys_mem.grab nat_ptr max_ext_block in
-    let u = String.create magic_len in
-    Netsys_mem.blit_memory_to_string mem 0 u 0 magic_len;
-    if u <> magic then
+    let u = Bytes.create magic_len in
+    Netsys_mem.blit_memory_to_bytes mem 0 u 0 magic_len;
+    if Bytes.to_string u <> magic then
       failwith "Netmcore_heap.ext_block: bad magic";
     Netsys_mem.as_value mem (magic_len + bytes_per_word)
   )
@@ -302,9 +302,9 @@ let shrink_heap heap ext =
   dlogr (fun () -> sprintf "shrink_heap addr=%nx" ext.ext_addr);
   assert (ext != heap.heap_ext);
   let mem = Netsys_mem.grab ext.ext_addr ext.ext_size in
-  let u = String.create magic_len in
-  Netsys_mem.blit_memory_to_string mem 0 u 0 magic_len;
-  if u <> magic then
+  let u = Bytes.create magic_len in
+  Netsys_mem.blit_memory_to_bytes mem 0 u 0 magic_len;
+  if Bytes.to_string u <> magic then
     failwith "Netmcore_heap.shrink_heap";
   let v = String.make magic_len ' ' in
   Netsys_mem.blit_string_to_memory v 0 mem 0 magic_len;
@@ -455,8 +455,8 @@ let do_gc heap =
       if p + bytes_per_word < ext.ext_end then (
         let v1 = Netsys_mem.as_value mem (p + bytes_per_word) in
         if Obj.tag v1 = Obj.abstract_tag && Obj.size v1 = 0 then (
-          let data_size_s = String.create bytes_per_word in
-          Netsys_mem.blit_memory_to_string
+          let data_size_s = Bytes.create bytes_per_word in
+          Netsys_mem.blit_memory_to_bytes
             mem (p + bytes_per_word) data_size_s 0 bytes_per_word;
           let data_size =
             match bytes_per_word with

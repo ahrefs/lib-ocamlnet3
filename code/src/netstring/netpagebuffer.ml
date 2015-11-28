@@ -173,6 +173,15 @@ let blit_to_memory buf pos m m_pos len =
     rem_len := !rem_len - l;
     incr cur_pg;
   done
+
+
+let blit_to_tbuffer buf pos tbuf pos2 len =
+  match tbuf with
+    | `Bytes s
+    | `String s ->
+        blit_to_bytes buf pos s pos2 len
+    | `Memory m ->
+        blit_to_memory buf pos m pos2 len
   
 
 let sub_bytes buf pos len =
@@ -322,6 +331,12 @@ let add_tstring buf ts =
     | `Bytes s -> add_bytes buf s
     | `Memory s -> add_submemory buf s 0 (Bigarray.Array1.dim s)
 
+
+let add_subtstring buf ts pos len =
+  match ts with
+    | `String s -> add_substring buf s pos len
+    | `Bytes s -> add_subbytes buf s pos len
+    | `Memory s -> add_submemory buf s pos len
 
 
 let page_for_additions buf =

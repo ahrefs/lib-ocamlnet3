@@ -19,7 +19,8 @@ STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
 # 3: whether to report deprecated features. This is disabled because we are
 #    massively using mutable strings (deprecated in 4.02)
 # 25: "all clauses guarded". I like this.
-WARNINGS  = -w -3-25
+#WARNINGS  = -w -3-25
+WARNINGS = -w -25
 
 TOOLS_DIR = $(TOP_DIR)/tools
 COLLECT_FILES = $(TOOLS_DIR)/collect_files
@@ -126,7 +127,15 @@ CLEAN_LIST = *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa dll* packlist-* \
 # the simplest way of ensuring that.
 
 ocamldoc.dump: $(DOBJECTS) $(OBJECTS)
+	rm -f ocamldoc.dump
 	$(OCAMLDOC) -dump ocamldoc.dump -stars $(INCLUDES) -package "$(REQUIRES)" $(OCAMLDOC_OPTIONS) $(DOBJECTS) || { rm -f ocamldoc.dump; exit 1; }
+
+
+.PHONY: doc-dump
+doc-dump:
+	@$(MAKE) ocamldoc.dump || { if [ -n "$(DOC_IGNORABLE)" ]; then echo "*** Ignoring error"; else exit 1; fi }
+
+
 
 # Install rules:
 

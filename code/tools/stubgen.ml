@@ -70,13 +70,13 @@
    id bigarray_size       size_t              int
      (must be used in conjunction with "bigarray", same id)
 
-   id stringbuf           void *              string
+   id stringbuf           void *              bytes
      (the id is an arbitrary identifier)
 
    id stringbuf_size      size_t              int
      (must be used in conjunction with "stringbuf", same id)
 
-   id ztstringbuf         void *              string
+   id ztstringbuf         void *              bytes
      (zero-terminated; the id is an arbitrary identifier)
 
    id ztstringbuf_size    size_t              int
@@ -716,9 +716,9 @@ let rec translate_type_to_ml name ty =
     | [ aname; "array_size" ] -> "int"
     | [ id; "bigarray" ] -> "Netsys_mem.memory"
     | [ id; "bigarray_size" ] -> "int"
-    | [ id; "stringbuf" ] -> "string"
+    | [ id; "stringbuf" ] -> "Bytes.t"
     | [ id; "stringbuf_size" ] -> "int"
-    | [ id; "ztstringbuf" ] -> "string"
+    | [ id; "ztstringbuf" ] -> "Bytes.t"
     | [ id; "ztstringbuf_size" ] -> "int"
     | [ "bigarray_datum" ] -> "Netsys_mem.memory"
     | [ "str_datum" ] -> "string"

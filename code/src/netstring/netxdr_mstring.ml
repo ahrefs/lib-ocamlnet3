@@ -112,7 +112,7 @@ let bytes_based_mstrings : mstring_factory =
           bbm s pos len
       method create_from_memory m pos len must_copy =
 	let s = Bytes.create len in
-	Netsys_mem.blit_memory_to_string m pos s 0 len;
+	Netsys_mem.blit_memory_to_bytes m pos s 0 len;
 	bbm s 0 len
     end
   )
@@ -348,7 +348,7 @@ let in_channel_of_mstrings ms_list =
                   | `Memory ->
                       let (m,start) = ms#as_memory in
                       let n = min len ms_len in
-                      Netsys_mem.blit_memory_to_string m start s pos n;
+                      Netsys_mem.blit_memory_to_bytes m start s pos n;
                       ms_pos := !ms_pos + n;
                       in_pos := !in_pos + n;
                       n

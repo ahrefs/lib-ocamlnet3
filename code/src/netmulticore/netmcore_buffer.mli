@@ -66,13 +66,16 @@ val contents : 'h buffer -> string
 val sub : 'h buffer -> int -> int -> string
   (** Returns a substring *)
 
-val blit_to_string : 'h buffer -> int -> string -> int -> int -> unit
+val blit_to_bytes : 'h buffer -> int -> Bytes.t -> int -> int -> unit
   (** Blits contents to a string *)
+
+val blit_to_string : 'h buffer -> int -> Bytes.t -> int -> int -> unit
+  DEPRECATED("Use blit_to_bytes instead.")
 
 val blit_to_memory : 'h buffer -> int -> Netsys_mem.memory -> int -> int -> unit
   (** Blits contents to a memory buffer *)
 
-val access : 'h buffer -> int -> (string -> int -> int -> 'a) -> 'a
+val access : 'h buffer -> int -> (Bytes.t -> int -> int -> 'a) -> 'a
   (** [access b pos f]: Gets access to the internal string backing the
       byte at position [pos]. The function [f] is called as [f s k n]
       so that [s.[k]] is the requested byte at [pos]. The number [n]
@@ -85,11 +88,17 @@ val access : 'h buffer -> int -> (string -> int -> int -> 'a) -> 'a
 val add_string : 'h buffer -> string -> unit
   (** Adds a string to the end of the buffer *)
 
-val add_sub_string : 'h buffer -> string -> int -> int -> unit
+val add_substring : 'h buffer -> string -> int -> int -> unit
   (** Adds a sub string to the end of the buffer *)
 
-val add_sub_memory : 'h buffer -> Netsys_mem.memory -> int -> int -> unit
+val add_sub_string : 'h buffer -> string -> int -> int -> unit
+  DEPRECATED("Use add_substring instead.")
+
+val add_submemory : 'h buffer -> Netsys_mem.memory -> int -> int -> unit
   (** Adds a sub memory buffer to the end of the buffer *)
+
+val add_sub_memory : 'h buffer -> Netsys_mem.memory -> int -> int -> unit
+  DEPRECATED("Use add_submemory instead.")
 
 val delete_hd : 'h buffer -> int -> unit
   (** [delete_hd b n]: Deletes [n] bytes from the beginning of the buffer.

@@ -34,10 +34,10 @@ object
      * socket options.
      *)
   method sendto : 
-    string -> int -> int -> Unix.msg_flag list -> sockspec -> int
+    Bytes.t -> int -> int -> Unix.msg_flag list -> sockspec -> int
     (** Send data over the (unconnected) socket *)
   method recvfrom : 
-    string -> int -> int -> Unix.msg_flag list -> (int * sockspec)
+    Bytes.t -> int -> int -> Unix.msg_flag list -> (int * sockspec)
     (** Receive data from the (unconnected) socket. The method will
      * raise EAGAIN if the message cannot be processed for some reason,
      * even if the socket is in blocking mode. In this case, the received

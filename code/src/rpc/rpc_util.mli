@@ -27,6 +27,6 @@ val string_of_value :
 
 val hex_dump_m :
       Netsys_mem.memory -> int -> int -> string
-val hex_dump_s :
-      string -> int -> int -> string
+val hex_dump_b :
+      Bytes.t -> int -> int -> string
    (** Format the contents as hex sequence *)

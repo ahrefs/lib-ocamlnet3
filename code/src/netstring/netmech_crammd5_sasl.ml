@@ -86,10 +86,10 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let server_process_response ss msg =
     try
       if ss.sstate <> `Wait then failwith "protocol error";
-      let n = String.length msg in
+      (* let n = String.length msg in *)
       let k1 = String.rindex msg ' ' in
       let user = String.sub msg 0 k1 in
-      let resp = String.sub msg (k1+1) (n-k1-1) in
+      (* let resp = String.sub msg (k1+1) (n-k1-1) in *)
       let expected_password =
         match ss.lookup user "" with
           | None ->

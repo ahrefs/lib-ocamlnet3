@@ -721,7 +721,8 @@ object(self)
 	      sys_mon
 	      (Netplex_ctrl_clnt.System.V1.call_plugin'async r)
 	      ((Int64.of_int (Oo.id p)), proc_name, arg_str) in
-	  let res = Netxdr.unpack_xdr_value ~fast:true res_str res_ty [] in
+	  let res,_ =
+            Netxdr.unpack_xdr_value_str ~fast:true res_str res_ty [] in
 	  res
 	    
   method private receive_admin_message msg =
@@ -818,13 +819,13 @@ object(self)
 	  Gc.print_stat outch;
 	  close_out outch;
 	  let n = in_channel_length inch in
-	  let s = String.create n in
+	  let s = Bytes.create n in
 	  really_input inch s 0 n;
 	  close_in inch;
 	  Sys.remove name;
 	  self # log `Info
 	    (sprintf "GC stats pid %d:\n%s"
-	       (Unix.getpid()) s)
+	       (Unix.getpid()) (Bytes.unsafe_to_string s))
 
       | _ ->
 	  self # forward_admin_message msg

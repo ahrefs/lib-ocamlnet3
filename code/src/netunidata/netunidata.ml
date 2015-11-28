@@ -20,10 +20,10 @@ let load_file key =
     let ch = open_in_bin filename in
     try
       let n = in_channel_length ch in
-      let v = String.make n '\000' in
+      let v = Bytes.make n '\000' in
       really_input ch v 0 n;
       close_in ch;
-      v
+      Bytes.unsafe_to_string v
     with exn ->
       close_in ch;
       raise exn

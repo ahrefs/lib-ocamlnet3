@@ -89,7 +89,7 @@ val status_of_bad_request_error : bad_request_error -> http_status
   (** Returns the best response code for the error *)
 
 
-type data_chunk = string * int * int
+type data_chunk = Bytes.t * int * int
     (** A [data_chunk] is a substring of a string. The substring is described by
       * the triple [(s, pos, len)] where [s] is the container, [pos] is the
       * position where the substring begins, and [len] its length.
@@ -275,7 +275,7 @@ class http_response_impl : ?close:bool -> ?suppress_body:bool -> int64 -> protoc
 
 val send_static_response : 
       http_response -> 
-      http_status -> http_header option -> string -> unit
+      http_status -> http_header option -> Bytes.t -> unit
   (** Sends the string argument as response body, together with the given status and
     * the header (optional). Response header fields are set as follows:
     * - The [Content-Length] is set to the length of the string.

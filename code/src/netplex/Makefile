@@ -19,6 +19,11 @@ DOBJECTS = netplex_types.mli netplex_mp.mli netplex_mt.mli netplex_log.mli \
 	   netplex_mutex.mli netplex_encap.mli netplex_mbox.mli \
 	   netplex_intro.txt netplex_advanced.txt netplex_admin.txt
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
 INCLUDES += $(INC_EQUEUE) $(INC_RPC) $(INC_NETSTRING) $(INC_NETSYS)
 
 ALL_EXTRA = netplex-admin$(EXEC_SUFFIX) netplex-packlist 

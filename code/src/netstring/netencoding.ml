@@ -264,7 +264,7 @@ module Base64 = struct
 	for i = pos to pos + len - 1 do
 	  match ops.unsafe_get t i with
 	      (' '|'\t'|'\r'|'\n'|'>') -> ()
-	    | '=' as ch ->
+	    | '=' ->
 		incr c;
 		incr p;
 		if !p > 2 then
@@ -496,7 +496,7 @@ module QuotedPrintable = struct
      *)
     let open Netstring_tstring in
     
-    if len < 0 or pos < 0 or pos > ops.length s then
+    if len < 0 || pos < 0 || pos > ops.length s then
       invalid_arg "Netencoding.QuotedPrintable.encode";
     if pos + len > ops.length s then
       invalid_arg "Netencoding.QuotedPrintable.encode";
@@ -757,7 +757,7 @@ module QuotedPrintable = struct
 		match ops.get s (!k+1) with
 		    '\r' ->
 		      (* Official soft break *)
-		      if !k+2 < e & ops.get s (!k+2) = '\n' then
+		      if !k+2 < e && ops.get s (!k+2) = '\n' then
 			k := !k + 3
 		      else
 			k := !k + 2
@@ -770,7 +770,7 @@ module QuotedPrintable = struct
 			  "Netencoding.QuotedPrintable.decode_substring";
 		      let x1 = decode_hex (ops.get s (!k+1)) in
 		      let x2 = decode_hex (ops.get s (!k+2)) in
-		      t.[ !i ] <- Char.chr ((x1 lsl 4) lor x2);
+		      Bytes.set t !i (Char.chr ((x1 lsl 4) lor x2));
 		      k := !k + 3;
 		      incr i
 	      else
@@ -952,7 +952,7 @@ module Q = struct
 	      invalid_arg "Netencoding.Q.decode_substring";
 	    let x1 = decode_hex (ops.get s (!k+1)) in
 	    let x2 = decode_hex (ops.get s (!k+2)) in
-	    t.[ !i ] <- Char.chr ((x1 lsl 4) lor x2);
+	    Bytes.set t !i (Char.chr ((x1 lsl 4) lor x2));
 	    k := !k + 3;
 	    incr i
 	| '_' ->
@@ -998,8 +998,8 @@ module Url = struct
   let to_hex2 k =
     (* Converts k to a 2-digit hex string *)
     let s = Bytes.create 2 in
-    s.[0] <- hex_digits.( (k lsr 4) land 15 );
-    s.[1] <- hex_digits.( k land 15 );
+    Bytes.set s 0 (hex_digits.( (k lsr 4) land 15 ));
+    Bytes.set s 1 (hex_digits.( k land 15 ));
     Bytes.unsafe_to_string s ;;
 
 
@@ -1468,7 +1468,7 @@ module Html = struct
 
   let msb_set = (
     let s = Bytes.create 128 in
-    for k = 0 to 127 do s.[k] <- Char.chr (128+k) done;
+    for k = 0 to 127 do Bytes.set s k (Char.chr (128+k)) done;
     Bytes.unsafe_to_string s
   )
 

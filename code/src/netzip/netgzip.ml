@@ -7,6 +7,7 @@ object(self)
   val mutable closed = false
 
   method input s p l = 
+    let s = Bytes.unsafe_to_string s in
     let n = Gzip.input gzip_ch s p l in
     if n = 0 then raise End_of_file;
     n
@@ -26,6 +27,7 @@ class input_gzip gzip_ch =
 class output_gzip_rec gzip_ch : Netchannels.rec_out_channel =
 object(self)
   method output s p l =
+    let s = Bytes.unsafe_to_string s in
     Gzip.output gzip_ch s p l;
     l
   method close_out() =
@@ -154,6 +156,8 @@ let inflating_conv st incoming at_eof outgoing =
 		          (fun out_buf out_pos out_len ->
 		             let (finished, used_in, used_out) =
 			       try
+                                 let in_buf = Bytes.unsafe_to_string in_buf in
+                                 let out_buf = Bytes.unsafe_to_string out_buf in
 			         Zlib.inflate 
 			           stream 
                                    in_buf in_pos in_len out_buf out_pos out_len 
@@ -166,7 +170,9 @@ let inflating_conv st incoming at_eof outgoing =
                              st.in_size <-
 			       Int32.add st.in_size (Int32.of_int used_out);
 		             st.in_crc <-
-			       Zlib.update_crc st.in_crc out_buf out_pos used_out;
+                               ( let out_buf = Bytes.unsafe_to_string out_buf in
+			         Zlib.update_crc st.in_crc out_buf out_pos used_out
+                               );
 		       
 		             k := !k + used_in;
 
@@ -286,6 +292,8 @@ let deflating_conv st incoming at_eof outgoing =
 		  (fun out_buf out_pos out_len ->
 		     let (finished, used_in, used_out) =
 		       try
+                         let in_buf = Bytes.unsafe_to_string in_buf in
+                         let out_buf = Bytes.unsafe_to_string out_buf in
 			 Zlib.deflate 
 			   stream in_buf 0 in_len out_buf out_pos out_len 
 			   (if at_eof then Zlib.Z_FINISH else Zlib.Z_NO_FLUSH)
@@ -296,7 +304,10 @@ let deflating_conv st incoming at_eof outgoing =
 			    raise (Gzip.Error("error during compression")) in
 		     
 		     st.out_size <- Int32.add st.out_size (Int32.of_int used_in);
-		     st.out_crc <- Zlib.update_crc st.out_crc in_buf 0 used_in;
+		     st.out_crc <- (
+                       let in_buf = Bytes.unsafe_to_string in_buf in
+                       Zlib.update_crc st.out_crc in_buf 0 used_in
+                     );
 		     
 		     Netbuffer.delete incoming 0 used_in;
 		     

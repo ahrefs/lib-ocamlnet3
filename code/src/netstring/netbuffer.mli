@@ -66,6 +66,9 @@ val blit_to_memory : t -> int -> Netsys_mem.memory -> int -> int -> unit
 	[destpos].
      *)
 
+val blit_to_tbuffer : t -> int -> tbuffer -> int -> int -> unit
+  (** Blits to a tagged buffer *)
+
 (** {2 Appending strings} *)
 
 val add_string : t -> string -> unit

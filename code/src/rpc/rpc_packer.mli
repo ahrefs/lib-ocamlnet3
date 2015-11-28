@@ -119,6 +119,9 @@ val unpack_call_body :
 val unpack_call_body_raw :
       packed_value -> int -> string
 
+val unpack_call_body_raw_bytes :
+      packed_value -> int -> Bytes.t
+
 (* More specific messages: *)
 
 (* A successful reply means that the procedure call returned a value. An
@@ -202,7 +205,9 @@ val peek_auth_error :
 
 val length_of_packed_value : packed_value -> int
 val string_of_packed_value : packed_value -> string
+val bytes_of_packed_value : packed_value -> Bytes.t
 val packed_value_of_string : string -> packed_value
+val packed_value_of_bytes : Bytes.t -> packed_value
 
 val mstrings_of_packed_value : packed_value -> Netxdr_mstring.mstring list
 val packed_value_of_mstrings : Netxdr_mstring.mstring list -> packed_value 

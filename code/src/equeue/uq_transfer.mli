@@ -26,7 +26,7 @@ class type async_out_channel = object
 
   (** {1 Methods from [raw_out_channel] } *)
 
-  method output : string -> int -> int -> int
+  method output : Bytes.t -> int -> int -> int
     (** [output s k n]: Writes the substring of [s] beginning at index
      * [k] with length [n] into the channel. The channel is free to
      * accept only a portion of the string (or even nothing), and 
@@ -78,7 +78,7 @@ class type async_in_channel = object
 
   (** {1 Methods from [raw_in_channel] } *)
 
-  method input : string -> int -> int -> int
+  method input : Bytes.t -> int -> int -> int
     (** [input s k n]: Reads channel data into the substring of [s]
      * beginning at index [k] with length [n]. The channel is free to
      * fill only a portion of the string (or even nothing). The method 

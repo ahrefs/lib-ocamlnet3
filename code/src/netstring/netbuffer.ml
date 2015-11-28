@@ -51,7 +51,7 @@ let word_length = Sys.word_size / 8       (* in bytes *)
 
 let create n =
   let bl = max n 31 in
-  { buffer = String.create bl;
+  { buffer = Bytes.create bl;
     buffer_length = bl;
     length = 0; 
     create_length = n }
@@ -59,7 +59,7 @@ let create n =
 let reset b =
   let n = b.create_length in
   let bl = max n 31 in
-  b.buffer <- String.create bl;
+  b.buffer <- Bytes.create bl;
   b.buffer_length <- bl;
   b.length <- 0
 
@@ -131,6 +131,13 @@ let blit_to_memory b srcpos dest destpos n =
     raise (Invalid_argument "Netbuffer.blit_to_memory");
   Netsys_mem.blit_bytes_to_memory b.buffer srcpos dest destpos n
 
+let blit_to_tbuffer b srcpos dest destpos n =
+  match dest with
+    | `Bytes s
+    | `String s ->
+        blit_to_bytes b srcpos s destpos n
+    | `Memory m ->
+        blit_to_memory b srcpos m destpos n
     
 let unsafe_buffer b =
   b.buffer
@@ -145,7 +152,7 @@ let alloc_space b n =
   let size = min (new_size b.buffer_length) Sys.max_string_length in
   if size < n then
     failwith "Netbuffer: string too large";
-  let buffer' = String.create size in
+  let buffer' = Bytes.create size in
   Bytes.blit b.buffer 0 buffer' 0 b.length;
   b.buffer <- buffer';
   b.buffer_length <- size
@@ -304,7 +311,7 @@ let e_set() =
 
 let set b k c =
   if k < 0 || k >= b.length then e_set();
-  String.unsafe_set b.buffer k c
+  Bytes.unsafe_set b.buffer k c
 
 let put_string_invalid() =
   invalid_arg "Netbuffer.put_string"
@@ -359,7 +366,7 @@ let try_shrinking b =
       if s >= b.length then s else new_size(2*s + word_length + 1)
     in
     let size = new_size 31 in
-    let buffer' = String.create size in
+    let buffer' = Bytes.create size in
     Bytes.blit b.buffer 0 buffer' 0 b.length;
     b.buffer <- buffer';
     b.buffer_length <- size

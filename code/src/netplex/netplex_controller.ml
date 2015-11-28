@@ -1659,8 +1659,8 @@ object(self)
 	  ( try
 	      let (_, arg_ty,res_ty) = 
 		Rpc_program.signature p#program name in
-	      let arg =
-		Netxdr.unpack_xdr_value ~fast:true arg_str arg_ty [] in
+	      let arg,_ =
+		Netxdr.unpack_xdr_value_str ~fast:true arg_str arg_ty [] in
 	      p # ctrl_receive_call (self :> controller) cid name arg 
 		(function
 		   | None ->

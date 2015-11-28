@@ -230,6 +230,7 @@ for other libraries.
    Netsockaddr
    Netstream
    Netstring_str
+   Netstring_tstring
    Nettls_support
    Netulex
    Netunichar

@@ -144,20 +144,9 @@ let rec syscall f =
 ;;
 
 
-let hex_digits = [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
-		    '8'; '9'; 'a'; 'b'; 'c'; 'd'; 'e'; 'f' |];;
-
 let encode_hex s =
   (* encode with lowercase hex digits *)
-  let l = String.length s in
-  let t = String.make (2*l) ' ' in
-  for n = 0 to l - 1 do
-    let x = Char.code s.[n] in
-    t.[2*n]   <- hex_digits.( x lsr 4 );
-    t.[2*n+1] <- hex_digits.( x land 15 );
-  done;
-  t
-;;
+  Netencoding.to_hex ~lc:true s
 
 
 type synchronization =
@@ -3100,7 +3089,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
     (****************************** OUTPUT ********************************)
 
     val send_queue = Q.create()
-    val send_buf = String.create 4096
+    val send_buf = Bytes.create 4096
 
     val mutable sending = false
 
@@ -3192,7 +3181,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 	write_body_next_chunk_e d ()
 
       and write_body_next_chunk_e d () =
-	input_opt_e d (`String send_buf) 0 (String.length send_buf)
+	input_opt_e d (`Bytes send_buf) 0 (Bytes.length send_buf)
 	++ (function
 	      | Some n ->
 		  if !options.verbose_request_contents then
@@ -3204,7 +3193,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 		  let s = sprintf "%x\r\n" n in
 		  Uq_io.output_string_e dev s
 		  ++ (fun () -> 
-			Uq_io.really_output_e dev (`String send_buf) 0 n)
+			Uq_io.really_output_e dev (`Bytes send_buf) 0 n)
 		  ++ (fun () -> Uq_io.output_string_e dev "\r\n")
 		  ++ write_body_next_chunk_e d
 	      | None ->

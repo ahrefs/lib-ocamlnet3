@@ -1121,7 +1121,6 @@ object(self)
 		    let st_gzip = Unix.LargeFile.stat fn in
 		    h # update_field "Content-Encoding" encoding;
 		    `File(`Ok, Some h, fn, 0L, st_gzip.Unix.LargeFile.st_size)
-		| _ -> assert false
 	    )
     )
 

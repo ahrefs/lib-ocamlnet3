@@ -1620,7 +1620,7 @@ let rec internal_create initial_xid
       nolog = false;
     }
   in
-  Hashtbl.add cl.mstring_factories "*" Netxdr_mstring.string_based_mstrings;
+  Hashtbl.add cl.mstring_factories "*" Netxdr_mstring.bytes_based_mstrings;
 
   let portmapper_engine prot addr prog esys = 
     dlog cl "starting portmapper query";

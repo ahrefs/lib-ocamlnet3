@@ -970,7 +970,7 @@ let pipe_pair mode =
       pipe_listen psrv 0;
       let lph = pipe_accept psrv in
       ( try
-	  let s = String.create 0 in
+	  let s = Bytes.create 0 in
 	  ignore(pipe_write lph s 0 0);
 	  dlogr 
 	    (fun () -> 
@@ -1287,7 +1287,7 @@ module InputThread = struct
 	ithr_cmd = Some `Read;
 	ithr_cancel_cmd = false;
 	ithr_event = create_event();
-	ithr_buffer = String.create 4096;
+	ithr_buffer = Bytes.create 4096;
 	ithr_buffer_start = 0;
 	ithr_buffer_len = 0;
 	ithr_buffer_cond = `Data;
@@ -1487,7 +1487,7 @@ module OutputThread = struct
 	othr_cmd = None;
 	othr_cancel_cmd = false;
 	othr_event = create_event();
-	othr_buffer = String.create 4096;
+	othr_buffer = Bytes.create 4096;
 	othr_buffer_len = 0;
 	othr_write_cond = None;
 	othr_thread = 0l;  (* initialized below *)

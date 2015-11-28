@@ -2018,7 +2018,7 @@ object(self)
   val p = p
   val mutable p_closed = false  (* output side of p is closed *)
   val out = out
-  val buf = String.create 1024  (* for copy_channel *)
+  val buf = Bytes.create 1024  (* for copy_channel *)
 
   method output s pos len =
     if p_closed then raise Closed_channel;

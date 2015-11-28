@@ -104,16 +104,16 @@ let check_block mem hdr offs =
 
 let assert_is_free mem hdr offs =
   (* Check that the block at offs has the magic of a free block *)
-  let u = String.create(String.length fl_magic) in
-  Netsys_mem.blit_memory_to_string mem offs u 0 (String.length fl_magic);
-  if u <> fl_magic then
+  let u = Bytes.create(String.length fl_magic) in
+  Netsys_mem.blit_memory_to_bytes mem offs u 0 (String.length fl_magic);
+  if Bytes.to_string u <> fl_magic then
     failwith 
       "Netmcore_mempool: Mem block does not have the signature of free blocks"
 
 
 let get_int8 mem offs =
-  let s = String.create 8 in
-  Netsys_mem.blit_memory_to_string mem offs s 0 8;
+  let s = Bytes.create 8 in
+  Netsys_mem.blit_memory_to_bytes mem offs s 0 8;
   Netnumber.int_of_int8 (Netnumber.HO.read_int8 s 0)
 
 
@@ -483,9 +483,9 @@ let delayed_init_pool mem =
 let with_pool mem c f =
   dlog "with_pool";
   let p0 = String.length magic in
-  let u = String.create p0 in
-  Netsys_mem.blit_memory_to_string mem 0 u 0 p0;
-  if u <> magic then
+  let u = Bytes.create p0 in
+  Netsys_mem.blit_memory_to_bytes mem 0 u 0 p0;
+  if Bytes.to_string u <> magic then
     failwith "Netmcore_mempool: Uninitialized pool";
   let sem = Netsys_sem.as_sem c mem (p0+8) in
   Netsys_sem.sem_wait sem Netsys_posix.SEM_WAIT_BLOCK;
@@ -666,7 +666,11 @@ let create_mempool ?(alloc_really=false) size =
   if alloc_really then (
     for k = 0 to size/page_size-1 do
       ignore(Unix.lseek fd (k*page_size) Unix.SEEK_SET);
-      ignore(Unix.write fd "\000" 0 1);
+      #ifdef HAVE_BYTES
+        ignore(Unix.write_substring fd "\000" 0 1);
+      #else
+        ignore(Unix.write fd "\000" 0 1);
+      #endif
     done;
     ignore(Unix.lseek fd 0 Unix.SEEK_SET);
   );

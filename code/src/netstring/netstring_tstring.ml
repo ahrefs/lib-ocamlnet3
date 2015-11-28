@@ -96,7 +96,7 @@ let string_ops =
                      let c2 = Char.code (String.unsafe_get s (k+2)) in
                      (c0 lsl 16) lor (c1 lsl 8) lor c2
                   );
-    copy = String.copy;
+    copy = String.copy;   (* ... for the time being ... *)
     string = (fun s -> s);
     bytes = Bytes.of_string;
     sub = String.sub;
@@ -146,7 +146,7 @@ let bytes_ops =
                   );
     copy = Bytes.copy;
     string = Bytes.to_string;
-    bytes = Bytes.copy;
+    bytes = (fun s -> s);
     sub = Bytes.sub;
     substring = Bytes.sub_string;
     subbytes = Bytes.sub;
@@ -280,6 +280,12 @@ let with_tstring : 'a with_fun -> tstring -> 'a =
     | `Memory s ->
         f.with_fun memory_ops s
 
+
+let length_tstring ts =
+  with_tstring
+    { with_fun = (fun ops s -> ops.length s) }
+    ts
+
 let polymorph_string_transformation
   : type s t . (string->string) -> s tstring_ops -> t tstring_kind -> s -> t =
   (fun f ops out_kind s ->
@@ -292,3 +298,10 @@ let polymorph_string_transformation
        | Memory_kind ->
            Netsys_mem.memory_of_string s'
   )
+
+
+let tstring_of_tbuffer =
+  function
+  | `Bytes s -> `Bytes s
+  | `String s -> `Bytes s
+  | `Memory m -> `Memory m

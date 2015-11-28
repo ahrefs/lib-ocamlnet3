@@ -155,6 +155,9 @@ val gwrite : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> int
 val gwrite_tstr : fd_style -> Unix.file_descr -> tstring -> int -> int -> int
   (** Same for a tagged string *)
 
+val gwrite_tbuf : fd_style -> Unix.file_descr -> tbuffer -> int -> int -> int
+  (** Same for a tagged buffer *)
+
 val really_gwrite : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> unit
   (** [really_write fd_style fd s pos len]: Writes exactly the [len] bytes
       from [s] to [fd] starting at [pos]. 
@@ -170,6 +173,10 @@ val really_gwrite : fd_style -> Unix.file_descr -> Bytes.t -> int -> int -> unit
 val really_gwrite_tstr : fd_style -> Unix.file_descr -> tstring -> int -> int ->
                          unit
   (** Same for a tagged string *)
+
+val really_gwrite_tbuf : fd_style -> Unix.file_descr -> tbuffer -> int -> int ->
+                         unit
+  (** Same for a tagged buffer *)
 
 exception Shutdown_not_supported
   (** See [gshutdown] *)

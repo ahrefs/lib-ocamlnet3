@@ -6,4 +6,6 @@ PRE = 1
 PKGNAME = netclient
 GENERATE = META
 
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
 include $(TOP_DIR)/Makefile.rules

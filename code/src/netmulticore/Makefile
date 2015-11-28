@@ -18,6 +18,12 @@ DOBJECTS = netmcore.mli netmcore_camlbox.mli netmcore_mempool.mli \
 INCLUDES += $(INC_EQUEUE) $(INC_RPC) $(INC_NETSTRING) $(INC_NETSYS) \
             $(INC_NETPLEX) $(INC_NETCAMLBOX)
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
+DOC_IGNORABLE = true
 
 include $(TOP_DIR)/Makefile.rules
 

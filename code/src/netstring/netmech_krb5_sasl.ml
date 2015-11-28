@@ -277,7 +277,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                    let msg_unwrapped =
                      G.interface # unwrap
                        ~context ~input_message
-                       ~output_message_preferred_type:`String
+                       ~output_message_preferred_type:`Bytes
                        ~out:(fun ~output_message ~conf_state ~qop_state
                                  ~minor_status ~major_status () ->
                                client_check_gssapi_status
@@ -295,7 +295,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                      G.interface # wrap
                        ~context ~conf_req:false ~qop_req:0l
                        ~input_message:out_message
-                       ~output_message_preferred_type:`String
+                       ~output_message_preferred_type:`Bytes
                        ~out:(fun ~conf_state ~output_message 
                                  ~minor_status ~major_status () ->
                                client_check_gssapi_status
@@ -513,7 +513,7 @@ Netpop.authenticate
         G.interface # wrap
           ~context ~conf_req:false ~qop_req:0l
           ~input_message:out_message
-          ~output_message_preferred_type:`String
+          ~output_message_preferred_type:`Bytes
           ~out:(fun ~conf_state ~output_message 
                     ~minor_status ~major_status () ->
                   server_check_gssapi_status
@@ -598,7 +598,7 @@ Netpop.authenticate
       let msg_unwrapped =
         G.interface # unwrap
           ~context ~input_message
-          ~output_message_preferred_type:`String
+          ~output_message_preferred_type:`Bytes
           ~out:(fun ~output_message ~conf_state ~qop_state
                     ~minor_status ~major_status () ->
                   server_check_gssapi_status

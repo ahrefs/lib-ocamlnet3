@@ -293,7 +293,7 @@ object(self)
 
 
   method private queue_events (infiles', outfiles', oobfiles') =
-    let dummy_buf = String.create 1 in
+    let dummy_buf = Bytes.create 1 in
     let deferred_exn = ref None in
     let have_event = ref false in
   
@@ -511,7 +511,7 @@ object(self)
 	( match ctrl_pipe_wr with
 	    | None -> ()
 	    | Some p_wr ->
-		let buf = String.make 1 'X' in
+		let buf = Bytes.make 1 'X' in
 		ignore(Unix.single_write p_wr buf 0 1);
 	)
       with

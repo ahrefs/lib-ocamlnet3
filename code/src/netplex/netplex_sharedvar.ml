@@ -18,11 +18,6 @@ let shm_size = 1024
 
 let create_shm() =
   if Netsys_posix.have_posix_shm() then
-    let b =
-      String.sub
-        (Digest.to_hex (Digest.string (string_of_float(Unix.gettimeofday()))))
-        0
-        8 in
     let fd, name = Netsys_posix.shm_create "/netplexshv" (8*shm_size) in
     let ba =
       Bigarray.Array1.map_file
@@ -421,7 +416,6 @@ let dual_call name of_arg to_res arg f_ctrl =
 let create_var ?(own=false) ?(ro=false) ?(enc=false) ?(timeout = -1.0)
                ?ssn
                var_name =
-  let cont = Netplex_cenv.self_cont() in
   let ty = if enc then "encap" else "string" in
   let code =
     dual_call
@@ -437,7 +431,6 @@ let create_var ?(own=false) ?(ro=false) ?(enc=false) ?(timeout = -1.0)
   code = `shvar_ok
       
 let delete_var var_name =
-  let cont = Netplex_cenv.self_cont() in
   let code =
     dual_call
       "delete_var"
@@ -448,7 +441,6 @@ let delete_var var_name =
   code = `shvar_ok
 
 let set_value_1 ty var_name var_value =
-  let cont = Netplex_cenv.self_cont() in
   let code =
     dual_call
       "set_value"

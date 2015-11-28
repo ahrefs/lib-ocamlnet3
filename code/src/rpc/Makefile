@@ -27,6 +27,11 @@ OCAMLOPT_OPTIONS_FOR_rpc_packer.ml = -w p
 OCAMLC_OPTIONS_FOR_rpc_portmapper.ml = -w p
 OCAMLOPT_OPTIONS_FOR_rpc_portmapper.ml = -w p
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
 INCLUDES += $(INC_EQUEUE) $(INC_NETSYS) $(INC_NETSTRING) $(INC_NETGSSAPI)
 
 include $(TOP_DIR)/Makefile.rules

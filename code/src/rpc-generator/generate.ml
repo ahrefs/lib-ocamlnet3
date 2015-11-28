@@ -609,7 +609,7 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
     (* typemap: maps xdr_name to bound type *)
 
   let get_type t = get_type_from_map typemap t in
-  let get_type_of_decl td = get_type td.decl_type in
+  (* let get_type_of_decl td = get_type td.decl_type in *)
 
   let generated_types = ref [] in
 

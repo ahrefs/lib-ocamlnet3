@@ -429,18 +429,8 @@ let string_of_value t xv =
   string_of_full_arg t xv
 
 let hex_dump_m m pos len =
-  let b = Buffer.create 100 in
-  for k = 0 to len - 1 do
-    let c = Bigarray.Array1.get m (pos+k) in
-    bprintf b "%02x " (Char.code c)
-  done;
-  Buffer.contents b
+  Netencoding.to_hex ~lc:true
+    Netstring_tstring.(memory_ops.substring m pos len)
 
-
-let hex_dump_s s pos len =
-  let b = Buffer.create 100 in
-  for k = 0 to len - 1 do
-    let c = s.[pos+k] in
-    bprintf b "%02x " (Char.code c)
-  done;
-  Buffer.contents b
+let hex_dump_b s pos len =
+  Netencoding.to_hex ~lc:true (Bytes.sub_string s pos len)

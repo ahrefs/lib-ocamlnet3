@@ -1,3 +1,10 @@
+2015-11-28  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* ALL MODULES: Transitioning to the new "bytes" type for
+	  mutable strings while using "string" only for immutable
+	  strings. If compiled with OCaml-4.02 or newer, Ocamlnet
+	  is built with the -safe-string compiler option.
+
 2015-11-16  Gerd Stolpmann  <gerd@zotac>
 
 	* Netplex_sharedvar: implementing a new protocol that uses shared

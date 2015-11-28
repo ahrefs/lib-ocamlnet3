@@ -38,14 +38,7 @@ let hex_digits = [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7'; '8'; '9';
 		    'a'; 'b'; 'c'; 'd'; 'e'; 'f' |]
 
 let md5_string s =
-  let d = Digest.string s in
-  let d' = String.create 32 in
-  for i = 0 to 15 do
-    let c = Char.code d.[i] in
-    d'.[i*2+0] <- hex_digits.(c lsr 4);
-    d'.[i*2+1] <- hex_digits.(c land 15);
-  done;
-  d'
+  Digest.to_hex (Digest.string s)
 
 (* Sending Commands *)
 let send_command oc line =

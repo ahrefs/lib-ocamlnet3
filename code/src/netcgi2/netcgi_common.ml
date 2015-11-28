@@ -27,7 +27,6 @@ open Printf
  *)
 
 let unsafe_get s k = s.[k]
-let unsafe_set s k c = s.[k] <- c
 
 
 (* Exceptions and signals
@@ -111,31 +110,31 @@ let filename_quote s =
 	       | '"' | '\\' | '\n' | '\t' -> 2
                | c -> if is_printable c then 1 else 4)
   done;
-  let s' = String.create !n in
-  unsafe_set s' 0 '\"';
+  let s' = Bytes.create !n in
+  Bytes.set s' 0 '\"';
   n := 1;
   for i = 0 to String.length s - 1 do
     (match unsafe_get s i with
      | ('"' | '\\') as c ->
-         unsafe_set s' !n '\\'; incr n; unsafe_set s' !n c
+         Bytes.set s' !n '\\'; incr n; Bytes.set s' !n c
      | '\n' ->
-         unsafe_set s' !n '\\'; incr n; unsafe_set s' !n 'n'
+         Bytes.set s' !n '\\'; incr n; Bytes.set s' !n 'n'
      | '\t' ->
-         unsafe_set s' !n '\\'; incr n; unsafe_set s' !n 't'
+         Bytes.set s' !n '\\'; incr n; Bytes.set s' !n 't'
      | c ->
-         if is_printable c then unsafe_set s' !n c
+         if is_printable c then Bytes.set s' !n c
          else (
            let a = Char.code c in
-           unsafe_set s' !n '\\';
-           incr n; unsafe_set s' !n (Char.chr (48 + a / 100));
-           incr n; unsafe_set s' !n (Char.chr (48 + (a / 10) mod 10));
-           incr n; unsafe_set s' !n (Char.chr (48 + a mod 10))
+           Bytes.set s' !n '\\';
+           incr n; Bytes.set s' !n (Char.chr (48 + a / 100));
+           incr n; Bytes.set s' !n (Char.chr (48 + (a / 10) mod 10));
+           incr n; Bytes.set s' !n (Char.chr (48 + a mod 10))
 	 )
     );
     incr n
   done;
-  unsafe_set s' !n '\"';
-  s'
+  Bytes.set s' !n '\"';
+  Bytes.to_string s'
 
 type http_method =
     [`GET | `HEAD | `POST | `DELETE | `PUT]
@@ -1122,7 +1121,7 @@ let arg_of_stream env (arg_store:arg_store) temp_file
 
 
 (* Do not care about thread safety of [discard_buffer] -- contains garbage. *)
-let discard_buffer = String.create 0x2000
+let discard_buffer = Bytes.create 0x2000
 
 (** [discard_bytes in_obj len] discard at most [len] bytes ([len]
     bytes or until the end of file is reached). *)
@@ -1220,7 +1219,7 @@ seeing the result."))
 			    ^ string_of_int Sys.max_string_length
 			    ^ " bytes is allowed for urlencoded forms"));
 	       );
-	       let qs = String.create len in
+	       let qs = Bytes.create len in
 	       ( try
  	           in_obj#really_input qs 0 len
                  with End_of_file ->
@@ -1228,6 +1227,7 @@ seeing the result."))
                               "Request body is shorter than announced in \
                                Content-Length"));
                );
+               let qs = Bytes.unsafe_to_string qs in
 	       let args = args_of_string env arg_store qs in
 	       new_cgi env op `POST args
 
@@ -1556,16 +1556,16 @@ let update_props_inheader ((name, value) as nv) (props, inheader) =
     (* Remove the "HTTP_" from the name, lowercase, and convert any
        '_' to '-'. *)
     let len = String.length name - 5 in
-    let hname = String.sub name 5 len in
+    let hname = Bytes.of_string(String.sub name 5 len) in
     for i = 0 to len - 1 do
-      unsafe_set hname i
-	(match unsafe_get hname i with
+      Bytes.set hname i
+	(match Bytes.get hname i with
 	 | '_' ->  '-'
 	 | 'A' .. 'Z' as c -> (* ASCII *)
 	     Char.unsafe_chr(Char.code c + shift_to_lowercase)
 	 | c -> c)
     done;
-    (props, (hname, value) :: inheader)
+    (props, (Bytes.to_string hname, value) :: inheader)
   )
   else
     (nv :: props, inheader)

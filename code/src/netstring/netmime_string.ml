@@ -6,14 +6,15 @@
 module S = Netstring_str;;
 
 
-let rec skip_line_ends s pos len =
+let rec skip_line_ends_poly ops s pos len =
+  let open Netstring_tstring in
   if len > 0 then
-    match s.[pos] with
+    match ops.get s pos with
       | '\010' -> 
-	  skip_line_ends s (pos+1) (len-1)
+	  skip_line_ends_poly ops s (pos+1) (len-1)
       | '\013' ->
-	  if len > 1 && s.[pos+1] = '\010' then
-	    skip_line_ends s (pos+2) (len-2)
+	  if len > 1 && ops.get s (pos+1) = '\010' then
+	    skip_line_ends_poly ops s (pos+2) (len-2)
 	  else
 	    pos
       | _ ->
@@ -21,6 +22,9 @@ let rec skip_line_ends s pos len =
   else
     pos
 
+
+let skip_line_ends =
+  skip_line_ends_poly Netstring_tstring.string_ops
 
 let rec find_line_end_poly ops s pos len =
   let open Netstring_tstring in
@@ -81,48 +85,57 @@ let find_double_line_start =
   find_double_line_start_poly Netstring_tstring.string_ops
 
 
-let fold_lines_p_poly ops f acc0 s pos len =
-  let e = pos+len in
-  let rec loop acc p =
-    if p < e then (
-      let p1 = 
-	try find_line_end_poly ops s p (e-p)
-	with Not_found -> e in
-      let p2 =
-	try find_line_start_poly ops s p1 (e-p1)
-	with Not_found -> e in
-      let is_last =
-	p2 = e in
-      let acc' =
-	f acc p p1 p2 is_last in
-      loop acc' p2
-    )
-    else acc in
-  loop acc0 pos
+let fold_lines_p_poly : type s a . s Netstring_tstring.tstring_ops ->
+                        (a -> int -> int -> int -> bool -> a) -> 
+                        a -> s -> int -> int -> a =
+  fun ops f acc0 s pos len ->
+    let e = pos+len in
+    let rec loop acc p =
+      if p < e then (
+        let p1 = 
+          try find_line_end_poly ops s p (e-p)
+          with Not_found -> e in
+        let p2 =
+          try find_line_start_poly ops s p1 (e-p1)
+          with Not_found -> e in
+        let is_last =
+          p2 = e in
+        let acc' =
+          f acc p p1 p2 is_last in
+        loop acc' p2
+      )
+      else acc in
+    loop acc0 pos
 
 
 let fold_lines_p f =
   fold_lines_p_poly Netstring_tstring.string_ops f
 
 
-let fold_lines_poly ops f acc0 s pos len =
-  let open Netstring_tstring in
-  fold_lines_p_poly
-    ops
-    (fun acc p0 p1 p2 is_last ->
-       f acc (ops.substring s p0 p1)
-    )
-    acc0 s pos len
+let fold_lines_poly : type s a . s Netstring_tstring.tstring_ops ->
+                      (a -> s -> a) -> a -> s -> int -> int -> a =
+  fun ops f acc0 s pos len ->
+    let open Netstring_tstring in
+    fold_lines_p_poly
+      ops
+      (fun acc p0 p1 p2 is_last ->
+         f acc (ops.sub s p0 p1)
+      )
+      acc0 s pos len
 
 
 let fold_lines f =
   fold_lines_poly Netstring_tstring.string_ops f
 
 
-let iter_lines f s pos len =
-  fold_lines
+let iter_lines_poly ops f s pos len =
+  fold_lines_poly
+    ops
     (fun _ line -> let () = f line in ())
     () s pos len
+
+let iter_lines f =
+  iter_lines_poly Netstring_tstring.string_ops f
 
 
 let skip_whitespace_left_poly ops s pos len =

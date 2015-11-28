@@ -35,6 +35,10 @@ val find_line_end : string -> int -> int -> int
       if there is no line end.
    *)
 
+val find_line_end_poly : 's Netstring_tstring.tstring_ops ->
+                         's -> int -> int -> int
+  (** polymorphic version *)
+
 val find_line_start : string -> int -> int -> int
   (** [find_line_start s pos len]: Searches the next start, and returns its
       position. The line start is the position after the next line end
@@ -42,6 +46,10 @@ val find_line_start : string -> int -> int -> int
       [pos], and covers the next [len] bytes. Raises [Not_found]
       if there is no line end.
    *)
+
+val find_line_start_poly : 's Netstring_tstring.tstring_ops ->
+                           's -> int -> int -> int
+  (** polymorphic version *)
 
 val find_double_line_start : string -> int -> int -> int
   (** [find_double_line_start s pos len]: Searches two adjacent line ends
@@ -51,6 +59,10 @@ val find_double_line_start : string -> int -> int -> int
       if the mentioned pattern is not found.
    *)
 
+val find_double_line_start_poly : 's Netstring_tstring.tstring_ops ->
+                                  's -> int -> int -> int
+  (** polymorphic version *)
+
 val skip_line_ends : string -> int -> int -> int
   (** [skip_line_ends s pos len]: Skips over adjacent line ends (terminated
       by CR/LF or plain LF), and returns the position after the last
@@ -58,6 +70,11 @@ val skip_line_ends : string -> int -> int -> int
       [pos], and covers the next [len] bytes. Note that this function
       cannot raise [Not_found].
    *)
+
+val skip_line_ends_poly : 's Netstring_tstring.tstring_ops ->
+                          's -> int -> int -> int
+  (** polymorphic version *)
+
 
 val fold_lines_p : ('a -> int -> int -> int -> bool -> 'a) -> 
                  'a -> string -> int -> int -> 'a
@@ -77,6 +94,11 @@ val fold_lines_p : ('a -> int -> int -> int -> bool -> 'a) ->
 
       The function is tail-recursive.
    *)
+
+val fold_lines_p_poly : 's Netstring_tstring.tstring_ops ->
+                        ('a -> int -> int -> int -> bool -> 'a) -> 
+                        'a -> 's -> int -> int -> 'a
+  (** even more polymorphic *)
 
 val fold_lines : ('a -> string -> 'a) -> 'a -> string -> int -> int -> 'a
   (** [fold_lines f acc0 s pos len]: Splits the substring of [s] 
@@ -98,6 +120,11 @@ val fold_lines : ('a -> string -> 'a) -> 'a -> string -> int -> int -> 'a
 
    *)
 
+val fold_lines_poly : 's Netstring_tstring.tstring_ops ->
+                      ('a -> 's -> 'a) -> 'a -> 's -> int -> int -> 'a
+  (** even more polymorphic *)
+
+
 val iter_lines : (string -> unit) -> string -> int -> int -> unit
   (** [iter_lines f s pos len]: Splits the substring of [s] 
       from [pos]
@@ -106,6 +133,11 @@ val iter_lines : (string -> unit) -> string -> int -> int -> unit
 
       The lines can be terminated with CR/LF or LF.
    *)
+
+val iter_lines_poly : 's Netstring_tstring.tstring_ops ->
+                      ('s -> unit) -> 's -> int -> int -> unit
+  (** even more polymorphic *)
+ 
 
 val skip_whitespace_left : string -> int -> int -> int
   (** [skip_whitespace_left s pos len]: Returns the smallest

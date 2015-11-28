@@ -73,7 +73,6 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
           (function
             | (n, _, _) -> 
                 n = "authPassword-" ^ basic_mname
-            | _ -> false
           )
           c in
       let info = List.assoc "info" params in

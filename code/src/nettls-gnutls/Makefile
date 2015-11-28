@@ -20,8 +20,15 @@ LINK_OPTIONS = $(NETTLS_GNUTLS_LINK_OPTIONS)
 CC_OPTIONS = $(NETTLS_GNUTLS_CFLAGS)
 CC_OPTIONS_FOR_nettls_gnutls_bindings_stubs.c = -ccopt -Wno-unused-function
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
 INCLUDES = $(INC_NETSYS) $(INC_NETSTRING)
 NODEP = @true
+
+DOC_IGNORABLE = true
 
 include $(TOP_DIR)/Makefile.rules
 

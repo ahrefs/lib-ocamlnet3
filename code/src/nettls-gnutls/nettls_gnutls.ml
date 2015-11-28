@@ -404,7 +404,8 @@ module Make_TLS_1
         if role = `Client then (
           match peer_name with
             | None -> ()
-            | Some n -> G.gnutls_server_name_set session `Dns n
+            | Some n ->
+                G.gnutls_server_name_set session `Dns (Bytes.of_string n)
         );
 
         if role = `Server && config.peer_auth <> `None then
@@ -458,7 +459,7 @@ module Make_TLS_1
       let f() =
         let flags = [ `Client ] in
         let session = G.gnutls_init flags in
-        G.gnutls_session_set_data session data;
+        G.gnutls_session_set_data session (Bytes.unsafe_of_string data);
         let ep =
           { role = `Client;
             recv;
@@ -740,14 +741,14 @@ module Make_TLS_1
     let get_session_id ep =
       trans_exn
         (fun () ->
-           G.gnutls_session_get_id ep.session
+           Bytes.to_string (G.gnutls_session_get_id ep.session)
         )
         ()
 
     let get_session_data ep =
       trans_exn
         (fun () ->
-           G.gnutls_session_get_data ep.session
+           Bytes.to_string (G.gnutls_session_get_data ep.session)
         )
         ()
 
@@ -791,7 +792,7 @@ module Make_TLS_1
           let n1, t = G.gnutls_server_name_get ep.session k in
           let n2 =
             match t with
-              | `Dns -> `Domain n1 in
+              | `Dns -> `Domain (Bytes.to_string n1) in
           n2 :: get(k+1)
         with
           | G.Error `Requested_data_not_available ->
@@ -967,7 +968,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
                invalid_arg (sprintf "encrypt: buffers must be multiples \
                                      of %d" dc);
              if !first then
-               net_nettle_set_encrypt_key nc ctx key;
+               net_nettle_set_encrypt_key nc ctx (Bytes.of_string key);
              first := false;
              net_nettle_encrypt nc ctx lbuf outbuf inbuf in
            let decrypt inbuf outbuf =
@@ -979,7 +980,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
                invalid_arg (sprintf "decrypt: buffers must be multiples \
                                      of %d" dc);
              if !first then
-               net_nettle_set_decrypt_key nc ctx key;
+               net_nettle_set_decrypt_key nc ctx (Bytes.of_string key);
              first := false;
              net_nettle_decrypt nc ctx lbuf outbuf inbuf;
              true in
@@ -1034,9 +1035,9 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
              match !ctx with
                | None ->
                     let c = net_nettle_gcm_aes_init() in
-                    nettle_gcm_aes_set_key c key;
-                    nettle_gcm_aes_set_iv c !iv;
-                    nettle_gcm_aes_update c !hdr;
+                    nettle_gcm_aes_set_key c (Bytes.of_string key);
+                    nettle_gcm_aes_set_iv c (Bytes.of_string !iv);
+                    nettle_gcm_aes_update c (Bytes.of_string !hdr);
                     ctx := Some c;
                     c
                | Some c ->
@@ -1064,9 +1065,9 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
              true in
            let mac() =
              let c = get_ctx() in
-             let s = String.make 16 'X' in
+             let s = Bytes.make 16 'X' in
              nettle_gcm_aes_digest c s;
-             s in
+             Bytes.to_string s in
            { set_iv;
              set_header;
              encrypt;
@@ -1137,7 +1138,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
                | None ->
                     let c = gnutls_cipher_init algo key !iv in
                     if mode = "GCM" then
-                      gnutls_cipher_add_auth c !hdr;
+                      gnutls_cipher_add_auth c (Bytes.of_string !hdr);
                     ctx := Some c;
                     c
                | Some c ->
@@ -1169,9 +1170,9 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
              match mode with
                | "GCM" ->
                     let c = get_ctx() in
-                    let s = String.create 16 in
+                    let s = Bytes.create 16 in
                     gnutls_cipher_tag c s;
-                    s
+                    Bytes.to_string s
                | _ ->
                     no_mac() in
            { set_iv;
@@ -1253,9 +1254,9 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
            let add mem =
              net_nettle_hash_update h ctx mem in
            let finish() =
-             let s = String.make size 'X' in
+             let s = Bytes.make size 'X' in
              net_nettle_hash_digest h ctx s;
-             s in
+             Bytes.to_string s in
            { add; finish } in
          { name;
            size;

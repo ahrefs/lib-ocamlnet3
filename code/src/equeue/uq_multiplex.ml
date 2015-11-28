@@ -147,7 +147,7 @@ object(self)
 
 
   method start_reading ?(peek = fun ()->()) ~when_done s pos len =
-    if pos < 0 || len < 0 || pos > String.length s - len then
+    if pos < 0 || len < 0 || pos > Bytes.length s - len then
       invalid_arg "#start_reading";
     if reading <> `None then
       failwith "#start_reading: already reading";
@@ -217,7 +217,7 @@ object(self)
     )
 
   method start_writing ~when_done s pos len =
-    if pos < 0 || len < 0 || pos > String.length s - len then
+    if pos < 0 || len < 0 || pos > Bytes.length s - len then
       invalid_arg "#start_writing";
     if writing <> `None || writing_eof <> None then
       failwith "#start_writing: already writing";
@@ -727,7 +727,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
     if mplex#mem_supported then
       `Memory (Netsys_mem.pool_alloc_memory Netsys_mem.default_pool)
     else
-      `String (String.create Netsys_mem.default_block_size) in 
+      `String (Bytes.create Netsys_mem.default_block_size) in 
   let in_pos = ref 0 in
   let in_size = ref 0 in
   let in_exn = ref None in
@@ -735,7 +735,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
     if mplex#mem_supported then
       `Memory (Netsys_mem.pool_alloc_memory Netsys_mem.default_pool)
     else
-      `String (String.create Netsys_mem.default_block_size) in 
+      `String (Bytes.create Netsys_mem.default_block_size) in 
   let out_pos = ref 0 in
   let out_size = ref 0 in
   let out_exn = ref None in
@@ -755,7 +755,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
                let n = Bigarray.Array1.dim mem in
                mplex # start_mem_reading ~when_done mem 0 n
           | `String str ->
-               let n = String.length str in
+               let n = Bytes.length str in
                mplex # start_reading ~when_done str 0 n
     )
     else
@@ -804,7 +804,7 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
                      (Bigarray.Array1.sub mem 0 n);
                    in_pos := !in_pos + n;
               | `String str_buf ->
-                   Netsys_mem.blit_string_to_memory
+                   Netsys_mem.blit_bytes_to_memory
                      str_buf 0
                      mem 0
                      n;
@@ -869,8 +869,8 @@ let tls_adapter (mplex : multiplex_controller) on_input on_output
                      (Bigarray.Array1.sub mem_buf 0 n);
                    out_size := n
               | `String str_buf ->
-                   let n = min len (String.length str_buf) in
-                   Netsys_mem.blit_memory_to_string
+                   let n = min len (Bytes.length str_buf) in
+                   Netsys_mem.blit_memory_to_bytes
                      mem 0
                      str_buf 0
                      n;
@@ -1026,7 +1026,7 @@ object(self)
            
 
   method start_reading ?(peek = fun ()->()) ~when_done s pos len =
-    if pos < 0 || len < 0 || pos > String.length s - len then
+    if pos < 0 || len < 0 || pos > Bytes.length s - len then
       invalid_arg "#start_reading";
     if reading <> `None then
       failwith "#start_reading: already reading (tls)";
@@ -1083,7 +1083,7 @@ object(self)
 
 
   method start_writing ~when_done s pos len =
-    if pos < 0 || len < 0 || pos > String.length s - len then
+    if pos < 0 || len < 0 || pos > Bytes.length s - len then
       invalid_arg "#start_writing";
     if writing <> `None || writing_eof <> None then
       failwith "#start_writing: already writing (tls)";
@@ -1290,7 +1290,7 @@ object(self)
                             tls_send(str) pos=%d len=%d" pos len);
               let aux_buf = Lazy.force aux_buf_lz in
               let len' = min len (Bigarray.Array1.dim aux_buf) in
-              Netsys_mem.blit_string_to_memory s pos aux_buf 0 len';
+              Netsys_mem.blit_bytes_to_memory s pos aux_buf 0 len';
               let n = Netsys_tls.mem_send ep_mod aux_buf 0 len' in
               dlogr 
                 (fun () ->
@@ -1381,7 +1381,7 @@ object(self)
                let aux_buf = Lazy.force aux_buf_lz in
                let len' = min len (Bigarray.Array1.dim aux_buf) in
                let n = Netsys_tls.mem_recv ep_mod aux_buf 0 len' in
-               Netsys_mem.blit_memory_to_string aux_buf 0 s pos n;
+               Netsys_mem.blit_memory_to_bytes aux_buf 0 s pos n;
                dlogr 
                  (fun () ->
                     sprintf "tls_multiplex_controller: tls_recv got %d" n);

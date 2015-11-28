@@ -204,7 +204,7 @@ let wait we c m =
 let pipe_name we =
   match we.pipe with
     | None -> assert false
-    | Some p -> String.copy p
+    | Some p -> String.sub p 0 (String.length p)  (* String.copy, here needed *)
 
 
 let wait_e_d name we c m esys cont =
@@ -254,7 +254,7 @@ let wait_e_d name we c m esys cont =
             (fun () -> 
                sprintf
 		 "Netmcore_condition.wait_e %s: poll wakeup rep=%B" name rep);
-          let s = String.make 1 ' ' in
+          let s = Bytes.make 1 ' ' in
           let p = Netsys.blocking_gread `Read_write fd s 0 1 in
           (* If p=0 this is a spurious wakeup. This can basically happen
              when the previous poster still had the file open at the time
@@ -319,7 +319,7 @@ let post c =
 		 sprintf "Netmcore_condition.post(%s): writing" p);
 	try
 	  let s = "X" in
-	  Netsys.really_gwrite `Read_write fd s 0 1;
+	  Netsys.really_gwrite_tstr `Read_write fd (`String s) 0 1;
 	  Unix.close fd
 	with error -> 
 	  Unix.close fd; raise error

@@ -498,6 +498,15 @@ val unpack_xdr_value_l : ?pos:int -> ?len:int -> ?fast:bool -> ?prefix:bool ->
    * be raised.
    *)
 
+val unpack_xdr_value_str : ?pos:int -> ?len:int -> ?fast:bool -> ?prefix:bool ->
+                       ?mstring_factories:Netxdr_mstring.named_mstring_factories-> 
+                         ?xv_version:xdr_value_version ->
+                         ?decode:(string * decoder) list ->
+                         string -> xdr_type -> (string * xdr_type) list ->
+                         (xdr_value * int)
+  (** Same for strings *)
+
+
 (**/**)
 
 (* Low-level *)

@@ -59,6 +59,9 @@ val blit_to_string : t -> int -> Bytes.t -> int -> int -> unit
 val blit_to_memory : t -> int -> Netsys_mem.memory -> int -> int -> unit
   (** Blits contents to another memory buffer *)
 
+val blit_to_tbuffer : t -> int -> tbuffer -> int -> int -> unit
+  (** Blits contents to a tagged buffer *)
+
 val blit : t -> int -> Bytes.t -> int -> int -> unit
     (** Compatibility name for [blit_to_bytes] *)
 
@@ -77,11 +80,17 @@ val add_substring : t -> string -> int -> int -> unit
 val add_sub_string : t -> string -> int -> int -> unit
     DEPRECATED("Use add_substring instead.")
 
+val add_subbytes : t -> Bytes.t -> int -> int -> unit
+  (** Adds a sub string to the end of the buffer *)
+
 val add_submemory : t -> Netsys_mem.memory -> int -> int -> unit
   (** Adds a sub memory buffer to the end of the buffer *)
 
 val add_sub_memory : t -> Netsys_mem.memory -> int -> int -> unit
   DEPRECATED("Use add_submemory instead.")
+
+val add_subtstring : t -> tstring -> int -> int -> unit
+  (** Adds a sub tstring to the end of the buffer *)
 
 val add_inplace : t -> (Netsys_mem.memory -> int -> int -> int) -> int
   (** [add_inplace b f]: Calls [f m pos len] where [m] is the last page

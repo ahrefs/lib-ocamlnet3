@@ -12,6 +12,12 @@ DOBJECTS = nethttp_client_conncache.mli nethttp_client.mli nettelnet_client.mli 
 	   nethttp_fs.mli netftp_fs.mli netsmtp.mli netpop.mli \
            netclient_tut.txt
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
+
 INCLUDES = $(INC_EQUEUE) $(INC_NETSTRING) $(INC_NETSYS)
 
 include $(TOP_DIR)/Makefile.rules

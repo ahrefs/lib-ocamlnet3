@@ -189,7 +189,7 @@ let xor_s s u =
   assert(s_len = u_len);
   let x = Bytes.create s_len in
   for k = 0 to s_len-1 do
-    x.[k] <- Char.chr ((Char.code s.[k]) lxor (Char.code u.[k]))
+    Bytes.set x k (Char.chr ((Char.code s.[k]) lxor (Char.code u.[k])))
   done;
   Bytes.to_string x
 

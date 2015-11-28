@@ -48,7 +48,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netfs.mli netglob.mli netauth.mli netsockaddr.mli \
         netnumber.mli netxdr_mstring.mli netxdr.mli \
 	netcompression.mli netunichar.mli netasn1.mli netasn1_encode.mli \
-	netoid.mli \
+	netoid.mli netstring_tstring.mli \
 	netdn.mli netx509.mli netascii_armor.mli nettls_support.mli \
 	netmech_scram.mli netmech_scram_gssapi.mli netmech_scram_sasl.mli \
 	netgssapi_support.mli netgssapi_auth.mli netchannels_crypto.mli \

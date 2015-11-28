@@ -12,6 +12,8 @@ INSTALL_EXTRA = netplex-packlist netplex_mt.cmo netplex_mt.cmx netplex_mt.o \
 		netplex_mt.p.cmx netplex_mt.p.o
 INSTOTHER = install-netplex-admin
 
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
 include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += netplex-admin$(EXEC_SUFFIX) \

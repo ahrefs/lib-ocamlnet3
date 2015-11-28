@@ -182,12 +182,12 @@ let chars =
 let open_shm ?(unique=false) name flags perm =
   let inst_string n =
     (* Replace 'X' with random chars *)
-    let n' = String.copy n in
+    let n' = Bytes.of_string n in
     for k = 0 to String.length n - 1 do
-      if n'.[ k ] = 'X' then
-	n'.[ k ] <- chars.( Random.State.int rndsrc (Array.length chars) )
+      if Bytes.get n' k = 'X' then
+	Bytes.set n' k chars.( Random.State.int rndsrc (Array.length chars) )
     done;
-    n'
+    Bytes.to_string n'
   in
 
   let rec attempt f k n =

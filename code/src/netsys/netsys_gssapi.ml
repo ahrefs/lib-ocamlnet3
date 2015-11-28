@@ -335,7 +335,7 @@ class type ['credential, 'name, 'context] poly_gss_api =
     method unwrap :
           't . context:'context ->
                input_message:message ->
-               output_message_preferred_type:[ `String | `Memory ] ->
+               output_message_preferred_type:[ `Bytes | `Memory ] ->
                out:( output_message:message ->
 		     conf_state:bool ->
 		     qop_state:qop ->
@@ -361,7 +361,7 @@ class type ['credential, 'name, 'context] poly_gss_api =
                conf_req:bool ->
                qop_req:qop ->
                input_message:message ->
-               output_message_preferred_type:[ `String | `Memory ] ->
+               output_message_preferred_type:[ `Bytes | `Memory ] ->
                out:( conf_state:bool ->
 		     output_message:message ->
 		     minor_status:minor_status ->

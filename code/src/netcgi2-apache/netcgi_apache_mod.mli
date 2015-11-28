@@ -130,7 +130,7 @@ sig
       = "netcgi2_apache_request_should_client_block"
     external get_client_block : t -> string
       = "netcgi2_apache_request_get_client_block"
-    external get_client_block_buffer : t -> string -> int -> int -> int
+    external get_client_block_buffer : t -> Bytes.t -> int -> int -> int
       = "netcgi2_apache_request_get_client_block_buffered"
     external discard_request_body : t -> int
       = "netcgi2_apache_request_discard_request_body"
@@ -159,7 +159,7 @@ sig
       "netcgi2_apache_request_print_char"
     val print_string : t -> string -> unit
       (** Send a string back to the client. *)
-    val output : t -> string -> int -> int -> int
+    val output : t -> Bytes.t -> int -> int -> int
       (** [output r s ofs len] send [s[ofs .. len-1]] back to the
 	  client.  Returns the number of bytes actually written, which
 	  is smaller than the number of bytes in the string if there

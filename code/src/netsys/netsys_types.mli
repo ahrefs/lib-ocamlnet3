@@ -30,11 +30,14 @@ type memory =
    *)
 
 type tbuffer = [ `Bytes of Bytes.t | `Memory of memory | `String of Bytes.t ]
-  (** A tagged buffer. Note that the [`String] case is deprecated.
+  (** A tagged buffer. Note that the [`String] case is deprecated, and only
+      provided for backward compatibility.
    *)
 
 type tstring = [ `Bytes of Bytes.t | `Memory of memory | `String of string ]
-  (** A tagged string which is not modified by the function *)
+  (** A tagged string which is considered as immutable. See also the
+      support module {!Netstring_tstring}.
+   *)
 
 (** See {!Netxdr_mstring.mstring} for documentation *)
 class type mstring =

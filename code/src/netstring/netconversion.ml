@@ -1096,7 +1096,7 @@ let read_utf16_lebe lo hi n_start enc =
         let p = (Char.code (ops.get s_in (p_in + k + lo))) lor 
                 ((Char.code (ops.get s_in (p_in + k + hi))) lsl 8) in
 
-        if p >= 0xd800 & p < 0xe000 then begin
+        if p >= 0xd800 && p < 0xe000 then begin
           (* This is a surrogate pair. *)
           if k+3 < l_in then begin
             if p <= 0xdbff then begin
@@ -1732,10 +1732,10 @@ let write_utf8 is_java
       else if p <= 0x10ffff then begin
 	if !k + 3 < l_out then begin
 	  (* No such characters are defined... *)
-	  s_out.[index]     <- Char.chr (0xf0 lor (p lsr 18));
-	  s_out.[index + 1] <- Char.chr (0x80 lor ((p lsr 12) land 0x3f));
-	  s_out.[index + 2] <- Char.chr (0x80 lor ((p lsr 6)  land 0x3f));
-	  s_out.[index + 3] <- Char.chr (0x80 lor (p land 0x3f));
+	  Bytes.set s_out index (Char.chr (0xf0 lor (p lsr 18)));
+	  Bytes.set s_out (index + 1) (Char.chr (0x80 lor ((p lsr 12) land 0x3f)));
+	  Bytes.set s_out (index + 2) (Char.chr (0x80 lor ((p lsr 6)  land 0x3f)));
+	  Bytes.set s_out (index + 3) (Char.chr (0x80 lor (p land 0x3f)));
 	  4
 	end
 	else (-1)
