@@ -409,6 +409,12 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 
+
+######################################################################
+# cleanup
+
+rm -f config.cppo
+
 ######################################################################
 # Check OS
 
@@ -584,9 +590,14 @@ case `ocamlc -version` in
         attrs=1 ;;
 esac
 
-PP_DEPRECATED="-D 'DEPRECATED(arg)'"
 if [ $attrs -gt 0 ]; then
-    PP_DEPRECATED="-D 'DEPRECATED(arg) [@@deprecated STRINGIFY(arg)]'"
+    cat <<EOF >>config.cppo
+#define DEPRECATED(arg) [@@deprecated arg] \(** @deprecated arg *)
+EOF
+else
+    cat <<EOF >>config.cppo
+#define DEPRECATED(arg)
+EOF
 fi
 
 ######################################################################
@@ -1106,7 +1117,7 @@ ENDIANESS = $endianess
 HAVE_GPROF = $have_gprof
 
 # definition of the DEPRECATED macro
-PP_DEPRECATED = ${PP_DEPRECATED}
+PP_DEPRECATED =
 
 # strings
 STRING_OPTS = $string_opts
@@ -1145,7 +1156,7 @@ APXS = $apxs
 OCAMLRPCGEN_CPP = $cpp
 
 # cppo:
-CPPO = $cppo
+CPPO = $cppo -include \$(TOP_DIR)/config.cppo
 CPPO_VERSION = $cppo_version
 $export_path
 _EOF_
