@@ -222,6 +222,17 @@ val datagram_rpc_multiplex_controller :
   (** The multiplex controller for datagrams ((D)TLS not yet supported) *)
 
 
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+val internal_rpc_multiplex_controller :
+       ?close_inactive_descr:bool ->
+       ?preclose:(unit -> unit) ->
+       internal_pipe -> internal_pipe -> Unixqueue.event_system ->
+         rpc_multiplex_controller
+  (** The multiplex controller for internal connections *)
+
+
 (** {1 Debugging} *)
 
 module Debug : sig

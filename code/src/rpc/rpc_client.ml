@@ -183,6 +183,7 @@ and client =
 	mutable max_resp_length : int option;
 	mutable user_name : string option;
 	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
+        mutable internal : bool;
 
 	(* authentication: *)
 	mutable all_auth_methods : client pre_auth_method list;
@@ -518,10 +519,14 @@ let continue_call cl call =
     authsess # next_credentials 
       cl rc.prog rc.proc call.xid in
   rc.decoder <- dec_opt;
+  let packer =
+    if cl.internal then
+      Rpc_packer.pack_call_pseudo
+    else
+      Rpc_packer.pack_call ?encoder:enc_opt in
   let request =
     try
-      Rpc_packer.pack_call
-        ?encoder:enc_opt
+      packer
         rc.prog
         call.xid
         rc.proc
@@ -720,9 +725,13 @@ let unbound_async_call_r cl prog procname param receiver authsess_opt =
 	    authsess # next_credentials 
 	      cl prog procname xid in
 	  rc.decoder <- dec_opt;
+          let packer =
+            if cl.internal then
+              Rpc_packer.pack_call_pseudo
+            else
+              Rpc_packer.pack_call ?encoder:enc_opt in
 	  let request =
-	    Rpc_packer.pack_call
-	      ?encoder:enc_opt
+            packer
 	      prog
 	      xid
 	      procname
@@ -1393,10 +1402,18 @@ let default_socket_config = new default_socket_config
 let blocking_socket_config = new blocking_socket_config
 let tls_socket_config = new tls_socket_config
 
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyclient
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
 
 
@@ -1548,13 +1565,13 @@ let rec internal_create initial_xid
   end in
   let module PM = Rpc_portmapper_impl.PM(C) in
 
-  let id_s_0 =
+  let id_s_0, internal =
     match mode with
       | `Socket_endpoint(_,fd) ->
-	  "Socket_endpoint(_," ^ string_of_file_descr fd ^ ")"
+	  "Socket_endpoint(_," ^ string_of_file_descr fd ^ ")", false
       | `Multiplexer_endpoint ep ->
 	  "Multiplexer_endpoint(" ^ 
-	    string_of_int(Oo.id ep) ^ ")"
+	    string_of_int(Oo.id ep) ^ ")", false
       | `Socket(_, conn, _) ->
 	  let s_conn =
 	    match conn with
@@ -1572,7 +1589,11 @@ let rec internal_create initial_xid
 		  "dyn_fd"
 	      | Portmapped h ->
 		  "portmapped:" ^ h in
-	  "Socket(_," ^ s_conn ^ ",_)" in
+	  "Socket(_," ^ s_conn ^ ",_)", false
+      | `Internal_endpoint _ ->
+          "Internal_endpoint", true
+      | `Internal_socket _ ->
+          "Internal_socket", true in
   let id_s =
     match prog_opt with
       | None -> id_s_0
@@ -1595,6 +1616,7 @@ let rec internal_create initial_xid
       prot = Rpc.Udp;
       esys = esys;
       est_engine = None;
+      internal;
       shutdown_connector = shutdown;
       waiting_calls = Queue.create();
       pending_calls = SessionMap.empty;
@@ -1751,6 +1773,46 @@ let rec internal_create initial_xid
     else
       open_socket_blocking in
 
+  let rec open_polysocket_1_e psock =
+    let fd = Netsys_polysocket.connect_descr psock in
+    let e =
+      new Uq_engines.input_engine
+        (fun _ ->
+           dlogr cl
+	     (fun () -> 
+	       "Non-blocking socket connect successful for " ^ id_s);
+           try
+             Some
+               (Netsys_polysocket.endpoint
+                  ~synchronous:true
+                  ~nonblock:true
+                  psock
+               )
+           with
+             | Unix.Unix_error(Unix.EINTR, _, _)
+             | Unix.Unix_error(Unix.EAGAIN, _, _) ->
+                 None
+        )
+        fd
+        (-1.0)
+        esys in
+    e ++
+      (function
+        | None ->
+            open_polysocket_1_e psock
+        | Some ep ->
+            eps_e (`Done ep) esys
+      ) in
+
+  let open_polysocket_e psock =
+    let fd = Netsys_polysocket.connect_descr psock in
+    let e = open_polysocket_1_e psock in
+    e >>
+      (fun state ->
+         Unix.close fd;
+         state
+      ) in
+
   let (prot, establish_engine) =
     match mode with
       | `Socket_endpoint(prot,fd) ->
@@ -1808,7 +1870,26 @@ let rec internal_create initial_xid
 		  (prot, 
                    open_socket (Some host) (`Portmapped(prot,host)) prot conf)
 	   )
-  in
+       | `Internal_endpoint(rd,wr) ->
+           let prot = Rpc.Tcp in
+           let m =
+             Rpc_transport.internal_rpc_multiplex_controller
+               ~close_inactive_descr:true rd wr esys in
+           (prot, new Uq_engines.epsilon_engine (`Done m) esys)
+       | `Internal_socket psock ->
+           let prot = Rpc.Tcp in
+           let e =
+             open_polysocket_e psock
+             ++ (fun (rd,wr) ->
+                   let m =
+                     Rpc_transport.internal_rpc_multiplex_controller
+                       ~preclose:(fun () ->
+                                     Netsys_polysocket.close_client psock
+                                  )
+                       ~close_inactive_descr:true rd wr esys in
+                   eps_e (`Done m) esys
+                ) in
+           (prot, e) in
 
   let timeout = if prot = Udp then 15.0 else (-.1.0) in
   let max_retransmissions = if prot = Udp then 3 else 0 in

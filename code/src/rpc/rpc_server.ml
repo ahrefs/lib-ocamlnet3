@@ -150,7 +150,18 @@ let uint4_max m =
        if p then n else acc)
     m
     (Netnumber.uint4_of_int 0) ;;
-       
+
+
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyserver
+
+
+type acceptor =
+  | Sock_acc of server_endpoint_acceptor
+  | Engine_acc of unit Uq_engines.engine
 
 
 type t =
@@ -170,11 +181,12 @@ type t =
 	mutable auth_methods : (string, t pre_auth_method) Hashtbl.t;
 	mutable auth_peekers : (auth_peeker * t pre_auth_method) list;
 	mutable connections : connection list;
-	mutable master_acceptor : server_endpoint_acceptor option;
+	mutable master_acceptor : acceptor option;
 	mutable transport_timeout : float;
 	mutable nolog : bool;
 	mutable get_last_proc : unit->string;
 	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
+        mutable internal : bool;
       }
 
 and connection =
@@ -528,17 +540,26 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		      (Netexn.to_string e)
 		 );
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_accepting_reply xid
-			     ret_flav ret_data Garbage in
+               let packer =
+                 if srv.internal then
+                   Rpc_packer.pack_accepting_reply_pseudo
+                 else
+                   Rpc_packer.pack_accepting_reply in
+	       let reply = packer xid ret_flav ret_data Garbage in
 	       let answer = make_immediate_answer xid "" reply 
-		 (fun () -> "Error Garbage") in
+ 		 (fun () -> "Error Garbage") in
 	       schedule_answer answer
 	    )
       | Rpc_server condition ->
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_rejecting_reply xid condition in
+               let packer =
+                 if srv.internal then
+                   Rpc_packer.pack_rejecting_reply_pseudo
+                 else
+                   Rpc_packer.pack_rejecting_reply in
+	       let reply = packer xid condition in
 	       let answer = make_immediate_answer xid "" reply 
 		 (fun () -> "Error " ^ errname condition) in
 	       schedule_answer answer
@@ -555,8 +576,12 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_accepting_reply xid
-			     ret_flav ret_data System_err in
+               let packer =
+                 if srv.internal then
+                   Rpc_packer.pack_accepting_reply_pseudo
+                 else
+                   Rpc_packer.pack_accepting_reply in
+	       let reply = packer xid ret_flav ret_data System_err in
 	       let answer = make_immediate_answer xid "" reply
 		 (fun () -> "Error System_err") in
 	       schedule_answer answer
@@ -709,9 +734,14 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 			     (* Exceptions raised by the encoder are
 				handled by [protect]
 			      *)
+                             let packer =
+                               if srv.internal then
+			         Rpc_packer.pack_successful_reply_pseudo
+                               else
+			         Rpc_packer.pack_successful_reply
+                                   ?encoder:enc_opt in
 			     let reply = 
-			       Rpc_packer.pack_successful_reply
-				 ?encoder:enc_opt
+                               packer
 				 prog p.sync_name xid
 				 ret_flav ret_data result_value in
 			     let answer = make_immediate_answer
@@ -757,6 +787,9 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		  | Auth_negative code ->
 		      protect (fun () -> raise(Rpc_server code))
 		  | Auth_reply (data, ret_flav, ret_data) ->
+                      if srv.internal then
+                        failwith "Rpc_server: raw auth replies not supported \
+                                  for internal connections";
 		      let reply = 
 			Rpc_packer.pack_successful_reply_raw
 			  xid ret_flav ret_data data in
@@ -1067,6 +1100,8 @@ type mode2 =
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
     | `Dummy of protocol
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
 
 
@@ -1102,7 +1137,8 @@ let create2_srv prot esys =
     transport_timeout = (-1.0);
     nolog = false;
     get_last_proc = (fun () -> "");
-    mstring_factories = mf 
+    mstring_factories = mf;
+    internal = false;
   }  
 ;;
 
@@ -1418,10 +1454,57 @@ let create2_socket_server ?(config = default_socket_config)
 	    ~close_on_shutdown: close_inactive_descr
 	    ~preclose:(fun () -> Netlog.Debug.release_fd fd)
 	    fd esys in
-	srv.master_acceptor <- Some acc;
+	srv.master_acceptor <- Some (Sock_acc acc);
 	accept_connections acc;
 	srv
 ;;
+
+
+let rec set_internal_acceptor srv psock esys =
+  let fd = Netsys_polysocket.accept_descr psock in
+  let e =
+    new Uq_engines.input_engine
+      (fun _ ->
+         srv.master_acceptor <- None;
+         try
+           let (rd,wr) =
+             Netsys_polysocket.accept ~nonblock:true psock in
+           let mplex =
+             Rpc_transport.internal_rpc_multiplex_controller
+               ~close_inactive_descr:true
+               rd wr esys in
+	   let conn = connection srv mplex in
+	   conn.fd <- None;
+	   dlogr_ctrace srv
+	     (fun () ->
+	        sprintf "(internal): Serving connection";
+             );
+	   if srv.transport_timeout >= 0.0 then
+	     mplex # set_timeout 
+		   ~notify:(on_trans_timeout srv conn) 
+		   srv.transport_timeout;
+	   (* Try to peek credentials. This can be too
+            * early, however.
+	    *)
+	   peek_credentials srv conn;
+	   next_incoming_message srv conn;
+           set_internal_acceptor srv psock esys;
+           ()
+         with
+           | Unix.Unix_error(Unix.EAGAIN,_,_)
+           | Unix.Unix_error(Unix.EINTR,_,_) ->
+               set_internal_acceptor srv psock esys
+      )
+      fd
+      (-1.0)
+      esys in
+  Uq_engines.when_state
+    ~is_aborted:(fun () ->
+                   Unix.close fd;
+                   Netsys_polysocket.close_server psock
+                )
+    e;
+  srv.master_acceptor <- Some(Engine_acc e)
 
 
 let create2 mode esys =
@@ -1439,6 +1522,19 @@ let create2 mode esys =
 	let srv = create2_srv prot esys in
 	srv.dummy <- true;
 	srv
+    | `Internal_endpoint(rd,wr) ->
+        let mplex =
+          Rpc_transport.internal_rpc_multiplex_controller
+            ~close_inactive_descr:true
+            rd wr esys in
+        let srv = create2_multiplexer_endpoint mplex in
+        srv.internal <- true;
+        srv
+    | `Internal_socket psock ->
+        let srv = create2_srv Rpc.Tcp esys in
+        srv.internal <- true;
+        set_internal_acceptor srv psock esys;
+        srv
 ;;
 
 
@@ -1903,8 +1999,11 @@ let stop_server ?(graceful = false) srv =
        sprintf "Stopping %s" (if graceful then " gracefully" else ""));
   (* Close TCP server socket, if present: *)
   ( match srv.master_acceptor with
-      | Some acc -> 
+      | Some (Sock_acc acc) -> 
 	  acc # shut_down();
+	  srv.master_acceptor <- None
+      | Some (Engine_acc e) ->
+          e # abort();
 	  srv.master_acceptor <- None
       | None -> ()
   );

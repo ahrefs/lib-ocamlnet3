@@ -191,11 +191,20 @@ class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
                           socket_config
   (** TLS configuration as class *)
 
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyserver
+
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
     | `Dummy of protocol
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
   (** Determines the type of the server for [create2]:
     *
@@ -210,6 +219,14 @@ type mode2 =
     *   according to [conn]. [proto] determines the 
     *   encapsulation; should be [Tcp] for stream sockets and [Udp] for
     *   datagram sockets. [config] specifies configuration details.
+    *
+    * - [`Internal_endpoint(rd,wr)]: Creates a server that exchanges
+    *   data over the pair of polypipes [(rd,wr)] (see {!Netsys_polypipe}).
+    *   The polypipes will be closed when the connection is terminated.
+    *
+    * - [`Internal_socket psock]: Creates a server that accepts connections
+    *   from the polysocket server [psock] (see {!Netsys_polysocket}).
+    *   The polysocket will be closed when the server is stopped.
     *
     * Despite their names, [`Socket_endpoint] and [`Socket] also support
     * Win32 named pipes.

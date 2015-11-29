@@ -1,20 +1,23 @@
 TOP_DIR = ../../..
 include $(TOP_DIR)/Makefile.rules
 
-REQUIRES = rpc,rpc-auth-local,unix,nettls-gnutls
+REQUIRES = rpc,rpc-auth-local,unix,nettls-gnutls,threads
 
 OBJ = proto_aux.cmo proto_clnt.cmo proto_srv.cmo
 XOBJ = $(OBJ:.cmo=.cmx)
-OCAMLC_OPTIONS_FOR_protoclient.ml = -thread
+OCAMLC_OPTIONS = -thread
 
-all: proto.cma protoserver protoclient
+all: proto.cma protoserver protoclient protointernal
 
-protoserver: protoserver.cmo
-	$(OCAMLC) -o protoserver -custom proto.cma protoserver.cmo -linkpkg
+protoserver: servercore.cmo protoserver.cmo
+	$(OCAMLC) -o protoserver -custom proto.cma servercore.cmo protoserver.cmo -linkpkg
 
 protoclient: protoclient.cmo
 	$(OCAMLC) -o protoclient -custom proto.cma protoclient.cmo -linkpkg \
-	   -package threads -thread
+	   -thread
+
+protointernal: servercore.cmo protointernal.cmo
+	$(OCAMLC) -o protointernal -custom proto.cma servercore.cmo protointernal.cmo -linkpkg -thread
 
 proto.cma: $(OBJ)
 	$(OCAMLC) -o proto.cma -a $(OBJ)

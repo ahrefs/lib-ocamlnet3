@@ -175,10 +175,19 @@ class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
                           socket_config
   (** TLS configuration as class *)
 
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyclient
+
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
   (** Determines the type of the client for [create2]:
     *
@@ -196,6 +205,16 @@ type mode2 =
     *   datagram sockets. [config] specifies configuration details.
     *   {b In particular, use this option to enable TLS for the socket:
     *   Get a [tls_socket_config] and pass this as [config] here.}
+    *
+    * - [`Internal_endpoint(rd,wr)]: Creates a client that exchanges
+    *   data over the pair of polypipes [(rd,wr)] (see {!Netsys_polypipe}).
+    *   The polypipes will be closed when the client terminates.
+    *
+    * - [`Internal_socket psock]: Creates a client that exchanges
+    *   data over the polysocket client [psock] (see {!Netsys_polysocket}).
+    *   The client must already be connected to the server (i.e.
+    *   [Netsys_polysocket.connect] has already been called).
+    *   The polysocket will be closed when the client terminates.
    *)
 
 val create2 :

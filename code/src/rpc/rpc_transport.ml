@@ -952,3 +952,187 @@ let stream_rpc_multiplex_controller ?(close_inactive_descr=true)
     role sockname peername peername_dns_opt None (Some fd) mplex esys 
     tls_config_opt
 ;;
+
+
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+let internal_rpc_multiplex_controller
+        ?(close_inactive_descr=false)
+        ?(preclose=fun() -> ())
+        rd_pipe wr_pipe esys
+      : rpc_multiplex_controller =
+  let rd_descr = Netsys_polypipe.read_descr rd_pipe in
+  let wr_descr = Netsys_polypipe.write_descr wr_pipe in
+  let sockaddr = `Implied in
+object(self)
+  val mutable alive = true
+  val mutable rd_engine = None
+  val mutable rd_eof = false
+
+  val mutable wr_engine = None
+
+  val mutable timeout = (-1.0)
+  val mutable tmo_notify = (fun () -> ())
+
+  method alive = alive
+  method event_system = esys
+  method getsockname = sockaddr
+  method getpeername = failwith "#getpeername: internal connection"
+  method tls_session_props = None
+  method protocol = Tcp
+  method peer_user_name = None
+  method file_descr = None
+  method reading = rd_engine <> None
+  method read_eof = rd_eof
+  method writing = wr_engine <> None
+
+  method private notify_on_timeout e =
+    Uq_engines.when_state
+      ~is_error:(fun err ->
+                   if err = Uq_engines.Timeout then
+                     tmo_notify()
+                )
+      e
+
+  method start_reading ?(peek = fun () -> ())
+                       ?(before_record = fun _ _ -> `Accept)
+                       ~when_done () =
+    if rd_engine <> None then
+      failwith "start_reading: already reading";
+    let rec restart() =
+      let e =
+        new Uq_engines.input_engine
+          (fun _ ->
+             rd_engine <- None;
+             let cbdone = ref false in
+             try
+               peek();
+               match Netsys_polypipe.read ~nonblock:true rd_pipe with
+                 | Some msg ->
+                     let code = before_record 0 sockaddr in
+                     let rmsg =
+                       match code with
+                         | `Deny -> `Deny
+                         | `Drop -> `Drop
+                         | `Reject_with err ->
+                             `Reject_with(Rpc_packer.pseudo_value_of_xdr msg,
+                                          err)
+                         | `Reject -> 
+                             `Reject (Rpc_packer.pseudo_value_of_xdr msg)
+                         | `Accept -> 
+                             `Accept (Rpc_packer.pseudo_value_of_xdr msg) in
+                     cbdone := true;
+                     when_done (`Ok(rmsg, sockaddr))
+                 | None ->
+                     rd_eof <- true;
+                     cbdone := true;
+                     when_done `End_of_file
+             with
+               | Unix.Unix_error(Unix.EAGAIN,_,_) ->
+                   restart()
+               | Unix.Unix_error(Unix.EINTR,_,_) ->
+                   restart()
+               | error when not !cbdone ->
+                   when_done (`Error error)
+          )
+          rd_descr
+          timeout
+          esys in
+      self # notify_on_timeout e;
+      rd_engine <- Some e in
+    restart()
+
+  method start_writing ~when_done pv addr =
+    ( match addr with
+	| `Implied -> ()
+	| `Sockaddr a ->
+	    failwith "Rpc_transport.internal_rpc_multiplex_controller: \
+                      Cannot send message to explicit address"
+    );
+    if wr_engine <> None then
+      failwith "start_writing: already writing";
+    let m = Rpc_packer.xdr_of_pseudo_value pv in
+    let rec restart() =
+      let e =
+        new Uq_engines.input_engine
+          (fun _ ->
+             wr_engine <- None;
+             let cbdone = ref false in
+             try
+               Netsys_polypipe.write ~nonblock:true wr_pipe (Some m);
+               when_done (`Ok())
+             with
+               | Unix.Unix_error(Unix.EAGAIN,_,_) ->
+                   restart()
+               | Unix.Unix_error(Unix.EINTR,_,_) ->
+                   restart()
+               | error when not !cbdone ->
+                   when_done (`Error error)
+          )
+          wr_descr
+          timeout
+          esys in
+      self # notify_on_timeout e;
+      wr_engine <- Some e in
+    restart()
+
+  method start_shutting_down ~when_done () =
+    if wr_engine <> None then
+      failwith "start_shutting_down: already writing";
+    let rec restart() =
+      let e =
+        new Uq_engines.input_engine
+          (fun _ ->
+             wr_engine <- None;
+             let cbdone = ref false in
+             try
+               Netsys_polypipe.write ~nonblock:true wr_pipe None;
+               when_done (`Ok())
+             with
+               | Unix.Unix_error(Unix.EAGAIN,_,_) ->
+                   restart()
+               | Unix.Unix_error(Unix.EINTR,_,_) ->
+                   restart()
+               | error when not !cbdone ->
+                   when_done (`Error error)
+          )
+          wr_descr
+          timeout
+          esys in
+      self # notify_on_timeout e;
+      wr_engine <- Some e in
+    restart()
+
+  method cancel_rd_polling () =
+    match rd_engine with
+      | None -> ()
+      | Some e ->
+          e#abort()
+
+  method private cancel_wr_polling () =
+    match wr_engine with
+      | None -> ()
+      | Some e ->
+          e#abort()
+
+  method cancel_shutting_down =
+    self#cancel_wr_polling
+
+  method abort_rw () =
+    self # cancel_rd_polling();
+    self # cancel_wr_polling();
+
+  method inactivate () =
+    alive <- false;
+    self#abort_rw();
+    if close_inactive_descr then (
+      preclose();
+      Unix.close rd_descr;
+      Unix.close wr_descr
+    )
+
+  method set_timeout ~notify tmo =
+    timeout <- tmo;
+    tmo_notify <- notify
+end
