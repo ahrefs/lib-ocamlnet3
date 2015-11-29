@@ -34,10 +34,10 @@ let rec find_line_end_poly ops s pos len =
       | '\010' ->
           k
       | '\013' ->
-          if (k+1) < pos+len && ops.get s (pos+1) = '\010' then
+          if (k+1) < pos+len && ops.get s (k+1) = '\010' then
             k
           else
-            find_line_end_poly ops s (k+1) (len-k-1)
+            find_line_end_poly ops s (k+1) (len-(k+1-pos))
       | _ ->
           assert false
   else
@@ -119,7 +119,7 @@ let fold_lines_poly : type s a . s Netstring_tstring.tstring_ops ->
     fold_lines_p_poly
       ops
       (fun acc p0 p1 p2 is_last ->
-         f acc (ops.sub s p0 p1)
+         f acc (ops.sub s p0 (p1-p0))
       )
       acc0 s pos len
 
