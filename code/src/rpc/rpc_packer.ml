@@ -24,16 +24,21 @@ let auth_flavor_of_pos =
 ;;
 
 
-let rpc_ts_unvalidated =
-  [ "auth_flavor",         X_enum [ "AUTH_NONE",     int4_of_int 0;
-				       (* also known as AUTH_NULL *)
-				    "AUTH_SYS",      int4_of_int 1;
-				    "AUTH_SHORT",    int4_of_int 2;
-				    "AUTH_DH",       int4_of_int 3;
-				       (* also known as AUTH_DES *)
-				    "RPCSEC_GSS",    int4_of_int 6;
-				  ];
+let auth_flavor_enum =
+  [ "AUTH_NONE",  0; (* also known as AUTH_NULL *)
+    "AUTH_SYS",   1;
+    "AUTH_SHORT", 2;
+    "AUTH_DH",    3; (* also known as AUTH_DES *)
+    "RPCSEC_GSS", 6;
+  ]
 
+
+
+let x_enum l =
+  X_enum (List.map (fun (n,i) -> (n, int4_of_int i)) l)
+
+let rpc_ts_unvalidated =
+  [ "auth_flavor",         x_enum auth_flavor_enum;
     "opaque_auth",         X_struct [ "flavor", X_type "auth_flavor";
 				      "body",   X_opaque (uint4_of_int 400) ];
 
@@ -187,6 +192,16 @@ let pack_call_pseudo_1 prog xid proc flav_cred data_cred flav_verf data_verf
   let vers_nr = Rpc_program.version_number prog in
   let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
 
+  let flav_cred_pos =
+    try List.assoc flav_cred auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_call: bad auth flavor" in
+
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_call: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -199,11 +214,11 @@ let pack_call_pseudo_1 prog xid proc flav_cred data_cred flav_verf data_verf
 		 (* vers *)    XV_uint vers_nr;
 		 (* proc *)    XV_uint proc_nr;
 		 (* cred *)    XV_struct_fast
-			         [| (* flavor *) XV_enum flav_cred;
+			         [| (* flavor *) XV_enum_fast flav_cred_pos;
 				    (* Body *)   XV_opaque data_cred
 				 |];
                  (* verf *)    XV_struct_fast
-			         [| (* flavor *) XV_enum flav_verf;
+			         [| (* flavor *) XV_enum_fast flav_verf_pos;
 				    (* body *)   XV_opaque data_verf
 				 |];
 		 (* param *)   proc_parm
@@ -250,6 +265,11 @@ let pack_call_gssapi_header prog xid proc flav_cred data_cred =
 
   let message_t = rpc_msg_call_frame_up_to_cred in
 
+  let flav_cred_pos =
+    try List.assoc flav_cred auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_call_gssapi_header: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -262,7 +282,7 @@ let pack_call_gssapi_header prog xid proc flav_cred data_cred =
 		 (* vers *)    XV_uint vers_nr;
 		 (* proc *)    XV_uint proc_nr;
 		 (* cred *)    XV_struct_fast
-			         [| (* flavor *) XV_enum flav_cred;
+			         [| (* flavor *) XV_enum_fast flav_cred_pos;
 				    (* Body *)   XV_opaque data_cred
 				 |];
 	      |]
@@ -314,26 +334,28 @@ let unpack_call_frame_l  pv =
             else
               Array.sub body 0 6 in
           ( match body' with
-	      [| (* rpcvers *) XV_uint rpc_version;
-		 (* prog *)    XV_uint prog_nr;
-	         (* vers *)    XV_uint vers_nr;
-	         (* proc *)    XV_uint proc_nr;
-	         (* cred *)    XV_struct_fast
-		                 [| (* flavor *) XV_enum_fast flav_cred_pos;
-				    (* body *)   XV_opaque data_cred
-				 |];
-	         (* verf *)    XV_struct_fast
-				 [| (* flavor *) XV_enum_fast flav_verf_pos;
-			            (* body *)   XV_opaque data_verf
-				 |]
-	       |] ->
-	      if rpc_version = uint4_of_int 2 then
-	        xid, prog_nr, vers_nr, proc_nr,
-	        auth_flavor_of_pos flav_cred_pos, data_cred,
-	        auth_flavor_of_pos flav_verf_pos, data_verf,
-	        len
-              else
-	        raise (Rpc_cannot_unpack "RPC version not supported")
+	      | [| (* rpcvers *) XV_uint rpc_version;
+		   (* prog *)    XV_uint prog_nr;
+                   (* vers *)    XV_uint vers_nr;
+                   (* proc *)    XV_uint proc_nr;
+                   (* cred *)    XV_struct_fast
+                                   [| (* flavor *) XV_enum_fast flav_cred_pos;
+                                      (* body *)   XV_opaque data_cred
+                                   |];
+                   (* verf *)    XV_struct_fast
+                                   [| (* flavor *) XV_enum_fast flav_verf_pos;
+                                      (* body *)   XV_opaque data_verf
+                                   |]
+                 |] ->
+                if rpc_version = uint4_of_int 2 then
+                  xid, prog_nr, vers_nr, proc_nr,
+                  auth_flavor_of_pos flav_cred_pos, data_cred,
+                  auth_flavor_of_pos flav_verf_pos, data_verf,
+                  len
+                else
+                  raise (Rpc_cannot_unpack "RPC version not supported")
+              | _ ->
+                  raise (Rpc_cannot_unpack "strange message")
           )
   | _ ->
       raise (Rpc_cannot_unpack "strange message")
@@ -487,6 +509,11 @@ let unpack_call ?mstring_factories ?decoder prog proc pv =
 
 let pack_successful_reply_1
        prog proc xid flav_verf data_verf return_value =
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_successful_reply: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -498,10 +525,10 @@ let pack_successful_reply_1
 		0,
 		XV_struct_fast
 		  [| (* verf *)
-		       XV_struct_fast [| (* flavor *) XV_enum flav_verf;
-	 		                 (* body *)   XV_opaque data_verf |];
+		     XV_struct_fast [| (* flavor *) XV_enum_fast flav_verf_pos;
+	 	                       (* body *)   XV_opaque data_verf |];
 		     (* reply_data *)
-		       XV_union_over_enum_fast
+		     XV_union_over_enum_fast
 			 ( (* SUCCESS *) 0, return_value)
 		  |] ))
        |] ) in
@@ -546,6 +573,11 @@ let pack_successful_reply_raw
 
   let message_t = rpc_msg in      (* type of generic message *)
 
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_successful_reply_raw: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -557,10 +589,10 @@ let pack_successful_reply_raw
 		0,
 		XV_struct_fast
 		  [| (* verf *)
-		       XV_struct_fast [| (* flavor *) XV_enum flav_verf;
-	 		                 (* body *)   XV_opaque data_verf |];
+		     XV_struct_fast [| (* flavor *) XV_enum_fast flav_verf_pos;
+	 		               (* body *)   XV_opaque data_verf |];
 		     (* reply_data *)
-		       XV_union_over_enum_fast
+		     XV_union_over_enum_fast
 			 ( (* SUCCESS *) 0, XV_void)
 		  |] ))
        |] ) in
@@ -589,6 +621,11 @@ let pack_accepting_reply_1 xid flav_verf data_verf condition =
     | _                         -> failwith "pack_accepting_reply"
   in
 
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_accepting_reply: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -600,7 +637,7 @@ let pack_accepting_reply_1 xid flav_verf data_verf condition =
 		 0,
 		 XV_struct_fast
 		   [| (* verf *) XV_struct_fast
-			           [| (* flavor *) XV_enum flav_verf;
+			           [| (* flavor *) XV_enum_fast flav_verf_pos;
 				      (* body *)   XV_opaque data_verf |];
 		      (* reply_data *) XV_union_over_enum_fast
 		                         (case, explanation)

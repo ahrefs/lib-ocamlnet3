@@ -283,19 +283,15 @@ CAMLprim value netsys_set_nonblock_not_event(value nev)
 }
 
 
-CAMLprim value netsys_get_not_event_fd(value nev)
+CAMLprim value netsys_get_not_event_fd_nodup(value nev)
 {
 #ifdef HAVE_POLL
     struct not_event *ne;
     int fd, code;
     ne = *(Not_event_val(nev));
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.get_event_fd: already destroyed");
-    fd = dup(ne->fd1);
-    if (fd == -1) uerror("dup", Nothing);
-    code = fcntl(fd, F_SETFD, FD_CLOEXEC);
-    if (code == -1) uerror("fcntl", Nothing);
-    return Val_int(fd);
+	failwith("Netsys_posix.get_event_fd_nodup: already destroyed");
+    return Val_int(ne->fd1);
 #else
     invalid_argument("Netsys_posix.get_event_fd not available");
 #endif

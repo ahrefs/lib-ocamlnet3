@@ -978,7 +978,7 @@ object(self)
   method alive = alive
   method event_system = esys
   method getsockname = sockaddr
-  method getpeername = failwith "#getpeername: internal connection"
+  method getpeername = `Implied
   method tls_session_props = None
   method protocol = Tcp
   method peer_user_name = None

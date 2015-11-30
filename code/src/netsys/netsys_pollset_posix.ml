@@ -175,14 +175,12 @@ object(self)
 	    []
 	  else (
 	    let ne_fd =
-	      Netsys_posix.get_event_fd ne in  (* this is a dup *)
+	      Netsys_posix.get_event_fd_nodup ne in
 	    let r = 
 	      try
 		self # wait_1 tmo (Some ne_fd)
 	      with error ->
-		Unix.close ne_fd;
 		raise error in
-	    Unix.close ne_fd;
 	    intr_m # lock();
 	    have_intr_lock := true;
 	    reset_not_event ne;

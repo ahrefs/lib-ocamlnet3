@@ -435,6 +435,25 @@ let no_conn_id = new no_connection_id
 
 let check_for_output = ref (fun _ _ -> ())
 
+let pack_accepting_reply srv =
+  if srv.internal then
+    Rpc_packer.pack_accepting_reply_pseudo
+  else
+    Rpc_packer.pack_accepting_reply
+
+let pack_rejecting_reply srv =
+  if srv.internal then
+    Rpc_packer.pack_rejecting_reply_pseudo
+  else
+    Rpc_packer.pack_rejecting_reply
+
+
+let pack_successful_reply ?encoder srv =
+  if srv.internal then
+    Rpc_packer.pack_successful_reply_pseudo
+  else
+    Rpc_packer.pack_successful_reply ?encoder
+
   (*****)
 
 type reaction =
@@ -521,8 +540,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_accepting_reply xid
-			     ret_flav ret_data condition in
+	       let reply =
+                 pack_accepting_reply srv xid ret_flav ret_data condition in
 	       let answer = 
 		 make_immediate_answer xid "" reply 
 		   (fun () -> "Error " ^ errname condition) in
@@ -540,12 +559,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		      (Netexn.to_string e)
 		 );
 	       let xid = Rpc_packer.peek_xid message in
-               let packer =
-                 if srv.internal then
-                   Rpc_packer.pack_accepting_reply_pseudo
-                 else
-                   Rpc_packer.pack_accepting_reply in
-	       let reply = packer xid ret_flav ret_data Garbage in
+	       let reply =
+                 pack_accepting_reply srv xid ret_flav ret_data Garbage in
 	       let answer = make_immediate_answer xid "" reply 
  		 (fun () -> "Error Garbage") in
 	       schedule_answer answer
@@ -554,12 +569,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-               let packer =
-                 if srv.internal then
-                   Rpc_packer.pack_rejecting_reply_pseudo
-                 else
-                   Rpc_packer.pack_rejecting_reply in
-	       let reply = packer xid condition in
+	       let reply = pack_rejecting_reply srv xid condition in
 	       let answer = make_immediate_answer xid "" reply 
 		 (fun () -> "Error " ^ errname condition) in
 	       schedule_answer answer
@@ -576,12 +586,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-               let packer =
-                 if srv.internal then
-                   Rpc_packer.pack_accepting_reply_pseudo
-                 else
-                   Rpc_packer.pack_accepting_reply in
-	       let reply = packer xid ret_flav ret_data System_err in
+	       let reply =
+                 pack_accepting_reply srv xid ret_flav ret_data System_err in
 	       let answer = make_immediate_answer xid "" reply
 		 (fun () -> "Error System_err") in
 	       schedule_answer answer
@@ -734,14 +740,9 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 			     (* Exceptions raised by the encoder are
 				handled by [protect]
 			      *)
-                             let packer =
-                               if srv.internal then
-			         Rpc_packer.pack_successful_reply_pseudo
-                               else
-			         Rpc_packer.pack_successful_reply
-                                   ?encoder:enc_opt in
 			     let reply = 
-                               packer
+                               pack_successful_reply
+                                 ?encoder:enc_opt srv
 				 prog p.sync_name xid
 				 ret_flav ret_data result_value in
 			     let answer = make_immediate_answer
@@ -1462,23 +1463,23 @@ let create2_socket_server ?(config = default_socket_config)
 
 let rec set_internal_acceptor srv psock esys =
   let fd = Netsys_polysocket.accept_descr psock in
+  dlog_ctrace srv "(internal): waiting for connect";
   let e =
     new Uq_engines.input_engine
       (fun _ ->
          srv.master_acceptor <- None;
+         dlog_ctrace srv "(internal): got connect event";
          try
            let (rd,wr) =
              Netsys_polysocket.accept ~nonblock:true psock in
+         dlog_ctrace srv "(internal): connected";
            let mplex =
              Rpc_transport.internal_rpc_multiplex_controller
                ~close_inactive_descr:true
                rd wr esys in
 	   let conn = connection srv mplex in
 	   conn.fd <- None;
-	   dlogr_ctrace srv
-	     (fun () ->
-	        sprintf "(internal): Serving connection";
-             );
+	   dlog_ctrace srv "(internal): Serving connection";
 	   if srv.transport_timeout >= 0.0 then
 	     mplex # set_timeout 
 		   ~notify:(on_trans_timeout srv conn) 
@@ -1493,6 +1494,7 @@ let rec set_internal_acceptor srv psock esys =
          with
            | Unix.Unix_error(Unix.EAGAIN,_,_)
            | Unix.Unix_error(Unix.EINTR,_,_) ->
+	       dlog_ctrace srv "(internal): repeating wait for connect";
                set_internal_acceptor srv psock esys
       )
       fd
@@ -1878,13 +1880,13 @@ let reply_error a_session condition =
 	| Unavailable_procedure
 	| Garbage
 	| System_err ->
-	    Rpc_packer.pack_accepting_reply
-	      a_session.client_id
+	    pack_accepting_reply
+	      srv a_session.client_id
 	      a_session.auth_ret_flav a_session.auth_ret_data
               condition
 	| _ ->
-	    Rpc_packer.pack_rejecting_reply
-	      a_session.client_id condition
+	    pack_rejecting_reply
+	      srv a_session.client_id condition
     in
 
     let reply_session =
@@ -1924,12 +1926,12 @@ let reply a_session result_value =
 
   let f =
     try
-      let reply = Rpc_packer.pack_successful_reply
-	?encoder:a_session.encoder
-	prog a_session.procname a_session.client_id
-	a_session.auth_ret_flav a_session.auth_ret_data
-	result_value
-      in
+      let reply =
+        pack_successful_reply
+	  ?encoder:a_session.encoder
+	  srv prog a_session.procname a_session.client_id
+	  a_session.auth_ret_flav a_session.auth_ret_data
+	  result_value in
   
       let reply_session =
 	{ a_session with

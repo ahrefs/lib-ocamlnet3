@@ -25,6 +25,9 @@ type 'a polyserver
 val create_client : int -> 'a polyclient
   (** Create a new socket client. The int is the number of messages in the
       pipe buffer.
+
+      Note that a client needs 6-18 file descriptors in the current
+      implementation. (To be improved.)
    *)
 
 val connect : 'a polyclient -> 'a polyserver -> unit
@@ -77,7 +80,11 @@ val connect_descr : 'a polyclient -> Unix.file_descr
 (** {2 Servers} *)
 
 val create_server : unit -> 'a polyserver
-  (** Create a new socket server *)
+  (** Create a new socket server.
+
+      Note that a server needs 2-6 file descriptors in the current
+      implementation.
+   *)
 
 val accept : nonblock:bool -> 'a polyserver -> 'a polyendpoint
   (** Accepts the next connection (or returns the next connection from the

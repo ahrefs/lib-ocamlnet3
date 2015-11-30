@@ -74,12 +74,40 @@ A few other notable updates:
  - [rpc-auth-dh] has been deleted. Use the GSSAPI-based authentication
    for RPC instead.
 
+{2 Bytes (since 4.1)}
+
+Since OCamlnet-4.1, the new [Bytes] module is fully supported. All
+interfaces have been checked whether the typing needed to be changed from
+[string] to [bytes]. Also, OCamlnet-4.1 is now built with the
+[-safe-string] option if the OCaml version is new enough.
+
+The are two new concepts making life easier in the presence of two
+string types (actually three types if you also count bigarrays of
+characters):
+
+ - A {b tagged string} or [tstring] wraps any of the three types into
+   a single variant type:
+   {[ type tstring = [`String of string | `Bytes of bytes | `Memory of memory] ]}
+   (note that [memory] is a bigarray of characters). There is a new support
+   module, {!Netstring_tstring}. We use tagged strings only when the
+   string is an input to a function and not mutated.
+
+ - A {b tagged buffer} or [tbuffer] wraps a [bytes] or [memory] buffer
+   into a variant type:
+   {[ type tbuffer = [`Bytes of bytes | `Memory of memory] ]}
+   As we had a similar type already in previous OCamlnet versions, [tbuffer]
+   got also a third variant for backward compatibility:
+   {[ type tbuffer = [`Bytes of bytes | `Memory of memory | `String of bytes] ]}
+   This third variant looks a little bit strange, but is certainly useful
+   for helping users to transition to [bytes] buffers. This variant will be
+   removed in a later version of OCamlnet again.
+
+
 {2 Not yet}
 
 A few things would have been good to have in OCamlnet-4, but they were
 not available in time:
 
- - Support for the new [Bytes] type
  - HTTP authentication on the server side
  - Advanced HTTP authentication frameworks such as OAUTH
  - Support for reading passwords from files

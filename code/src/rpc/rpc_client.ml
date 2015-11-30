@@ -1775,12 +1775,12 @@ let rec internal_create initial_xid
 
   let rec open_polysocket_1_e psock =
     let fd = Netsys_polysocket.connect_descr psock in
+    dlog cl ("Requested connect to " ^ id_s);
     let e =
       new Uq_engines.input_engine
         (fun _ ->
-           dlogr cl
-	     (fun () -> 
-	       "Non-blocking socket connect successful for " ^ id_s);
+           dlog cl
+	     ("Non-blocking socket connect successful for " ^ id_s);
            try
              Some
                (Netsys_polysocket.endpoint
@@ -1799,6 +1799,7 @@ let rec internal_create initial_xid
     e ++
       (function
         | None ->
+            dlog cl ("Repeating connect to " ^ id_s);
             open_polysocket_1_e psock
         | Some ep ->
             eps_e (`Done ep) esys

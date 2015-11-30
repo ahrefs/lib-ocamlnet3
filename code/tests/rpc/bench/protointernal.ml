@@ -20,19 +20,20 @@ let start_servers esys server_spec_list =
       server_spec_list
   in
 
+  let stop() =
+    (* Stop all started servers: *)
+    List.iter Rpc_server.stop_server server_list;
+    (* Note: this will not stop the servers immediately, but at the
+     * next safe point.
+     *) in
+
   (* Install signal handlers: *)
   List.iter
     (fun signal ->
        Sys.set_signal
 	 signal
 	 (Sys.Signal_handle
-	    (fun _ ->
-	       (* Stop all started servers: *)
-	       List.iter Rpc_server.stop_server server_list;
-	       (* Note: this will not stop the servers immediately, but at the
-		* next safe point.
-		*)
-	    )
+	    (fun _ -> stop())
 	 )
     )
     [ Sys.sighup; Sys.sigint ];
@@ -46,11 +47,16 @@ let start_servers esys server_spec_list =
       auto_restart f arg
   in
 
-  Thread.create
-    (fun () ->
-       auto_restart Unixqueue.run esys;
-    )
-    ()
+  let thr =
+    Thread.create
+      (fun () ->
+         auto_restart Unixqueue.run esys;
+      )
+      () in
+  (fun () ->
+    stop();
+    Thread.join thr
+  )
 ;;
 
 
@@ -109,9 +115,11 @@ let main() =
     [ Rpc.Tcp, `Internal_socket(serversock) ] in
 
   let esys = Unixqueue.create_unix_event_system() in
-  start_servers esys server_spec_list;
+  let stop = start_servers esys server_spec_list in
 
-  run_tests serversock
+  run_tests serversock;
+
+  stop()
 ;;
 
 

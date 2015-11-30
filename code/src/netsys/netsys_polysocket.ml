@@ -46,7 +46,15 @@ let connect cl srv =
             rd_notify = rd_not;
             wr_notify = wr_not
           } in
-        cl.state <- Requesting1(cr, srv)
+        cl.state <- Requesting1(cr, srv);
+        ( try
+            Netsys_polypipe.write ~nonblock:false srv.wr_requests (Some cr)
+            (* this write is always immediately successful *)
+          with
+            | Unix.Unix_error(Unix.EPIPE,_,_) ->
+                raise (Unix.Unix_error(Unix.ECONNREFUSED,
+                                       "Netsys_polysocket.endpoint", ""));
+        );
     | Requesting1 _
     | Requesting2 _ ->
         raise (Unix.Unix_error(Unix.EALREADY, "Netsys_polysocket.connect", ""))
@@ -74,7 +82,6 @@ let rec endpoint ~synchronous ~nonblock cl =
         if not srv.accepting then
           raise (Unix.Unix_error(Unix.ECONNREFUSED,
                                  "Netsys_polysocket.endpoint", ""));
-        Netsys_polypipe.write ~nonblock:false srv.wr_requests (Some cr);
         cl.state <- Requesting2(cr,srv);
         endpoint ~nonblock ~synchronous cl
     | Requesting2(cr,srv) ->
@@ -179,6 +186,8 @@ let refuse ~nonblock srv =
   
 
 let close_server srv =
-  if not srv.dead then
+  if not srv.dead then (
     Netsys_polypipe.close srv.rd_requests;
+    Netsys_polypipe.close srv.wr_requests;
+  );
   srv.dead <- true
