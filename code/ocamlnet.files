@@ -522,6 +522,8 @@ f examples/netplex/helloworld.ml
 f examples/netplex/helloworld.conf
 f examples/netplex/lever.ml
 f examples/netplex/lever.conf
+f examples/netplex/internal_service.ml
+f examples/netplex/internal_service.conf
 
 d examples/netsys
 f examples/netsys/Makefile
