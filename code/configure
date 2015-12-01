@@ -73,7 +73,7 @@ set_defaults () {
 ocamlc=`get_path ocamlc`
 set_defaults
 
-version="4.0.4"
+version="4.1.0test1"
 exec_suffix=""
 path_sep=":"
 
@@ -603,7 +603,7 @@ fi
 ######################################################################
 
 printf "Checking for immutable strings... "
-if `ocamlc -safe-string >/dev/null 2>/dev/null`; then
+if ocamlc -safe-string >/dev/null 2>/dev/null; then
     istring=1
     echo "yes"
 else
@@ -618,6 +618,23 @@ else
     string_opts=""
     pp_bytes="-U HAVE_BYTES"
 fi
+
+######################################################################
+
+printf "Checking for extensible variants... "
+cat <<EOF >tmp/extvariant.ml
+type t = ..
+type t += X
+EOF
+
+if ocamlc -c tmp/extvariant.ml >/dev/null 2>/dev/null; then
+    echo "yes"
+    echo "#define HAVE_EXTENSIBLE_VARIANTS" >> config.cppo
+else
+    echo "no"
+    echo "#undef HAVE_EXTENSIBLE_VARIANTS" >> config.cppo
+fi
+
 
 ######################################################################
 # Check that pcre is available:

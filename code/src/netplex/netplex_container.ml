@@ -34,6 +34,11 @@ let string_of_sys_id =
 
 let t_poll = 0.1
 
+type accepted =
+  | OS_socket : Unix.file_descr -> accepted
+  | Poly_socket : 'a polysocket_kind * 'a Netsys_polysocket.polyserver ->
+                    accepted
+
 
 class std_container ?esys
                     ptype sockserv =
@@ -52,6 +57,7 @@ object(self)
   val mutable nr_conns = 0
   val mutable nr_conns_total = 0
   val mutable engines = []
+  val mutable int_engines = []
   val mutable vars = Hashtbl.create 10 
   val         vars_mutex = !Netsys_oothr.provider # create_mutex()
   val mutable polling = None
@@ -213,7 +219,7 @@ object(self)
 	    (fun () -> 
 	       sprintf "Container %d: Polling nr_conns=%d fully_busy=%B"
 		 (Oo.id self) nr_conns fully_busy);
-	  polling <- Some(nr_conns,fully_busy,engines=[]);
+	  polling <- Some(nr_conns,fully_busy,engines=[] && int_engines=[]);
 	  Netplex_ctrl_clnt.Control.V1.poll'async r (nr_conns,fully_busy)
 	    (fun getreply ->
 	       polling <- None;
@@ -300,7 +306,7 @@ object(self)
 	    )
     
   method private enable_accepting n_accept =
-    if engines = [] then (
+    if engines = [] && int_engines = [] then (
       List.iter
 	(fun (proto, fd_array) ->
 	   Array.iter
@@ -330,7 +336,7 @@ object(self)
 				     (Netsys.int64_of_file_descr fd_slave));
 			      self # disable_accepting();
 			      self # greedy_accepting
-				(n_accept - 1) [fd_slave, proto]
+				(n_accept - 1) [OS_socket fd_slave, proto]
 			   )
 		  ~is_error:(fun err ->
 			       self # log `Crit
@@ -342,8 +348,39 @@ object(self)
 	     )
 	     fd_array
 	)
-	sockserv#sockets
+	sockserv#sockets;
+      List.iter
+        (fun (proto, Polyserver_box(kind, srv)) ->
+           self # enable_internal proto kind srv n_accept
+        )
+        sockserv#internal_sockets
     )
+
+  method private enable_internal : 'a . string -> 'a polysocket_kind ->
+                                   'a Netsys_polysocket.polyserver -> int ->
+                                   unit =
+    fun proto kind srv n_accept ->
+      let fd = Netsys_polysocket.accept_descr srv in
+      let e = new Uq_engines.poll_engine
+                  [ Unixqueue.Wait_in fd, (-1.0) ] esys in
+      Uq_engines.when_state 
+        ~is_done:(fun _ ->
+                    let polysock = Poly_socket(kind, srv) in
+                    dlogr
+                      (fun () ->
+                       sprintf "Container %d: Pending internal connection"
+                               (Oo.id self));
+                    self # disable_accepting();
+                    self # greedy_accepting (n_accept-1) [polysock, proto]
+                 )
+	~is_error:(fun err ->
+		     self # log `Crit
+			        ("internal connection: Exception " ^ 
+				   Netexn.to_string err)
+		  )
+        e;
+      int_engines <- e :: int_engines
+    
 
   method private disable_accepting() =
     dlogr
@@ -351,6 +388,8 @@ object(self)
 	 sprintf "Container %d: No longer accepting" (Oo.id self));
     List.iter (fun e -> e # abort()) engines;
     engines <- [];
+    List.iter (fun e -> e # abort()) int_engines;
+    int_engines <- [];
 
   method private greedy_accepting n_accept accept_list =
     let n_accept = ref n_accept in
@@ -380,7 +419,7 @@ object(self)
 		      try
 			let fd_slave, _ = Unix.accept fd in
 			cont := true;  (* try for another round *)
-			accept_list := (fd_slave, proto) :: !accept_list;
+			accept_list := (OS_socket fd_slave, proto) :: !accept_list;
 			Unix.set_nonblock fd_slave;
 			dlogr
 			  (fun () ->
@@ -408,26 +447,27 @@ object(self)
 	| Exit ->
 	    ()
     );
+    (* FIXME: no greedy accepting on internal sockets yet *)
     match !accept_list with
       | [] -> ()
-      | (fd_slave_last,proto_last) :: l ->
+      | (sock_last,proto_last) :: l ->
 	  List.iter
-	    (fun (fd_slave, proto) ->
-	       self # accepted_greedy fd_slave proto
+	    (fun (slave, proto) ->
+	       self # accepted_greedy slave proto
 	    )
 	    (List.rev l);
 	  (* The last connection in this round is always processed in
 	     non-greedy style, so the controller gets a notification.
 	   *)
-	  self # accepted_nongreedy fd_slave_last proto_last
+	  self # accepted_nongreedy sock_last proto_last
 
-  method private accepted_nongreedy fd_slave proto =
+  method private accepted_nongreedy sock proto =
     (* We first respond with the "accepted" message to the controller.
        This is especially important for synchronous processors, because
        this is the last chance to notify the controller about the state
        change in sync contexts.
      *)
-    self # prep_socket fd_slave proto;
+    self # prep_socket sock proto;
     match rpc with
       | None -> assert false
       | Some r ->
@@ -439,16 +479,24 @@ object(self)
 	  Rpc_client.unbound_async_call
 	    r Netplex_ctrl_aux.program_Control'V1 "accepted" Netxdr.XV_void
 	    (fun _ ->
-	       self # process_conn fd_slave proto
+	       self # process_conn sock proto
 	    )
 
-  method private accepted_greedy fd_slave proto =
-    self # prep_socket fd_slave proto;
-    self # process_conn fd_slave proto
+  method private accepted_greedy sock proto =
+    self # prep_socket sock proto;
+    self # process_conn sock proto
 
-  method private process_conn fd_slave proto =
+  method private process_conn sock proto =
     nr_conns <- nr_conns + 1;
     nr_conns_total <- nr_conns_total + 1;
+    match sock with
+      | OS_socket fd ->
+          self # process_conn_os fd proto
+      | Poly_socket _ ->
+          self # process_conn_internal sock proto
+
+
+  method private process_conn_os fd_slave proto =
     let regid = self # reg_conn fd_slave in
     let when_done_called = ref false in
     dlogr
@@ -463,7 +511,7 @@ object(self)
     self # protect
       "process"
       (sockserv # processor # process
-	 ~when_done:(fun fd ->
+	 ~when_done:(fun () ->
 		       (* Note: It is up to the user to close
                           the descriptor. So the descriptor can
                           already be used for different purposes
@@ -492,18 +540,61 @@ object(self)
     if not !when_done_called then
       self # restart_polling();
 
-  method private prep_socket fd_slave proto =
-    try
-      let proto_obj =
-	List.find
-	  (fun proto_obj ->
-	     proto_obj#name = proto
-	  )
-	  sockserv#socket_service_config#protocols in
-      if proto_obj#tcp_nodelay then
-	Unix.setsockopt fd_slave Unix.TCP_NODELAY true
-    with
-      | Not_found -> ()
+  method private process_conn_internal sock proto =
+    match sock with
+      | OS_socket _ -> assert false
+      | Poly_socket(kind,srv) ->
+          let when_done_called = ref false in
+          dlogr
+            (fun () -> 
+               sprintf
+                 "Container %d: processing internal (total conns: %d)" 
+                 (Oo.id self) 
+                 nr_conns
+            );
+          self # workload_hook true;
+          self # protect
+            "process_internal"
+            (sockserv # processor # process_internal
+               ~when_done:(fun () ->
+                             if not !when_done_called then (
+                               nr_conns <- nr_conns - 1;
+                               when_done_called := true;
+                               self # workload_hook false;
+                               self # restart_polling();
+                               dlogr
+                                 (fun () ->
+                                  sprintf "Container %d: \
+                                           Done with internal connection \
+                                           (total conns %d)"
+                                          (Oo.id self) 
+                                          nr_conns);
+                             )
+                          )
+               (self : #container :> container)
+               (Polyserver_box(kind,srv))
+            )
+            proto;
+        if not !when_done_called then
+          self # restart_polling();
+
+  method private prep_socket sock proto =
+    match sock with
+      | OS_socket fd_slave ->
+          ( try
+              let proto_obj =
+                List.find
+                  (fun proto_obj ->
+                     proto_obj#name = proto
+                  )
+                  sockserv#socket_service_config#protocols in
+              if proto_obj#tcp_nodelay then
+                Unix.setsockopt fd_slave Unix.TCP_NODELAY true
+            with
+              | Not_found -> ()
+          )
+      | Poly_socket _ ->
+          ()
 
 
   val mutable reg_conns = Hashtbl.create 10

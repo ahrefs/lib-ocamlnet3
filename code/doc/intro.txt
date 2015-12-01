@@ -327,6 +327,7 @@ build web servers, and with [rpc] to build RPC servers.
     Netplex_sharedvar
     Netplex_mbox
     Netplex_encap
+    Netplex_internal
     Rpc_netplex}
     
 

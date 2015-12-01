@@ -4,7 +4,7 @@ include $(TOP_DIR)/Makefile.conf
 
 PKGNAME  = netplex
 OBJECTS  = netplex_ctrl_aux.cmo netplex_ctrl_clnt.cmo netplex_ctrl_srv.cmo \
-           netplex_util.cmo netplex_encap.cmo \
+           netplex_util.cmo netplex_encap.cmo netplex_internal.cmo \
 	   netplex_cenv.cmo netplex_mp.cmo netplex_mt.cmo netplex_log.cmo \
            netplex_container.cmo netplex_sockserv.cmo netplex_workload.cmo \
 	   netplex_kit.cmo netplex_sharedvar.cmo netplex_controller.cmo \
@@ -17,6 +17,7 @@ DOBJECTS = netplex_types.mli netplex_mp.mli netplex_mt.mli netplex_log.mli \
 	   netplex_config.mli netplex_kit.mli rpc_netplex.mli \
 	   netplex_cenv.mli netplex_semaphore.mli netplex_sharedvar.mli \
 	   netplex_mutex.mli netplex_encap.mli netplex_mbox.mli \
+	   netplex_internal.mli \
 	   netplex_intro.txt netplex_advanced.txt netplex_admin.txt
 
 OCAMLC_OPTIONS += $(STRING_OPTS)

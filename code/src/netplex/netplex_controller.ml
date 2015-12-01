@@ -1392,6 +1392,7 @@ class controller_sockserv setup controller : socket_service =
 object(self)
   method name = sockserv' # name
   method sockets = sockserv' # sockets
+  method internal_sockets = sockserv' # internal_sockets
   method socket_service_config = sockserv' # socket_service_config
   method processor = processor
   method create_container p s =
