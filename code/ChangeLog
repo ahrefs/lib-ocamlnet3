@@ -1,3 +1,9 @@
+2015-12-01  Gerd Stolpmann  <gerd@thinkpad.lan.sumadev.de>
+
+	* Netplex: adding support for so-called internal services.
+	  This is a fast and type-safe way of exchanging messages
+	  between netplex containers.
+
 2015-11-28  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* ALL MODULES: Transitioning to the new "bytes" type for
