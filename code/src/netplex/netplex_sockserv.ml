@@ -79,6 +79,7 @@ let close_internal_sockets sockets =
 
 let open_internal_sockets prots proc =
   let sockets = ref [] in
+  let reglist = ref [] in
   try
     List.iter
       (fun proto ->
@@ -92,6 +93,10 @@ let open_internal_sockets prots proc =
          match addresses with
            | [] -> ()
            | [addr] ->
+               let name =
+                 match addr with
+                   | `Internal name -> name
+                   | _ -> assert false in
                let Polysocket_kind_box kind =
                  try List.assoc proto#name proc#config_internal
                  with Not_found ->
@@ -100,13 +105,20 @@ let open_internal_sockets prots proc =
                                  protocol: " ^ proto#name) in
                let srv =
                  Netsys_polysocket.create_server() in
-               sockets := (proto#name,Polyserver_box(kind,srv)) :: !sockets
+               let reg() =
+                 Netplex_internal.register_server
+                   name (Polyserver_box(kind,srv)) in
+               sockets := (proto#name,Polyserver_box(kind,srv)) :: !sockets;
+               reglist := reg :: !reglist;
            | _ ->
                failwith ("Netplex_sockserv.open_internal_sockets: \
                           more than one internal socket for protocol: " ^
                            proto#name)
       )
       prots;
+    List.iter
+      (fun f -> f())
+      (List.rev !reglist);
     List.rev !sockets
   with
     | error ->

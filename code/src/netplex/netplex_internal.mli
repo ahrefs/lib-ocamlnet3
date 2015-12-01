@@ -32,18 +32,20 @@ val connect_client :
 
       Example how to invoke a service exchanging strings (kind [Tstring]):
       {[
+let same : type s t . s polysocket_kind * t polysocket_kind -> (s,t) eq =
+  function
+  | Tstring, Tstring -> Equal
+  | _ -> Not_equal
+
 let client =
   Netplex_internal.connect_client
-    { Netplex_types.kind_check =
-        (function
-          | Tstring -> Equal
-          | _ -> Not_equal
-        )
-    }
+    { Netplex_types.kind_check = fun k -> same(Tstring,k) }
     n
     "name"
       ]}
 
+      (You should strictly stick to this pattern. Any abbreviation will probably
+      not type-check.)
    *)
 
 
@@ -142,14 +144,14 @@ Use {!Netplex_internal.connect_client} to get a client (usually in a
 different container, or in an arbitrary other thread):
 
 {[
+let same : type s t . s polysocket_kind * t polysocket_kind -> (s,t) eq =
+  function
+  | Tint, Tint -> Equal
+  | _ -> Not_equal
+
 let client =
   Netplex_internal.connect_client
-    { Netplex_types.kind_check =
-        (function
-          | Tint -> Equal
-          | _ -> Not_equal
-        )
-    }
+    { Netplex_types.kind_check = fun k -> same(Tint,k) }
     5
     "my-identifier" in
 let client_endpoint =
@@ -161,6 +163,11 @@ Again, the endpoint is a pair of polypipes in reality:
 {[
 let (client_rd, client_wr) = client_endpoint
 ]}
+
+{3 Complete example}
+
+You find a complete example in the distribution tarball at
+[code/examples/netplex/internal_service.ml].
 
 
 

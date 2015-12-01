@@ -446,7 +446,7 @@ let extract_address ptype socket_dir service_name proto_name cf addraddr =
 	  [ `Container(socket_dir,service_name,proto_name,`Any) ]
       | "internal" ->
 	  cf # restrict_subsections addraddr [];
-	  cf # restrict_parameters addraddr [ "name" ];
+	  cf # restrict_parameters addraddr [ "type"; "name" ];
           let name = get_name() in
           if ptype = `Multi_threading then (
             [ `Internal name ]

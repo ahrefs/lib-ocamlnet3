@@ -147,7 +147,7 @@ type extended_address =
 (** Equality witness *)
 type (_,_) eq =
   | Equal : ('a,'a) eq
-  | Not_equal : (_,_) eq
+  | Not_equal
 
 (** List possible argument types for polysockets ({!Netsys_polysocket}),
     which are the basis for internal services. Since OCaml-4.02 this
