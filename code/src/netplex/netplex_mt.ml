@@ -44,13 +44,18 @@ object(self)
 	) in
       let m = oothr # create_mutex() in
       let c = oothr # create_condition() in
+      let ok = ref false in
+      m # lock();
       let t = 
 	oothr # create_thread 
 	  (fun () ->
 	     try
 	       let o = throbj (oothr # self) in
 	       close_list l_close;
+               m # lock();
+               ok := true;
 	       c # signal();
+               m # unlock();
 	       f o
 	     with
 	       | e ->
@@ -60,8 +65,9 @@ object(self)
 			" on exception: "  ^ Netexn.to_string e)
 	  ) 
 	  () in
-      m # lock();
-      c # wait m;
+      while not !ok do
+        c # wait m;
+      done;
       m # unlock();
       throbj t
 end

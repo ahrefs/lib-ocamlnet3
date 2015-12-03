@@ -14,6 +14,8 @@ CLEAN_LIST += $(XDRFILES:.x=_clnt.ml) $(XDRFILES:.x=_clnt.mli)
 CLEAN_LIST += $(XDRFILES:.x=_srv.ml) $(XDRFILES:.x=_srv.mli)
 CLEAN_LIST += test_client helper_container
 
+.PHONY: all opt gen
+
 all:
 	$(MAKE) gen
 	$(MAKE) depend

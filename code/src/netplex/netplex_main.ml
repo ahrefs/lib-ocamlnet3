@@ -130,10 +130,16 @@ let rec run_controller ctrl =
     Unixqueue.run ctrl#event_system
   with
     | error ->
+        let bt = Printexc.get_backtrace() in
 	ctrl # logger # log
 	  ~component:"netplex.controller"
 	  ~level:`Crit
 	  ~message:("Uncaught exception: " ^ Netexn.to_string error);
+        if bt <> "" then
+	  ctrl # logger # log
+	    ~component:"netplex.controller"
+	    ~level:`Crit
+	    ~message:("Backtrace: " ^ bt);
 	run_controller ctrl
 ;;
 
@@ -303,11 +309,17 @@ let startup ?(late_initializer = fun _ _ -> ())
 	        with
 	          | error ->
 		       (* An error is ... *)
-		       controller # logger # log
-                         ~component:"netplex.controller"
-		         ~level:`Crit
-		         ~message:("Uncaught exception in late initialization: " ^ 
-			             Netexn.to_string error);
+                      let bt = Printexc.get_backtrace() in
+		      controller # logger # log
+                        ~component:"netplex.controller"
+		        ~level:`Crit
+		        ~message:("Uncaught exception in late initialization: " ^ 
+			            Netexn.to_string error);
+                      if bt <> "" then
+		        controller # logger # log
+                          ~component:"netplex.controller"
+		          ~level:`Crit
+		          ~message:("Backtrace: " ^ bt);
 	      );
 
 	      init_done();
@@ -354,13 +366,19 @@ let run ?(config_parser = Netplex_config.read_config_file)
 	     late_initializer config_file controller
 	   with
 	     | error ->
-		  (* An error is ... *)
-		  controller # logger # log
-                    ~component:"netplex.controller"
-		    ~level:`Crit
-		    ~message:("Uncaught exception in late initialization: " ^ 
-			        Netexn.to_string error);
-                  raise error in
+		 (* An error is ... *)
+                 let bt = Printexc.get_backtrace() in
+		 controller # logger # log
+                   ~component:"netplex.controller"
+		   ~level:`Crit
+		   ~message:("Uncaught exception in late initialization: " ^ 
+			       Netexn.to_string error);
+                 if bt <> "" then
+		   controller # logger # log
+                     ~component:"netplex.controller"
+		     ~level:`Crit
+		     ~message:("Backtrace: " ^ bt);
+                 raise error in
 	 run_controller controller;
          let result = extract_result controller late_value in
 	 controller # free_resources();

@@ -4,7 +4,8 @@ include $(TOP_DIR)/Makefile.conf
 
 PRE = 1
 PKGNAME = netplex
-GENERATE = netplex_ctrl_aux.ml netplex_ctrl_clnt.ml netplex_ctrl_srv.ml META
+GENERATE = netplex_ctrl_aux.ml netplex_ctrl_clnt.ml netplex_ctrl_srv.ml META \
+           netplex_types.ml
 PACKLIST = netplex-packlist
 RPCGEN = ../rpc-generator/ocamlrpcgen
 
@@ -17,7 +18,8 @@ PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 include $(TOP_DIR)/Makefile.rules
 
 CLEAN_LIST += netplex-admin$(EXEC_SUFFIX) \
-	      netplex_ctrl_aux.mli netplex_ctrl_clnt.mli netplex_ctrl_srv.mli
+	      netplex_ctrl_aux.mli netplex_ctrl_clnt.mli netplex_ctrl_srv.mli \
+              netplex_types.ml
 
 netplex_ctrl_aux.ml: netplex_ctrl.x
 	$(RPCGEN) -aux netplex_ctrl.x -int unboxed -direct
@@ -27,6 +29,10 @@ netplex_ctrl_clnt.ml: netplex_ctrl.x
 
 netplex_ctrl_srv.ml: netplex_ctrl.x
 	$(RPCGEN) -srv2 netplex_ctrl.x -int unboxed -direct
+
+netplex_types.ml: netplex_types.mli
+	echo "(* File is a copy of netplex_types.mli *)" > netplex_types.ml
+	cat netplex_types.mli >>netplex_types.ml
 
 .PHONY: install-netplex-admin
 

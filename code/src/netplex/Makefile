@@ -3,7 +3,8 @@ TOP_DIR=../..
 include $(TOP_DIR)/Makefile.conf
 
 PKGNAME  = netplex
-OBJECTS  = netplex_ctrl_aux.cmo netplex_ctrl_clnt.cmo netplex_ctrl_srv.cmo \
+OBJECTS  = netplex_types.cmo \
+	   netplex_ctrl_aux.cmo netplex_ctrl_clnt.cmo netplex_ctrl_srv.cmo \
            netplex_util.cmo netplex_encap.cmo netplex_internal.cmo \
 	   netplex_cenv.cmo netplex_mp.cmo netplex_mt.cmo netplex_log.cmo \
            netplex_container.cmo netplex_sockserv.cmo netplex_workload.cmo \

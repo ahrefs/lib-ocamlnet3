@@ -270,17 +270,7 @@ object(self)
 				   (* can happen in the admin case: *)
 				 | Netplex_cenv.Not_in_container_thread -> ()
 			     );
-			     ( match rpc with
-				 | None -> ()
-				 | Some r -> 
-				     rpc <- None;
-				     Rpc_client.trigger_shutdown 
-				       r
-				       self # shutdown_extra;
-				     (* We ensure that shutdown_extra is called
-                                        when the client is already taken down
-				      *)
-			     );
+                             self # rpc_shutdown 0;
 			     false
 			 | `event_system_shutdown ->
 			     self # protect
@@ -304,6 +294,36 @@ object(self)
 	       if continue then
 		 self # setup_polling()
 	    )
+
+  method private rpc_shutdown attempt =
+    match rpc with
+      | None -> ()
+      | Some r ->
+          let (n_delayed, n_waiting, n_pending) = Rpc_client.get_stats r in
+          if attempt < 100 && (n_delayed > 0 || n_waiting > 0 || n_pending > 0)
+          then (
+            (* another pending activity. Delay the shutdown for some time *)
+	    dlogr
+	      (fun () -> 
+	         sprintf "Container %d: delaying rpc shutdown for a moment"
+			 (Oo.id self));
+	    let g = Unixqueue.new_group esys in
+	    Unixqueue.once
+              esys g 0.1
+	      (fun () -> self # rpc_shutdown (attempt-1))
+          )
+          else (
+	    dlogr
+	      (fun () -> 
+	         sprintf "Container %d: rpc shutdown" (Oo.id self));
+	    rpc <- None;
+	    Rpc_client.trigger_shutdown 
+	      r
+	      self # shutdown_extra;
+	    (* We ensure that shutdown_extra is called
+               when the client is already taken down
+	     *)
+          )
     
   method private enable_accepting n_accept =
     if engines = [] && int_engines = [] then (

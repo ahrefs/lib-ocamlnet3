@@ -1,5 +1,6 @@
 (* $Id$ *)
 
+open Netplex_types
 open Printf
 
 let debug_rpc_internals = ref false
@@ -134,10 +135,13 @@ let rpc_factory
 	      match name with
 		| "netplex.connections" ->   (* intercept this one *)
 		    List.iter
-		      (fun (srv,fd) ->
-			 cnt # update_detail fd 
-			   ("Last action: " ^ 
-			      (Rpc_server.get_last_proc_info srv))
+		      (fun (srv,fd_opt) ->
+                         match fd_opt with
+                           | Some fd ->
+			       cnt # update_detail fd 
+                                  ("Last action: " ^ 
+			             (Rpc_server.get_last_proc_info srv))
+                           | None -> ()
 		      )
 		      !srv_list;
 		| _ ->
@@ -171,7 +175,7 @@ let rpc_factory
 			    let srv = 
 			      Rpc_server.create2 
 				(`Multiplexer_endpoint mplex) esys in
-			    srv_list := (srv,fd) :: !srv_list;
+			    srv_list := (srv,Some fd) :: !srv_list;
 			    Rpc_server.set_exception_handler srv
 			      (fun err bt ->
 				 container # log
@@ -203,6 +207,49 @@ let rpc_factory
 				  Netexn.to_string err)
 			  )
 		mplex_eng
+
+            method process_internal ~when_done container srvbox proto =
+              let Polyserver_box(kind, srv) = srvbox in
+	      let esys = container # event_system in
+              match kind with
+                | Txdr ->
+                    let (rd,wr) =
+                      Netsys_polysocket.accept ~nonblock:false srv in
+                    let srv =
+                      Rpc_server.create2
+                        (`Internal_endpoint(rd,wr))
+                        esys in
+		    srv_list := (srv,None) :: !srv_list;
+		    Rpc_server.set_exception_handler srv
+                      (fun err bt ->
+		         container # log
+			   `Crit
+			   ("RPC server caught exception: " ^ 
+			      Netexn.to_string err);
+			 container # log
+	                   `Crit
+			   ("Backtrace: " ^ bt);
+                      );
+		    Rpc_server.set_onclose_action 
+		      srv (fun _ ->
+			     srv_list :=
+			       List.filter
+				 (fun (srv',_) -> srv' != srv)
+				 !srv_list;
+			     let g = Unixqueue.new_group esys in
+			     Unixqueue.once esys g 0.0 when_done);
+		    ( match timeout_opt with
+			| Some t ->
+			    Rpc_server.set_timeout srv t
+			| None ->
+			    ()
+		    );
+		    setup srv custom_cfg
+                | _ ->
+                    failwith "Rpc_netplex.process_internal: wrong kind"
+
+            method config_internal =
+              [ "*", Polysocket_kind_box Txdr ]
 
 	    method supported_ptypes = 
 	      supported_ptypes

@@ -2063,6 +2063,15 @@ let get_gssapi_props cl =
     | Some proto ->
         proto # gssapi_props
 
+let get_stats cl =
+  let n_pending =
+    SessionMap.cardinal cl.pending_calls in
+  let n_delayed =
+    Hashtbl.fold (fun _ q acc -> acc + Queue.length q) cl.delayed_calls 0 in
+  let n_waiting =
+    Queue.length cl.waiting_calls in
+  (n_delayed, n_waiting, n_pending)
+
 let verbose b =
   Debug.enable := b
 

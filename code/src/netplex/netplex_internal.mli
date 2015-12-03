@@ -101,7 +101,7 @@ The connections to the internal services do not arrive via the normal
 hooks [config_internal] and [process_internal]. The hook [config_internal]
 defines which message type you are really using. The hook [process_internal]
 is invoked when a new connection to the internal service is established.
-It works very much like [process], only that it doesn't use file descriptor
+It works very much like [process], only that it doesn't use file descriptors
 but so-called polysockets (see {!Netsys_polysocket}).
 
 {[

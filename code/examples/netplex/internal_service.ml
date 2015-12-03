@@ -65,9 +65,31 @@ let concat_service_factory() : processor_factory =
   )
 
 
+let rpc_service_factory() : Netplex_types.processor_factory =
+  let proc_operation s =
+    let l = String.length s in
+    let u = Bytes.create l in
+    for k = 0 to l-1 do
+      Bytes.set u k s.[l-1-k]
+    done;
+    Bytes.to_string u in
+  let setup srv _ =
+    Operation_srv.P.V.bind
+    ~proc_null:(fun () -> ())
+    ~proc_operation
+    srv in
+  Rpc_netplex.rpc_factory
+    ~configure:(fun _ _ -> ())
+    ~name:"rpc_service"
+    ~setup
+    ~hooks:(fun _ -> new Netplex_kit.empty_processor_hooks())
+    ()
+
+
 let same : type s t . s polysocket_kind * t polysocket_kind -> (s,t) eq =
   function
   | Tmessage, Tmessage -> Equal
+  | Txdr, Txdr -> Equal
   | _ -> Not_equal
 
 let kind_check =
@@ -112,6 +134,18 @@ let client_hooks =
         Netsys_polypipe.close wr;
         Netsys_polysocket.close_client client;
         printf "Client: done\n%!";
+        (* Now connect to operation_service, an RPC-based internal service *)
+        let other_client =
+          Netplex_internal.connect_client
+            { Netplex_types.kind_check = fun k -> same (Txdr,k) }
+            1
+            "rpc_server_identifier" in
+        let rpc_client =
+          Operation_clnt.P.V.create_client2
+            (`Internal_socket other_client) in
+        let r = Operation_clnt.P.V.operation rpc_client "abcdef" in
+        printf "Client: RPC result = %s\n%!" r;
+        Rpc_client.shut_down rpc_client;
         Netplex_cenv.system_shutdown()
     end
   )
@@ -147,10 +181,12 @@ let main() =
     Netplex_log.logger_factories   (* allow all built-in logging styles *)
     Netplex_workload.workload_manager_factories (* ... all ways of workload management *)
     [ concat_service_factory();
+      rpc_service_factory();
     ]
     cmdline_cfg
 
 
 let () =
+  Printexc.record_backtrace true;
   Netsys_signal.init();
   main()

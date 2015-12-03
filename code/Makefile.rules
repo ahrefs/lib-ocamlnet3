@@ -52,6 +52,7 @@ ARCHIVE_P ?= $(ARCHIVE).p
 ARCHIVE_P_CMXA ?= $(ARCHIVE_P).cmxa
 
 MT_TYPE ?= posix
+HAVE_GPROF ?= 0
 ALL ?= $(ARCHIVE_CMA) $(ALL_EXTRA) \
        all-mt-$(MT_TYPE)
 OPT ?= $(ARCHIVE_CMXA) $(OPT_EXTRA) \

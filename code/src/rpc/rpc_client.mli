@@ -439,6 +439,13 @@ val abandon_call : t -> Netnumber.uint4 -> unit
 val is_up : t -> bool
   (** Return whether the client is up *)
 
+val get_stats : t -> int * int * int
+  (** Get stats [(n_delayed, n_waiting, n_pending)]:
+       - [n_delayed]: Calls that wait for authentication
+       - [n_waiting]: Calls that wait for being sent
+       - [n_pending]: Calls that wait for the response
+   *)
+
 val unbound_sync_call : 
       t -> Rpc_program.t -> string -> xdr_value -> xdr_value
   (** [unbound_sync_call client pgm proc arg]: Invoke the remote procedure

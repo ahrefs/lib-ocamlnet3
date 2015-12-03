@@ -100,6 +100,8 @@ let open_internal_sockets prots proc =
                let Polysocket_kind_box kind =
                  try List.assoc proto#name proc#config_internal
                  with Not_found ->
+                   try List.assoc "*" proc#config_internal
+                   with Not_found ->
                       failwith ("Netplex_sockserv.open_internal_sockets: \
                                  no entry in config_internal found for \
                                  protocol: " ^ proto#name) in
