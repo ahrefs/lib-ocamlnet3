@@ -25,9 +25,6 @@ type 'a polyserver
 val create_client : int -> 'a polyclient
   (** Create a new socket client. The int is the number of messages in the
       pipe buffer.
-
-      Note that a client needs 6-18 file descriptors in the current
-      implementation. (To be improved.)
    *)
 
 val connect : 'a polyclient -> 'a polyserver -> unit
@@ -60,6 +57,13 @@ val endpoint : synchronous:bool -> nonblock:bool ->
 val close_client : 'a polyclient -> unit
   (** Closes the client and the endpoint. Further interactions with the client
       raise the exception {!Netsys_polypipe.Closed}.
+   *)
+
+val set_connect_notify : _ polyclient -> (unit -> unit) -> unit
+  (** [set_connect_notify cl f]: Sets that the function [f] is called when
+      the connection is accepted. There can only be one such function; any
+      previous function is overwritten. Only future connect events are
+      reported. The function is called from a different thread.
    *)
 
 val connect_descr : 'a polyclient -> Unix.file_descr
@@ -105,11 +109,22 @@ val refuse : nonblock:bool -> 'a polyserver -> unit
       catching [EAGAIN].
    *)
 
+val pending_connection : _ polyserver -> bool
+  (** Whether there is a client waiting for being accepted *)
+
 val close_server : 'a polyserver -> unit
   (** Closes the server. The accepted endpoints need to be closed separately.
 
       Further interactions with the server cause that the exception
       {!Netsys_polypipe.Closed} will be raised.
+   *)
+
+val set_accept_notify : _ polyserver -> (unit -> unit) -> unit
+  (** [set_accept_notify srv f]: Sets that the function [f] is called when
+      a new connection arrives. There can only be one such function; any
+      previous function is overwritten. The event is edge-triggered: when
+      several connections arrive the function is only called once. The
+      function is called from a different thread.
    *)
 
 val accept_descr : 'a polyserver -> Unix.file_descr

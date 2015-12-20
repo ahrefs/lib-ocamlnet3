@@ -20,7 +20,7 @@ let rec get_enum t =
 let fail_map_xv_enum_fast () =
   failwith "Rpc_util.map_xv_enum_fast"
 
-let map_xv_enum_fast t v =
+let rec map_xv_enum_fast t v =
   match t with
     | Netxdr.X_enum l ->
 	let l = Array.of_list l in
@@ -39,6 +39,8 @@ let map_xv_enum_fast t v =
 		if !k >= m then
 		  fail_map_xv_enum_fast();
 		snd(l.( !k ))
+            | Netxdr.XV_direct(exn,_,f) ->
+                map_xv_enum_fast t (f exn)
 	    | _ ->
 		fail_map_xv_enum_fast()
 	)
@@ -49,7 +51,7 @@ let map_xv_enum_fast t v =
 let fail_map_xv_struct_fast () =
   failwith "Rpc_util.map_xv_struct_fast"
 
-let map_xv_struct_fast t v =
+let rec map_xv_struct_fast t v =
   match t with
     | Netxdr.X_struct decl ->
 	let decl = Array.of_list decl in
@@ -69,6 +71,8 @@ let map_xv_struct_fast t v =
 		  with
 		      Not_found -> fail_map_xv_struct_fast()
 		)
+            | Netxdr.XV_direct(exn,_,f) ->
+                map_xv_struct_fast t (f exn)
 	    | _ ->
 		fail_map_xv_struct_fast()
 	)
@@ -77,9 +81,9 @@ let map_xv_struct_fast t v =
 
 
 let fail_map_xv_union_over_enum_fast () =
-  failwith "Rpc_util.map_xv_struct_fast"
+  failwith "Rpc_util.map_xv_union_over_enum_fast"
 
-let map_xv_union_over_enum_fast t v =
+let rec map_xv_union_over_enum_fast t v =
   match t with
     | Netxdr.X_union_over_enum(enum_t, u, u_dfl ) ->
 	let e = Array.of_list (get_enum enum_t) in
@@ -100,6 +104,8 @@ let map_xv_union_over_enum_fast t v =
 		if !k >= m then
 		  fail_map_xv_union_over_enum_fast();
 		(!k, (snd e.(!k)), x)
+            | Netxdr.XV_direct(exn,_,f) ->
+                map_xv_union_over_enum_fast t (f exn)
 	    | _ ->
 		fail_map_xv_union_over_enum_fast()
 	)
@@ -134,6 +140,18 @@ let string_of_struct print_elem t v =
     ) ^ "}"
 
 
+let rec dest_xv_array v =
+  match v with
+    | Netxdr.XV_array x ->
+        x
+    | Netxdr.XV_array_of_string_fast x ->
+        Array.map (fun s -> Netxdr.XV_string s) x
+    | Netxdr.XV_direct(exn,_,f) ->
+        dest_xv_array (f exn)
+    | _ ->
+        raise Netxdr.Dest_failure;;
+
+
 let string_of_array print_elem t v =
   let elem_t =
     match t with 
@@ -143,7 +161,7 @@ let string_of_array print_elem t v =
       | _ -> 
 	  assert false in
   let vl =
-    Netxdr.dest_xv_array v in
+    dest_xv_array v in
   "[" ^ 
     String.concat ";"
     (Array.to_list
@@ -421,8 +439,9 @@ let string_of_response v prog procname rv =
       s_rv
   with
     | e ->
-	sprintf "[Exception in string_of_response: %s]"
-	  (Netexn.to_string e)
+        let bt = Printexc.get_backtrace() in
+	sprintf "[Exception in string_of_response: %s, backtrace: %s]"
+	  (Netexn.to_string e) bt
 
 
 let string_of_value t xv =

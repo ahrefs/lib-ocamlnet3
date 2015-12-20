@@ -5,7 +5,8 @@ REQUIRES = rpc,unix,netplex
 OBJ = operation_aux.cmo operation_clnt.cmo operation_srv.cmo
 XOBJ = $(OBJ:.cmo=.cmx)
 
-OCAMLC_OPTIONS = -custom
+OCAMLC_OPTIONS = -custom -g
+OCAMLOPT_OPTIONS = -g
 
 all: testlib.cma test_client helper_container helloworld lever internal_service
 

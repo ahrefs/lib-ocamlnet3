@@ -330,7 +330,7 @@ type xdr_value =
   | XV_union_over_enum_fast of (int * xdr_value)
   | XV_array_of_string_fast of string array
   | XV_mstring of Netxdr_mstring.mstring
-  | XV_direct of exn * int
+  | XV_direct of exn * int * (exn -> xdr_value)
 ;;
 
 let xv_true = XV_enum_fast 1 (* "TRUE" *);;
@@ -1297,7 +1297,7 @@ let pack_size
 	  get_size v t'
       | T_direct(t', _, _, _) ->
 	  ( match v with
-	      | XV_direct(_,size) -> size
+	      | XV_direct(_,size,_) -> size
 	      | _ -> get_size v t'
 	  )
 
@@ -1517,7 +1517,7 @@ let rec pack_mstring
 	  pack v t'
       | T_direct(t', _, write, _) ->
 	  ( match v with
-	      | XV_direct(x,xv_size) ->
+	      | XV_direct(x,xv_size,_) ->
 		  let old = !buf_pos in
 		  write x buf buf_pos;
 (* Printf.eprintf "old=%d new=%d size=%d\n" old !buf_pos size; *)
@@ -1940,7 +1940,8 @@ let rec unpack_term
 	if v4 then
 	  let k0 = !k in
 	  let xv = read str k k_end in
-	  XV_direct(xv, !k-k0)
+          let exn_decode _ = failwith "exn_decode is unavailable" in
+	  XV_direct(xv, !k-k0, exn_decode)
 	else
 	  unpack t'
     | _ ->

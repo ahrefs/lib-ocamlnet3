@@ -1,6 +1,7 @@
 (* $Id$ *)
 
 open Netsys_pollset
+open Printf
 
 let fd_equal =
   match Sys.os_type with
@@ -115,7 +116,14 @@ let reset_not_event ne =
   with Unix.Unix_error((Unix.EAGAIN|Unix.EWOULDBLOCK),_,_) -> ()
 
 
+let debug msg =
+  let tid = !(Netsys_oothr.provider)#self#id in
+  (* eprintf "THREAD %d: %s\n%!" tid msg *)
+  ()
+
+
 let poll_based_pollset () : pollset =
+  let owner_tid = !(Netsys_oothr.provider)#self#id in
 object(self)
   val mutable intr_ne = None
     (* The not_event that can be signalled for interrupting waiting *)
@@ -159,6 +167,7 @@ object(self)
 	    intr_m # lock();
 	    have_intr_lock := true;
 	    if cancel_flag then (
+              debug "DROP INTR 1";
 	      intr_ne <- None;
 	      have_intr_lock := false;
 	      intr_m # unlock();
@@ -174,16 +183,14 @@ object(self)
 	  if no_wait then
 	    []
 	  else (
+            debug (sprintf "WAIT have_ne=%B" (intr_ne <> None));
 	    let ne_fd =
 	      Netsys_posix.get_event_fd_nodup ne in
-	    let r = 
-	      try
-		self # wait_1 tmo (Some ne_fd)
-	      with error ->
-		raise error in
+	    let r = self # wait_1 tmo (Some ne_fd) in
 	    intr_m # lock();
 	    have_intr_lock := true;
 	    reset_not_event ne;
+            debug "DROP INTR 2";
 	    intr_ne <- None;
 	    have_intr_lock := false;
 	    intr_m # unlock();
@@ -191,6 +198,8 @@ object(self)
 	  )
 	with
 	  | err ->
+              debug "WAIT EXCEPTION";
+	      intr_ne <- None;
 	      if !have_intr_lock then intr_m # unlock();
 	      reset_not_event ne;
 	      return_not_event ne;
@@ -201,19 +210,23 @@ object(self)
 
 
   method cancel_wait b =
+    debug (sprintf "cancel_wait THREAD=%d b=%B" owner_tid b);
     while_locked
       intr_m
       (fun () ->
+         debug "cancel_wait got lock";
 	 cancel_flag <- b;
 	 if b then (
 	   match intr_ne with
 	     | None -> ()
 	     | Some ne ->
+                 debug "cancel_wait set_event";
 		 Netsys_posix.set_event ne
 	 )
       )
 
   method private wait_1 tmo extra_fd_opt =
+    debug (sprintf "WAIT_1 have_fd=%B" (extra_fd_opt <> None));
     let have_extra_fd = extra_fd_opt <> None in
     let ht_l = FdTbl.length ht in
     let l = ht_l + if have_extra_fd then 1 else 0 in

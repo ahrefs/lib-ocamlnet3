@@ -190,6 +190,12 @@ type polyclient_box =
                      'a Netsys_polysocket.polyclient ->
                         polyclient_box
 
+(** Internally used *)
+type extfd =
+  | OS_descr of Unix.file_descr
+  | Poly_endpoint of Netxdr.xdr_value Netsys_polysocket.polyendpoint
+
+
 (** The controller is the object in the Netplex master process/thread
     that manages the containers, logging, and service definitions
  *)
@@ -662,7 +668,7 @@ object
   method event_system : Unixqueue.unix_event_system
     (** The event system the container uses *)
 
-  method start : Unix.file_descr -> Unix.file_descr -> unit
+  method start : extfd -> extfd -> unit
     (** {b Internal Method.} Called by the controller to start the container.
       * It is the responsibility of the container to call the 
       * [post_start_hook] and the [pre_finish_hook].

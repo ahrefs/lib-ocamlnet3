@@ -173,6 +173,7 @@ class type socket_config =
 object
   method listen_options : Uq_engines.listen_options
   method multiplexing : 
+    dbg_name:string ref ->
     close_inactive_descr:bool ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller Uq_engines.engine
@@ -585,6 +586,12 @@ val detach : t -> unit
       RPC servers inherited by a Netplex child process return memory.
       The RPC server is unusable after this.
    *)
+
+val set_debug_name : t -> string -> unit
+  (** Set a name printed with debug messages *)
+
+val get_debug_name : t -> string
+  (** Get the debug name *)
 
 module Debug : sig
   val enable : bool ref

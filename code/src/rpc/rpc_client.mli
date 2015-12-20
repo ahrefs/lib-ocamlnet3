@@ -144,6 +144,7 @@ object
     *   calls are deferred until the connection is established.
     *)
   method multiplexing :
+    dbg_name:string ref ->
     close_inactive_descr:bool ->
     peer_name:string option ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
@@ -529,6 +530,12 @@ val trigger_shutdown : t -> (unit -> unit) -> unit
     * The function is not only called when the client has to be taken
     * down, but also if the client is already down.
    *)
+
+val set_debug_name : t -> string -> unit
+  (** Set a name printed with debug messages *)
+
+val get_debug_name : t -> string
+  (** Get the debug name *)
 
 
 type reject_code =

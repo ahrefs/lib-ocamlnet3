@@ -46,7 +46,23 @@ val write : nonblock:bool -> 'a polypipe -> 'a option -> unit
    *)
 
 val close : 'a polypipe -> unit
-  (** Close the pipe. Reading and writing will be immediately impossible *)
+  (** Close the pipe. Writing will be immediately impossible. Reading
+      will return [None].
+   *)
+
+val set_read_notify : _ polypipe -> (unit -> unit) -> unit
+(** [set_read_notify pipe f]: Sets that the function [f] is called
+    when the pipe becomes readable (or reaches eof). Only one such
+    function can be registered; any previous function is
+    overwritten. The function will be called from a different thread.
+  *)
+
+val set_write_notify : _ polypipe -> (unit -> unit) -> unit
+(** [set_write_notify pipe f]: Sets that the function [f] is called
+      when the pipe becomes writable (or reaches eof). Only one such
+      function can be registered; any previous function is
+      overwritten. The function will be called from a different thread.
+ *)
 
 val read_descr : 'a polypipe -> Unix.file_descr
   (** Returns a descriptor that can be used for polling. When the descriptor
@@ -69,7 +85,21 @@ val write_descr : 'a polypipe -> Unix.file_descr
    *)
 
 val set_exception : _ polypipe -> exn -> unit
-  (** Sets an exception that is returned by all further calls of
-      [read], [write], [read_descr], or [write_descr]. If an exception
-      already exists, it is not overwritten.
+  (** Sets an exception that is returned by further calls of
+      [write]. If an exception already exists, it is not overwritten.
+
+      [read] will return EOF. Readers need to test for the exceptionw with
+      [get_exception].
    *)
+
+val get_exception : _ polypipe -> exn option
+  (** Get the exception *)
+
+
+(** {1 Debugging} *)
+
+module Debug : sig
+  val enable : bool ref
+    (** Enables {!Netlog}-style debugging *)
+
+end

@@ -168,8 +168,10 @@ let rpc_factory
 			  (Netsys.string_of_fd fd))
 		fd;
 	      let esys = container # event_system in
+              let dbg_name = ref (sprintf "%s.%s"
+                                          name container#socket_service_name) in
 	      let mplex_eng = sconf # multiplexing 
-		~close_inactive_descr:true Rpc.Tcp fd esys in
+		~dbg_name ~close_inactive_descr:true Rpc.Tcp fd esys in
 	      Uq_engines.when_state
 		~is_done:(fun mplex ->
 			    let srv = 
@@ -200,7 +202,8 @@ let rpc_factory
 				| None ->
 				    ()
 			    );
-			    setup srv custom_cfg)
+                            Rpc_server.set_debug_name srv !dbg_name;
+			    setup srv custom_cfg)                              
 		~is_error:(fun err ->
 			     container # log `Crit 
 			       ("Cannot create RPC multiplexer: " ^ 

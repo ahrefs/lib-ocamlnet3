@@ -236,12 +236,13 @@ type xdr_value =
        *)
   | XV_mstring of Netxdr_mstring.mstring
   (* New in 3.5: *)
-  | XV_direct of exn * int
-      (* The variant [XV_direct(exn,size)] should only be used by
+  | XV_direct of exn * int * (exn -> xdr_value)
+      (* The variant [XV_direct(exn,size,exn_decoder)] should only be used by
 	 code generated with ocamlrpcgen. It is only allowed at positions
 	 in the term with type [X_direct]. It is assumed that the value
 	 is available as exception [exn] (in any form). [size] is the number
-	 of bytes in XDR format. 
+	 of bytes in XDR format. [exn_decoder] is a function that can
+         convert the exception to a normal [xdr_value].
        *) 
 
   (* TODO: arrays of int, uint, hyper, uhyper, opaque, float, double *)

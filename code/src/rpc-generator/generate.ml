@@ -1418,7 +1418,7 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     match direct_opt with
       | None -> ()
       | Some n -> 
-	  fprintf f "| Netxdr.XV_direct(X_%s x, _) -> x@ " n in
+	  fprintf f "| Netxdr.XV_direct(X_%s x, _, _) -> x@ " n in
 
   let generate_dest direct_opt var regname regconv =
     fprintf f "@[<hv 2>( match %s with@ " var;
@@ -2698,6 +2698,8 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
       | _ -> false in
 
   let output_ofconv_declaration n t tname direct =
+    let do_direct_mapping =
+      !Options.enable_direct && direct && permit_direct t in
     (* MLI: *)
     fprintf mli "val _of_%s : %s -> Netxdr.xdr_value;;@\n" n tname;
     (* ML: *)
@@ -2706,13 +2708,25 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
     fprintf f "_of_%s (x:%s) : Netxdr.xdr_value =@;<1 2>"
       n
       tname;
-    if !Options.enable_direct && direct && permit_direct t then (
+    if do_direct_mapping then (
       fprintf f
-	"@[<hv>Netxdr.XV_direct(X_%s x, _sizeexpr_%s x)@]" tname n
+	"@[<hv>Netxdr.XV_direct(X_%s x, _sizeexpr_%s x, _ofexn_%s)@]" tname n n
     )
     else
       output_ofconv_for_type n "x" t;
-    fprintf f "@]@\n"
+    fprintf f "@]@\n";
+    if do_direct_mapping then (
+      fprintf f "@[<hv>";
+      begin_decl();
+      fprintf f "_ofexn_%s (ex:exn) : Netxdr.xdr_value =@;<1 2>" n;
+      fprintf f "match ex with@ ";
+      fprintf f "| X_%s x ->@ " tname; 
+      fprintf f "    @[<hv>";
+      output_ofconv_for_type n "x" t;
+      fprintf f "@]@ ";
+      fprintf f "| _ -> raise Netxdr.Dest_failure@ ";
+      fprintf f "@]@\n";
+    )
   in
 
   let output_ofconv_tuple_declaration n tl tname =

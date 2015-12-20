@@ -126,6 +126,22 @@ let close_client cl =
     | Closed ->
         ()
 
+
+let set_connect_notify cl f =
+  match cl.state with
+    | Unconnected _ ->
+        raise (Unix.Unix_error(Unix.ENOTCONN, "Netsys_polysocket.set_connect_notify", ""))
+    | Requesting1(cr,srv)
+    | Requesting2(cr,srv) ->
+        Netsys_polypipe.set_read_notify cr.rd_notify f
+    | Connected _ ->
+        ()
+    | Refused ->
+        ()
+    | Closed ->
+        raise Netsys_polypipe.Closed
+
+
 let connect_descr cl =
   match cl.state with
     | Unconnected _ ->
@@ -164,6 +180,12 @@ let accept ~nonblock srv =
 
 let accept_descr srv =
   Netsys_polypipe.read_descr srv.rd_requests
+
+let set_accept_notify srv f =
+  Netsys_polypipe.set_read_notify srv.rd_requests f
+
+let pending_connection srv =
+  Netsys_polypipe.length srv.rd_requests > 0
 
 let refuse ~nonblock srv =
   srv.accepting <- false;

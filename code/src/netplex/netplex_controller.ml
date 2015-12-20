@@ -96,18 +96,60 @@ let cap_gt cap1 cap2 =
 ;;
 
 
-let create_pipe_pair() =
-  match Sys.os_type with
-    | "Win32" ->
-	let (ph2, ph1) = Netsys_win32.pipe_pair Netsys_win32.Pipe_duplex in
-	(Netsys_win32.pipe_descr ph1,
-	 Netsys_win32.pipe_descr ph2,
-	 `W32_pipe
-	)
-    | _ ->
-	let (fd1,fd2) =
-	  Unix.socketpair Unix.PF_UNIX Unix.SOCK_STREAM 0 in
-	(fd1,fd2,`Read_write)
+let create_pipe_pair is_mt =
+  if is_mt then
+    let (rd1,wr1) = Netsys_polypipe.create 10 in
+    let (rd2,wr2) = Netsys_polypipe.create 10 in
+    (Poly_endpoint (rd1,wr2),
+     Poly_endpoint (rd2,wr1),
+     `Read_write    (* bogus *)
+    )
+  else
+    match Sys.os_type with
+      | "Win32" ->
+	  let (ph2, ph1) = Netsys_win32.pipe_pair Netsys_win32.Pipe_duplex in
+	  (OS_descr (Netsys_win32.pipe_descr ph1),
+	   OS_descr (Netsys_win32.pipe_descr ph2),
+	   `W32_pipe
+	  )
+      | _ ->
+	  let (fd1,fd2) =
+	    Unix.socketpair Unix.PF_UNIX Unix.SOCK_STREAM 0 in
+	  (OS_descr fd1, OS_descr fd2, `Read_write)
+
+let fd_string =
+  function
+  | OS_descr fd ->
+      Int64.to_string (Netsys.int64_of_file_descr fd)
+  | Poly_endpoint _ ->
+      "<internal>"
+
+let close_fd ?(shutdown=false) ?(release=false) fd_style =
+  function
+  | OS_descr fd ->
+      if shutdown then
+        ( try Netsys.gshutdown fd_style fd Unix.SHUTDOWN_ALL
+	  with _ -> ()
+	);
+      if release then Netlog.Debug.release_fd fd;
+      Netsys.gclose fd_style fd
+  | Poly_endpoint(rd,wr) ->
+      ()
+(* (* these are not file_descr-based anymore, so we do not care: *)
+      Netsys_polypipe.close rd;
+      Netsys_polypipe.close wr
+ *)
+
+let rpc_mode =
+  function
+  | OS_descr fd -> `Socket_endpoint(Rpc.Tcp, fd)
+  | Poly_endpoint(rd,wr) -> `Internal_endpoint(rd,wr)
+
+let os_fd =
+  function
+  | OS_descr fd -> [fd]
+  | _ -> []
+
 
 
 (* TODO: represent clist as [Set] *)
@@ -282,56 +324,64 @@ object(self)
     let onerror = ref [] in
     try
       let container = sockserv # create_container par#ptype sockserv in
+      let is_mt = par#ptype = `Multi_threading in
       let fd_clnt_closed = ref false in
       let fd_srv_closed = ref false in
-      let (fd_clnt, fd_srv, fd_style) = create_pipe_pair() in
+      let (fd_clnt, fd_srv, fd_style) = create_pipe_pair is_mt in
       (* We only track the client here. The server is tracked by Rpc_server *)
-      Netlog.Debug.track_fd
-	~owner:"Netplex_controller"
-	~descr:("Ctrl client for container " ^ string_of_int(Oo.id container))
-	fd_clnt;
+      ( match fd_clnt with
+          | OS_descr fd ->
+              Netlog.Debug.track_fd
+	        ~owner:"Netplex_controller"
+	        ~descr:("Ctrl client for container " ^
+                          string_of_int(Oo.id container))
+	        fd
+          | _ -> ()
+      );
       onerror := (fun () -> 
 		    if not !fd_clnt_closed then (
 		      fd_clnt_closed := true;
-		      Netlog.Debug.release_fd fd_clnt;
-		      Netsys.gclose fd_style fd_clnt
+                      close_fd ~release:true fd_style fd_clnt;
 		    );
 		    if not !fd_srv_closed then (
 		      fd_srv_closed := true;
-		      Netsys.gclose fd_style fd_srv
-		    )
+                      close_fd fd_style fd_srv
+                    )
 		 ) :: !onerror;
       dlogr (fun () ->
-	       sprintf "Service %s: Container %d uses pipe %Ld:%Ld"
+	       sprintf "Service %s: Container %d uses pipe %s:%s"
 		 name (Oo.id container) 
-		 (Netsys.int64_of_file_descr fd_clnt)
-		 (Netsys.int64_of_file_descr fd_srv));
+		 (fd_string fd_clnt)
+		 (fd_string fd_srv));
       let sys_fd_clnt_closed = ref false in
       let sys_fd_srv_closed = ref false in
-      let (sys_fd_clnt, sys_fd_srv, sys_fd_style) = create_pipe_pair() in
-      Netlog.Debug.track_fd
-	~owner:"Netplex_controller"
-	~descr:("Sys ctrl client for container " ^ 
-		  string_of_int(Oo.id container))
-	sys_fd_clnt;
+      let (sys_fd_clnt, sys_fd_srv, sys_fd_style) = create_pipe_pair is_mt in
+      ( match sys_fd_clnt with
+          | OS_descr fd ->
+              Netlog.Debug.track_fd
+	        ~owner:"Netplex_controller"
+	        ~descr:("Sys ctrl client for container " ^ 
+		          string_of_int(Oo.id container))
+	        fd
+          | _ -> ()
+      );
       onerror := (fun () -> 
 		    if not !sys_fd_clnt_closed then (
 		      sys_fd_clnt_closed := true;
-		      Netlog.Debug.release_fd sys_fd_clnt;
-		      Netsys.gclose sys_fd_style sys_fd_clnt
+                      close_fd ~release:true sys_fd_style sys_fd_clnt;
 		    );
 		    if not !sys_fd_srv_closed then (
 		      sys_fd_srv_closed := true;
-		      Netsys.gclose sys_fd_style sys_fd_srv
+                      close_fd sys_fd_style sys_fd_srv
 		    )
 		 ) :: !onerror;
       dlogr (fun () ->
-	       sprintf "Service %s: Container %d uses sys pipe %Ld:%Ld"
+	       sprintf "Service %s: Container %d uses sys pipe %s:%s"
 		 name (Oo.id container) 
-		 (Netsys.int64_of_file_descr sys_fd_clnt)
-		 (Netsys.int64_of_file_descr sys_fd_srv));
+		 (fd_string sys_fd_clnt)
+		 (fd_string sys_fd_srv));
       let fd_share =   (* descriptors to share between controller and cont *)
-	fd_clnt :: sys_fd_clnt ::
+	os_fd fd_clnt @ os_fd sys_fd_clnt @
 	  (List.flatten
 	     (List.map
 		(fun (_, fd_arr) -> Array.to_list fd_arr)
@@ -340,7 +390,7 @@ object(self)
 	  ) in
       let fd_close =   (* descriptors to close in the container *)
 	if par # ptype = `Multi_processing then
-	  [ fd_srv; sys_fd_srv] 
+	  os_fd fd_srv @ os_fd sys_fd_srv
 	else
 	  [] in
       dlogr
@@ -385,11 +435,7 @@ object(self)
 	       if par # ptype <> `Multi_processing then 
 		 List.iter
 		   (fun fd ->
-		      ( try Netsys.gshutdown fd_style fd Unix.SHUTDOWN_ALL
-			with _ -> ()
-		      );
-		      Netlog.Debug.release_fd fd;
-		      Netsys.gclose fd_style fd;
+                      close_fd ~shutdown:true ~release:true fd_style fd
 		   )
 		   [ fd_clnt; sys_fd_clnt ]
 		   (* Multi-processing: we do not close explicitly, but
@@ -408,10 +454,8 @@ object(self)
            needed in the master process (dups of them will still play a role
            in the forked children, of course)
 	 *)
-	Netlog.Debug.release_fd fd_clnt;
-	Netsys.gclose fd_style fd_clnt;
-	Netlog.Debug.release_fd sys_fd_clnt;
-	Netsys.gclose sys_fd_style sys_fd_clnt;
+        close_fd ~release:true fd_style fd_clnt;
+        close_fd ~release:true sys_fd_style sys_fd_clnt;
       );
       (* From now on it does not make sense to close the client descriptors
          in case of errors. Either they are already closed (multi processing),
@@ -423,7 +467,7 @@ object(self)
 	(fun () -> sprintf "Service %s: creating control server" name);
       let rpc =
 	Rpc_server.create2 
-	  (`Socket_endpoint(Rpc.Tcp, fd_srv))
+          (rpc_mode fd_srv)
 	  controller#event_system in
       if not !Debug.enable then
 	Rpc_server.Debug.disable_for_server rpc;
@@ -439,11 +483,12 @@ object(self)
                 ~component:sockserv#name
                 ~level:`Crit
    	        ~message:("Backtrace: " ^ bt));
+      Rpc_server.set_debug_name rpc (sprintf "netplex.%s.ctrl" name);
       dlogr
 	(fun () -> sprintf "Service %s: creating system server" name);
       let sys_rpc =
 	Rpc_server.create2 
-	  (`Socket_endpoint(Rpc.Tcp, sys_fd_srv))
+          (rpc_mode sys_fd_srv)
 	  controller#event_system in
       if not !Debug.enable then
 	Rpc_server.Debug.disable_for_server sys_rpc;
@@ -459,6 +504,7 @@ object(self)
                 ~component:sockserv#name
                 ~level:`Crit
    	        ~message:("Backtrace: " ^ bt));
+      Rpc_server.set_debug_name sys_rpc (sprintf "netplex.%s.sys" name);
       let c =
 	{ container = (container :> container_id);
 	  cont_state = `Starting (Unix.gettimeofday());

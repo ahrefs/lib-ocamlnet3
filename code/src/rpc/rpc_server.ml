@@ -166,6 +166,7 @@ type acceptor =
 
 type t =
       { mutable main_socket_name : Rpc_transport.sockaddr;
+        mutable dbg_name : string ref;
 	mutable dummy : bool;
 	mutable service : (Rpc_program.t * binding Uint4Map.t) 
 	                    Uint4Map.t Uint4Map.t;
@@ -336,6 +337,7 @@ let dlog0 = Netlog.Debug.mk_dlog "Rpc_server" Debug.enable
 let dlogr0 = Netlog.Debug.mk_dlogr "Rpc_server" Debug.enable
 
 let dlog srv m = if not srv.nolog then dlog0 m
+let dlogf srv fmt = ksprintf (dlog srv) fmt
 let dlogr srv m = if not srv.nolog then dlogr0 m
 
 let dlog0_ctrace = Netlog.Debug.mk_dlog "Rpc_server.Ctrace" Debug.enable_ctrace
@@ -607,10 +609,12 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	     dlogr_ptrace srv
 	       (fun () ->
 		  sprintf
-		    "Request (sock=%s,peer=%s,xid=%lu) for [0x%lx,0x%lx,0x%lx]"
+		    "Request (sock=%s,peer=%s,xid=%lu,dbgname=%s) for \
+                     [0x%lx,0x%lx,0x%lx]"
 		    (Rpc_transport.string_of_sockaddr sockaddr)
 		    (Rpc_transport.string_of_sockaddr peeraddr)
 		    (Netnumber.logical_int32_of_uint4 xid)
+                    !(srv.dbg_name)
 		    (Netnumber.logical_int32_of_uint4 prog_nr)
 		    (Netnumber.logical_int32_of_uint4 vers_nr)
 		    (Netnumber.logical_int32_of_uint4 proc_nr)
@@ -720,10 +724,11 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		       dlogr_ptrace srv
 			 (fun () ->
 			    sprintf
-			      "Invoke (sock=%s,peer=%s,xid=%lu): %s"
+			      "Invoke (sock=%s,peer=%s,xid=%lu,dbgname=%s): %s"
 			      (Rpc_transport.string_of_sockaddr sockaddr)
 			      (Rpc_transport.string_of_sockaddr peeraddr)
 			      (Netnumber.logical_int32_of_uint4 xid)
+                              !(srv.dbg_name)
 			      (Rpc_util.string_of_request
 				 !Debug.ptrace_verbosity
 				 prog
@@ -822,9 +827,10 @@ let terminate_any srv conn =
     | Some mplex ->
 	dlogr_ctrace srv
 	  (fun () ->
-	     sprintf "(sock=%s,peer=%s): Closing"
+	     sprintf "(sock=%s,peer=%s,dbgname=%s): Closing"
 	       (Rpc_transport.string_of_sockaddr mplex#getsockname)
-	       (Rpc_transport.string_of_sockaddr mplex#getpeername));
+	       (Rpc_transport.string_of_sockaddr mplex#getpeername)
+               !(srv.dbg_name));
 	conn.trans <- None;
 	mplex # abort_rw();
 	( try
@@ -904,9 +910,10 @@ let rec handle_incoming_message srv conn r =
 		  dlogr_ptrace srv
 		    (fun () ->
 		       sprintf
-			 "Request (sock=%s,peer=%s): Deny"
+			 "Request (sock=%s,peer=%s,dbgname=%s): Deny"
 			 (Rpc_transport.string_of_sockaddr trans_sockaddr)
 			 (Rpc_transport.string_of_sockaddr peeraddr)
+                         !(srv.dbg_name)
 		    );
 		  terminate_connection srv conn (* for safety *)
 	      | `Drop ->
@@ -914,9 +921,10 @@ let rec handle_incoming_message srv conn r =
 		  dlogr_ptrace srv
 		    (fun () ->
 		       sprintf
-			 "Request (sock=%s,peer=%s): Drop"
+			 "Request (sock=%s,peer=%s,dbgname=%s): Drop"
 			 (Rpc_transport.string_of_sockaddr trans_sockaddr)
 			 (Rpc_transport.string_of_sockaddr peeraddr)
+                         !(srv.dbg_name)
 		    );
 		  ()
 	      | `Accept pv ->
@@ -935,7 +943,7 @@ let rec handle_incoming_message srv conn r =
 	)
 
     | `End_of_file ->
-        dlog srv "End of file";
+        dlogf srv "End_of_file dbgname=%s" !(srv.dbg_name);
 	terminate_connection srv conn
 
 
@@ -1063,11 +1071,12 @@ and next_outgoing_message' srv conn trans =
 	       try `Sockaddr (Lazy.force reply.sockaddr)
 	       with _ -> `Implied in
 	     sprintf
-	       "Response (sock=%s,peer=%s,cid=%d,xid=%ld): %s"
+	       "Response (sock=%s,peer=%s,cid=%d,xid=%ld,dbgname=%s): %s"
 	       (Rpc_transport.string_of_sockaddr sockaddr)
 	       (Rpc_transport.string_of_sockaddr reply.peeraddr)
 	       reply.call_id
 	       (Netnumber.logical_int32_of_uint4 reply.client_id)
+               !(srv.dbg_name)
 	       reply.ptrace_result
 	  );
 
@@ -1090,6 +1099,7 @@ class type socket_config =
 object
   method listen_options : listen_options
   method multiplexing : 
+    dbg_name:string ref ->
     close_inactive_descr:bool ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller engine
@@ -1122,6 +1132,7 @@ let create2_srv prot esys =
   Hashtbl.add mf "*" Netxdr_mstring.bytes_based_mstrings;
   
   { main_socket_name = `Implied;
+    dbg_name = ref "<server>";
     dummy = false;
     service = Uint4Map.empty;
     portmapped = None;
@@ -1193,9 +1204,13 @@ let disable_nagle fd =
   with _ -> ()
 
 
-let create2_multiplexer_endpoint mplex =
+let create2_multiplexer_endpoint ?dbg_name mplex =
   let prot = mplex#protocol in
   let srv  = create2_srv prot mplex#event_system in
+  ( match dbg_name with
+      | None -> ()
+      | Some sref -> srv.dbg_name <- sref
+  );
   let conn = connection srv mplex in
   srv.main_socket_name <- mplex # getsockname;
   conn.fd <- mplex # file_descr;
@@ -1209,9 +1224,10 @@ let create2_multiplexer_endpoint mplex =
        if conn.trans <> None then (
 	 dlogr_ctrace srv
 	   (fun () ->
-	      sprintf "(sock=%s,peer=%s): Serving connection"
+	      sprintf "(sock=%s,peer=%s,dbgname=%s): Serving connection"
 		(Rpc_transport.string_of_sockaddr mplex#getsockname)
-		(portoptname mplex#file_descr));
+		(portoptname mplex#file_descr)
+                !(srv.dbg_name));
 	 if srv.transport_timeout >= 0.0 then
 	   mplex # set_timeout 
 	     ~notify:(on_trans_timeout srv conn) srv.transport_timeout;
@@ -1224,12 +1240,13 @@ let create2_multiplexer_endpoint mplex =
 ;;
 
 
-let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
+let mplex_of_fd ~dbg_name ~close_inactive_descr ~tls prot fd esys =
   let preclose() =
     Netlog.Debug.release_fd fd in
   match prot with
     | Tcp ->
         Rpc_transport.stream_rpc_multiplex_controller
+          ~dbg_name
           ~close_inactive_descr ~preclose ~role:`Server ?tls fd esys
     | Udp ->
         if tls <> None then (* a little ad... *)
@@ -1240,6 +1257,7 @@ let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
                     in your pockets, you may support Gerd Stolpmann to \
                     implement this feature. Contact gerd@gerd-stolpmann.de";
         Rpc_transport.datagram_rpc_multiplex_controller
+          ~dbg_name
           ~close_inactive_descr ~preclose ~role:`Server fd esys 
 ;;
 
@@ -1248,8 +1266,9 @@ class default_socket_config : socket_config =
 object
   method listen_options = Uq_server.default_listen_options
 
-  method multiplexing ~close_inactive_descr prot fd esys =
-    let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
+  method multiplexing ~dbg_name ~close_inactive_descr prot fd esys =
+    let mplex =
+      mplex_of_fd ~dbg_name ~close_inactive_descr ~tls:None prot fd esys in
     let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
 
     when_state
@@ -1265,9 +1284,10 @@ class tls_socket_config tls_config : socket_config =
 object
   method listen_options = Uq_server.default_listen_options
 
-  method multiplexing ~close_inactive_descr prot fd esys =
+  method multiplexing ~dbg_name ~close_inactive_descr prot fd esys =
     let tls = Some(tls_config,None) in
-    let mplex = mplex_of_fd ~close_inactive_descr ~tls prot fd esys in
+    let mplex =
+      mplex_of_fd ~dbg_name ~close_inactive_descr ~tls prot fd esys in
     let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
 
     when_state
@@ -1283,12 +1303,14 @@ let default_socket_config = new default_socket_config
 let tls_socket_config = new tls_socket_config 
 
 
-let create2_socket_endpoint ?(close_inactive_descr=true) 
+let create2_socket_endpoint ?(close_inactive_descr=true)
                             prot fd esys =
   disable_nagle fd;
   if close_inactive_descr then track fd;
-  let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
-  create2_multiplexer_endpoint mplex 
+  let dbg_name = ref "" in
+  let mplex =
+    mplex_of_fd ~dbg_name ~close_inactive_descr ~tls:None prot fd esys in
+  create2_multiplexer_endpoint ~dbg_name mplex 
 ;;
 
 
@@ -1307,10 +1329,11 @@ let create2_socket_server ?(config = default_socket_config)
       lstn_backlog = backlog
     } in
 
-  let create_multiplexer_eng ?(close_inactive_descr = true) fd prot =
+  let create_multiplexer_eng ?(close_inactive_descr = true)  fd prot =
     disable_nagle fd;
     if close_inactive_descr then track fd;
-    config # multiplexing ~close_inactive_descr prot fd esys in
+    let dbg_name = srv.dbg_name in
+    config # multiplexing ~close_inactive_descr ~dbg_name prot fd esys in
 
   let rec accept_connections acc =  (* for stream sockets *)
     let eng = acc # accept () in
@@ -1323,10 +1346,12 @@ let create2_socket_server ?(config = default_socket_config)
 				conn.fd <- Some slave_fd;
 				dlogr_ctrace srv
 				  (fun () ->
-				     sprintf "(sock=%s,peer=%s): Serving connection"
+				     sprintf "(sock=%s,peer=%s,dbgname=%s): \
+                                              Serving connection"
 				       (Rpc_transport.string_of_sockaddr 
 					  mplex#getsockname)
-				       (portname slave_fd));
+				       (portname slave_fd)
+                                       !(srv.dbg_name));
 				if srv.transport_timeout >= 0.0 then
 				  mplex # set_timeout 
 				    ~notify:(on_trans_timeout srv conn) 
@@ -1422,10 +1447,12 @@ let create2_socket_server ?(config = default_socket_config)
 		      conn.fd <- Some fd;
 		      dlogr_ctrace srv
 			(fun () ->
-			   sprintf "(sock=%s,peer=%s): Accepting datagrams"
+			   sprintf "(sock=%s,peer=%s,dbgname=%s): \
+                                    Accepting datagrams"
 			     (Rpc_transport.string_of_sockaddr 
 				mplex#getsockname)
-			     (portname fd));
+			     (portname fd)
+                             !(srv.dbg_name));
 		      if srv.transport_timeout >= 0.0 then
 			mplex # set_timeout 
 			  ~notify:(on_trans_timeout srv conn) 
@@ -1462,52 +1489,51 @@ let create2_socket_server ?(config = default_socket_config)
 
 
 let rec set_internal_acceptor srv psock esys =
-  let fd = Netsys_polysocket.accept_descr psock in
   dlog_ctrace srv "(internal): waiting for connect";
-  let e =
-    new Uq_engines.input_engine
-      (fun _ ->
-         srv.master_acceptor <- None;
-         dlog_ctrace srv "(internal): got connect event";
-         try
-           let (rd,wr) =
-             Netsys_polysocket.accept ~nonblock:true psock in
-         dlog_ctrace srv "(internal): connected";
-           let mplex =
-             Rpc_transport.internal_rpc_multiplex_controller
-               ~close_inactive_descr:true
-               rd wr esys in
-	   let conn = connection srv mplex in
-	   conn.fd <- None;
-	   dlog_ctrace srv "(internal): Serving connection";
-	   if srv.transport_timeout >= 0.0 then
-	     mplex # set_timeout 
-		   ~notify:(on_trans_timeout srv conn) 
-		   srv.transport_timeout;
-	   (* Try to peek credentials. This can be too
-            * early, however.
-	    *)
-	   peek_credentials srv conn;
-	   next_incoming_message srv conn;
-           set_internal_acceptor srv psock esys;
-           ()
-         with
-           | Unix.Unix_error(Unix.EAGAIN,_,_)
-           | Unix.Unix_error(Unix.EINTR,_,_) ->
-	       dlog_ctrace srv "(internal): repeating wait for connect";
-               set_internal_acceptor srv psock esys
-      )
-      fd
-      (-1.0)
-      esys in
-  Uq_engines.when_state
-    ~is_aborted:(fun () ->
-                   Unix.close fd;
-                   Netsys_polysocket.close_server psock
-                )
-    e;
-  srv.master_acceptor <- Some(Engine_acc e)
-
+  let rec attempt() =
+    srv.master_acceptor <- None;
+    let ok =
+      try
+        let (rd,wr) =
+          Netsys_polysocket.accept ~nonblock:true psock in
+        dlog_ctrace srv "(internal): connected";
+        let mplex =
+          Rpc_transport.internal_rpc_multiplex_controller
+            ~dbg_name:srv.dbg_name ~close_inactive_descr:true
+            rd wr esys in
+        let conn = connection srv mplex in
+        conn.fd <- None;
+        dlog_ctrace srv "(internal): Serving connection";
+        if srv.transport_timeout >= 0.0 then
+          mplex # set_timeout 
+                ~notify:(on_trans_timeout srv conn) 
+                srv.transport_timeout;
+        (* Try to peek credentials. This can be too
+         * early, however.
+         *)
+        peek_credentials srv conn;
+        next_incoming_message srv conn;
+        true
+      with
+        | Unix.Unix_error(Unix.EAGAIN,_,_)
+        | Unix.Unix_error(Unix.EINTR,_,_) ->
+            false in
+    if ok then wait()
+  and wait() =
+    let e1 = new Uq_engines.signal_engine esys in
+    Netsys_polysocket.set_accept_notify
+      psock
+      (fun () ->
+         e1 # signal (`Done());
+      );
+    let e1 = (e1 :> _ Uq_engines.engine) in
+    srv.master_acceptor <- Some(Engine_acc e1);
+    Uq_engines.when_state
+      ~is_done:attempt
+      e1;
+    attempt() in
+  wait()
+    
 
 let create2 mode esys =
   match mode with
@@ -1525,11 +1551,12 @@ let create2 mode esys =
 	srv.dummy <- true;
 	srv
     | `Internal_endpoint(rd,wr) ->
+        let dbg_name = ref "<server>" in
         let mplex =
           Rpc_transport.internal_rpc_multiplex_controller
-            ~close_inactive_descr:true
+            ~dbg_name ~close_inactive_descr:true
             rd wr esys in
-        let srv = create2_multiplexer_endpoint mplex in
+        let srv = create2_multiplexer_endpoint ~dbg_name mplex in
         srv.internal <- true;
         srv
     | `Internal_socket psock ->
@@ -1824,6 +1851,12 @@ let create ?program_number ?version_number
 
   (*****)
 
+let set_debug_name srv name =
+  srv.dbg_name := name
+
+let get_debug_name srv =
+  !(srv.dbg_name)
+
 let get_event_system a_session =
     a_session.server.whole_server.esys
 
@@ -1912,8 +1945,9 @@ let reply a_session result_value =
 
   dlogr srv
     (fun () ->
-       sprintf "reply xid=%Ld have_encoder=%B"
+       sprintf "reply xid=%Ld dbgname=%s have_encoder=%B"
 	 (Netnumber.int64_of_uint4 a_session.client_id)
+         !(srv.dbg_name)
 	 (a_session.encoder <> None)
     );
   
