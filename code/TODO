@@ -1,4 +1,7 @@
 Internal sockets:
+ - TODO: ensure that a copy is always made, even in direct mode
+ - TODO: check docs
+
  - CHECK: restrict to xdr_value for now?
  - add [`Internal of string] to Netplex_types.extended_address
  - new: sockserv#internal_sockets
