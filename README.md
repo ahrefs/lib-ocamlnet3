@@ -6,7 +6,7 @@ Links:
 
  - [Installation](code/INSTALL)
 
- - [ChangeLog](code/ChangeLog)
+ - [ChangeLog (master)](code/ChangeLog)
 
  - Licenses: This project has a mixed license (unfortunately):
    [LICENSE](code/LICENSE), [LICENSE.BSD3](code/LICENSE.BSD3),
