@@ -1,7 +1,7 @@
 # Ocamlnet
 
 Links:
- - [Project page](https://projects.camlcity.org/projects/ocamlnet.html)
+ - [Project page](http://projects.camlcity.org/projects/ocamlnet.html)
    Find here links to the official download tarball, and documentation.
 
  - [Installation](code/INSTALL)
