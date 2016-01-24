@@ -14,7 +14,7 @@ module StrMap = Map.Make(String)
 let rec get_enum t =
   match t with
     | Netxdr.X_enum enum -> enum
-    | Netxdr.X_direct(t1,_,_,_) -> get_enum t1
+    | Netxdr.X_direct(t1,_,_,_,_) -> get_enum t1
     | _ -> failwith "Rpc_util.get_enum"
 
 let fail_map_xv_enum_fast () =
@@ -267,7 +267,7 @@ let rec string_of_abbrev_arg t v =
 	let (n,_) = List.nth e k in
 	sprintf "union<case=%s>" n
 
-    | Netxdr.X_direct(t1, _,_,_) ->
+    | Netxdr.X_direct(t1, _,_,_,_) ->
 	string_of_abbrev_arg t1 v
 
     | Netxdr.X_refer _
@@ -348,7 +348,7 @@ and string_of_rec_arg recdefs t v =
 	  with Not_found -> assert false in
 	string_of_rec_arg recdefs u v
 
-    | Netxdr.X_direct(t1, _, _, _) ->
+    | Netxdr.X_direct(t1, _, _, _, _) ->
 	string_of_rec_arg recdefs t1 v
 
     | Netxdr.X_type _
@@ -370,7 +370,7 @@ let rec string_of_abbrev_args t v =
 	  t
 	  v
 
-    | Netxdr.X_direct(t1,_,_,_) ->
+    | Netxdr.X_direct(t1,_,_,_,_) ->
 	string_of_abbrev_args t1 v
 
     | _ ->
@@ -387,7 +387,7 @@ let rec string_of_full_args t v =
 	  t
 	  v
 
-    | Netxdr.X_direct(t1,_,_,_) ->
+    | Netxdr.X_direct(t1,_,_,_,_) ->
 	string_of_full_args t1 v
 
     | _ ->

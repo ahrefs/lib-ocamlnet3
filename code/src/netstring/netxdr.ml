@@ -145,164 +145,6 @@ let equal_sets l1 l2 =
 
 
 (**********************************************************************)
-(* definition of XDR types and type systems                           *)
-(**********************************************************************)
-
-(* restriction: it is not allowed to have an X_param as enumerator type
- * in union_over_enum. There must always be a real X_enum or, in a
- * type system, a resolvable X_type at this position.
- *)
-
-
-type xdr_type_term =
-    X_int
-  | X_uint
-  | X_hyper
-  | X_uhyper
-  | X_enum of (string * int4) list
-  | X_float
-  | X_double
-  | X_opaque_fixed of uint4
-  | X_opaque of uint4
-  | X_string of uint4
-  | X_mstring of string * uint4
-  | X_array_fixed of xdr_type_term * uint4
-  | X_array of       xdr_type_term * uint4
-  | X_struct of (string * xdr_type_term) list
-  | X_union_over_int of
-      (int4   * xdr_type_term) list * xdr_type_term option
-  | X_union_over_uint of
-      (uint4  * xdr_type_term) list * xdr_type_term option
-  | X_union_over_enum of
-      xdr_type_term * (string * xdr_type_term) list * xdr_type_term option
-  | X_void
-  | X_type of string
-  | X_param of string
-  | X_rec of (string * xdr_type_term)      (* define a recursive type *)
-  | X_refer of string                      (* refer to a recursive type *)
-  | X_direct of xdr_type_term * 
-                (Bytes.t -> int ref -> int -> exn) *
-                (exn -> Bytes.t -> int ref -> unit) *
-                (exn -> int)
-;;
-
-
-module StringSet = Set.Make(String)
-;;
-
-
-type xdr_type0 =
-  { mutable term   : xdr_term;
-    mutable params : StringSet.t;
-      (* "params" is normally only non-empty in the top node *)
-    mutable min_size : int
-      (* min_size: the minimum number of bytes every element of the array
-	 will take in XDR form. This does not include any inner parameters.
-       *)
-  }
-and xdr_term =
-    T_int
-  | T_uint
-  | T_hyper
-  | T_uhyper
-  | T_enum of (string * int32) array
-      (* array must be sorted by ascending int32 *)
-  | T_float
-  | T_double
-  | T_opaque_fixed of uint4
-  | T_opaque of uint4
-  | T_string of uint4
-  | T_mstring of string * uint4
-  | T_array_fixed of xdr_type0 * uint4
-  | T_array of       xdr_type0 * (* max size: *) uint4
-  | T_struct of (string * xdr_type0) array
-  | T_union_over_int of
-      (int4, xdr_type0) Hashtbl.t * xdr_type0 option
-  | T_union_over_uint of
-      (uint4, xdr_type0) Hashtbl.t * xdr_type0 option
-  | T_union_over_enum of
-      xdr_type0 * xdr_type0 option array * xdr_type0 option
-      (* The array corresponds to the T_enum array. None means that the
-       * constant is not mapped.
-       *)
-  | T_void
-  | T_param of string
-  | T_rec of (string * xdr_type0)
-  | T_refer of (string * xdr_type0)
-  | T_direct of xdr_type0 * 
-                (Bytes.t -> int ref -> int -> exn) *
-                (exn -> Bytes.t -> int ref -> unit) *
-                (exn -> int)
-;;
-
-type xdr_type =
-    xdr_type0 * xdr_type0
-      (* left: includes T_rec and T_refer,
-         right: does not include T_rec, T_refer
-       *)
-
-
-type xdr_type_term_system =
-  (string * xdr_type_term) list
-;;
-
-type xdr_type_system =
-  (string * xdr_type) list
-  (* export xdr_type_system in an opaque manner *)
-
-
-let t_name = 
-  function
-    | T_int -> "T_int"
-    | T_uint -> "T_uint"
-    | T_hyper -> "T_hyper"
-    | T_uhyper -> "T_uhyper"
-    | T_enum _ -> "T_enum"
-    | T_float -> "T_float"
-    | T_double -> "T_double"
-    | T_opaque_fixed _ -> "T_opaque_fixed"
-    | T_opaque _ -> "T_opaque"
-    | T_string _ -> "T_string"
-    | T_mstring(_,_) -> "T_mstring"
-    | T_array_fixed (_,_) -> "T_array_fixed"
-    | T_array (_,_) -> "T_array"
-    | T_struct _ -> "T_struct"
-    | T_union_over_int(_,_) -> "T_union_over_int"
-    | T_union_over_uint(_,_) -> "T_union_over_uint"
-    | T_union_over_enum(_,_,_) -> "T_union_over_enum"
-    | T_void -> "T_void"
-    | T_param _ -> "T_param"
-    | T_rec _ -> "T_rec"
-    | T_refer _ -> "T_refer"
-    | T_direct _ -> "T_direct"
-	
-
-let x_bool =
-  X_enum ["FALSE", int4_of_int 0; "TRUE", int4_of_int 1]
-;;
-
-
-let x_optional t =
-  X_union_over_enum
-    (x_bool,
-     ["TRUE", t; "FALSE", X_void],
-     None)
-;;
-
-
-let x_opaque_max =
-  X_opaque (mk_uint4 ('\255', '\255', '\255', '\255'));;
-
-let x_string_max =
-  X_string (mk_uint4 ('\255', '\255', '\255', '\255'));;
-
-let x_mstring_max name =
-  X_mstring (name, mk_uint4 ('\255', '\255', '\255', '\255'));;
-
-let x_array_max t =
-  X_array (t,  (mk_uint4 ('\255', '\255', '\255', '\255')));;
-
-(**********************************************************************)
 (* definition of XDR values                                           *)
 (**********************************************************************)
 
@@ -386,6 +228,166 @@ let dest_xv_union_over_enum v =
 let dest_xv_union_over_enum_fast v =
   match v with XV_union_over_enum_fast x -> x | _ -> raise Dest_failure;;
 
+
+(**********************************************************************)
+(* definition of XDR types and type systems                           *)
+(**********************************************************************)
+
+(* restriction: it is not allowed to have an X_param as enumerator type
+ * in union_over_enum. There must always be a real X_enum or, in a
+ * type system, a resolvable X_type at this position.
+ *)
+
+
+type xdr_type_term =
+    X_int
+  | X_uint
+  | X_hyper
+  | X_uhyper
+  | X_enum of (string * int4) list
+  | X_float
+  | X_double
+  | X_opaque_fixed of uint4
+  | X_opaque of uint4
+  | X_string of uint4
+  | X_mstring of string * uint4
+  | X_array_fixed of xdr_type_term * uint4
+  | X_array of       xdr_type_term * uint4
+  | X_struct of (string * xdr_type_term) list
+  | X_union_over_int of
+      (int4   * xdr_type_term) list * xdr_type_term option
+  | X_union_over_uint of
+      (uint4  * xdr_type_term) list * xdr_type_term option
+  | X_union_over_enum of
+      xdr_type_term * (string * xdr_type_term) list * xdr_type_term option
+  | X_void
+  | X_type of string
+  | X_param of string
+  | X_rec of (string * xdr_type_term)      (* define a recursive type *)
+  | X_refer of string                      (* refer to a recursive type *)
+  | X_direct of xdr_type_term * 
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
+                (exn -> int) *
+                (exn -> xdr_value)
+;;
+
+
+module StringSet = Set.Make(String)
+;;
+
+
+type xdr_type0 =
+  { mutable term   : xdr_term;
+    mutable params : StringSet.t;
+      (* "params" is normally only non-empty in the top node *)
+    mutable min_size : int
+      (* min_size: the minimum number of bytes every element of the array
+	 will take in XDR form. This does not include any inner parameters.
+       *)
+  }
+and xdr_term =
+    T_int
+  | T_uint
+  | T_hyper
+  | T_uhyper
+  | T_enum of (string * int32) array
+      (* array must be sorted by ascending int32 *)
+  | T_float
+  | T_double
+  | T_opaque_fixed of uint4
+  | T_opaque of uint4
+  | T_string of uint4
+  | T_mstring of string * uint4
+  | T_array_fixed of xdr_type0 * uint4
+  | T_array of       xdr_type0 * (* max size: *) uint4
+  | T_struct of (string * xdr_type0) array
+  | T_union_over_int of
+      (int4, xdr_type0) Hashtbl.t * xdr_type0 option
+  | T_union_over_uint of
+      (uint4, xdr_type0) Hashtbl.t * xdr_type0 option
+  | T_union_over_enum of
+      xdr_type0 * xdr_type0 option array * xdr_type0 option
+      (* The array corresponds to the T_enum array. None means that the
+       * constant is not mapped.
+       *)
+  | T_void
+  | T_param of string
+  | T_rec of (string * xdr_type0)
+  | T_refer of (string * xdr_type0)
+  | T_direct of xdr_type0 * 
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
+                (exn -> int) *
+                (exn -> xdr_value)
+;;
+
+type xdr_type =
+    xdr_type0 * xdr_type0
+      (* left: includes T_rec and T_refer,
+         right: does not include T_rec, T_refer
+       *)
+
+
+type xdr_type_term_system =
+  (string * xdr_type_term) list
+;;
+
+type xdr_type_system =
+  (string * xdr_type) list
+  (* export xdr_type_system in an opaque manner *)
+
+
+let t_name = 
+  function
+    | T_int -> "T_int"
+    | T_uint -> "T_uint"
+    | T_hyper -> "T_hyper"
+    | T_uhyper -> "T_uhyper"
+    | T_enum _ -> "T_enum"
+    | T_float -> "T_float"
+    | T_double -> "T_double"
+    | T_opaque_fixed _ -> "T_opaque_fixed"
+    | T_opaque _ -> "T_opaque"
+    | T_string _ -> "T_string"
+    | T_mstring(_,_) -> "T_mstring"
+    | T_array_fixed (_,_) -> "T_array_fixed"
+    | T_array (_,_) -> "T_array"
+    | T_struct _ -> "T_struct"
+    | T_union_over_int(_,_) -> "T_union_over_int"
+    | T_union_over_uint(_,_) -> "T_union_over_uint"
+    | T_union_over_enum(_,_,_) -> "T_union_over_enum"
+    | T_void -> "T_void"
+    | T_param _ -> "T_param"
+    | T_rec _ -> "T_rec"
+    | T_refer _ -> "T_refer"
+    | T_direct _ -> "T_direct"
+	
+
+let x_bool =
+  X_enum ["FALSE", int4_of_int 0; "TRUE", int4_of_int 1]
+;;
+
+
+let x_optional t =
+  X_union_over_enum
+    (x_bool,
+     ["TRUE", t; "FALSE", X_void],
+     None)
+;;
+
+
+let x_opaque_max =
+  X_opaque (mk_uint4 ('\255', '\255', '\255', '\255'));;
+
+let x_string_max =
+  X_string (mk_uint4 ('\255', '\255', '\255', '\255'));;
+
+let x_mstring_max name =
+  X_mstring (name, mk_uint4 ('\255', '\255', '\255', '\255'));;
+
+let x_array_max t =
+  X_array (t,  (mk_uint4 ('\255', '\255', '\255', '\255')));;
 
 let fail_map_xv_enum_fast k =
   failwith ("Netxdr.map_xv_enum_fast [" ^ string_of_int k ^ "]") ;;
@@ -659,8 +661,8 @@ let rec validate_xdr_type_i1
       node
   | X_refer name ->
       mktype (T_refer (name, List.assoc name b))
-  | X_direct(s, read, write, size) ->
-      mktype (T_direct (validate_xdr_type_i1 r b s, read, write, size))
+  | X_direct(s, read, write, size, expand) ->
+      mktype (T_direct (validate_xdr_type_i1 r b s, read, write, size, expand))
 ;;
 
 
@@ -703,7 +705,7 @@ let rec find_params (t:xdr_type0) : StringSet.t =
                       u
   | T_rec (_,t') ->
       find_params t'
-  | T_direct(t',_,_,_) ->
+  | T_direct(t',_,_,_,_) ->
       find_params t'
   | _ ->
       StringSet.empty
@@ -767,8 +769,8 @@ let rec elim_rec t = (* get rid of T_rec and T_refer *)
 	elim_rec t'
     | T_refer(n,t') ->
 	t'
-    | T_direct(t',read,write,size) ->
-	{ t with term = T_direct(elim_rec t', read, write, size) }
+    | T_direct(t',read,write,size,expand) ->
+	{ t with term = T_direct(elim_rec t', read, write, size, expand) }
 
 
 let rec calc_min_size t =
@@ -870,7 +872,7 @@ let rec calc_min_size t =
 	| T_param p ->
 	    (* not optimal, but we do not know it better at this point *)
 	    t.min_size <- 0
-	| T_direct(t',_,_,_) ->
+	| T_direct(t',_,_,_,_) ->
 	    calc_min_size t';
 	    t.min_size <- t'.min_size
 	| T_rec (_,t') ->
@@ -1018,8 +1020,8 @@ let rec xdr_type_term0 (t:xdr_type0) : xdr_type_term =
 	  )
       in
       X_union_over_enum (xdr_type_term0 e_term, u', conv_option d)
-  | T_direct (t', read, write, size) -> 
-      X_direct (xdr_type_term0 t',read, write, size)
+  | T_direct (t', read, write, size, expand) -> 
+      X_direct (xdr_type_term0 t',read, write, size, expand)
   | _ ->
       assert false
 ;;
@@ -1107,8 +1109,8 @@ let rec expanded_xdr_type_term (s:xdr_type_term_system) (t:xdr_type_term)
       r [] s
   | X_rec (n, t') ->
       X_rec (n, expanded_xdr_type_term s t')
-  | X_direct (t',read, write, size) ->
-      X_direct ((expanded_xdr_type_term s t'), read, write, size)
+  | X_direct (t',read, write, size, expand) ->
+      X_direct ((expanded_xdr_type_term s t'), read, write, size, expand)
   | _ ->
       t
 ;;
@@ -1295,7 +1297,7 @@ let pack_size
 	  get_size v t'
       | T_refer (n, t') ->
 	  get_size v t'
-      | T_direct(t', _, _, _) ->
+      | T_direct(t', _, _, _, _) ->
 	  ( match v with
 	      | XV_direct(_,size,_) -> size
 	      | _ -> get_size v t'
@@ -1328,7 +1330,7 @@ let pack_size
 		  )
 		  else 
 		    raise (Xdr_failure "array length mismatch")
-	      | T_direct(t1, _, _, _) ->
+	      | T_direct(t1, _, _, _, _) ->
 		  get_array_size v t1 n cmp
 	      | _ -> 
 		  raise Dest_failure
@@ -1515,7 +1517,7 @@ let rec pack_mstring
 	  pack v t'
       | T_refer (n, t') ->
 	  pack v t'
-      | T_direct(t', _, write, _) ->
+      | T_direct(t', _, write, _, _) ->
 	  ( match v with
 	      | XV_direct(x,xv_size,_) ->
 		  let old = !buf_pos in
@@ -1545,7 +1547,7 @@ let rec pack_mstring
 		       print_string s s_len
 		    )
 		    x
-	      | T_direct(t1,_,_,_) ->
+	      | T_direct(t1,_,_,_,_) ->
 		  pack_array v t1 n have_array_header
 	      | _ -> raise Dest_failure
 	  )
@@ -1936,12 +1938,11 @@ let rec unpack_term
     | T_rec (_, t')
     | T_refer (_, t') ->
 	unpack t'
-    | T_direct(t', read, _, _) ->
+    | T_direct(t', read, _, _, expand) ->
 	if v4 then
 	  let k0 = !k in
 	  let xv = read str k k_end in
-          let exn_decode _ = failwith "exn_decode is unavailable" in
-	  XV_direct(xv, !k-k0, exn_decode)
+	  XV_direct(xv, !k-k0, expand)
 	else
 	  unpack t'
     | _ ->

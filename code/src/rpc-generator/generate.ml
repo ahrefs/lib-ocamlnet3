@@ -695,7 +695,8 @@ let output_xdr_type (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	      fprintf f "@[<hv 2>Netxdr.X_direct(";
 	    output_type (!s :: rectypes) false t';
 	    if direct then
-	      fprintf f ",@ _read_%s,@ _write_%s,@ _size_%s)@]" !s !s !s;
+	      fprintf f ",@ _read_%s,@ _write_%s,@ _size_%s,@ _expand_%s)@]"
+                      !s !s !s !s;
 	    fprintf f ")@]";
 	  end
       | T_enum l ->
@@ -2698,6 +2699,8 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
       | _ -> false in
 
   let output_ofconv_declaration n t tname direct =
+    let decl_expand =
+      !Options.enable_direct && direct in
     let do_direct_mapping =
       !Options.enable_direct && direct && permit_direct t in
     (* MLI: *)
@@ -2710,15 +2713,15 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
       tname;
     if do_direct_mapping then (
       fprintf f
-	"@[<hv>Netxdr.XV_direct(X_%s x, _sizeexpr_%s x, _ofexn_%s)@]" tname n n
+	"@[<hv>Netxdr.XV_direct(X_%s x, _sizeexpr_%s x, _expand_%s)@]" tname n n
     )
     else
       output_ofconv_for_type n "x" t;
     fprintf f "@]@\n";
-    if do_direct_mapping then (
+    if decl_expand then (
       fprintf f "@[<hv>";
       begin_decl();
-      fprintf f "_ofexn_%s (ex:exn) : Netxdr.xdr_value =@;<1 2>" n;
+      fprintf f "_expand_%s (ex:exn) : Netxdr.xdr_value =@;<1 2>" n;
       fprintf f "match ex with@ ";
       fprintf f "| X_%s x ->@ " tname; 
       fprintf f "    @[<hv>";
