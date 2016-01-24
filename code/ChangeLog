@@ -1,3 +1,10 @@
+2016-01-24  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* XDR/RPC: supporting that direct mappings can be disabled
+	  when this is disadvantegous. For now, this is done for
+	  internal RPC services, because direct mappings do not
+	  copy values, which would be very surprising here.
+
 2015-12-01  Gerd Stolpmann  <gerd@thinkpad.lan.sumadev.de>
 
 	* Netplex: adding support for so-called internal services.
