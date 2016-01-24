@@ -2065,3 +2065,30 @@ let unpack_xdr_value_str
   unpack_xdr_value_l
     ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?decode
     (Bytes.unsafe_of_string str) ty p
+
+
+type ctx =
+  { ctx_direct : bool;
+    ctx_direct_sub : bool;
+    ctx_copy_string : string -> string
+  }
+
+
+let default_ctx =
+  { ctx_direct = true;
+    ctx_direct_sub = true;
+    ctx_copy_string = (fun s -> s)
+  }
+
+let expand_ctx =
+  { ctx_direct = false;
+    ctx_direct_sub = true;
+    ctx_copy_string = String.copy
+  }
+
+let enforcecopy_ctx =
+  (* "direct mode": does not normally copy, so disable it *)
+  { ctx_direct = false;
+    ctx_direct_sub = false;
+    ctx_copy_string = String.copy
+  }

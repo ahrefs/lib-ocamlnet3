@@ -1,11 +1,13 @@
 RPC Direct mapping + internal sockets:
- - currently there is an _ofexn function that is needed in Rpc_util
-   for supporting extraction functions on direct values
- - move this functionality from XV_direct to X_direct, i.e. from the
-   value to the type
- - instead of a full blown exn->xdr_value transformation try to support
-   the extractors directly
- - also need support for copy: xdr_value->xdr_value function
+ - new conversion function:
+   _xof_<t> : context -> t -> xdr_value
+   _of_<t> : uses a compatibility context
+ - context allows to specify:
+    * enable_direct : bool
+    * string_copy : string->string
+ - Generated _clnt and _srv:
+    * get context from Rpc_client/Rpc_server
+      (in particular enable_direct=false for internal sockets)
 
 Internal sockets:
  - TODO: ensure that a copy is always made, even in direct mode

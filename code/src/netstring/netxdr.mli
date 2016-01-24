@@ -537,3 +537,13 @@ val raise_xdr_format_undefined_descriminator : unit -> 'a
 
 val safe_add : int -> int -> int
 val safe_mul : int -> int -> int
+
+type ctx =
+  { ctx_direct : bool;
+    ctx_direct_sub : bool;
+    ctx_copy_string : string -> string
+  }
+
+val default_ctx : ctx
+val expand_ctx : ctx
+val enforcecopy_ctx : ctx
