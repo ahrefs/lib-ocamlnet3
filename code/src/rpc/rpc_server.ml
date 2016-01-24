@@ -257,12 +257,12 @@ and connector =
 
 and binding_sync =
       { sync_name : string;
-	sync_proc : xdr_value -> xdr_value
+	sync_proc : t -> xdr_value -> xdr_value
       }
 
 and binding_async =
       { async_name : string;
-	async_invoke : session -> xdr_value -> unit
+	async_invoke : t -> session -> xdr_value -> unit
                                             (* invocation of this procedure *)
       }
 
@@ -740,7 +740,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		       begin match proc with
 			   Sync p ->
 			     let result_value =
-			       p.sync_proc param
+			       p.sync_proc srv param
 			     in
 			     (* Exceptions raised by the encoder are
 				handled by [protect]
@@ -787,7 +787,7 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
                                  gssapi_props = gss;
 			       } in
 			     conn.next_call_id <- conn.next_call_id + 1;
-			     p.async_invoke this_session param
+			     p.async_invoke srv this_session param
 		       end
 		    )
 		  | Auth_negative code ->
@@ -2089,8 +2089,12 @@ let detach srv =
 	   | None -> ()
       )
       l
-  
-  
+
+let xdr_ctx srv =
+  if srv.internal then
+    Netxdr.default_ctx
+  else
+    Netxdr.direct_ctx
 
 let verbose b =
   Debug.enable := b;

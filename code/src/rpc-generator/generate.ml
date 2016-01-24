@@ -1752,10 +1752,12 @@ let output_conversions (mli:formatter) (f:formatter) (dl:xdr_def list) =
 	| T_opaque_fixed _
 	| T_opaque _
 	| T_opaque_unlimited ->
-	    fprintf f "(Netxdr.XV_opaque %s)" var
+	    fprintf
+              f "(Netxdr.XV_opaque (%s.Netxdr.ctx_copy_string %s))" ctx var
 	| T_string _
 	| T_string_unlimited ->
-	    fprintf f "(Netxdr.XV_string %s)" var
+	    fprintf
+              f "(Netxdr.XV_string (%s.Netxdr.ctx_copy_string %s))" ctx var
 	| T_mstring(_,_)
 	| T_mstring_unlimited _ ->
 	    fprintf f "(Netxdr.XV_mstring %s)" var
@@ -3072,14 +3074,14 @@ let output_client (mli:formatter) (f:formatter) (dl:xdr_def list)
 	    fprintf f "@[<hv 2>";
 	    fprintf f "let %s client arg =@ " proc.proc_symbol.ocaml_name;
 	    (* fprintf f "assert(Rpc_client.program client == _program);@ "; *)
-	    fprintf f "_to_%s'res (U'C.unbound_sync_call client _program \"%s\" (_of_%s'arg arg))"
+	    fprintf f "_to_%s'res (U'C.unbound_sync_call client _program \"%s\" (_xof_%s'arg (U'C.xdr_ctx client) arg))"
 	      pvp proc.proc_symbol.xdr_name pvp;
 	    fprintf f "@]@ @ ";
 	    
 	    fprintf f "@[<hv 2>";
 	    fprintf f "let %s'async client arg pass_reply =@ " proc.proc_symbol.ocaml_name;
 	    (* fprintf f "assert(Rpc_client.program client == _program);@ "; *)
-	    fprintf f "U'C.unbound_async_call client _program \"%s\" (_of_%s'arg arg)@ "
+	    fprintf f "U'C.unbound_async_call client _program \"%s\" (_xof_%s'arg (U'C.xdr_ctx client) arg)@ "
 	      proc.proc_symbol.xdr_name pvp;
 	    fprintf f "  (fun g -> pass_reply (fun () -> _to_%s'res (g())))@ " pvp;
 	    fprintf f "@]@ @ "
@@ -3188,7 +3190,7 @@ let output_server (style:style)
 		   proc.proc_symbol.ocaml_name in
 	 fprintf f "@ (Rpc_server.Sync { @[<v>Rpc_server.sync_name = \"%s\";@ "
 	   proc.proc_symbol.xdr_name;
-	 fprintf f "Rpc_server.sync_proc = (fun x -> _of_%s'res (proc_%s (_to_%s'arg x)))@]});"
+	 fprintf f "Rpc_server.sync_proc = (fun srv x -> _xof_%s'res (Rpc_server.xdr_ctx srv)  (proc_%s (_to_%s'arg x)))@]});"
 	   pvp proc.proc_symbol.ocaml_name pvp;
       )
       vers.version_def;
@@ -3238,7 +3240,7 @@ let output_server (style:style)
 		   proc.proc_symbol.ocaml_name in
 	 fprintf f "@ (Rpc_server.Async { @[<v>Rpc_server.async_name = \"%s\";@ "
 	   proc.proc_symbol.xdr_name;
-	 fprintf f "Rpc_server.async_invoke = (fun s x -> proc_%s s (_to_%s'arg x) (fun y -> Rpc_server.reply s (_of_%s'res y)))@]});"
+	 fprintf f "Rpc_server.async_invoke = (fun srv s x -> proc_%s s (_to_%s'arg x) (fun y -> Rpc_server.reply s (_xof_%s'res (Rpc_server.xdr_ctx srv) y)))@]});"
 	  proc.proc_symbol.ocaml_name pvp pvp;
       )
       vers.version_def;
@@ -3299,7 +3301,7 @@ let output_server (style:style)
 		   proc.proc_symbol.ocaml_name in
 	 fprintf f "@ (Rpc_server.Sync { @[<v>Rpc_server.sync_name = \"%s\";@ "
 	   proc.proc_symbol.xdr_name;
-	 fprintf f "Rpc_server.sync_proc = (fun x -> _of_%s'res (proc_%s (_to_%s'arg x)))@]});"
+	 fprintf f "Rpc_server.sync_proc = (fun srv x -> _xof_%s'res (Rpc_server.xdr_ctx srv) (proc_%s (_to_%s'arg x)))@]});"
 	   pvp proc.proc_symbol.ocaml_name pvp;
       )
       vers.version_def;
@@ -3342,7 +3344,7 @@ let output_server (style:style)
 		   proc.proc_symbol.ocaml_name in
 	 fprintf f "@ (Rpc_server.Async { @[<v>Rpc_server.async_name = \"%s\";@ "
 	   proc.proc_symbol.xdr_name;
-	 fprintf f "Rpc_server.async_invoke = (fun s x -> proc_%s s (_to_%s'arg x) (fun y -> Rpc_server.reply s (_of_%s'res y)))@]});"
+	 fprintf f "Rpc_server.async_invoke = (fun srv s x -> proc_%s s (_to_%s'arg x) (fun y -> Rpc_server.reply s (_xof_%s'res (Rpc_server.xdr_ctx srv) y)))@]});"
 	  proc.proc_symbol.ocaml_name pvp pvp;
       )
       vers.version_def;

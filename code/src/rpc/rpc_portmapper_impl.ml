@@ -21,6 +21,7 @@ module type CLIENT =
     val unbound_async_call :
       t -> Rpc_program.t -> string -> Netxdr.xdr_value -> 
       ((unit -> Netxdr.xdr_value) -> unit) -> unit
+    val xdr_ctx : t -> Netxdr.ctx
   end
 
 open Netnumber

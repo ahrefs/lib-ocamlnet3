@@ -519,6 +519,9 @@ module ManagedClient = struct
       failwith "Rpc_proxy.ManagedClient.use: \
                 This program is not bound by this client"
 
+  let xdr_ctx _ =
+    Netxdr.direct_ctx
+
   let reconcile_state mc =
     if_connecting_or_up mc
       (fun client ->

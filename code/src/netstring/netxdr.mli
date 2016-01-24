@@ -546,4 +546,4 @@ type ctx =
 
 val default_ctx : ctx
 val expand_ctx : ctx
-val enforcecopy_ctx : ctx
+val direct_ctx : ctx

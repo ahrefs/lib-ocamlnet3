@@ -1479,6 +1479,12 @@ end
   (*****)
 
 
+let xdr_ctx client =
+  if client.internal then
+    Netxdr.default_ctx
+  else
+    Netxdr.direct_ctx
+
 let bind cl prog =
   cl.progs <- prog :: cl.progs
 
@@ -1593,6 +1599,7 @@ let rec internal_create initial_xid
     let use = use
     let unbound_sync_call = unbound_sync_call
     let unbound_async_call = unbound_async_call
+    let xdr_ctx = xdr_ctx
   end in
   let module PM = Rpc_portmapper_impl.PM(C) in
 

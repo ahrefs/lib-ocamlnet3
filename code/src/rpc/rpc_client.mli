@@ -718,7 +718,15 @@ module type USE_CLIENT = sig
         client will call [emit (fun () -> raise e)] back.
      *)
 
+  val xdr_ctx : t -> Netxdr.ctx
+  (** Returns the recommended XDR context *)
+
 end
+
+val xdr_ctx : t -> Netxdr.ctx
+  (** Returns the recommended XDR context *)
+
+
 
 
 (** {2 Deprecated Interfaces} *)
@@ -834,7 +842,6 @@ val verbose : bool -> unit
   (** set whether you want debug messages or not (same as setting
       {!Rpc_client.Debug.enable})
    *)
-
 
 (** {2 Debugging} *)
 

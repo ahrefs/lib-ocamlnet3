@@ -2075,20 +2075,22 @@ type ctx =
 
 
 let default_ctx =
-  { ctx_direct = true;
-    ctx_direct_sub = true;
-    ctx_copy_string = (fun s -> s)
-  }
-
-let expand_ctx =
-  { ctx_direct = false;
-    ctx_direct_sub = true;
-    ctx_copy_string = String.copy
-  }
-
-let enforcecopy_ctx =
-  (* "direct mode": does not normally copy, so disable it *)
+  (* By default, disallow direct mappings *)
   { ctx_direct = false;
     ctx_direct_sub = false;
     ctx_copy_string = String.copy
+  }
+
+let expand_ctx =
+  (* Special ctx for the generated "_expand_<t>" functions *)
+  { ctx_direct = false;
+    ctx_direct_sub = true;
+    ctx_copy_string = String.copy
+  }
+
+let direct_ctx =
+  (* This ctx allows to use direct mappings *)
+  { ctx_direct = true;
+    ctx_direct_sub = true;
+    ctx_copy_string = (fun s -> s) 
   }

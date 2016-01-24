@@ -88,14 +88,14 @@ type connector =
 
 type binding_sync =
     { sync_name : string;                  (** procedure name *)
-      sync_proc : xdr_value -> xdr_value   (** the function that implements the
-					    * procedure
-					    *)
+      sync_proc : t -> xdr_value -> xdr_value  (** the function that implements
+					         * the procedure
+					         *)
     }
 
 type binding_async =
     { async_name : string;                 (** procedure name *)
-      async_invoke : session -> xdr_value -> unit
+      async_invoke : t -> session -> xdr_value -> unit
 	  (** A function that is called when the procedure is called *)
     }
 
@@ -574,6 +574,9 @@ val get_user : session -> string
 
 val get_auth_method : session -> auth_method
   (** Returns the method that was used to authenticate the user. *)
+
+val xdr_ctx : t -> Netxdr.ctx
+  (** Get the recommended XDR context *)
 
 val verbose : bool -> unit
   (** {b Deprecated.}
