@@ -932,14 +932,14 @@ class delete : string -> http_call
 class type key =
 object
   method user : string
-    (** The user name *)
+    (** The user name (UTF-8) *)
   method password : string
-    (** The password in cleartext *)
+    (** The password in cleartext (UTF-8) *)
   method realm : string
     (** The realm *)
   method domain : Neturl.url list
     (** The domain URIs defining the protection space. The domain URIs
-     * are absolute URIs. For proxy keys the list must be empty.
+     * are absolute URIs. For proxy access the list must be empty.
      *
      * Normally, this is just a list with one element. The URI must include
      * the protocol scheme, the host name, the port, and a path (at minimum "/"). 
@@ -956,13 +956,17 @@ object
     (** The key in the common "credentials" format that is used by
         generic mechanisms. See {!Nethttp.HTTP_MECHANISM.init_credentials}
         for details.
+
+        {b Note that since Ocamlnet-4.1 we explicitly specify that cleartext
+        passwords are encoded in UTF-8 - independently of what the
+        protocol assumes.}
      *)
 end
 
 
 val key : user:string -> password:string -> realm:string -> 
           domain:Neturl.url list -> key
-  (** Create a key object *)
+  (** Create a key object. [user] and [password] are encoded in UTF-8. *)
 
 val key_creds : user:string ->
                 creds:(string * string * (string * string) list) list ->
@@ -1027,7 +1031,7 @@ object
   method auth_realm : string
     (** The realm *)
   method auth_user : string
-    (** The user identifier *)
+    (** The user identifier (UTF-8) *)
   method authenticate : http_call -> bool -> (string * string) list auth_status
     (** Returns a list of additional headers that will authenticate 
       * the passed call for this session. (This is usually only one

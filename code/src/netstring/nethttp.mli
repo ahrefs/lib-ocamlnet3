@@ -1133,6 +1133,10 @@ module type HTTP_MECHANISM =
             [ "password", "ThE sEcReT", [] ]
           ]}
 
+          The password is encoded in UTF-8. However, note that not all
+          protocols are able to transmit all of UTF-8. If a non-transmittable
+          character is found, the authentication will fail.
+
           The password can have parameters:
 
            - "realm": the password is only applicable to this realm. The

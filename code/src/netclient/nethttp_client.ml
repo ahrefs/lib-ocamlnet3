@@ -1809,9 +1809,16 @@ let format_credentials is_proxy (creds:Nethttp.Header.auth_credentials) =
     hdr#fields
 
 
+let recode enc s : string =
+  Netconversion.convert
+    ~in_enc:`Enc_utf8
+    ~out_enc:enc
+    s
+
+
 let core_basic_auth_session 
         enable_reauth key_handler is_proxy 
-        request_domain auth_domain trans_id realm
+        request_domain auth_domain trans_id realm charset
         : auth_session =
   (* If enable_reauth, we return [auth_domain] when [auth_domain] is called.
      Usually [auth_domain] is set to the current URI after setting the path to
@@ -1836,18 +1843,28 @@ let core_basic_auth_session
       method auth_user = key # user
       method auth_session_id = None
       method authenticate call reauth_flag =
-        let code = call # private_api # response_code in
-        if reauth_flag || code = special_code then
-          if reauth_flag || !first_attempt then (
-            first_attempt := false;
-            let basic_cookie = 
-              Netencoding.Base64.encode 
-	        (key#user ^ ":" ^ key#password) in
-            let creds = ("Basic", [ "credentials", `Q basic_cookie]) in
-            `Continue (format_credentials is_proxy creds)
-          )
-          else `Auth_error
-        else `OK
+        try
+          let user, password =
+            if charset = `Enc_utf8 then
+              key#user, key#password
+            else
+              recode charset key#user, recode charset key#password in
+          let code = call # private_api # response_code in
+          if reauth_flag || code = special_code then
+            if reauth_flag || !first_attempt then (
+              first_attempt := false;
+              let basic_cookie = 
+                Netencoding.Base64.encode 
+	          (key#user ^ ":" ^ key#password) in
+              let creds = ("Basic", [ "credentials", `Q basic_cookie]) in
+              `Continue (format_credentials is_proxy creds)
+            )
+            else `Auth_error
+          else `OK
+        with
+          | Netconversion.Malformed_code
+          | Netconversion.Cannot_represent _ ->
+              `Auth_error
       method invalidate call =
         key_handler # invalidate_key key;
     end
@@ -1864,9 +1881,17 @@ let basic_auth_session enable_reauth
   let realms = get_realms "basic" call is_proxy in
   iterate
     (fun (realm,params) ->
+       let charset =  (* RFC-7617 extension *)
+         try
+           let cs = List.assoc "charset" params in
+           if String.lowercase cs = "utf-8" then
+             `Enc_utf8
+           else
+             `Enc_iso88591
+         with Not_found -> `Enc_iso88591 in
        core_basic_auth_session
          enable_reauth 
-         key_handler is_proxy request_domain auth_domain trans_id realm
+         key_handler is_proxy request_domain auth_domain trans_id realm charset
     )
     realms
 
@@ -1897,7 +1922,7 @@ object(self)
     try
       let trans_id = call # private_api # transport_layer options in
       Some(core_basic_auth_session
-             false key_handler false None [] trans_id "anywhere")
+             false key_handler false None [] trans_id "anywhere" `Enc_iso88591)
     with
 	Not_applicable ->
 	  None
