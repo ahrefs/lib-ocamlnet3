@@ -1,3 +1,9 @@
+2016-01-29  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Nethttp_client: Supporting Digest authentication with
+	  SHA-256 as hash algorithm. Supporting Basic authentication
+	  with "charset" parameter.
+
 2016-01-24  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* XDR/RPC: supporting that direct mappings can be disabled
