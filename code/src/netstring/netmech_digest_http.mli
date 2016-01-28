@@ -4,7 +4,10 @@
 
 module Digest :  Nethttp.HTTP_MECHANISM
   (** This is the standard HTTP digest authentication mechanism
-      (see RFC 2069 and 2617). This version does not include mutual
+      (see RFCs 2069, 2617, 7616). The hash functions MD5 and SHA-256
+      are supported, in server preference.
+
+      This version does not include mutual
       authentication, i.e. it does not matter what the server responds
       in the Authentication-Info header.
 
@@ -28,7 +31,7 @@ module Digest :  Nethttp.HTTP_MECHANISM
 
 module Digest_mutual :  Nethttp.HTTP_MECHANISM
   (** This is the standard HTTP digest authentication mechanism
-      (see RFC 2069 and 2617). This version also authenticates the server
+      (see RFCs 2069, 2617, 7616). This version also authenticates the server
       by checking the Authentication-Info header which must include the
       correct [rspauth] parameter. This parameter proves that the server
       actually knew the password.

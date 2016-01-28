@@ -183,7 +183,7 @@ module Digest =
   Make_digest(
       struct 
         let mutual = false
-        let hash_functions = [ `MD5 ]
+        let hash_functions = [ `SHA_256; `MD5 ]
       end
     )
 
@@ -191,6 +191,6 @@ module Digest_mutual =
   Make_digest(
       struct 
         let mutual = true
-        let hash_functions = [ `MD5 ]
+        let hash_functions = [ `SHA_256; `MD5 ]
       end
     )
