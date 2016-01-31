@@ -1855,7 +1855,7 @@ let core_basic_auth_session
               first_attempt := false;
               let basic_cookie = 
                 Netencoding.Base64.encode 
-	          (key#user ^ ":" ^ key#password) in
+	          (user ^ ":" ^ password) in
               let creds = ("Basic", [ "credentials", `Q basic_cookie]) in
               `Continue (format_credentials is_proxy creds)
             )
@@ -1973,7 +1973,8 @@ let generic_auth_session_for_challenge
       options
       (key_handler : #key_handler) mech call is_proxy initial_challenge
     : auth_session =
-  let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let ( !! ) arg = Lazy.force !arg in
+  let module M = (val mech : Nethttp.HTTP_CLIENT_MECHANISM) in
   let mname = M.mechanism_name in
   dlogr (fun () -> sprintf "generic_auth(%s): create" mname);
   let cur_trans_id = ref (call # private_api # transport_layer options) in
@@ -1999,26 +2000,27 @@ let generic_auth_session_for_challenge
   let creds =
     M.init_credentials key#credentials in
   let session_lz =
-    lazy
-      (M.create_client_session
-         ~user:key#user ~creds 
-         ~params:( [ "realm", realm, true ] @ 
-                     match_params @
-                       match id_option with
-                         | None -> []
-                         | Some id -> [ "id", id, true ]
-                 )
-         ()
-      ) in
+    ref
+      (lazy
+         (M.create_client_session
+            ~user:key#user ~creds 
+            ~params:( [ "realm", realm, true ] @ 
+                        match_params @
+                          match id_option with
+                            | None -> []
+                            | Some id -> [ "id", id, true ]
+                    )
+            ()
+      )) in
   let first = ref true in
   let cur_auth_domain = ref [] in
   let dbg_state() =
     match !match_result with
       | `Accept _ ->
-           let session = Lazy.force session_lz in
+           let session = Lazy.force !session_lz in
            Netsys_sasl_util.string_of_client_state (M.client_state session)
       | `Accept_reroute _ ->
-           let session = Lazy.force session_lz in
+           let session = Lazy.force !session_lz in
            Netsys_sasl_util.string_of_client_state (M.client_state session) ^
              "+reroute"
       | `Reroute _ ->
@@ -2086,9 +2088,8 @@ let generic_auth_session_for_challenge
         match !match_result with
           | `Accept _
           | `Accept_reroute _ ->
-               let session = Lazy.force session_lz in
                first := false;
-               ( match M.client_state session with
+               ( match M.client_state !!session_lz with
                    | `OK ->
                         (* re-authentication *)
                         if reauth_flag then (
@@ -2103,7 +2104,9 @@ let generic_auth_session_for_challenge
                                 match id_option with
                                   | None -> []
                                   | Some id -> [ "id", id, true ] in
-                          M.client_restart ~params:r_params session;
+                          let session =
+                            M.client_restart ~params:r_params !!session_lz in
+                          session_lz := lazy session;
                           dlogr (fun () -> 
                                    sprintf "generic_auth(%s): state=%s" 
                                            mname (dbg_state()));
@@ -2116,8 +2119,10 @@ let generic_auth_session_for_challenge
                         let meth = auth_call # request_method in
                         let uri = auth_call # effective_request_uri in
                         let hdr = auth_call # response_header in
-                        M.client_process_challenge
-                          session meth uri hdr challenge;
+                        let session =
+                          M.client_process_challenge
+                            !!session_lz meth uri hdr challenge in
+                        session_lz := lazy session;
                         dlogr (fun () -> 
                                  sprintf "generic_auth(%s): state=%s" 
                                          mname (dbg_state()));
@@ -2128,11 +2133,11 @@ let generic_auth_session_for_challenge
                    | `Auth_error _ ->
                         ()
                );
-               ( match M.client_state session with
+               ( match M.client_state !!session_lz with
                    | `OK ->
                         (* Save the protection space: *)
                         if not is_proxy then (
-                          let auth_domain_s = M.client_domain session in
+                          let auth_domain_s = M.client_domain !!session_lz in
                           let auth_domain =
                             try
                               List.map
@@ -2146,7 +2151,8 @@ let generic_auth_session_for_challenge
                           cur_auth_domain := auth_domain;
                         );
                         ( try
-                            let gssapi_props = M.client_gssapi_props session in
+                            let gssapi_props =
+                              M.client_gssapi_props !!session_lz in
                             call # private_api # set_gssapi_props gssapi_props;
                           with Not_found -> ()
                         );
@@ -2161,8 +2167,9 @@ let generic_auth_session_for_challenge
                             new Netmime.basic_mime_header []
                           else
                             auth_call # response_header in
-                        let (creds, new_headers) = 
-                          M.client_emit_response session meth uri hdr in
+                        let (session, creds, new_headers) = 
+                          M.client_emit_response !!session_lz meth uri hdr in
+                        session_lz := lazy session;
                         dlogr (fun () -> 
                                  sprintf "generic_auth(%s): state=%s" 
                                          mname (dbg_state()));
@@ -2201,8 +2208,7 @@ let generic_auth_session_for_challenge
         match !match_result with
           | `Accept _
           | `Accept_reroute _ ->
-               let session = Lazy.force session_lz in
-               M.client_session_id session
+               M.client_session_id !!session_lz
           | _ ->
                None
     end
@@ -2212,7 +2218,7 @@ let generic_auth_session_for_challenge
 let generic_auth_session options
                          (key_handler : #key_handler) mech call is_proxy 
     : auth_session =
-  let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let module M = (val mech : Nethttp.HTTP_CLIENT_MECHANISM) in
   dlogr (fun () -> 
            sprintf "generic_auth(%s): searching challenge" M.mechanism_name);
   let match_params = get_match_params options call in
@@ -2242,7 +2248,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
   let mechs =
     List.filter
       (fun m -> 
-         let module M = (val m : Nethttp.HTTP_MECHANISM) in
+         let module M = (val m : Nethttp.HTTP_CLIENT_MECHANISM) in
          M.available()
       )
       mechs in
@@ -2251,7 +2257,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
     let mech =
       List.find
         (fun m ->
-         let module M = (val m : Nethttp.HTTP_MECHANISM) in
+         let module M = (val m : Nethttp.HTTP_CLIENT_MECHANISM) in
            let mname = String.lowercase M.mechanism_name in
            List.exists
              (fun (ch_mech,_) -> String.lowercase ch_mech = mname)
@@ -2275,7 +2281,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
       let mech = find_mech all_challenges is_proxy call in
       dlogr
         (fun () -> 
-           let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+           let module M = (val mech : Nethttp.HTTP_CLIENT_MECHANISM) in
            sprintf "generic_auth(%s): selected this mechanism" M.mechanism_name
         );
       Some (generic_auth_session options key_handler mech call is_proxy)

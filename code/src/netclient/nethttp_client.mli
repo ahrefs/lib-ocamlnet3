@@ -954,7 +954,7 @@ object
      *)
   method credentials : (string * string * (string * string) list) list
     (** The key in the common "credentials" format that is used by
-        generic mechanisms. See {!Nethttp.HTTP_MECHANISM.init_credentials}
+        generic mechanisms. See {!Nethttp.HTTP_CLIENT_MECHANISM.init_credentials}
         for details.
 
         {b Note that since Ocamlnet-4.1 we explicitly specify that cleartext
@@ -1150,7 +1150,7 @@ class unified_auth_handler : ?insecure:bool -> #key_handler -> auth_handler
 
 
 class generic_auth_handler : #key_handler ->
-                             (module Nethttp.HTTP_MECHANISM) list ->
+                             (module Nethttp.HTTP_CLIENT_MECHANISM) list ->
                                auth_handler
   (** Authenticate with the passed generic HTTP mechanisms *)
 

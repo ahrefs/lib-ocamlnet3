@@ -42,6 +42,7 @@ class scram_context ctx (init_flags : ret_flag list) =
   let seq_nr = ref 0L in
   let exp_seq_nr = ref None in
   let flags = ref init_flags in
+  let ctx = ref ctx in
 object
   method otype = ( `Context : [ `Context ] )
   method valid = !valid
@@ -49,7 +50,7 @@ object
   method delete() = valid := false
   method server_cb = server_cb
   method is_acceptor =
-    match ctx with
+    match !ctx with
       | Ctx_client _ -> false
       | Ctx_server _ -> true
   method specific_keys =
@@ -58,7 +59,7 @@ object
 	  Some(k_mic_c,k_mic_s,k_wrap_c,k_wrap_s)
       | None ->
 	  let proto_key_opt =
-	    match ctx with
+	    match !ctx with
 	      | Ctx_client sess -> 
 		  Netmech_scram.client_protocol_key sess
 	      | Ctx_server sess -> 
@@ -262,7 +263,7 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 		     if not context#valid then
 		       raise (Routine_error `No_context);
 		     let sess =
-		       match context#ctx with
+		       match !(context#ctx) with
 		         | Ctx_server sess -> sess
 		         | Ctx_client _ -> raise (Routine_error `No_context) in
 		     (context, sess, false) in
@@ -285,11 +286,12 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 	    (* The following call usually does not raise exceptions. Error codes
     	       are stored inside sess
 	     *)
-	    Netmech_scram.server_recv_message sess eff_input_token;
+	    let sess = Netmech_scram.server_recv_message sess eff_input_token in
 	    let output_context =
 	      Some context in
-	    let output_token =
+	    let sess, output_token =
 	      Netmech_scram.server_emit_message sess in
+            context # ctx := Ctx_server sess;
 	    if Netmech_scram.server_error_flag sess then (
 	      out
 	        ~src_name ~mech_type:scram_mech ~output_context
@@ -621,7 +623,7 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
           else (
 	    try
 	      let interprocess_token =
-	        match context#ctx with
+	        match !(context#ctx) with
 	          | Ctx_client sess ->
 		       "C" ^ Netmech_scram.client_export sess
 	          | Ctx_server sess ->
@@ -857,7 +859,7 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 	             if not context#valid then
 		       raise(Routine_error `No_context);
 	             let sess =
-		       match context#ctx with
+		       match !(context#ctx) with
 		         | Ctx_client sess -> sess
 		         | Ctx_server _ -> raise (Routine_error `No_context) in
 	             (context, sess, true) in
@@ -866,42 +868,44 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
             (* Note that we ignore target_name entirely. It is not needed for
 	       SCRAM.
              *)
-            if continuation then (  (* this may raise exceptions *)
-	      try
-	        match input_token with
-	          | Some intok ->
-		       Netmech_scram.client_recv_message sess intok
-	          | None ->
-		       raise(Calling_error `Bad_structure)
-	      with
-	        | Netmech_scram.Invalid_encoding(_,_) ->
-	             raise(Routine_error `Defective_token)
-	        | Netmech_scram.Invalid_username_encoding(_,_) ->
-	             raise(Routine_error `Defective_token)
-	        | Netmech_scram.Extensions_not_supported(_,_) ->
-	             raise(Routine_error `Failure)
-	        | Netmech_scram.Protocol_error _ ->
-	             raise(Routine_error `Failure)
-	        | Netmech_scram.Invalid_server_signature ->
-	             raise(Routine_error `Bad_mic)
-	        | Netmech_scram.Server_error e ->
-	             ( match e with
-		         | `Invalid_encoding
-		         | `Extensions_not_supported
-		         | `Invalid_proof
-		         | `Channel_bindings_dont_match
-		         | `Server_does_support_channel_binding
-		         | `Channel_binding_not_supported
-		         | `Unsupported_channel_binding_type
-		         | `Unknown_user
-		         | `Invalid_username_encoding
-		         | `No_resources
-		         | `Other_error
-		         | `Extension _ ->
+            let sess =
+              if continuation then (  (* this may raise exceptions *)
+	        try
+	          match input_token with
+	            | Some intok ->
+		        Netmech_scram.client_recv_message sess intok
+	            | None ->
+		        raise(Calling_error `Bad_structure)
+	        with
+	          | Netmech_scram.Invalid_encoding(_,_) ->
+	              raise(Routine_error `Defective_token)
+	          | Netmech_scram.Invalid_username_encoding(_,_) ->
+	              raise(Routine_error `Defective_token)
+	          | Netmech_scram.Extensions_not_supported(_,_) ->
+	              raise(Routine_error `Failure)
+	          | Netmech_scram.Protocol_error _ ->
+	              raise(Routine_error `Failure)
+	          | Netmech_scram.Invalid_server_signature ->
+	              raise(Routine_error `Bad_mic)
+	          | Netmech_scram.Server_error e ->
+	              ( match e with
+		          | `Invalid_encoding
+		          | `Extensions_not_supported
+		          | `Invalid_proof
+		          | `Channel_bindings_dont_match
+		          | `Server_does_support_channel_binding
+		          | `Channel_binding_not_supported
+		          | `Unsupported_channel_binding_type
+		          | `Unknown_user
+		          | `Invalid_username_encoding
+		          | `No_resources
+		          | `Other_error
+		          | `Extension _ ->
 		              raise(Routine_error `Failure)
-	             )
-            );
+	              )
+              ) else sess in
             if Netmech_scram.client_finish_flag sess then (
+              context # ctx := Ctx_client sess;
 	      let ret_flags =
 	        [`Trans_flag; `Prot_ready_flag ] @ scram_ret_flags in
 	      context # flags := ret_flags;
@@ -913,8 +917,10 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 	        ~major_status:(`None,`None,[]) ()
             )
             else (
-	      let output_token_1 =
+	      let sess, output_token_1 =
 	        Netmech_scram.client_emit_message sess in
+              context # ctx := Ctx_client sess;
+
 	      let output_token =
 	        if continuation then
 	          output_token_1
@@ -970,7 +976,7 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 	      ~locally_initiated:false ~is_open:false 
 	      ~minor_status:0l ~major_status:(`None, code, []) () in
           if context # valid then
-            match context # ctx with
+            match !(context # ctx) with
 	      | Ctx_client sess ->
 	           let src_name =
 	             new scram_name

@@ -70,6 +70,19 @@ let ss =
        - The parameter [secure] is understood but ignored
          (Kerberos is considered as secure method)
 
+
+     {b Statefulness:}
+
+     The GSSAPI is stateful. Our SASL interface is stateless. We cannot hide
+     the statefulness of the GSSAPI, and because of this old versions of
+     sessions are invalidated. E.g. this does not work
+
+      {[
+let s1 = S.server_process_response s0 "some message"
+let s2 = S.server_process_response s0 "another message"
+      ]}
+
+     and the second attempt to continue with the old session [s0] will fail.
    *)
 
 

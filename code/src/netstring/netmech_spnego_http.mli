@@ -89,6 +89,19 @@ let () =
    At the moment, this authentication protocol cannot be configured, so
    you always get the default behaviour of GSSAPI.
 
+     {b Statefulness:}
+
+     The GSSAPI is stateful. Our HTTP authentication interface is stateless.
+     We cannot hide
+     the statefulness of the GSSAPI, and because of this old versions of
+     sessions are invalidated. E.g. this does not work
+
+      {[
+let s1 = A.client_emit_resonse s0 m1 uri1 hdr1
+let s2 = A.client_emit_resonse s0 m2 uri2 hdr2
+      ]}
+
+     and the second attempt to continue with the old session [s0] will fail.
  *)
 
 (** Configure {!Netmech_spnego_http} *)
@@ -129,4 +142,4 @@ module type PROFILE =
 module Default : PROFILE
 
 (** The SPNEGO mechanism for HTTP, see {!Netmech_spnego_http} *)
-module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM
+module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_CLIENT_MECHANISM

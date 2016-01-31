@@ -14,12 +14,10 @@
 
  *)
 
-type ptype = [ `GSSAPI | `SASL | `HTTP ]
+type ptype = [ `GSSAPI | `SASL ]
   (** Profile types:
        - [`GSSAPI]: as defined in RFC 5802, the gs2-header is omitted
        - [`SASL]: as defined in RFC 5802
-       - [`HTTP]: at the moment this follows draft-ietf-httpauth-scram-auth-03,
-         and uses a different [gs2-header]
    *)
 
 type profile =
@@ -58,34 +56,42 @@ type server_session
   (** Session context for servers *)
 
 
+(** Client exceptions: The exceptions are returned by [client_error_flag],
+    but never raised.
+ *)
+
 exception Invalid_encoding of string * string
-  (** Raised by clients when something cannot be decoded. First string
+  (** Returned by clients when something cannot be decoded. First string
       is an error message, the second string the raw message that cannot
       be decoded
    *)
 
 exception Invalid_username_encoding of string * string
-  (** Raised by clients when the username does not match the requirements.
+  (** Returned by clients when the username does not match the requirements.
       Arguments as for [Invalid_encoding].
    *)
 
 exception Extensions_not_supported of string * string
-  (** Raised by clients when the server enables an unsupported extension.
+  (** Returned by clients when the server enables an unsupported extension.
       Arguments as for [Invalid_encoding].
    *)
 
 exception Protocol_error of string
-  (** Raised by clients when the server violates the protocol. The argument
+  (** Returned by clients when the server violates the protocol. The argument
       is a message.
    *)
 
 exception Invalid_server_signature
-  (** Raised by clients when the signature sent by the server is invalid
+  (** Returned by clients when the signature sent by the server is invalid
       (i.e. the server does not know the client password)
    *)
 
 exception Server_error of server_error
-  (** Raised by clients when the server sent an error code *)
+  (** Returned by clients when the server sent an error code *)
+
+
+val error_of_exn : exn -> string
+  (** Converts one of the above exceptions to a human-readable string *)
 
 
 val profile : ?return_unknown_user:bool -> ?iteration_count_limit:int ->
@@ -130,8 +136,19 @@ val create_client_session2 :
       (only processed for the SASL profile).
    *)
 
-val client_configure_channel_binding : client_session -> cb -> unit
+val client_configure_channel_binding : client_session -> cb -> client_session
   (** Sets whether to request channel binding.
+   *)
+
+val client_restart : client_session -> string -> client_session
+  (** Restart a client session (draft-ietf-httpauth-scram-auth-15).
+      The string is the sr attribute.
+   *)
+
+val client_restart_stale : client_session -> string -> client_session
+  (** Restart a client session after the server indicated that the session
+      is stale. The string arg is the new "sr" attribute
+      (draft-ietf-httpauth-scram-auth-15).
    *)
 
 val client_emit_flag : client_session -> bool
@@ -143,24 +160,27 @@ val client_recv_flag : client_session -> bool
 val client_finish_flag : client_session -> bool
   (** Whether the client is authenticated and the server verified *)
 
-val client_error_flag : client_session -> bool
+val client_semifinish_flag : client_session -> bool
+  (** Whether the client is authentication *)
+
+val client_error_flag : client_session -> exn option
   (** Whether an error occurred, and the protocol cannot advance anymore *)
 
 val client_channel_binding : client_session -> cb
   (** Returns the channel binding *)
 
-val client_emit_message : client_session -> string
+val client_emit_message : client_session -> client_session * string
   (** Emits the next message to be sent to the server *)
 
 val client_emit_message_kv : client_session -> 
-                               string option * (string * string) list
+                       client_session * string option * (string * string) list
   (** Emits the next message to be sent to the server. The message is not
       encoded as a single string, but as [(gs2_opt, kv)] where
       [gs2_opt] is the optional GS2 header (the production [gs2-header] from
       the RFC), and [kv] contains the parameters as key/value pairs.
    *)
 
-val client_recv_message : client_session -> string -> unit
+val client_recv_message : client_session -> string -> client_session
   (** Receives the next message from the server *)
 
 val client_protocol_key : client_session -> string option
@@ -191,6 +211,7 @@ val client_prop : client_session -> string -> string
        - "salt"
        - "i" (iteration_count)
        - "protocol_key"
+       - "error"
    *)
 
 
@@ -298,15 +319,16 @@ val server_finish_flag : server_session -> bool
 val server_error_flag : server_session -> bool
   (** Whether an error occurred, and the protocol cannot advance anymore *)
 
-val server_emit_message : server_session -> string
+val server_emit_message : server_session -> server_session * string
   (** Emits the next message to be sent to the client *)
 
-val server_emit_message_kv : server_session -> (string * string) list
+val server_emit_message_kv : server_session -> 
+                               server_session * (string * string) list
   (** Emits the next message to be sent to the client. The message is returned
       as a list of key/value pairs.
    *)
 
-val server_recv_message : server_session -> string -> unit
+val server_recv_message : server_session -> string -> server_session
   (** Receives the next message from the client *)
 
 val server_protocol_key : server_session -> string option

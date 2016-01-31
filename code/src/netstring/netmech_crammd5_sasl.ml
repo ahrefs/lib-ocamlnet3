@@ -23,9 +23,9 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     (l:credentials)
 
   type server_session = 
-      { mutable sstate : Netsys_sasl_types.server_state;
+      { sstate : Netsys_sasl_types.server_state;
         schallenge : string;
-        mutable suser : string option;
+        suser : string option;
         lookup : string -> string -> credentials option;
       }
 
@@ -101,11 +101,13 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       if msg <> expected_msg then failwith "bad password";
       verify_utf8 user;
       verify_utf8 expected_password;
-      ss.sstate <- `OK;
-      ss.suser <- Some user;
+      { ss with
+        sstate = `OK;
+        suser = Some user;
+      }
     with
       | Failure msg ->
-           ss.sstate <- `Auth_error msg
+           { ss with sstate = `Auth_error msg }
 
   let server_process_response_restart ss msg set_stale =
     failwith "Netmech_crammd5_sasl.server_process_response_restart: \
@@ -115,8 +117,9 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     if ss.sstate <> `Emit then
       failwith "Netmech_crammd5_sasl.server_emit_challenge: bad state";
     let data = ss.schallenge in
-    ss.sstate <- `Wait;
-    data
+    ( { ss with sstate = `Wait },
+      data
+    )
 
   let server_channel_binding ss =
     `None
@@ -160,8 +163,8 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     ""
 
   type client_session =
-      { mutable cstate : Netsys_sasl_types.client_state;
-        mutable cresp : string;
+      { cstate : Netsys_sasl_types.client_state;
+        cresp : string;
         cuser : string;
         cauthz : string;
         cpasswd : string;
@@ -192,6 +195,8 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     if cb <> `None then
       failwith "Netmech_crammd5_sasl.client_configure_channel_binding: \
                 not supported"
+    else
+      cs
 
   let client_state cs = cs.cstate
 
@@ -201,21 +206,23 @@ module CRAM_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_restart cs =
     if cs.cstate <> `OK then
       failwith "Netmech_crammd5_sasl.client_restart: unfinished auth";
-    cs.cstate <- `Wait
+    { cs with cstate = `Wait }
 
   let client_process_challenge cs msg =
     if cs.cstate <> `Wait then
-      cs.cstate <- `Auth_error "protocol error"
-    else (
-      cs.cresp <- compute_response cs.cuser cs.cpasswd msg;
-      cs.cstate <- `Emit;
-    )
+      { cs with cstate = `Auth_error "protocol error" }
+    else
+      { cs with
+        cresp = compute_response cs.cuser cs.cpasswd msg;
+        cstate = `Emit;
+      }
 
   let client_emit_response cs =
     if cs.cstate <> `Emit then
       failwith "Netmech_crammd5_sasl.client_emit_response: bad state";
-    cs.cstate <- `OK;
-    cs.cresp
+    ( { cs with cstate = `OK },
+      cs.cresp
+    )
 
   let client_stash_session cs =
     "client,t=CRAM-MD5;" ^ 

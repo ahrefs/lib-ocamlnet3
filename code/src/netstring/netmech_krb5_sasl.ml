@@ -137,24 +137,29 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
         ]
 
     type client_session =
-        { cauthz : string;
-          mutable ccontext : G.context option;
-          mutable cstate : Netsys_sasl_types.client_state;
-          mutable csubstate : client_sub_state;
-          mutable ctoken : string;
+        { mutable ccontext : G.context option;
+          cauthz : string;
+          cstate : Netsys_sasl_types.client_state;
+          csubstate : client_sub_state;
+          ctoken : string;
           cconf : Netsys_gssapi.client_config;
           ctarget_name : G.name;
-          mutable cprops : Netsys_gssapi.client_props option;
+          cprops : Netsys_gssapi.client_props option;
         }
+
+    let cvalidity cs0 =
+      let cs1 = { cs0 with ccontext = cs0.ccontext } in
+      cs0.ccontext <- None;
+      cs1
 
     let client_state cs = cs.cstate
 
     let client_del_ctx cs =
       match cs.ccontext with
-        | None -> ()
+        | None -> cs
         | Some ctx ->
             M.delete_context cs.ccontext ();
-            cs.ccontext <- None
+            { cs with ccontext = None }
 
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
@@ -171,7 +176,7 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
         check_gssapi_status fn_name major_status minor_status
       with
         | error ->
-            client_del_ctx cs;
+            ignore(client_del_ctx cs);
             raise error
            
 
@@ -185,14 +190,18 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
           ~chan_bindings:None
           ~input_token
           cs.cconf in
-      cs.ccontext <- Some out_context;
-      cs.ctoken <- out_token;
-      cs.cprops <- props_opt;
-      cs.cstate <- `Emit;
-      if props_opt <> None then
-        cs.csubstate <- `Skip_empty
-      else
-        cs.csubstate <- `Init_context
+      { cs with
+        ccontext = Some out_context;
+        ctoken = out_token;
+        cprops = props_opt;
+        cstate = `Emit;
+        csubstate =
+          ( if props_opt <> None then
+              `Skip_empty
+            else
+              `Init_context
+          )
+      }
 
     let create_client_session ~user ~authz ~creds ~params () =
       let params = 
@@ -230,6 +239,8 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
       if cb <> `None then
         failwith "Netmech_krb5_sasl.client_configure_channel_binding: \
                   not supported"
+      else
+        cs
                  
     let client_state cs = cs.cstate
     let client_channel_binding cs = `None
@@ -237,10 +248,12 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
     let client_restart cs =
       if cs.cstate <> `OK then
         failwith "Netmech_krb5_sasl.client_restart: unfinished auth";
-      cs.ccontext <- None;
-      cs.cstate <- `Emit;
-      cs.csubstate <- `Pre_init_context;
-      cs.ctoken <- ""
+      { (cvalidity cs) with
+        ccontext = None;
+        cstate = `Emit;
+        csubstate = `Pre_init_context;
+        ctoken = ""
+      }
 
     let client_context cs =
       match cs.ccontext with
@@ -249,9 +262,10 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
 
 
     let client_process_challenge cs msg =
+      let cs = cvalidity cs in
       if cs.cstate <> `Wait then (
-        client_del_ctx cs;
-        cs.cstate <- `Auth_error "protocol error"
+        let cs = client_del_ctx cs in
+        { cs with cstate = `Auth_error "protocol error" }
       )
       else
         match cs.csubstate with
@@ -262,13 +276,15 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                    call_init_sec_context cs (Some msg)
                  with
                    | Failure msg ->
-                        client_del_ctx cs;
-                        cs.cstate <- `Auth_error msg
+                        let cs = client_del_ctx cs in
+                        { cs with cstate = `Auth_error msg }
                )
           | `Skip_empty when msg="" ->
-               cs.cstate <- `Emit;
-               cs.ctoken <- "";
-               cs.csubstate <- `Neg_security;
+               { cs with
+                 cstate = `Emit;
+                 ctoken = "";
+                 csubstate = `Neg_security;
+               }
           | `Neg_security
           | `Skip_empty ->
                ( try
@@ -303,39 +319,43 @@ module Krb5_gs1(G:Netsys_gssapi.GSSAPI) : Netsys_sasl_types.SASL_MECHANISM =
                                Netxdr_mstring.concat_mstrings output_message
                             )
                        () in
-                   cs.ctoken <- out_msg_wrapped;
-                   cs.cstate <- `Emit;
-                   cs.csubstate <- `Established;
+                   let cs =
+                     { cs with
+                       ctoken = out_msg_wrapped;
+                       cstate = `Emit;
+                       csubstate = `Established;
+                     } in
                    client_del_ctx cs;   (* no longer needed *)
                  with
                    | Failure msg ->
-                       client_del_ctx cs;
-                       cs.cstate <- `Auth_error msg
+                       let cs = client_del_ctx cs in
+                       { cs with cstate = `Auth_error msg }
                )
           | `Established ->
-               client_del_ctx cs;
-               cs.cstate <- `Auth_error "unexpected token"
+               let cs = client_del_ctx cs in
+               { cs with cstate = `Auth_error "unexpected token" }
 
     let client_emit_response cs =
       if cs.cstate <> `Emit then
         failwith "Netmech_krb5_sasl.client_emit_response: bad state";
-      ( match cs.csubstate with
+      let cs = cvalidity cs in
+      let cs =
+        match cs.csubstate with
           | `Pre_init_context ->
               ( try
-                  call_init_sec_context cs None;
-                  cs.cstate <- `Wait;
+                  let cs = call_init_sec_context cs None in
+                  { cs with cstate = `Wait }
                 with
                   | Failure msg -> 
-                      client_del_ctx cs;
-                      cs.cstate <- `Auth_error msg
+                      let cs = client_del_ctx cs in
+                      { cs with cstate = `Auth_error msg }
               )
           | `Established ->
-              client_del_ctx cs;   (* no longer needed *)
-              cs.cstate <- `OK
+              let cs = client_del_ctx cs in   (* no longer needed *)
+              { cs with cstate = `OK }
           | _ ->
-              cs.cstate <- `Wait
-      );
-      cs.ctoken
+              { cs with cstate = `Wait } in
+      (cs, cs.ctoken)
 
     let client_session_id cs =
       None
@@ -420,35 +440,40 @@ Netpop.authenticate
 
     type server_session =
         { mutable scontext : G.context option;
-          mutable sstate : Netsys_sasl_types.server_state;
-          mutable ssubstate : server_sub_state;
-          mutable stoken : string;
-          mutable suser : string option;
-          mutable sauthz : string option;
+          sstate : Netsys_sasl_types.server_state;
+          ssubstate : server_sub_state;
+          stoken : string;
+          suser : string option;
+          sauthz : string option;
           sconf : Netsys_gssapi.server_config;
           scred : G.credential;
           slookup : (string -> string -> credentials option);
           sservice : string;
           srealm : string option;
-          mutable sprops : Netsys_gssapi.server_props option;
+          sprops : Netsys_gssapi.server_props option;
         }
 
+
+    let svalidity ss0 =
+      let ss1 = { ss0 with scontext = ss0.scontext } in
+      ss0.scontext <- None;
+      ss1
 
     let server_state ss = ss.sstate
 
     let server_del_ctx ss =
       match ss.scontext with
-        | None -> ()
+        | None -> ss
         | Some ctx ->
             M.delete_context ss.scontext ();
-            ss.scontext <- None
+            { ss with scontext = None }
 
     let server_check_gssapi_status ss fn_name major_status minor_status =
       try
         check_gssapi_status fn_name major_status minor_status
       with
         | error ->
-            server_del_ctx ss;
+            ignore(server_del_ctx ss);
             raise error
 
     let create_server_session ~lookup ~params () =
@@ -503,7 +528,7 @@ Netpop.authenticate
         | Some c -> c
 
 
-    let  server_set_neg_security_token ss =
+    let server_set_neg_security_token ss =
       (* we do not offer any security layer *)
       let context = server_context ss in
       let out_msg = "\001\000\000\000" in
@@ -521,7 +546,7 @@ Netpop.authenticate
                   Netxdr_mstring.concat_mstrings output_message
                )
           () in
-      ss.stoken <- out_msg_wrapped
+      { ss with stoken = out_msg_wrapped }
 
 
     let server_process_response_accept_context ss msg =
@@ -532,10 +557,13 @@ Netpop.authenticate
           ~input_token:msg
           ~chan_bindings:None
           ss.sconf in
-      ss.scontext <- Some out_context;
-      ss.stoken <- out_token;
-      ss.sprops <- props_opt;
-      ss.sstate <- `Emit;  (* even an empty token *)
+      let ss =
+        { ss with
+          scontext = Some out_context;
+          stoken = out_token;
+          sprops = props_opt;
+          sstate = `Emit;  (* even an empty token *)
+        } in
       
       if props_opt <> None then (
         let src_name, targ_name =
@@ -573,24 +601,27 @@ Netpop.authenticate
             with
               | Not_found ->
                   failwith "cannot parse client name" in
-          ss.suser <- Some n;
+          let ss = { ss with suser = Some n } in
           if ss.stoken = "" then (
-            server_set_neg_security_token ss;
-            ss.ssubstate <- `Neg_security2
+            let ss = server_set_neg_security_token ss in
+            { ss with ssubstate = `Neg_security2 }
           )
           else
-            ss.ssubstate <- `Neg_security1
+            { ss with ssubstate = `Neg_security1 }
         with error ->
-          server_del_ctx ss;
+          ignore(server_del_ctx ss);
           raise error
       )
+      else ss
                                   
 
     let server_process_response_neg_security1 ss msg =
       (* any msg is acceptable *)
-      server_set_neg_security_token ss;
-      ss.ssubstate <- `Neg_security2;
-      ss.sstate <- `Emit
+      let ss = server_set_neg_security_token ss in
+      { ss with
+        ssubstate = `Neg_security2;
+        sstate = `Emit
+      }
       
     let server_process_response_neg_security2 ss msg =
       let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
@@ -612,7 +643,7 @@ Netpop.authenticate
         failwith "bad security token";
       let authz =
         String.sub msg_unwrapped 4 (String.length msg_unwrapped - 4) in
-      ss.sauthz <- Some authz;
+      let ss = { ss with sauthz = Some authz } in
       let user =
         match ss.suser with
           | None -> raise Not_found
@@ -621,12 +652,15 @@ Netpop.authenticate
         ss.slookup user authz in
       if user_cred_opt = None then
         failwith "unauthorized user";
-      server_del_ctx ss;   (* no longer needed *)
-      ss.ssubstate <- `Established;
-      ss.sstate <- `OK
+      let ss = server_del_ctx ss in   (* no longer needed *)
+      { ss with
+        ssubstate = `Established;
+        sstate = `OK
+      }
 
 
     let server_process_response ss msg =
+      let ss = svalidity ss in
       try
         if ss.sstate <> `Wait then raise Not_found;
         match ss.ssubstate with
@@ -640,11 +674,11 @@ Netpop.authenticate
               raise Not_found
       with
         | Not_found ->
-            server_del_ctx ss;
-            ss.sstate <- `Auth_error "unspecified"
+            let ss = server_del_ctx ss in
+            { ss with sstate = `Auth_error "unspecified" }
         | Failure msg ->
-            server_del_ctx ss;
-            ss.sstate <- `Auth_error msg
+            let ss = server_del_ctx ss in
+            { ss with sstate = `Auth_error msg }
 
 
     let server_process_response_restart ss msg set_stale =
@@ -654,8 +688,9 @@ Netpop.authenticate
     let server_emit_challenge ss =
       if ss.sstate <> `Emit then
         failwith "Netmech_krb5_sasl.server_emit_challenge: bad state";
-      ss.sstate <- `Wait;
-      ss.stoken
+      ( { (svalidity ss) with sstate = `Wait },
+        ss.stoken
+      )
 
     let server_channel_binding ss =
       `None
@@ -741,16 +776,16 @@ let cs = S.create_client_session ~user:"" ~authz:"foo" ~creds:no_creds ~params:[
 let lookup user authz = eprintf "user=%S authz=%S\n%!" user authz; Some no_creds;;
 let ss = S.create_server_session ~lookup ~params:["gssapi-acceptor-service", "test", false ] ();;
 
-let msg1 = S.client_emit_response cs;;
-S.server_process_response ss msg1;;
-let msg2 = S.server_emit_challenge ss;;
-S.client_process_challenge cs msg2;;
-let msg3 = S.client_emit_response cs;;
-S.server_process_response ss msg3;;
-let msg4 = S.server_emit_challenge ss;;
-S.client_process_challenge cs msg4;;
-let msg5 = S.client_emit_response cs;;
+let cs, msg1 = S.client_emit_response cs;;
+let ss = S.server_process_response ss msg1;;
+let ss, msg2 = S.server_emit_challenge ss;;
+let cs = S.client_process_challenge cs msg2;;
+let cs, msg3 = S.client_emit_response cs;;
+let ss = S.server_process_response ss msg3;;
+let ss, msg4 = S.server_emit_challenge ss;;
+let cs = S.client_process_challenge cs msg4;;
+let cs, msg5 = S.client_emit_response cs;;
 assert(S.client_state cs = `OK);;
-S.server_process_response ss msg5;;
+let ss = S.server_process_response ss msg5;;
 assert(S.server_state ss = `OK);;
  *)

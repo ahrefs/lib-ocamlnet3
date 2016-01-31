@@ -16,9 +16,9 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
     (l:credentials)
 
   type server_session = 
-      { mutable sstate : Netsys_sasl_types.server_state;
-        mutable suser : string option;
-        mutable sauthz : string option;
+      { sstate : Netsys_sasl_types.server_state;
+        suser : string option;
+        sauthz : string option;
         lookup : string -> string -> credentials option;
       }
 
@@ -74,12 +74,14 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
         | Some creds ->
              let expected_passwd = Netsys_sasl_util.extract_password creds in
              if passwd <> expected_passwd then failwith "bad password";
-             ss.sstate <- `OK;
-             ss.suser <- Some user;
-             ss.sauthz <- Some authz;
+             { ss with
+               sstate = `OK;
+               suser = Some user;
+               sauthz = Some authz;
+             }
     with
       | Failure msg ->
-           ss.sstate <- `Auth_error msg
+           { ss with sstate = `Auth_error msg }
 
   let server_process_response_restart ss msg set_stale =
     failwith "Netmech_plain_sasl.server_process_response_restart: \
@@ -132,7 +134,7 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
       | Some name -> name
 
   type client_session =
-      { mutable cstate : Netsys_sasl_types.client_state;
+      { cstate : Netsys_sasl_types.client_state;
         cuser : string;
         cauthz : string;
         cpasswd : string;
@@ -166,6 +168,8 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
     if cb <> `None then
       failwith "Netmech_plain_sasl.client_configure_channel_binding: \
                 not supported"
+    else
+      cs
 
   let client_state cs = cs.cstate
 
@@ -175,16 +179,19 @@ module PLAIN : Netsys_sasl_types.SASL_MECHANISM = struct
   let client_restart cs =
     if cs.cstate <> `OK then
       failwith "Netmech_plain_sasl.client_restart: unfinished auth";
-    cs.cstate <- `Emit
+    { cs with cstate = `Emit }
 
   let client_process_challenge cs msg =
-    cs.cstate <- `Auth_error "protocol error"
+    { cs with cstate = `Auth_error "protocol error" }
 
   let client_emit_response cs =
     if cs.cstate <> `Emit then
       failwith "Netmech_plain_sasl.client_emit_response: bad state";
-    cs.cstate <- `OK;
-    cs.cauthz ^ "\000" ^ cs.cuser ^ "\000" ^ cs.cpasswd
+    ( { cs with 
+        cstate = `OK;
+      },
+      cs.cauthz ^ "\000" ^ cs.cuser ^ "\000" ^ cs.cpasswd
+    )
 
   let client_stash_session cs =
     "client,t=PLAIN;" ^ 

@@ -137,13 +137,13 @@ module type SASL_MECHANISM =
        *)
 
     val server_configure_channel_binding :
-          server_session -> (string * string) list -> unit
+          server_session -> (string * string) list -> server_session
       (** Configures acceptable channel bindings wiht a list of pairs
           [(type,data)].
        *)
 
     val server_process_response :
-          server_session -> string -> unit
+          server_session -> string -> server_session
       (** Process the response from the client. This function must generally
           only be called when the session state is [`Wait]. As an exception,
           however, this function may also be invoked with the initial client
@@ -152,7 +152,7 @@ module type SASL_MECHANISM =
        *)
 
     val server_process_response_restart :
-          server_session -> string -> bool -> bool
+          server_session -> string -> bool -> server_session * bool
       (** Process the response from the client when another session can be
           continued. The string argument is the initial client response.
           This function must only be called when the state reaches
@@ -190,13 +190,14 @@ module type SASL_MECHANISM =
            let old_session_s, time = find_in_session_cache id in
            let old_session = server_resume_session ~lookup old_session_s in
            let set_stale = current_time - time > limit in
-           let cont = server_process_response_restart session msg set_stale in
+           let session, cont =
+             server_process_response_restart session msg set_stale in
            if not cont then 
              delete_in_session_cache id;
            (* Now check server_state again, should be `Emit now *)
            check_state_after_response()
       | `Emit ->
-           let out_msg = server_emit_challenge session in
+           let session, out_msg = server_emit_challenge session in
            update_cache();
            ...
       | ... ->
@@ -207,7 +208,7 @@ module type SASL_MECHANISM =
        *)
 
     val server_emit_challenge :
-          server_session -> string
+          server_session -> server_session * string
       (** Emit a server challenge. This function must only be called when the
           session state is [`Emit].
        *)
@@ -271,23 +272,23 @@ module type SASL_MECHANISM =
           to the mechanism.
        *)
 
-    val client_configure_channel_binding : client_session -> cb -> unit
+    val client_configure_channel_binding : client_session -> cb -> client_session
       (** Configure GS2-style channel binding *)
 
-    val client_restart : client_session -> unit
+    val client_restart : client_session -> client_session
       (** Restart the session for another authentication round. The session
           must be in state [`OK].
        *)
 
     val client_process_challenge :
-          client_session -> string -> unit
+          client_session -> string -> client_session
       (** Process the challenge from the server. The state must be [`Wait].
           As an exception, this function can also be called for the initial
           challenge from the server, even if the state is [`Emit].
        *)
 
     val client_emit_response :
-          client_session -> string
+          client_session -> client_session * string
       (** Emit a new response. The state must be [`Emit]. *)
 
     val client_channel_binding : client_session -> cb

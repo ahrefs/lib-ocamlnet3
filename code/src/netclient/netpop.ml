@@ -222,13 +222,18 @@ object (self)
   method auth mech user authz creds params =
     self#check_state `Authorization;
     let sess =
-      Netsys_sasl.Client.create_session ~mech ~user ~authz ~creds ~params () in
+      ref
+        (Netsys_sasl.Client.create_session
+           ~mech ~user ~authz ~creds ~params ()) in
     let first = ref true in
-    let state = ref  (Netsys_sasl.Client.state sess) in
+    let state = ref  (Netsys_sasl.Client.state !sess) in
     while not (is_final_sasl_states !state) do
       let msg =
-        match Netsys_sasl.Client.state sess with
-          | `Emit | `Stale -> Some (Netsys_sasl.Client.emit_response sess)
+        match Netsys_sasl.Client.state !sess with
+          | `Emit | `Stale -> 
+               let sess2, msg = Netsys_sasl.Client.emit_response !sess in
+               sess := sess2;
+               Some msg
           | `Wait | `OK -> None
           | _ -> assert false in
       let command =
@@ -248,16 +253,16 @@ object (self)
       first := false;
       match sasl_response ic with
         | `Challenge data ->
-            ( match Netsys_sasl.Client.state sess with
+            ( match Netsys_sasl.Client.state !sess with
                 | `OK | `Auth_error _ -> ()
                 | `Emit | `Stale -> assert false
                 | `Wait ->
-                    Netsys_sasl.Client.process_challenge sess data
+                    sess := Netsys_sasl.Client.process_challenge !sess data
             );
-            state := Netsys_sasl.Client.state sess;
+            state := Netsys_sasl.Client.state !sess;
             if !state = `OK then state := `Wait  (* we cannot stop now *)
         | `Ok ->
-            state := Netsys_sasl.Client.state sess;
+            state := Netsys_sasl.Client.state !sess;
             if !state <> `OK then state := `Auth_error "unspecified"
         | _ ->
             raise Protocol_error
@@ -269,7 +274,7 @@ object (self)
         | _ -> ()
     );
     assert(!state = `OK);
-    gssapi_props <- (try Some(Netsys_sasl.Client.gssapi_props sess)
+    gssapi_props <- (try Some(Netsys_sasl.Client.gssapi_props !sess)
                      with Not_found -> None);
     self#transition `Transaction;
 

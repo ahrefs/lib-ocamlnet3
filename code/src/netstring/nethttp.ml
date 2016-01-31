@@ -2075,7 +2075,7 @@ type match_result =
     ]
 
 
-module type HTTP_MECHANISM =
+module type HTTP_CLIENT_MECHANISM =
   sig
     val mechanism_name : string
     val available : unit -> bool
@@ -2096,15 +2096,16 @@ module type HTTP_MECHANISM =
           unit ->
             client_session
     val client_configure_channel_binding : client_session -> 
-                                           Netsys_sasl_types.cb -> unit
+                                           Netsys_sasl_types.cb ->
+                                             client_session
     val client_restart : params:(string * string * bool) list -> 
-                         client_session -> unit
+                         client_session -> client_session
     val client_process_challenge :
           client_session -> string -> string -> #http_header_ro -> 
-          Header.auth_challenge -> unit
+          Header.auth_challenge -> client_session
     val client_emit_response :
           client_session -> string -> string -> #http_header_ro ->
-          Header.auth_credentials * (string * string) list
+          client_session * Header.auth_credentials * (string * string) list
     val client_channel_binding : client_session -> Netsys_sasl_types.cb
     val client_user_name : client_session -> string
     val client_stash_session :

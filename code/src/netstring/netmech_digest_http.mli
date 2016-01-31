@@ -2,7 +2,7 @@
 
 (** Digest authentication for HTTP *)
 
-module Digest :  Nethttp.HTTP_MECHANISM
+module Digest :  Nethttp.HTTP_CLIENT_MECHANISM
   (** This is the standard HTTP digest authentication mechanism
       (see RFCs 2069, 2617, 7616). The hash functions MD5 and SHA-256
       are supported, in server preference.
@@ -29,7 +29,7 @@ module Digest :  Nethttp.HTTP_MECHANISM
       authentication will fail if this is not possible).
    *)
 
-module Digest_mutual :  Nethttp.HTTP_MECHANISM
+module Digest_mutual :  Nethttp.HTTP_CLIENT_MECHANISM
   (** This is the standard HTTP digest authentication mechanism
       (see RFCs 2069, 2617, 7616). This version also authenticates the server
       by checking the Authentication-Info header which must include the
@@ -63,5 +63,5 @@ module type PROFILE =
   end
 
 
-module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM
+module Make_digest(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM
   (** Create a custom version of the digest mechanism *)

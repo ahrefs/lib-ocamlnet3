@@ -19,6 +19,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
            netascii_armor.cmo nettls_support.cmo \
 	   netgssapi_support.cmo netgssapi_auth.cmo \
 	   netmech_scram.cmo netmech_scram_gssapi.cmo netmech_scram_sasl.cmo \
+	   netmech_scram_http.cmo \
 	   netmech_plain_sasl.cmo netmech_crammd5_sasl.cmo \
 	   netmech_digest.cmo netmech_digest_sasl.cmo \
 	   netmech_digest_http.cmo netmech_gs2_sasl.cmo netmech_krb5_sasl.cmo \

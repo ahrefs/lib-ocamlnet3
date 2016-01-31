@@ -482,15 +482,9 @@ let conn_sasl_bind_e conn
   let fail() =
     failwith "LDAP bind: unexpected response" in
   let creds = M.init_credentials sasl_creds in
-  let cs =
-    M.create_client_session 
-      ~user
-      ~authz
-      ~creds
-      ~params () in
   let id = new_msg_id conn in
 
-  let rec loop_e cont_needed =
+  let rec loop_e cs cont_needed =
     printf "LOOP\n%!";
     match M.client_state cs with
       | `OK ->
@@ -505,21 +499,21 @@ let conn_sasl_bind_e conn
           let req_msg = encode_sasl_bind_req id bind_dn M.mechanism_name None in
           trivial_sync_e
             conn
-            [ await_response_e conn id on_challenge_e;
+            [ await_response_e conn id (on_challenge_e cs);
               send_message_e conn req_msg
             ]
       | `Emit ->
           if not cont_needed then fail();
-          let data = M.client_emit_response cs in
+          let cs, data = M.client_emit_response cs in
           let req_msg =
             encode_sasl_bind_req id bind_dn M.mechanism_name (Some data) in
           trivial_sync_e
             conn
-            [ await_response_e conn id on_challenge_e;
+            [ await_response_e conn id (on_challenge_e cs);
               send_message_e conn req_msg
             ]
 
-    and on_challenge_e resp_msg =
+    and on_challenge_e cs resp_msg =
       printf "CHALLENGE\n%!";
       let cont_needed, data_opt =
         try
@@ -535,8 +529,8 @@ let conn_sasl_bind_e conn
       | `Wait ->
           ( match data_opt with
               | Some data ->
-                  M.client_process_challenge cs data;
-                  loop_e cont_needed
+                  let cs = M.client_process_challenge cs data in
+                  loop_e cs cont_needed
               | None ->
                   fail()
           )
@@ -544,7 +538,13 @@ let conn_sasl_bind_e conn
       | `Emit ->
           failwith "Netldap.conn_sasl_bind_e: unexpected SASL state"
   in
-  loop_e true
+  let cs =
+    M.create_client_session 
+      ~user
+      ~authz
+      ~creds
+      ~params () in
+  loop_e cs true
 
   
 (*
