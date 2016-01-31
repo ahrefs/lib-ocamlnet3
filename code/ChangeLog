@@ -1,3 +1,9 @@
+2016-01-31  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Authentication: the module types for SASL and HTTP authentication
+	  have been changed to a stateless style. Added an experimental
+	  SCRAM module for HTTP.
+
 2016-01-29  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Nethttp_client: Supporting Digest authentication with
