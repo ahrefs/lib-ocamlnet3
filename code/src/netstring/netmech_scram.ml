@@ -99,6 +99,7 @@ type client_session =
       cs_sf : server_final option;
       cs_salted_pw : string;
       cs_auth_message : string;
+      cs_client_key : string option;
       cs_proto_key : string option;
       cs_username : string;
       cs_authzname : string;
@@ -120,6 +121,7 @@ type server_session =
       ss_sf : server_final option;
       ss_creds: (string * string) option;
       ss_err : server_error option;
+      ss_client_key : string option;
       ss_proto_key : string option;
       ss_nonce : string option;
       ss_authenticate_opt : (string -> string -> credentials) option
@@ -686,6 +688,7 @@ let create_client_session2 ?nonce profile username authzname password =
     cs_username = username;
     cs_authzname = authzname;
     cs_password = password;
+    cs_client_key = None;
     cs_proto_key = None;
     cs_cb = `None;
     cs_nonce = nonce;
@@ -792,6 +795,11 @@ let client_prop cs key =
         ( match cs.cs_s1 with
             | None -> raise Not_found
             | Some s1 -> string_of_int s1.s1_iteration_count
+        )
+    | "client_key" ->
+        ( match cs.cs_client_key with
+            | None -> raise Not_found
+            | Some key -> key
         )
     | "protocol_key" ->
         ( match client_protocol_key cs with
@@ -933,6 +941,7 @@ let client_emit_message_kv cs =
 	         cs_state = `CF;
 	         cs_auth_message = auth_message;
 	         cs_salted_pw = salted_pw;
+                 cs_client_key = Some client_key;
 	         cs_proto_key = Some ( lsb128
 					 (hmac_string
                                             h
@@ -993,6 +1002,7 @@ let client_emit_message_kv cs =
 	         cs_cf = Some cf;
 	         cs_state = `CR ncount;
 	         cs_auth_message = auth_message;
+                 cs_client_key = Some client_key;
 	         cs_proto_key = Some ( lsb128
 					 (hmac_string
                                             h
@@ -1115,6 +1125,7 @@ let create_server_session2 ?nonce profile auth =
     ss_creds = None;
     ss_err = None;
     ss_nonce = nonce;
+    ss_client_key = None;
     ss_proto_key = None;
   }
 
@@ -1427,6 +1438,7 @@ let server_recv_message ss message =
                  raise (Invalid_proof "invalid gs2 header");
                { ss with
 	         ss_cf = Some cf;
+                 ss_client_key = Some decoded_client_key;
 	         ss_proto_key = Some ( lsb128
 					 (hmac_string
                                             h
@@ -1481,6 +1493,11 @@ let server_prop ss key =
         ( match ss.ss_s1 with
             | None -> raise Not_found
             | Some s1 -> string_of_int s1.s1_iteration_count
+        )
+    | "client_key" ->
+        ( match ss.ss_client_key ss with
+            | None -> raise Not_found
+            | Some key -> key
         )
     | "protocol_key" ->
         ( match server_protocol_key ss with

@@ -206,11 +206,17 @@ val client_import : string -> client_session
 
 val client_prop : client_session -> string -> string
   (** Returns a property of the client (or Not_found):
-       - "snonce"
-       - "cnonce"
-       - "salt"
-       - "i" (iteration_count)
-       - "protocol_key"
+       - "snonce": server nonce
+       - "cnonce": client nonce
+       - "salt": password salt
+       - "i": iteration count
+       - "client_key": this key is derived from the salted password but
+         cannot be derived from the stored key. Its presence proves that the
+         password was entered. It is ideal for encrypting data with a per-user
+         key. The client key is known both to the client and to the server
+         (after running the protocol).
+       - "protocol_key": another key defined in RFC-5801 known by both
+         sides. The protocol key is additionally also dependent on the nonces.
        - "error"
    *)
 
@@ -369,11 +375,13 @@ val server_import_any2 : string -> (string -> string -> credentials) ->
 
 
 val server_prop : server_session -> string -> string
-  (** Returns a property of the client (or Not_found):
+  (** Returns a property of the server (or Not_found) - see also [client_prop]
+      above:
        - "snonce"
        - "cnonce"
        - "salt"
        - "i" (iteration_count)
+       - "client_key"
        - "protocol_key"
    *)
 
