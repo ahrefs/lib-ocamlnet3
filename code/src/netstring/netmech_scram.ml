@@ -1495,7 +1495,7 @@ let server_prop ss key =
             | Some s1 -> string_of_int s1.s1_iteration_count
         )
     | "client_key" ->
-        ( match ss.ss_client_key ss with
+        ( match ss.ss_client_key with
             | None -> raise Not_found
             | Some key -> key
         )
