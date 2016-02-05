@@ -236,6 +236,8 @@ for other libraries.
    Netunichar
    Neturl
    Netx509
+   Netx509_pubkey
+   Netx509_pubkey_crypto
    Netxdr
    Netxdr_mstring
 }

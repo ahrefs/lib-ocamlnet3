@@ -186,9 +186,39 @@ module type DIGESTS = sig
     val finish : digest_ctx -> string
 end
 
+module type PUBKEY_CRYPTO = sig
+    type public_key
+    type private_key
+    type pin_callback
+    type algorithm
+
+    val supported_x509 : int array list
+    val algorithm_x509 : int array -> string option -> algorithm
+    val import_public_key_x509 : string -> public_key
+    val import_public_key_uri : string -> public_key
+    val import_public_key_uri_with_pin : pin_callback -> string -> public_key
+
+    type x509_private_key = string * string
+
+    val import_private_key_x509 : x509_private_key -> private_key
+
+    val import_private_key_uri : string -> private_key
+    val import_private_key_uri_with_pin : pin_callback -> string -> private_key
+
+    val import_public_key_from_private : private_key -> public_key
+
+    val simple_pin_callback : (unit -> string) -> pin_callback
+
+    val encrypt : algorithm -> public_key -> string -> string
+    val decrypt : algorithm -> private_key -> string -> string
+    val verify : algorithm -> public_key -> string -> string -> bool
+    val sign : algorithm -> private_key -> string -> string
+end
+
 type tls_provider = (module TLS_PROVIDER)
 type tls_config = (module TLS_CONFIG)
 type tls_endpoint = (module TLS_ENDPOINT)
 type file_tls_endpoint = (module FILE_TLS_ENDPOINT)
 type symmetric_crypto = (module SYMMETRIC_CRYPTO)
 type digests = (module DIGESTS)
+type pubkey_crypto = (module PUBKEY_CRYPTO)

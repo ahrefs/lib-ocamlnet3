@@ -35,14 +35,15 @@ mkdir -p testdir
 # Because of this, we use ocamlopt if available.
 
 call_ocamlc () {
-    echo '$' $compiler -ccopt "$GNUTLS_CFLAGS" -cclib "$GNUTLS_LIBS" "$@" >>$log
+    echo '$' $compiler -ccopt "$GNUTLS_CFLAGS" "$@" -cclib "$GNUTLS_LIBS" >>$log
     ( cd testdir;
-      $compiler -ccopt "$GNUTLS_CFLAGS" -cclib "$GNUTLS_LIBS" "$@"
+      $compiler -ccopt "$GNUTLS_CFLAGS" "$@" -cclib "$GNUTLS_LIBS"
     )  >>$log 2>&1
     return $?
 }
 
 have_gnutls_crypto_h=0
+have_gnutls_abstract_h=0
 have_nettle_gcm_h=0
 have_nettle_camellia_h=0
 add_include=""
@@ -88,6 +89,14 @@ init_checks() {
         echo "#define HAVE_GNUTLS_CRYPTO_H" >>$out
     else
         echo "#undef HAVE_GNUTLS_CRYPTO_H" >>$out
+    fi
+    if init_header "gnutls/abstract.h"; then
+        have_gnutls_abstract_h=1
+        add_include="$add_include
+#include <gnutls/abstract.h>"
+        echo "#define HAVE_GNUTLS_ABSTRACT_H" >>$out
+    else
+        echo "#undef HAVE_GNUTLS_ABSTRACT_H" >>$out
     fi
     if init_header "nettle/camellia.h"; then
         have_nettle_camellia_h=1

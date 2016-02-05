@@ -23,6 +23,12 @@ val current_symmetric_crypto : unit ->
       is always available, but may be empty (not implementing any ciphers).
    *)
 
+val current_pubkey_crypto : unit ->
+                            (module Netsys_crypto_types.PUBKEY_CRYPTO)
+  (** Returns the current provider for public key cryptography. This provider
+      is always available, but may be empty (not implementing any ciphers).
+   *)
+
 val current_digests : unit ->
                       (module Netsys_crypto_types.DIGESTS)
   (** Returns the current provider for cryptographic digests. This provider
@@ -41,3 +47,6 @@ val set_current_symmetric_crypto : (module Netsys_crypto_types.SYMMETRIC_CRYPTO)
                                      -> unit
 
 val set_current_digests : (module Netsys_crypto_types.DIGESTS) -> unit
+
+val set_current_pubkey_crypto : (module Netsys_crypto_types.PUBKEY_CRYPTO) ->
+                                unit
