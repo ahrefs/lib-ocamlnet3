@@ -1,12 +1,24 @@
 type oid = Netoid.t
-type pubkey_type = Pubkey of oid * Netasn1.Value.value option
+type alg_id = Alg_id of oid * Netasn1.Value.value option
 type pubkey =
-  { pubkey_type : pubkey_type;
+  { pubkey_type : alg_id;
     pubkey_data : Netasn1.Value.bitstring_value;
   }
-type encrypt_alg = Encrypt of oid
-type sign_alg = Sign of oid
-type kex_alg = Kex of oid
+type hash_function = [ `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
+type maskgen_function = [ `MGF1 of hash_function ]
+
+#ifdef HAVE_EXTENSIVE_VARIANTS
+type alg_param = ..
+type alg_param +=
+#else
+type alg_param =
+#endif
+| P_PSS of hash_function * maskgen_function * int
+| P_OAEP of hash_function * maskgen_function * string
+
+type encrypt_alg = Encrypt of oid * alg_param option
+type sign_alg = Sign of oid * alg_param option
+type kex_alg = Kex of oid * alg_param option
 type privkey = Privkey of string * string
 
 
@@ -20,9 +32,9 @@ let decode_pubkey_from_der s =
         let pubkey_type =
           match s_keytype with
             | [ V.OID oid ] ->
-                Pubkey(oid, None)
+                Alg_id(oid, None)
             | [ V.OID oid; params ] ->
-                Pubkey(oid, Some params)
+                Alg_id(oid, Some params)
             | _ ->
                 failwith "Netx509_pubkey.decode_pubkey_from_der" in
         { pubkey_type;
@@ -34,7 +46,7 @@ let decode_pubkey_from_der s =
 
 let encode_pubkey_to_der pk =
   let module V = Netasn1.Value in
-  let Pubkey(oid, params) = pk.pubkey_type in
+  let Alg_id(oid, params) = pk.pubkey_type in
   let v_params =
     match params with
       | None -> []
@@ -72,6 +84,33 @@ let read_privkey_from_pem ch =
         Privkey(ty, msg#value)
     | _ ->
         failwith "Netx509_pubkey.read_privkey_from_pem: several keys found"
+
+
+let hash_functions =
+  let module V = Netasn1.Value in
+  [ `SHA_1,   V.Seq [ V.OID [| 1; 3; 14; 3; 2; 26 |]; V.Null ];
+    `SHA_224, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 4 |]; V.Null ];
+    `SHA_256, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 1 |]; V.Null ];
+    `SHA_384, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 2 |]; V.Null ];
+    `SHA_512, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 3 |]; V.Null ];
+  ]
+
+let hash_size =
+  [ `SHA_1, 20;
+    `SHA_224, 28;
+    `SHA_256, 32;
+    `SHA_384, 48;
+    `SHA_512, 64
+  ]
+
+let maskgen_functions =
+  let module V = Netasn1.Value in
+  let mfg1_oid = [| 1; 2; 840; 113549; 1; 8 |] in
+  List.map
+    (fun (h, h_asn1) ->
+     (`MGF1 h, V.Seq [ V.OID mfg1_oid; h_asn1 ])
+    )
+    hash_functions
 
 
 module Key = struct
@@ -120,32 +159,11 @@ module Key = struct
     format
 
 
-  type hash_function = [ `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
-  type maskgen_function = [ `MGF1 of hash_function ]
+  let pspecified_oid = [| 1; 2; 840; 113549; 1; 9 |]
 
-  let hash_functions =
+  let create_rsassa_pss_alg_id ~hash_function ~maskgen_function ~salt_length ()=
     let module V = Netasn1.Value in
-    [ `SHA_1,   V.Seq [ V.OID [| 1; 3; 14; 3; 2; 26 |]; V.Null ];
-      `SHA_224, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 4 |]; V.Null ];
-      `SHA_256, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 1 |]; V.Null ];
-      `SHA_384, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 2 |]; V.Null ];
-      `SHA_512, V.Seq [ V.OID [| 2; 16; 840; 1; 101; 3; 4; 2; 3 |]; V.Null ];
-    ]
-
-  let maskgen_functions =
-    let module V = Netasn1.Value in
-    let mfg1_oid = [| 1; 2; 840; 113549; 1; 8 |] in
-    List.map
-      (fun (h, h_asn1) ->
-         (`MGF1 h, V.Seq [ V.OID mfg1_oid; h_asn1 ])
-      )
-      hash_functions
-
-  let create_rsassa_pss_key ~hash_function ~maskgen_function ~salt_length pkty =
-    let module V = Netasn1.Value in
-    let Pubkey(oid, _) = pkty in
-    if oid <> rsa_key && oid <> rsassa_pss_key then
-      failwith "Netx509_pubkey.Key.create_rsassa_pss_key";
+    let size = List.assoc hash_function hash_size in
     let hash_asn1 =
       if hash_function = `SHA_1 then
         []
@@ -158,24 +176,75 @@ module Key = struct
         [ V.ITag(V.Context, 1, List.assoc maskgen_function maskgen_functions)
         ] in
     let slen_asn1 =
-      if salt_length = 20 then
+      if salt_length = size then
         []
       else
         [ V.ITag(V.Context, 2, V.Integer(V.int salt_length)) ] in
     let params =
       V.Seq
         (hash_asn1 @ mg_asn1 @ slen_asn1) in
-    Pubkey(rsassa_pss_key, Some params)
-
-  let pspecified_oid = [| 1; 2; 840; 113549; 1; 9 |]
+    Alg_id(rsassa_pss_key, Some params)
 
 
-  let create_rsaes_oaep_key ~hash_function ~maskgen_function ~psource_function
-                            pkty =
+  let create_rsassa_pss_key ~hash_function ~maskgen_function ~salt_length key =
+    let Alg_id(oid, _) = key.pubkey_type in
+    if oid <> rsa_key && oid <> rsassa_pss_key then
+      failwith "Netx509_pubkey.Key.create_rsassa_pss_key";
+    { key with
+      pubkey_type = create_rsassa_pss_alg_id
+                      ~hash_function ~maskgen_function ~salt_length ()
+    }
+
+  let parse_rsassa_pss_params v =
     let module V = Netasn1.Value in
-    let Pubkey(oid, _) = pkty in
-    if oid <> rsa_key && oid <> rsaes_oaep_key then
-      failwith "Netx509_pubkey.Key.create_rsaes_oaep_key";
+    try
+      match v with
+        | V.Seq seq ->
+            let seq' =
+              Netasn1.streamline_seq
+                [ (V.Context, 0, Netasn1.Type_name.Seq);
+                  (V.Context, 1, Netasn1.Type_name.Seq);
+                  (V.Context, 2, Netasn1.Type_name.Integer)
+                ]
+                seq in
+            ( match seq' with
+                | [ v_hf_opt; v_mgf_opt; int_opt ] ->
+                    let h =
+                      match v_hf_opt with
+                        | Some v_hf ->
+                            let h, _ =
+                              List.find (fun (_, v) -> v_hf = v) hash_functions
+                            in h
+                        | None -> `SHA_1 in
+                    let size = List.assoc h hash_size in
+                    let mgf =
+                      match v_mgf_opt with
+                        | Some v_mgf ->
+                            let mgf, _ =
+                              List.find
+                                (fun (_, v) -> v_mgf = v) maskgen_functions in
+                            mgf
+                        | None -> `MGF1 `SHA_1 in
+                    let salt =
+                      match int_opt with
+                        | None -> size
+                        | Some(V.Integer i) -> V.get_int i
+                        | Some _ -> raise Not_found in
+                    (h, mgf, salt)
+              | _ ->
+                  raise Not_found
+          )
+      | _ ->
+          raise Not_found
+    with 
+      | Not_found
+      | Netasn1.Out_of_range ->
+          failwith "Netx509_pubkey.Key.parse_rsassa_pss_params"
+
+
+  let create_rsaes_oaep_alg_id ~hash_function ~maskgen_function
+                               ~psource_function () =
+    let module V = Netasn1.Value in
     let hash_asn1 =
       if hash_function = `SHA_1 then
         []
@@ -199,31 +268,145 @@ module Key = struct
     let params =
       V.Seq
         (hash_asn1 @ mg_asn1 @ psource_asn1) in
-    Pubkey(rsaes_oaep_key, Some params)
+    Alg_id(rsaes_oaep_key, Some params)
+
+  let create_rsaes_oaep_key ~hash_function ~maskgen_function ~psource_function
+                            key =
+    let Alg_id(oid, _) = key.pubkey_type in
+    if oid <> rsa_key && oid <> rsaes_oaep_key then
+      failwith "Netx509_pubkey.Key.create_rsaes_oaep_key";
+    { key with
+      pubkey_type =
+        create_rsaes_oaep_alg_id ~hash_function ~maskgen_function
+                                 ~psource_function ()
+    }
+
+  let parse_rsaes_oaep_params v =
+    let module V = Netasn1.Value in
+    try
+      match v with
+        | V.Seq seq ->
+            let seq' =
+              Netasn1.streamline_seq
+                [ (V.Context, 0, Netasn1.Type_name.Seq);
+                  (V.Context, 1, Netasn1.Type_name.Seq);
+                  (V.Context, 2, Netasn1.Type_name.Seq)
+                ]
+                seq in
+            ( match seq' with
+                | [ v_hf_opt; v_mgf_opt; v_psrc_opt ] ->
+                    let h =
+                      match v_hf_opt with
+                        | Some v_hf ->
+                            let h, _ =
+                              List.find (fun (_, v) -> v_hf = v) hash_functions
+                            in h
+                        | None -> `SHA_1 in
+                    let mgf =
+                      match v_mgf_opt with
+                        | Some v_mgf ->
+                            let mgf, _ =
+                              List.find
+                                (fun (_, v) -> v_mgf = v) maskgen_functions in
+                            mgf
+                        | None -> `MGF1 `SHA_1 in
+                    let psrc =
+                      match v_psrc_opt with
+                        | Some (V.Seq [ V.OID oid; V.Octetstring s ])
+                             when oid = pspecified_oid ->
+                            s
+                        | None ->
+                            ""
+                        | _ -> raise Not_found in
+                    (h, mgf, psrc)
+              | _ ->
+                  raise Not_found
+          )
+      | _ ->
+          raise Not_found
+    with 
+      | Not_found
+      | Netasn1.Out_of_range ->
+          failwith "Netx509_pubkey.Key.parse_rsaes_oaep_params"
+
+  let alg_param_to_asn1 =
+    function
+    | P_PSS(h, mgf, salt) ->
+        let Alg_id(_, p) =
+          create_rsassa_pss_alg_id
+            ~hash_function:h
+            ~maskgen_function:mgf
+            ~salt_length:salt
+            () in
+        p
+    | P_OAEP(h, mgf, psrc) ->
+        let Alg_id(_, p) =
+          create_rsaes_oaep_alg_id
+            ~hash_function:h
+            ~maskgen_function:mgf
+            ~psource_function:psrc
+            () in
+        p
+
 end
 
 module Encryption = struct
-  let rsa = Encrypt [| 1; 2; 840; 113549; 1; 1 |]
-  let rsaes_oaep = Encrypt [| 1; 2; 840; 113549; 1; 7 |]
+  let rsa = Encrypt(Key.rsa_key, None)
+  let rsaes_oaep ~hash_function ~maskgen_function ~psource_function =
+    let p = P_OAEP(hash_function, maskgen_function, psource_function) in
+    Encrypt(Key.rsaes_oaep_key,Some p)
 
   let catalog =
     [ ( "RSA",
         [ "RSA"; "PKCS-1"; "RSAES-PKCS1-v1_5" ],
         rsa,
         Key.rsa_key
-      );
-      ( "RSAES-OAEP",
-        [ "RSAES-OAEP"; "RSAES-OAEP-PKCS1-v2_1" ],
-        rsaes_oaep,
-        Key.rsaes_oaep_key
-      );
+      )
     ]
+    @
+      List.map
+        (fun (h,name) ->
+           let full_name = "RSAES-OAEP-MGF1-" ^ name in
+           ( full_name, [ full_name ],
+             rsaes_oaep
+               ~hash_function:h
+               ~maskgen_function:(`MGF1 h)
+               ~psource_function:"",
+             Key.rsaes_oaep_key
+           )
+        )
+        [ `SHA_1, "SHA1"; `SHA_224, "SHA224"; `SHA_256, "SHA256";
+          `SHA_384, "SHA384"; `SHA_512, "SHA512"
+        ]
+
 
   let encrypt_alg_of_pubkey pk =
-    let Pubkey(oid,_) = pk.pubkey_type in
-    Encrypt oid
+    let Alg_id(oid,params) = pk.pubkey_type in
+    if oid = Key.rsa_key then
+      Encrypt(oid, None)
+    else if oid = Key.rsaes_oaep_key then
+      let params' =
+        match params with
+          | Some p ->
+              let (h, mgf, psrc) = Key.parse_rsaes_oaep_params p in
+              Some (P_OAEP(h, mgf, psrc))
+          | None ->
+              None in
+      Encrypt(oid, params')
+    else
+      failwith "Netx509_pubkey.Encryption.encrypt_alg_of_pubkey: not an \
+                encryption algorithm"
 
-  let pubkey_oid_of_encrypt_alg alg0 =
+
+  let alg_id_of_encrypt_alg (Encrypt(oid,p_opt)) =
+    let p_opt' =
+      match p_opt with
+        | None -> None
+        | Some p -> Key.alg_param_to_asn1 p in
+    Alg_id(oid, p_opt')
+
+
+  let key_oid_of_encrypt_alg alg0 =
     let _, _, _, pubkey_oid =
       List.find
         (fun (_, _, alg, _) -> alg = alg0)
@@ -234,11 +417,11 @@ end
 
 
 module Keyagreement = struct
-  let dh = Kex [| 1; 2; 840; 10046; 2; 1 |]
-  let kea = Kex [| 2; 16; 840; 1; 101; 2; 1; 1; 22 |]
-  let ec = Kex [| 1; 2; 840; 10045; 2; 1 |]
-  let ecdh = Kex [| 1; 3; 132; 1; 12 |]
-  let ecmqv = Kex [| 1; 3; 132; 1; 13 |]
+  let dh = Kex([| 1; 2; 840; 10046; 2; 1 |], None)
+  let kea = Kex([| 2; 16; 840; 1; 101; 2; 1; 1; 22 |], None)
+  let ec = Kex([| 1; 2; 840; 10045; 2; 1 |], None)
+  let ecdh = Kex([| 1; 3; 132; 1; 12 |], None)
+  let ecmqv = Kex([| 1; 3; 132; 1; 13 |], None)
 
   let catalog =
     [ ( "DH",       [ "DH" ],     dh,     Key.dh_key);
@@ -247,25 +430,43 @@ module Keyagreement = struct
       ( "ECDH",     [ "ECDH" ],   ecdh,   Key.ecdh_key);
       ( "ECMQV",    [ "ECMQV" ],  ecmqv,  Key.ecmqv_key);
     ]
+
+  let alg_id_of_kex_alg (Kex(oid,p_opt)) =
+    let p_opt' =
+      match p_opt with
+        | None -> None
+        | Some p -> Key.alg_param_to_asn1 p in
+    Alg_id(oid, p_opt')
+
+
+  let key_oid_of_kex_alg alg0 =
+    let _, _, _, pubkey_oid =
+      List.find
+        (fun (_, _, alg, _) -> alg = alg0)
+        catalog in
+    pubkey_oid
 end
 
 
 module Signing = struct
-  let rsa_with_sha1 = Sign [| 1; 2; 840; 113549; 1; 1; 5 |]
-  let rsa_with_sha224 = Sign [| 1; 2; 840; 113549; 1; 1; 14 |]
-  let rsa_with_sha256 = Sign [| 1; 2; 840; 113549; 1; 1; 11 |]
-  let rsa_with_sha384 = Sign [| 1; 2; 840; 113549; 1; 1; 12 |]
-  let rsa_with_sha512 = Sign [| 1; 2; 840; 113549; 1; 1; 13 |]
-  let rsassa_pss = Sign [| 1; 2; 840; 113549; 1; 10 |]
-  let dsa_with_sha1 = Sign [| 1; 2; 840; 10040; 4; 3 |]
-  let dsa_with_sha224 = Sign [| 2; 16; 840; 1; 101; 3; 4; 3; 1 |]
-  let dsa_with_sha256 = Sign [| 2; 16; 840; 1; 101; 3; 4; 3; 2 |]
-  let ecdsa_with_sha1 = Sign [| 1; 2; 840; 10045; 4; 1 |]
-  let ecdsa_with_sha224 = Sign [| 1; 2; 840; 10045; 3; 1 |]
-  let ecdsa_with_sha256 = Sign [| 1; 2; 840; 10045; 3; 2 |]
-  let ecdsa_with_sha384 = Sign [| 1; 2; 840; 10045; 3; 3 |]
-  let ecdsa_with_sha512 = Sign [| 1; 2; 840; 10045; 3; 4 |]
-  let eddsa = Sign [| 1; 3; 101; 101 |]
+  let rsa_with_sha1 = Sign([| 1; 2; 840; 113549; 1; 1; 5 |], None)
+  let rsa_with_sha224 = Sign([| 1; 2; 840; 113549; 1; 1; 14 |], None)
+  let rsa_with_sha256 = Sign([| 1; 2; 840; 113549; 1; 1; 11 |], None)
+  let rsa_with_sha384 = Sign([| 1; 2; 840; 113549; 1; 1; 12 |], None)
+  let rsa_with_sha512 = Sign([| 1; 2; 840; 113549; 1; 1; 13 |], None)
+  let dsa_with_sha1 = Sign([| 1; 2; 840; 10040; 4; 3 |], None)
+  let dsa_with_sha224 = Sign([| 2; 16; 840; 1; 101; 3; 4; 3; 1 |], None)
+  let dsa_with_sha256 = Sign([| 2; 16; 840; 1; 101; 3; 4; 3; 2 |], None)
+  let ecdsa_with_sha1 = Sign([| 1; 2; 840; 10045; 4; 1 |], None)
+  let ecdsa_with_sha224 = Sign([| 1; 2; 840; 10045; 3; 1 |], None)
+  let ecdsa_with_sha256 = Sign([| 1; 2; 840; 10045; 3; 2 |], None)
+  let ecdsa_with_sha384 = Sign([| 1; 2; 840; 10045; 3; 3 |], None)
+  let ecdsa_with_sha512 = Sign([| 1; 2; 840; 10045; 3; 4 |], None)
+  let eddsa = Sign([| 1; 3; 101; 101 |], None)
+
+  let rsassa_pss ~hash_function ~maskgen_function ~salt_length =
+    Sign([| 1; 2; 840; 113549; 1; 10 |], 
+         Some(P_PSS(hash_function, maskgen_function, salt_length)))
 
   let catalog =
     [ ( "RSA-SHA1",
@@ -292,11 +493,6 @@ module Signing = struct
         [ "RSA-SHA512" ],
         rsa_with_sha512,
         Key.rsa_key
-      );
-      ( "RSASSA-PSS",
-        [ "RSASSA-PSS"; "RSASSA-PSS-PKCS1-v2_1" ],
-        rsassa_pss,
-        Key.rsassa_pss_key
       );
       ( "DSA-SHA1",
         [ "DSA"; "DSA-SHA1" ],
@@ -344,9 +540,32 @@ module Signing = struct
         Key.eddsa_key
       )
     ]
+    @
+      List.map
+        (fun (h,name) ->
+           let full_name = "RSASSA-PSS-MGF1-" ^ name in
+           ( full_name, [ full_name ],
+             rsassa_pss
+               ~hash_function:h
+               ~maskgen_function:(`MGF1 h)
+               ~salt_length:(List.assoc h hash_size),
+             Key.rsassa_pss_key
+           )
+        )
+        [ `SHA_1, "SHA1"; `SHA_224, "SHA224"; `SHA_256, "SHA256";
+          `SHA_384, "SHA384"; `SHA_512, "SHA512"
+        ]
 
-  let pubkey_oid_of_sign_alg alg0 =
-    (* get the OID expected in a pubkey compatible with a sign alg *)
+
+  let alg_id_of_sign_alg (Sign(oid,p_opt)) =
+    let p_opt' =
+      match p_opt with
+        | None -> None
+        | Some p -> Key.alg_param_to_asn1 p in
+    Alg_id(oid, p_opt')
+
+
+  let key_oid_of_sign_alg alg0 =
     let _, _, _, pubkey_oid =
       List.find
         (fun (_, _, alg, _) -> alg = alg0)

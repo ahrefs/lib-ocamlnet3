@@ -67,7 +67,9 @@ module Value : sig
         (** Sets (constructed) *)
     | Tagptr of tag_class * int * pc * Netstring_tstring.tstring_polybox *
                   int * int
-        (** Pointer to an undecoded value that was implicitly tagged *)
+        (** Pointer to an undecoded value that was implicitly tagged.
+            The [tag_class] can be [Application], [Context], or [Private].
+         *)
     | Tag of tag_class * int * pc * value
         (** Explicit tag (primitive or constructed depending on inner value) *)
     | ITag of tag_class * int * value
@@ -129,6 +131,9 @@ module Value : sig
    and time_value
 
   type time_subtype = [ `U | `G ]
+
+  val type_of_value : value -> Type_name.type_name option
+    (** Returns the type, or [None] for [Tag], [ITag] and [Tagptr] *)
 
   (** {3 Integer} *)
 
@@ -374,6 +379,43 @@ val decode_ber_header_poly
       's Netstring_tstring.tstring_ops -> 's ->
       (int * Value.tag_class * Value.pc * int * int option)
   (** Polymorphic version *)
+
+val streamline_seq : (Value.tag_class * int * Type_name.type_name) list ->
+                     Value.value list ->
+                     Value.value option list
+  (** [streamline_seq expected seq]: This function can be called for a list of
+      values [Value.Seq seq], and will compare the list [seq] with the
+      [expected] list, and will mark missing elements in the sequence, and
+      will recursively decode the occurring elements with the type information
+      from [expected].
+
+      For example, if [expected] is 
+      {[ [Context,0,Integer; Context,1,Octetstring; Context,2,IA5String] ]}
+      and the passed [seq] is just
+      {[ [Tagptr(Context,1,...)] ]}
+      the function assumes that the elements with tags 0 and 2 are optional
+      and it assumes that the element with tag 1 is decoded as [Octetstring],
+      leading to
+      {[ None; Some(Octetstring ...); None ]}
+
+      It is allowed to put [Universal] tags into the [expected] list. The
+      tag number is ignored in this case (for simplicity).
+   *)
+
+val streamline_set : (Value.tag_class * int * Type_name.type_name) list ->
+                     Value.value list ->
+                     Value.value list
+  (** [streamline_set typeinfo set]:  This function can be called for a list of
+      values [Value.Set seq], and decodes the list with the type information
+      from [typeinfo].
+
+      For example, if [typeinfo] is 
+      {[ [Context,0,Integer; Context,1,Octetstring; Context,2,IA5String] ]}
+      and the passed [set] is just
+      {[ [Tagptr(Context,1,...); Tagptr(Context 0,...)] ]}
+      the function decodes the elements as
+      {[ [ Octetstring ...; Integer ... ] ]}
+   *)
 
 (** {1:intro The Abstract Syntax Notation 1 (ASN.1)}
 

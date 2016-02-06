@@ -1307,7 +1307,7 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
   let supported_x509_encrypt =
     (* Generally assume that we support RSA without checking it *)
     List.map
-      (fun (X.Encrypt oid) -> oid)
+      (fun (X.Encrypt(oid,_)) -> oid)
       [ X.Encryption.rsa
       ]
 
@@ -1330,7 +1330,7 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
   let catalog_x509_sign =
     (* catalog (oid, our hash name, GnuTLS name) *)
     List.map
-      (fun (X.Sign oid, hash, gnutls_name) -> (oid, hash, gnutls_name))
+      (fun (X.Sign(oid,_), hash, gnutls_name) -> (oid, hash, gnutls_name))
       [ X.Signing.rsa_with_sha1,     `SHA_1,   "RSA-SHA1";
         X.Signing.rsa_with_sha224,   `SHA_224, "RSA-SHA224";
         X.Signing.rsa_with_sha256,   `SHA_256, "RSA-SHA256";
@@ -1436,21 +1436,21 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
 
   let privkey_format_of_encalg oid =
     X.Key.private_key_format_of_key
-      (X.Encryption.pubkey_oid_of_encrypt_alg
-         (X.Encrypt oid))
+      (X.Encryption.key_oid_of_encrypt_alg
+         (X.Encrypt(oid,None)))
 
   let privkey_format_of_signalg oid =
     X.Key.private_key_format_of_key
-      (X.Signing.pubkey_oid_of_sign_alg
-         (X.Sign oid))
+      (X.Signing.key_oid_of_sign_alg
+         (X.Sign(oid,None)))
 
 
   let encrypt alg (netpub,pub) data =
-    let X.Pubkey(puboid,_) = X.(netpub.pubkey_type) in
+    let X.Alg_id(puboid,_) = X.(netpub.pubkey_type) in
     match alg with
       | Encrypt oid ->
           let expected_puboid = 
-            X.Encryption.pubkey_oid_of_encrypt_alg (X.Encrypt oid) in
+            X.Encryption.key_oid_of_encrypt_alg (X.Encrypt(oid,None)) in
           if expected_puboid <> puboid then
             failwith "Nettls_gnutls.Pubkey_crypto.encrypt: algorithm cannot \
                       be applied to key";
@@ -1472,11 +1472,11 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
                     algorithm"
 
   let verify alg (netpub,pub) plaintext signature =
-    let X.Pubkey(puboid,_) = X.(netpub.pubkey_type) in
+    let X.Alg_id(puboid,_) = X.(netpub.pubkey_type) in
     match alg with
       | Sign(oid,_) ->
           let expected_puboid =
-            X.Signing.pubkey_oid_of_sign_alg (X.Sign oid) in
+            X.Signing.key_oid_of_sign_alg (X.Sign(oid,None)) in
           if expected_puboid <> puboid then
             failwith "Nettls_gnutls.Pubkey_crypto.verify: algorithm cannot \
                       be applied to key";

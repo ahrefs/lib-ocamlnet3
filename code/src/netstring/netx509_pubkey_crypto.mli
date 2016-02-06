@@ -27,7 +27,6 @@ val encrypt : Netx509_pubkey.encrypt_alg ->
    *)
 
 val decrypt : Netx509_pubkey.encrypt_alg ->
-              Netx509_pubkey.pubkey ->   (* FIXME: pubkey_params suffices *)
               Netx509_pubkey.privkey ->
               string -> string
   (** Decrypt the string *)
@@ -40,7 +39,6 @@ val verify : Netx509_pubkey.sign_alg ->
    *)
 
 val sign : Netx509_pubkey.sign_alg ->
-           Netx509_pubkey.pubkey ->   (* FIXME: pubkey_params suffices *)
            Netx509_pubkey.privkey ->
            string -> string
   (** [let signature = sign alg key plaintext]: Creates a signature.

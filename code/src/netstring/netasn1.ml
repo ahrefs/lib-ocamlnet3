@@ -110,6 +110,41 @@ module Value = struct
            v1 = v2
 
 
+  let type_of_value =
+    function
+    | Bool _ -> Some Type_name.Bool
+    | Integer _ -> Some Type_name.Integer
+    | Enum _ -> Some Type_name.Enum
+    | Real _ -> Some Type_name.Real
+    | Bitstring _ -> Some Type_name.Bitstring
+    | Octetstring _ -> Some Type_name.Octetstring
+    | Null -> Some Type_name.Null
+    | Seq _ -> Some Type_name.Seq
+    | Set _ -> Some Type_name.Set
+    | OID _ -> Some Type_name.OID
+    | ROID _ -> Some Type_name.ROID
+    | ObjectDescriptor _ -> Some Type_name.ObjectDescriptor
+    | External _ -> Some Type_name.External
+    | Embedded_PDV _ -> Some Type_name.Embedded_PDV
+    | NumericString _ -> Some Type_name.NumericString
+    | PrintableString _ -> Some Type_name.PrintableString
+    | TeletexString _ -> Some Type_name.TeletexString
+    | VideotexString _ -> Some Type_name.VideotexString
+    | VisibleString _ -> Some Type_name.VisibleString
+    | IA5String _ -> Some Type_name.IA5String
+    | GraphicString _ -> Some Type_name.GraphicString
+    | GeneralString _ -> Some Type_name.GeneralString
+    | UniversalString _ -> Some Type_name.UniversalString
+    | BMPString _ -> Some Type_name.BMPString
+    | UTF8String _ -> Some Type_name.UTF8String
+    | CharString _ -> Some Type_name.CharString
+    | UTCTime _ -> Some Type_name.UTCTime
+    | GeneralizedTime _ -> Some Type_name.GeneralizedTime
+    | Tagptr _
+    | Tag _
+    | ITag _ -> None
+
+
   let get_int_repr v = v
   let get_int_b256 v =
     if v = "\000" then
@@ -980,3 +1015,71 @@ let decode_ber_header_tstring ?pos ?len ?skip_length_check ts =
         )
     }
     ts
+
+let rec streamline_seq expected seq =
+  let open Netstring_tstring in
+  match expected, seq with
+    | [], _ ->
+        failwith "Netasn1.streamline_seq"
+
+    | ((exp_tc, exp_tag, exp_ty)::expected1),
+      (Value.ITag(act_tc, act_tag, act_v)::seq1)
+          when exp_tc=act_tc && exp_tag=act_tag ->
+        if Value.type_of_value act_v <> Some exp_ty then
+          failwith "Netasn1.streamline_seq";
+        Some act_v :: streamline_seq expected1 seq1
+
+    | ((exp_tc, exp_tag, exp_ty)::expected1),
+      (Value.Tagptr(act_tc,act_tag,pc,box,pos,len)::seq1)
+          when exp_tc=act_tc && exp_tag=act_tag ->
+        let Tstring_polybox(ops,s) = box in
+        let act_len, v = decode_ber_contents_poly ~pos ~len ops s pc exp_ty in
+        if act_len <> len then
+          failwith "Netasn1.streamline_seq";
+        Some v :: streamline_seq expected1 seq1
+
+    | _, (Value.Tag _ :: _) ->
+        failwith "Netasn1.streamline_seq"
+
+    | ((Value.Universal, exp_tag, exp_ty)::expected1),
+      (v::seq1) 
+          when Value.type_of_value v = Some exp_ty ->
+        Some v :: streamline_seq expected1 seq1
+               
+    | (_ :: expected1), _ ->
+        None :: streamline_seq expected1 seq
+
+    | [], [] ->
+        []
+
+
+let streamline_set typeinfo set =
+  let open Netstring_tstring in
+  let ht = Hashtbl.create 5 in
+  List.iter
+    (fun (tc,tag,ty) -> Hashtbl.replace ht (tc,tag) ty)
+    typeinfo;
+  List.map
+    (function
+      | Value.ITag(tc, tag, v) ->
+          let ty =
+            try Hashtbl.find ht (tc,tag)
+            with Not_found ->
+              failwith "Netasn1.streamline_set" in
+          if Value.type_of_value v <> Some ty then
+            failwith "Netasn1.streamline_set";
+          v
+      | Value.Tagptr(tc, tag, pc, box, pos, len) ->
+          let ty =
+            try Hashtbl.find ht (tc,tag)
+            with Not_found ->
+              failwith "Netasn1.streamline_set" in
+          let Tstring_polybox(ops,s) = box in
+          let act_len, v = decode_ber_contents_poly ~pos ~len ops s pc ty in
+          if act_len <> len then
+            failwith "Netasn1.streamline_set";
+          v
+      | v ->
+          v
+    )
+    set

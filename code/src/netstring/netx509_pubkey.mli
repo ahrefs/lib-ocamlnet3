@@ -38,13 +38,12 @@ type oid = Netoid.t
 
 (* TODO: type pubkey_params = Pubkey_params of Netasn1.Value.value option *)
 
-type pubkey_type = Pubkey of oid * Netasn1.Value.value option
-    (** The type of the public key (OID, and algorithm-specific
-         parameters)
+type alg_id = Alg_id of oid * Netasn1.Value.value option
+    (** Algorithms are identified by an OID and OID-specific parameters.
      *)
 
 type pubkey =
-  { pubkey_type : pubkey_type;
+  { pubkey_type : alg_id;
     pubkey_data : Netasn1.Value.bitstring_value;
   }
   (** Public key info: the key as such plus the algorithm. This combination
@@ -52,9 +51,40 @@ type pubkey =
       certificates.
    *)
 
-type encrypt_alg = Encrypt of oid
-type sign_alg = Sign of oid
-type kex_alg = Kex of oid
+type hash_function = [ `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
+type maskgen_function = [ `MGF1 of hash_function ]
+
+#ifdef HAVE_EXTENSIVE_VARIANTS
+type alg_param = ..
+type alg_param +=
+#else
+type alg_param =
+#endif
+| P_PSS of hash_function * maskgen_function * int
+| P_OAEP of hash_function * maskgen_function * string
+
+
+type encrypt_alg = Encrypt of oid * alg_param option
+  (** An algorithm that can be used for encryption. Same format as [Alg_id]
+   *)
+
+type sign_alg = Sign of oid * alg_param option
+  (** An algorithm that can be used for signing. Same format as [Alg_id]
+   *)
+
+type kex_alg = Kex of oid * alg_param option
+  (** An algorithm that can be used for key agreement. Same format as 
+      [Alg_id]
+
+      Remember that you can use any key agreement protocol also as public
+      key mechanism: if Alice sends Bob message A based on a secret a, and Bob
+      replies with message B based on a secret b, and both agree on a 
+      key K=f(a,b), you can consider A as the public key and Alices's secret
+      a as the private key. The message B is a parameter of
+      the ciphertext (comparable to the IV in symmetric cryptography), and K
+      is used as transport key (for a symmetric cipher). That's
+      why the key agreement algorithms appear here.
+   *)
 
 val decode_pubkey_from_der : string -> pubkey
   (** Decodes a DER-encoded public key info structure. Note that this function
@@ -81,17 +111,7 @@ val read_privkey_from_pem : Netchannels.in_obj_channel -> privkey
 
 module Key : 
 sig
-  (** These OIDs are used when storing public keys (in [Pubkey(oid,_)])
-  
-      Remember that you can use any key agreement protocol also as public
-      key mechanism: if Alice sends Bob message A based on a secret a, and Bob
-      replies with message B based on a secret b, and both agree on a 
-      key K=f(a,b), you can consider A as the public key and Alices's secret
-      a as the private key. The message B is a parameter of
-      the ciphertext (comparable to the IV in symmetric cryptography), and K
-      is used as transport key (for a symmetric cipher). That's
-      why the key agreement algorithms appear here.
-   *)
+  (** These OIDs are used when storing public keys *)
 
   val rsa_key : oid            (** alias PKCS-1. RFC-3279, RFC-3447 *)
   val rsassa_pss_key : oid     (** RSASSA-PSS. RFC-4055, RFC-3447 *)
@@ -114,44 +134,57 @@ sig
       can be used with the RSASSA-PSS and RSAES-OAEP algorithms:
    *)
 
-  type hash_function = [ `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
-  type maskgen_function = [ `MGF1 of hash_function ]
+  val create_rsassa_pss_alg_id : 
+        hash_function:hash_function ->
+        maskgen_function:maskgen_function ->
+        salt_length:int ->
+        unit ->
+          alg_id
+    (** [create_rsassa_pss_alg_id ... ]: Creates an algorithm identifier
+        for RSASSA-PSS.
+     *)
 
   val create_rsassa_pss_key : 
         hash_function:hash_function ->
         maskgen_function:maskgen_function ->
         salt_length:int ->
-        pubkey_type ->
-          pubkey_type
-    (** [create_rsassa_pss_key ... pktype]: The passed [pktype] must have an
-        OID of [rsa_key] or [rsassa_pss_key]. The returned [pktype] has an
-        OID of [rsassa_pss_key]. The parameters are set as specified by the
-        other arguments. For these key types the encoding of the
-        [pubkey_data] is identical (PKCS-1).
+        pubkey ->
+          pubkey
+    (** Derives a public key that is specific for RSASSA-PSS from an RSA
+        public key.
+     *)
+
+  val create_rsaes_oaep_alg_id :
+        hash_function:hash_function ->
+        maskgen_function:maskgen_function ->
+        psource_function:string ->
+        unit ->
+          alg_id
+    (** [create_rsaep_oaep_alg_id ... ]: Creates an algorithm identifier
+        for RSAES-OAEP.
      *)
 
   val create_rsaes_oaep_key :
         hash_function:hash_function ->
         maskgen_function:maskgen_function ->
         psource_function:string ->
-        pubkey_type ->
-          pubkey_type
-    (** [create_rsaes_oaep_key ... pktype]: The passed [pktype] must have an
-        OID of [rsa_key] or [rsaes_oaep_key]. The returned [pktype] has an
-        OID of [rsaes_oaep_key]. The parameters are set as specified by the
-        other arguments. For these key types the encoding of the
-        [pubkey_data] is identical (PKCS-1).
+        pubkey ->
+          pubkey
+    (** Derives a public key that is specific for RSAES-OAEP from an RSA
+        public key.
      *)
 end
 
 
 module Encryption :
 sig
-  (** These algorithms are used for encryption/decryption or key agreement.
-   *)
+  (** These algorithms are used for encryption/decryption *)
 
   val rsa : encrypt_alg               (** alias RSAES-PKCS1-v1_5 *)
-  val rsaes_oaep : encrypt_alg        (** RSAES-OAEP *)
+  val rsaes_oaep : hash_function:hash_function ->
+                   maskgen_function:maskgen_function ->
+                   psource_function:string ->
+                   encrypt_alg        (** RSAES-OAEP *)
 
   val catalog : (string * string list * encrypt_alg * oid) list
     (** [(name, aliases, oid, pubkey_oid)] *) 
@@ -159,9 +192,11 @@ sig
   val encrypt_alg_of_pubkey : pubkey -> encrypt_alg
     (** Normally use the algorithm that is present in the public key *)
 
-  val pubkey_oid_of_encrypt_alg : encrypt_alg -> oid
-    (** Get the public key OID of an encryption alg *)
+  val alg_id_of_encrypt_alg : encrypt_alg -> alg_id
+    (** Get the alg_id of an encryption alg *)
 
+  val key_oid_of_encrypt_alg : encrypt_alg -> oid
+    (** The OID public keys need to have *)
 end
 
 
@@ -174,7 +209,13 @@ sig
   val kea : kex_alg               (** KEA *)
 
   val catalog : (string * string list * kex_alg * oid) list
-    (** [(name, aliases, oid, container_oid)] *) 
+    (** [(name, aliases, oid, pubkey_oid)] *) 
+
+  val alg_id_of_kex_alg : kex_alg -> alg_id
+    (** Get the alg_id of a key agreement alg *)
+
+  val key_oid_of_kex_alg : kex_alg -> oid
+    (** The OID public keys need to have *)
 end
 
 
@@ -186,8 +227,10 @@ sig
   val rsa_with_sha256 : sign_alg
   val rsa_with_sha384 : sign_alg
   val rsa_with_sha512 : sign_alg
-  val rsassa_pss : sign_alg          (** RSASSA-PSS; the hash and maskgen
-                                          functions are encoded in the pubkey *)
+  val rsassa_pss: hash_function:hash_function ->
+                  maskgen_function:maskgen_function ->
+                  salt_length:int ->
+                  sign_alg           (** RSASSA-PSS *)
   val dsa_with_sha1 : sign_alg       (** DSA *)
   val dsa_with_sha224 : sign_alg
   val dsa_with_sha256 : sign_alg
@@ -201,6 +244,9 @@ sig
   val catalog : (string * string list * sign_alg * oid) list
     (** [(name, aliases, oid, container_oid)] *) 
 
-  val pubkey_oid_of_sign_alg : sign_alg -> oid
-    (** Get the public key OID of a sign alg *)
+  val alg_id_of_sign_alg : sign_alg -> alg_id
+    (** Get the alg_id of a sign alg *)
+
+  val key_oid_of_sign_alg : sign_alg -> oid
+    (** The OID public keys need to have *)
 end
