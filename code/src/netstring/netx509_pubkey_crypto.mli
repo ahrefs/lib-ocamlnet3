@@ -45,3 +45,44 @@ val sign : Netx509_pubkey.sign_alg ->
 
       Unlike for encryption there is no length restriction.
    *)
+
+
+(** Example: Using RSA for encryption
+
+    First create RSA keys:
+
+{[
+openssl genrsa -out rsa.key 2048
+openssl rsa -in rsa.key -pubout -out rsa.pub
+]}
+
+    Read the keys in:
+
+{[
+let priv_ch = Netchannels.input_channel(open_in "rsa.key")
+let priv = Netx509_pubkey.read_privkey_from_pem priv_ch
+let () = priv_ch#close_in()
+
+let pub_ch = Netchannels.input_channel(open_in "rsa.pub")
+let pub = Netx509_pubkey.read_pubkey_from_pem pub_ch
+let () = pub_ch#close_in()
+]}
+
+   Encrypt something:
+
+{[
+let () = Nettls_gnutls.init()
+let e = encrypt Netx509_pubkey.Encryption.rsa pub "secret"
+]}
+
+   Decrypt:
+
+{[
+let d = decrypt Netx509_pubkey.Encryption.rsa priv e
+]}
+
+Note that encryption with public keys is restricted to very short
+messages (e.g. 245 bytes for a 2048 bits RSA key). Typically,
+only a random second key is encrypted, and the second key is
+used with a symmetric cipher.
+ *)

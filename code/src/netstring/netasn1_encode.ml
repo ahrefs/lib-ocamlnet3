@@ -184,7 +184,7 @@ let rec encode_ber_contents buf v =
       )
       else if length <= 0xffff then (
         Netbuffer.add_char buf '\x82';
-        Netbuffer.add_char buf (Char.chr (length lsl 8));
+        Netbuffer.add_char buf (Char.chr (length lsr 8));
         Netbuffer.add_char buf (Char.chr (length land 0xff));
       )
       else (

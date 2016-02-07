@@ -687,7 +687,10 @@ module type PUBKEY_CRYPTO = sig
 
     val algorithm_x509 : int array -> string option -> algorithm
       (** The algorithm is specified by OID. The parameters - if present -
-          are DER-encoded.
+          are DER-encoded. The passed parameters override any parameters
+          already contained in the key. Usually, it is only necessary to
+          provide parameters that are not yet contained in the key (e.g.
+          the hash algorithms of RSASSA-PSS when applied to a normal RSA key).
        *)
 
     val import_public_key_x509 : string -> public_key
@@ -700,11 +703,15 @@ module type PUBKEY_CRYPTO = sig
 
     type x509_private_key = string * string
       (** [(format,data)], using the formats: "RSA", "DSA", "DH", "EC".
+          The [data] is DER-encoded.
        *)
 
     val import_private_key_x509 : x509_private_key -> private_key
+      (** import a private key from DER *)
 
     val import_private_key_uri : string -> private_key
+      (** indirect reference e.g. a PKCS11 URI *)
+
     val import_private_key_uri_with_pin : pin_callback -> string -> private_key
 
     val import_public_key_from_private : private_key -> public_key

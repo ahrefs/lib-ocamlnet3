@@ -72,16 +72,20 @@ let read_pubkey_from_pem ch =
 let key_types = [ "RSA"; "DSA"; "DH"; "EC"; "KEA"; "EDDSA" ]
 
 let read_privkey_from_pem ch =
+  let suffix = " PRIVATE KEY" in
   let spec =
     List.map
-      (fun ty -> (ty ^ " PRIVATE KEY", `Base64))
+      (fun ty -> (ty ^ suffix, `Base64))
       key_types in
   let l = Netascii_armor.parse spec ch in
   match l with
     | [] ->
         failwith "Netx509_pubkey.read_privkey_from_pem: no key found"
     | [ty, `Base64 msg] ->
-        Privkey(ty, msg#value)
+        let n1 = String.length ty in
+        let n2 = String.length suffix in
+        let fmt = String.sub ty 0 (n1 - n2) in
+        Privkey(fmt, msg#value)
     | _ ->
         failwith "Netx509_pubkey.read_privkey_from_pem: several keys found"
 
@@ -114,9 +118,9 @@ let maskgen_functions =
 
 
 module Key = struct
-  let rsa_key = [| 1; 2; 840; 113549; 1; 1 |]
-  let rsassa_pss_key = [| 1; 2; 840; 113549; 1; 10 |]
-  let rsaes_oaep_key = [| 1; 2; 840; 113549; 1; 7 |]
+  let rsa_key = [| 1; 2; 840; 113549; 1; 1; 1 |]
+  let rsassa_pss_key = [| 1; 2; 840; 113549; 1; 1; 10 |]
+  let rsaes_oaep_key = [| 1; 2; 840; 113549; 1; 1; 7 |]
   let dsa_key = [| 1; 2; 840; 10040; 4; 1 |]
   let dh_key = [| 1; 2; 840; 10046; 2; 1 |]
   let kea_key = [| 2; 16; 840; 1; 101; 2; 1; 1; 22 |]
@@ -159,7 +163,7 @@ module Key = struct
     format
 
 
-  let pspecified_oid = [| 1; 2; 840; 113549; 1; 9 |]
+  let pspecified_oid = [| 1; 2; 840; 113549; 1; 1; 9 |]
 
   let create_rsassa_pss_alg_id ~hash_function ~maskgen_function ~salt_length ()=
     let module V = Netasn1.Value in
@@ -465,7 +469,7 @@ module Signing = struct
   let eddsa = Sign([| 1; 3; 101; 101 |], None)
 
   let rsassa_pss ~hash_function ~maskgen_function ~salt_length =
-    Sign([| 1; 2; 840; 113549; 1; 10 |], 
+    Sign([| 1; 2; 840; 113549; 1; 1; 10 |], 
          Some(P_PSS(hash_function, maskgen_function, salt_length)))
 
   let catalog =

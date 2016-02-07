@@ -31,6 +31,9 @@
 
     It depends on the algorithm whether the parameters can be changed while
     keeping the key data.
+
+    See {!Netx509_pubkey_crypto} for functions that actually encrypt or
+    sign data with the current crypto provider.
  *)
 
 type oid = Netoid.t

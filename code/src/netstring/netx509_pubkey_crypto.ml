@@ -29,10 +29,11 @@ let encrypt encalg pubkey data =
     failwith
       "Netx509_pubkey_crypto.encrypt: the algorithm is incompatible \
        with the public key";
-  let params_der =
-    encode_alg_params_to_der (Encryption.alg_id_of_encrypt_alg encalg) in
+  let effparams = Encryption.alg_id_of_encrypt_alg encalg in
+  let effparams_der =
+    encode_alg_params_to_der effparams in
   let pk_alg =
-    PK.algorithm_x509 oid params_der in
+    PK.algorithm_x509 oid effparams_der in
   let pk_pubkey =
     PK.import_public_key_x509 (Netx509_pubkey.encode_pubkey_to_der pubkey) in
   PK.encrypt pk_alg pk_pubkey data
@@ -47,10 +48,11 @@ let decrypt encalg privkey data =
     failwith
       "Netx509_pubkey_crypto.decrypt: the algorithm is incompatible \
        with the private key";
-  let params_der =
-    encode_alg_params_to_der (Encryption.alg_id_of_encrypt_alg encalg) in
+  let effparams = Encryption.alg_id_of_encrypt_alg encalg in
+  let effparams_der =
+    encode_alg_params_to_der effparams in
   let pk_alg =
-    PK.algorithm_x509 oid params_der in
+    PK.algorithm_x509 oid effparams_der in
   let pk_privkey =
     PK.import_private_key_x509 (privformat,privdata) in
   PK.decrypt pk_alg pk_privkey data
@@ -64,10 +66,11 @@ let verify signalg pubkey plaintext signature =
     failwith
       "Netx509_pubkey_crypto.verify: the algorithm is incompatible \
        with the public key";
-  let params_der =
-    encode_alg_params_to_der (Signing.alg_id_of_sign_alg signalg) in
+  let effparams = Signing.alg_id_of_sign_alg signalg in
+  let effparams_der =
+    encode_alg_params_to_der effparams in
   let pk_alg =
-    PK.algorithm_x509 oid params_der in
+    PK.algorithm_x509 oid effparams_der in
   let pk_pubkey =
     PK.import_public_key_x509 (Netx509_pubkey.encode_pubkey_to_der pubkey) in
   PK.verify pk_alg pk_pubkey plaintext signature
@@ -82,10 +85,11 @@ let sign signalg privkey plaintext =
     failwith
       "Netx509_pubkey_crypto.sign: the algorithm is incompatible \
        with the private key";
-  let params_der =
-    encode_alg_params_to_der (Signing.alg_id_of_sign_alg signalg) in
+  let effparams = Signing.alg_id_of_sign_alg signalg in
+  let effparams_der =
+    encode_alg_params_to_der effparams in
   let pk_alg =
-    PK.algorithm_x509 oid params_der in
+    PK.algorithm_x509 oid effparams_der in
   let pk_privkey =
     PK.import_private_key_x509 (privformat,privdata) in
   PK.sign pk_alg pk_privkey plaintext

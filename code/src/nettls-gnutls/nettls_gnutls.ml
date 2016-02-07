@@ -1481,7 +1481,7 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
             failwith "Nettls_gnutls.Pubkey_crypto.verify: algorithm cannot \
                       be applied to key";
           let gnutls_name =
-            try OIDMap.find puboid sign_name_of_oid
+            try OIDMap.find oid sign_name_of_oid
             with Not_found ->
               failwith "Nettls_gnutls.Pubkey_crypto.verify: algorithm \
                         not supported" in
@@ -1536,6 +1536,8 @@ let init() =
     (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO);
   Netsys_crypto.set_current_digests
     (module Digests : Netsys_crypto_types.DIGESTS);
+  Netsys_crypto.set_current_pubkey_crypto
+    (module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO);
   Netsys_posix.register_post_fork_handler
     ( object
         method name = "nettls_deinit"

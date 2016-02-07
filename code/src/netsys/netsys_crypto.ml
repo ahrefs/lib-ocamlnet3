@@ -68,7 +68,7 @@ module Empty_pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
   type algorithm = unit
   type x509_private_key = string * string
 
-  let unavailable() = assert false
+  let unavailable() = failwith "No registered provider for pubkey crypto"
   let supported_x509 = []
   let algorithm_x509 _ _ = unavailable()
   let import_public_key_x509 _ = unavailable()
