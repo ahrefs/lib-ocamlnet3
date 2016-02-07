@@ -591,9 +591,9 @@ processes, and sending messages between them.
 
 {divend guide}
 
-{2:netclient The [netclient] library: HTTP, FTP, Telnet, POP, SMTP}
+{2:netclient The [netclient] library: HTTP, FTP, Telnet, POP, SMTP, LDAP}
 
-This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
+This library includes clients for HTTP, Telnet, FTP, SMTP, POP, and LDAP.
 
 {!modules:
    Nethttp_client
@@ -602,6 +602,7 @@ This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
    Netftp_client
    Netftp_data_endpoint
    Netftp_fs
+   Netldap
    Nettelnet_client
    Netpop
    Netsmtp

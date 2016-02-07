@@ -11,8 +11,30 @@ type signal =
       signal : asn1_message final_state -> unit
     }
 
-type connection =
-    { fd : Unix.file_descr;
+class type ldap_server =
+object
+  method ldap_endpoint : Netsockaddr.socksymbol
+  method ldap_timeout : float
+  method ldap_peer_name : string option
+  method ldap_tls_config : (module Netsys_crypto_types.TLS_CONFIG) option
+end
+
+type sasl_bind_creds =
+  { sasl_dn : string;
+    sasl_user : string;
+    sasl_authz : string;
+    sasl_creds : (string * string * (string * string)list)list;
+    sasl_params : (string * string * bool) list;
+    sasl_mech : (module Netsys_sasl_types.SASL_MECHANISM);
+  }
+
+type bind_creds =
+  | Simple of string * string
+  | SASL of sasl_bind_creds
+
+type ldap_connection =
+    { srv : ldap_server;
+      mutable fd : Unix.file_descr option;
       esys : Unixqueue.event_system;
       mplex0 : Uq_multiplex.multiplex_controller;
         (* the mplex for fd *)
@@ -76,6 +98,7 @@ type result_code =
   ]
 
 
+exception Timeout
 exception LDAP_error of result_code * string
 exception Auth_error of string
 
@@ -85,6 +108,49 @@ type ldap_result =
       result_error_msg : string;
       result_referrals : string list;
     }
+
+
+let ldap_server ?(timeout=15.0)
+                ?peer_name 
+                ?tls_config
+                ?(tls_enable = false)
+                addr : ldap_server =
+  let tls_config =
+    if tls_enable then
+      match tls_config with
+        | None ->
+            let p = Netsys_crypto.current_tls() in
+            let c =
+              Netsys_tls.create_x509_config
+                ~system_trust:true
+                ~peer_auth:`Required
+                p in
+            Some c
+        | Some tls ->
+            Some tls
+    else
+      None in
+  ( object
+      method ldap_endpoint = addr
+      method ldap_timeout = timeout
+      method ldap_peer_name = peer_name
+      method ldap_tls_config = tls_config
+    end
+  )
+
+let simple_bind_creds ~dn ~pw =
+  Simple(dn,pw)
+
+let sasl_bind_creds ~dn ~user ~authz ~creds ~params mech =
+  SASL
+    { sasl_dn = dn;
+      sasl_user = user;
+      sasl_authz = authz;
+      sasl_creds = creds;
+      sasl_params = params;
+      sasl_mech = mech
+    }
+ 
 
 
 let result_code code =
@@ -198,7 +264,40 @@ let rec receive_messages_e conn buf_eof =
   )
     
 
-let connect_e ?proxy ?peer_name ?tls_config addr esys =
+let parallel_e conn l =
+  let e =
+    msync_engine l (fun () () -> ()) () conn.esys in
+  when_state
+    ~is_error:(fun err -> raise err)
+    e;
+  e
+
+
+exception Sync_exit
+
+let sync e =
+  let result = ref None in
+  Uq_engines.when_state
+    ~is_done:(fun x -> result := Some x; raise Sync_exit)
+    ~is_error:(fun e -> raise e)
+    ~is_aborted:(fun () -> failwith "Engine has been aborted")
+    e;
+  try
+    Unixqueue.run e#event_system;
+    raise Sync_exit
+  with
+    | Sync_exit ->
+        match !result with
+          | None -> assert false
+          | Some x -> x
+
+
+let real_connect_e ?proxy (server:ldap_server) esys =
+  let addr =
+    `Socket(Uq_client.sockspec_of_socksymbol
+              Unix.SOCK_STREAM
+              server#ldap_endpoint,
+            Uq_client.default_connect_options) in
   Uq_client.connect_e ?proxy addr esys
   ++ (function
        | `Socket(fd,fd_spec) ->
@@ -209,12 +308,12 @@ let connect_e ?proxy ?peer_name ?tls_config addr esys =
                (* timeout *)
                fd esys in
            let mplex1 =
-             match tls_config with
+             match server#ldap_tls_config with
                | None -> mplex0
                | Some tls ->
                    Uq_multiplex.tls_multiplex_controller
                      ~role:`Client
-                     ~peer_name:(match peer_name with
+                     ~peer_name:(match server#ldap_peer_name with
                                    | Some n -> Some n
                                    | None ->
                                        ( match addr with
@@ -235,13 +334,25 @@ let connect_e ?proxy ?peer_name ?tls_config addr esys =
            let signals = Hashtbl.create 17 in
            let dummy_e = eps_e (`Done()) esys in
            let conn =
-             { fd; esys; mplex0; mplex1; dev_in; dev_in_buf; dev_out; next_id;
+             { srv = server;
+               fd = Some fd;
+               esys; mplex0; mplex1; dev_in; dev_in_buf; dev_out; next_id;
                signals; recv_eng = dummy_e } in
            let e1 = receive_messages_e conn false in
            conn.recv_eng <- e1;
            eps_e (`Done conn) esys
        | _ -> assert false
      )
+
+let connect_e ?proxy server esys =
+  Uq_engines.timeout_engine
+    server#ldap_timeout
+    Timeout
+    (real_connect_e ?proxy server esys)
+
+let connect ?proxy server =
+  let esys = Unixqueue.create_unix_event_system() in
+  sync (connect_e ?proxy server esys)
 
 
 let send_message_e conn msg =
@@ -251,7 +362,19 @@ let send_message_e conn msg =
   Uq_io.really_output_e conn.dev_out (`Bytes data) 0 (Bytes.length data)
 
 
-let close_e conn =
+let abort conn  =
+  ( match conn.fd with
+      | None -> ()
+      | Some fd ->
+          Unix.close fd;
+          conn.fd <- None
+  );
+  Hashtbl.iter
+    (fun _ s -> s.signal_eng # abort())
+    conn.signals
+
+
+let real_close_e conn =
   let id = new_msg_id conn in
   let req_msg =
     let open Netasn1.Value in
@@ -276,17 +399,24 @@ let close_e conn =
                    )
              )
       | _ -> assert false in
-  let cleanup _ =
-    Unix.close conn.fd;
-    Hashtbl.iter
-      (fun _ s -> s.signal_eng # abort())
-      conn.signals in
+  let cleanup _ = abort conn in
   when_state
     ~is_done:cleanup
     ~is_error:cleanup
     ~is_aborted:cleanup
     e;
   e
+
+
+let close_e conn =
+  Uq_engines.timeout_engine
+    conn.srv#ldap_timeout
+    Timeout
+    (real_close_e conn)
+
+
+let close conn =
+  sync (close_e conn)
 
 
 let with_conn_e f conn =
@@ -308,15 +438,6 @@ let await_response_e conn msg_id f_e =
   Hashtbl.replace conn.signals msg_id s;
   when_state
     ~is_error:(fun _ -> printf "e->ERROR\n%!")
-    e;
-  e
-
-
-let trivial_sync_e conn l =
-  let e =
-    msync_engine l (fun () () -> ()) () conn.esys in
-  when_state
-    ~is_error:(fun _ -> printf "sync->ERROR\n%!")
     e;
   e
 
@@ -459,7 +580,7 @@ let conn_simple_bind_e conn bind_dn password =
     failwith "LDAP bind: unexpected response" in
   let id = new_msg_id conn in
   let req_msg = encode_simple_bind_req id bind_dn password in
-  trivial_sync_e
+  parallel_e
     conn
     [ await_response_e
         conn
@@ -497,7 +618,7 @@ let conn_sasl_bind_e conn
       | `Wait ->
           if not cont_needed then fail();
           let req_msg = encode_sasl_bind_req id bind_dn M.mechanism_name None in
-          trivial_sync_e
+          parallel_e
             conn
             [ await_response_e conn id (on_challenge_e cs);
               send_message_e conn req_msg
@@ -507,7 +628,7 @@ let conn_sasl_bind_e conn
           let cs, data = M.client_emit_response cs in
           let req_msg =
             encode_sasl_bind_req id bind_dn M.mechanism_name (Some data) in
-          trivial_sync_e
+          parallel_e
             conn
             [ await_response_e conn id (on_challenge_e cs);
               send_message_e conn req_msg
@@ -546,35 +667,79 @@ let conn_sasl_bind_e conn
       ~params () in
   loop_e cs true
 
+
+let real_conn_bind_e conn creds =
+  match creds with
+    | Simple(dn,pw) ->
+        conn_simple_bind_e conn dn pw
+    | SASL sasl ->
+        conn_sasl_bind_e conn sasl.sasl_mech sasl.sasl_dn sasl.sasl_user
+                         sasl.sasl_authz sasl.sasl_creds sasl.sasl_params
+
+let conn_bind_e conn creds =
+  Uq_engines.timeout_engine
+    conn.srv#ldap_timeout
+    Timeout
+    (real_conn_bind_e conn creds)
+
+let conn_bind conn creds =
+  sync (conn_bind_e conn creds)
+
+let test_bind_e ?proxy server creds esys =
+  connect_e ?proxy server esys
+  ++ (fun conn ->
+        let e =
+          ( conn_bind_e conn creds
+            >> (function
+                 | `Done() -> `Done true
+                 | `Error(Auth_error _ | LDAP_error _) -> `Done false
+                 | `Error err -> `Error err
+                 | `Aborted -> `Aborted
+               )
+          ) ++ (fun ok ->
+                 close_e conn
+                 ++ (fun () ->
+                     eps_e (`Done ok) esys
+                    )
+                ) in
+        Uq_engines.when_state
+          ~is_done:(fun _ -> abort conn)
+          ~is_error:(fun _ -> abort conn)
+          ~is_aborted:(fun _ -> abort conn)
+          e;
+        e
+     )
+
+let test_bind ?proxy server creds =
+  let esys = Unixqueue.create_unix_event_system() in
+  sync (test_bind_e ?proxy server creds esys)
+  
+
   
 (*
 #use "topfind";;
 #require "netclient,nettls-gnutls";;
 open Netldap;;
-open Uq_engines.Operators;;
 
-let bind_dn = "uid=gerdsasl,ou=users,o=gs-adressbuch";;
 let password = "XXX";;
+let bind_dn = "uid=gerdsasl,ou=users,o=gs-adressbuch";;
 
-let esys = Unixqueue.create_unix_event_system();;
-let addr = `Socket(`Sock_inet_byname(Unix.SOCK_STREAM, "office1", 389),
-                   Uq_client.default_connect_options);;
-let e =
-  connect_e addr esys
-  ++ (fun conn ->
-         conn_simple_bind_e conn bind_dn password
-         ++ (fun () -> close_e conn)
-     );;
+let server =
+  ldap_server
+    (`Inet_byname("office1", 389)) ;;
 
-let mech = (module Netmech_scram_sasl.SCRAM_SHA1 : Netsys_sasl_types.SASL_MECHANISM);;
-let e =
-  connect_e addr esys
-  ++ with_conn_e
-    (fun conn ->
-         conn_sasl_bind_e
-            conn mech bind_dn "gerdsasl" "" [ "password", password, [] ] []
-     );;
+let creds1 = simple_bind_creds ~dn:bind_dn ~pw:password;;
+let creds2 =
+  sasl_bind_creds 
+    ~dn:bind_dn ~user:"gerdsasl" ~authz:"" 
+    ~creds:[ "password", password, [] ]
+    ~params:[]
+    (module Netmech_scram_sasl.SCRAM_SHA1 : Netsys_sasl_types.SASL_MECHANISM);;
 
+let conn = connect server;;
 
-Unixqueue.run esys;;
+conn_bind conn creds1;;
+conn_bind conn creds2;;
+
+close conn;;
  *)
