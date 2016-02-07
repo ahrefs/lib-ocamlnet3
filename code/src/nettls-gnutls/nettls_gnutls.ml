@@ -1306,10 +1306,13 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
 
   let supported_x509_encrypt =
     (* Generally assume that we support RSA without checking it *)
-    List.map
-      (fun (X.Encrypt(oid,_)) -> oid)
-      [ X.Encryption.rsa
-      ]
+    if G.net_have_pubkey() then
+      List.map
+        (fun (X.Encrypt(oid,_)) -> oid)
+        [ X.Encryption.rsa
+        ]
+    else
+      []
 
   let catalog_hashes =
     (* maps our name to GnuTLS name *)
@@ -1366,17 +1369,23 @@ module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
       OIDMap.empty
 
   let supported_x509_sign =
-    let slist =
-      List.filter
-        (fun (_,_,gnutls_name) ->
+    if G.net_have_pubkey() then
+      let slist =
+        List.filter
+          (fun (_,_,gnutls_name) ->
            StrSet.mem gnutls_name sign_set
-        )
-        catalog_x509_sign in
-    List.map (fun (oid,hash,_) -> oid,hash) slist
+          )
+          catalog_x509_sign in
+      List.map (fun (oid,hash,_) -> oid,hash) slist
+    else
+      []
 
   let supported_x509 =
-    supported_x509_encrypt
-    @ List.map (fun (oid,_) -> oid) supported_x509_sign
+    if G.net_have_pubkey() then
+      supported_x509_encrypt
+      @ List.map (fun (oid,_) -> oid) supported_x509_sign
+    else
+      []
 
   let algorithm_x509 oid params =
     if List.mem oid supported_x509_encrypt then
