@@ -4,7 +4,9 @@
     run operations.
 
     Note that typically not all encryption and signing schemes are implemented.
-    For instance, GnuTLS only provides those schemes that are needed for TLS.
+    For instance, GnuTLS only provides those schemes that are needed for TLS
+    (so far RSA for encryption, and RSA/DSA/ECDSA for signing). Also note
+    that we require GnuTLS-3.0 or newer for public key cryptography.
  *)
 
 exception Unsupported_algorithm of Netoid.t
