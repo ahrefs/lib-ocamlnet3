@@ -4,6 +4,16 @@ open Uq_engines
 open Uq_engines.Operators
 open Printf
 
+module Debug = struct
+  let enable = ref false
+end
+
+let dlog = Netlog.Debug.mk_dlog "Netldap" Debug.enable
+let dlogr = Netlog.Debug.mk_dlogr "Netldap" Debug.enable
+
+let () =
+  Netlog.Debug.register_module "Netldap" Debug.enable
+
 type asn1_message = Netasn1.Value.value
 
 type signal =
@@ -240,11 +250,13 @@ let rec receive_messages_e conn buf_eof =
                     with
                       | Netasn1.Out_of_range ->
                           failwith "LDAP protocol: unexpected MessageID" in
+                  dlog (sprintf "LDAP: got response for request %d" msg_id);
                   let signal =
                     try
                       Hashtbl.find conn.signals msg_id
                     with
                       | Not_found ->
+                          dlog (sprintf "LDAP: request %d is unknown" msg_id);
                           failwith "LDAP protocol: unexpected MessageID" in
                   Hashtbl.remove conn.signals msg_id;
                   signal.signal (`Done msg);
@@ -259,19 +271,12 @@ let rec receive_messages_e conn buf_eof =
         ++ (fun eof ->
               receive_messages_e conn eof
            )
-      else
+      else (
+        dlog "LDAP: end of file";
         raise End_of_file
+      )
   )
     
-
-let parallel_e conn l =
-  let e =
-    msync_engine l (fun () () -> ()) () conn.esys in
-  when_state
-    ~is_error:(fun err -> raise err)
-    e;
-  e
-
 
 exception Sync_exit
 
@@ -301,6 +306,8 @@ let real_connect_e ?proxy (server:ldap_server) esys =
   Uq_client.connect_e ?proxy addr esys
   ++ (function
        | `Socket(fd,fd_spec) ->
+           dlog(sprintf "LDAP: connected to %s"
+                  (Netsockaddr.string_of_socksymbol server#ldap_endpoint));
            let mplex0 =
              Uq_multiplex.create_multiplex_controller_for_connected_socket
                ~close_inactive_descr:true
@@ -338,6 +345,7 @@ let real_connect_e ?proxy (server:ldap_server) esys =
                fd = Some fd;
                esys; mplex0; mplex1; dev_in; dev_in_buf; dev_out; next_id;
                signals; recv_eng = dummy_e } in
+           dlog "LDAP: starting message receiver";
            let e1 = receive_messages_e conn false in
            conn.recv_eng <- e1;
            eps_e (`Done conn) esys
@@ -363,15 +371,17 @@ let send_message_e conn msg =
 
 
 let abort conn  =
+  dlog "LDAP: aborting connection";
   ( match conn.fd with
       | None -> ()
       | Some fd ->
-          Unix.close fd;
+          conn.mplex0 # inactivate();
           conn.fd <- None
   );
   Hashtbl.iter
     (fun _ s -> s.signal_eng # abort())
-    conn.signals
+    conn.signals;
+  conn.recv_eng # abort()
 
 
 let real_close_e conn =
@@ -386,11 +396,14 @@ let real_close_e conn =
       | `Error _ ->
           conn.recv_eng
       | `Working _ ->
+          dlog (sprintf "LDAP: close request %d" id);
           send_message_e conn req_msg
           ++ (fun () ->
+              dlog "LDAP: sending EOF";
                 Uq_io.write_eof_e conn.dev_out
                 ++ (fun _ ->
                       (* now End_of_file is acceptable *)
+                      dlog "LDAP: awaiting EOF";
                       conn.recv_eng
                       >> (function
                            | `Error End_of_file -> `Done ()
@@ -437,7 +450,11 @@ let await_response_e conn msg_id f_e =
   let e = signal_eng ++ f_e in
   Hashtbl.replace conn.signals msg_id s;
   when_state
-    ~is_error:(fun _ -> printf "e->ERROR\n%!")
+    ~is_error:(fun err -> 
+                 dlog(sprintf "LDAP: processing response for %d results in \
+                               exception: %s"
+                              msg_id (Netexn.to_string err))
+              )
     e;
   e
 
@@ -580,20 +597,21 @@ let conn_simple_bind_e conn bind_dn password =
     failwith "LDAP bind: unexpected response" in
   let id = new_msg_id conn in
   let req_msg = encode_simple_bind_req id bind_dn password in
-  parallel_e
-    conn
-    [ await_response_e
-        conn
-        id
-        (fun resp_msg ->
-         try
-           decode_simple_bind_resp resp_msg;
-           eps_e (`Done()) conn.esys
-         with
-           | Not_found -> fail()
-        );
-      send_message_e conn req_msg
-    ]
+  dlog(sprintf "LDAP: simple bind request %d" id);
+  send_message_e conn req_msg
+  ++ (fun () ->
+        await_response_e
+          conn
+          id
+          (fun resp_msg ->
+             dlog(sprintf "LDAP: simple bind response %d" id);
+             try
+               decode_simple_bind_resp resp_msg;
+               eps_e (`Done()) conn.esys
+             with
+               | Not_found -> fail()
+          )
+     )
 
 
 let conn_sasl_bind_e conn
@@ -606,36 +624,40 @@ let conn_sasl_bind_e conn
   let id = new_msg_id conn in
 
   let rec loop_e cs cont_needed =
-    printf "LOOP\n%!";
+    dlog (sprintf "LDAP: SASL request %d: entering loop, cont=%B"
+                  id cont_needed);
     match M.client_state cs with
       | `OK ->
           if cont_needed then fail();
+          dlog (sprintf "LDAP: SASL request %d: bind successful" id);
           eps_e (`Done()) conn.esys
       | `Auth_error msg ->
+          dlog (sprintf "LDAP: SASL request %d: auth error %S" id msg);
           raise (Auth_error msg)
       | `Stale ->
+          dlog (sprintf "LDAP: SASL request %d: stale" id);
           failwith "Netldap.conn_sasl_bind_e: unexpected SASL state"
       | `Wait ->
+          dlog (sprintf "LDAP: SASL request %d: wait" id);
           if not cont_needed then fail();
+          dlog (sprintf "LDAP: SASL request %d: emitting request w/o challenge"
+                        id);
           let req_msg = encode_sasl_bind_req id bind_dn M.mechanism_name None in
-          parallel_e
-            conn
-            [ await_response_e conn id (on_challenge_e cs);
-              send_message_e conn req_msg
-            ]
+          send_message_e conn req_msg
+          ++ (fun () -> await_response_e conn id (on_challenge_e cs))
       | `Emit ->
+          dlog (sprintf "LDAP: SASL request %d: emit" id);
           if not cont_needed then fail();
+          dlog (sprintf "LDAP: SASL request %d: emitting request with challenge"
+                        id);
           let cs, data = M.client_emit_response cs in
           let req_msg =
             encode_sasl_bind_req id bind_dn M.mechanism_name (Some data) in
-          parallel_e
-            conn
-            [ await_response_e conn id (on_challenge_e cs);
-              send_message_e conn req_msg
-            ]
+          send_message_e conn req_msg
+          ++ (fun () -> await_response_e conn id (on_challenge_e cs))
 
     and on_challenge_e cs resp_msg =
-      printf "CHALLENGE\n%!";
+      dlog (sprintf "LDAP: SASL response %d" id);
       let cont_needed, data_opt =
         try
           decode_sasl_bind_resp resp_msg
@@ -643,11 +665,14 @@ let conn_sasl_bind_e conn
           | Not_found -> fail() in
       match M.client_state cs with
       | `OK ->
+          dlog (sprintf "LDAP: SASL response %d: ok" id);
           if cont_needed then fail();
           eps_e (`Done()) conn.esys
       | `Auth_error msg ->
+          dlog (sprintf "LDAP: SASL response %d: auth error %S" id msg);
           raise (Auth_error msg)
       | `Wait ->
+          dlog (sprintf "LDAP: SASL response %d: wait" id);
           ( match data_opt with
               | Some data ->
                   let cs = M.client_process_challenge cs data in
@@ -721,6 +746,7 @@ let test_bind ?proxy server creds =
 #require "netclient,nettls-gnutls";;
 open Netldap;;
 
+Debug.enable := true;;
 let password = "XXX";;
 let bind_dn = "uid=gerdsasl,ou=users,o=gs-adressbuch";;
 

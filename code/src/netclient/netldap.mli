@@ -111,3 +111,11 @@ val retr_password_e : dn:string -> ldap_server -> bind_creds ->
 val retr_password : dn:string -> ldap_server -> bind_creds ->
                       (string * string * (string * string) list) list
 *)
+
+
+(** {1 Debugging} *)
+
+module Debug : sig
+  val enable : bool ref
+    (** Enables {!Netlog}-style debugging of this module *)
+end
