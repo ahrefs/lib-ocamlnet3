@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+(* RFC 4511 *)
+
 open Uq_engines
 open Uq_engines.Operators
 open Printf
@@ -112,12 +114,51 @@ exception Timeout
 exception LDAP_error of result_code * string
 exception Auth_error of string
 
-type ldap_result =
-    { result_code : result_code;
-      result_matched_dn : string;
-      result_error_msg : string;
-      result_referrals : string list;
-    }
+class type ['a] ldap_result =
+  object
+    method code : result_code
+    method matched_dn : string
+    method diag_msg : string
+    method referral : string list
+    method value : 'a
+    method partial_value : 'a
+  end
+
+exception Notification of string ldap_result
+
+let create_result code matched_dn diag_msg referral (value : 'a) :
+      'a ldap_result =
+  object
+    method code = code
+    method matched_dn = matched_dn
+    method diag_msg = diag_msg
+    method referral = referral
+    method value =
+      if code = `Success then
+        value
+      else
+        raise (LDAP_error(code, diag_msg))
+    method partial_value = value
+  end
+
+type scope = [ `Base | `One | `Sub ]
+type deref_aliases = [ `Never | `In_searching | `Finding_base_obj | `Always ]
+type filter = 
+  [ `And of filter list
+  | `Or of filter list
+  | `Not of filter
+  | `Equality_match of string * string
+  | `Substrings of string * string option * string list * string option
+  | `Greater_or_equal of string * string
+  | `Less_or_equal of string * string
+  | `Present of string
+  | `Approx_match of string * string
+  | `Extensible_match of string option * string option * string * bool
+  ]
+type search_result =
+  [ `Entry of string * (string * string list) list
+  | `Reference of string list
+  ]
 
 
 let ldap_server ?(timeout=15.0)
@@ -215,7 +256,87 @@ let new_msg_id conn =
 
 let ops = Netstring_tstring.bytes_ops
 
+let decode_ldap_result msg decode_value =
+  let open Netasn1.Value in
+  let fail() =
+    failwith "LDAP protocol: cannot decode LDAPResult" in
+  match msg with
+    | (Enum rcode) ::
+        (Octetstring result_matched_dn) :: 
+          (Octetstring result_error_msg) ::
+            comps1 ->
+        let result_referrals, comps =
+          match comps1 with
+            | Tagptr(Context, 3, ref_pc, ref_box, ref_pos, ref_len) :: comps2 ->
+                let Netstring_tstring.Tstring_polybox(ref_ops, ref_s) =
+                  ref_box in
+                let _, ref_msg =
+                  Netasn1.decode_ber_contents_poly
+                    ~pos:ref_pos ~len:ref_len ref_ops ref_s ref_pc
+                    Netasn1.Type_name.Seq in
+                let refs =
+                  match ref_msg with
+                    | Seq list ->
+                        List.map
+                          (function
+                            | Octetstring url -> url
+                            | _ -> fail()
+                          )
+                          list
+                    | _ -> fail() in
+                refs, comps2
+            | _ ->
+                [], comps1 in
+        let value = decode_value comps in
+        create_result
+          (result_code (get_int rcode)) 
+          result_matched_dn
+          result_error_msg
+          result_referrals
+          value
+    | _ ->
+        fail()
+
+
+let decode_unsolicited_notification msg =
+  let open Netasn1.Value in
+  match msg with
+    | Seq [ Integer _;
+            Tagptr(Application, 24, pc, box, pos, len)
+          ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
+        let _, notification =
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
+        ( match notification with
+            | Seq notification ->
+                decode_ldap_result
+                  notification
+                  (fun seq ->
+                     let ext_seq =
+                       Netasn1.streamline_seq
+                         [ Context, 10, Netasn1.Type_name.Octetstring;
+                           Context, 11, Netasn1.Type_name.Octetstring
+                         ]
+                         seq in
+                     ( match ext_seq with
+                         | [ Some(Octetstring oid); _ ] ->
+                             oid
+                         | [ None; _ ] ->
+                             ""
+                         | _ ->
+                             failwith "Bad ASN1"
+                     )
+                  )
+            | _ ->
+                assert false
+        )
+    | _ ->
+        assert false
+
+
 let rec receive_messages_e conn buf_eof =
+  let open Netasn1.Value in
   if Uq_io.in_buffer_length conn.dev_in_buf = 0 && not buf_eof then (
     (* Nothing received yet *)
     Uq_io.in_buffer_fill_e conn.dev_in_buf
@@ -243,24 +364,35 @@ let rec receive_messages_e conn buf_eof =
             let _, msg =
               Netasn1.decode_ber_poly ops msg_buf in
             match msg with
-              | Netasn1.Value.Seq (Netasn1.Value.Integer msg_id_asn1 :: _) ->
+              | Seq (Integer msg_id_asn1 :: _) ->
                   let msg_id =
                     try
-                      Netasn1.Value.get_int msg_id_asn1
+                      get_int msg_id_asn1
                     with
                       | Netasn1.Out_of_range ->
                           failwith "LDAP protocol: unexpected MessageID" in
                   dlog (sprintf "LDAP: got response for request %d" msg_id);
-                  let signal =
-                    try
-                      Hashtbl.find conn.signals msg_id
-                    with
-                      | Not_found ->
-                          dlog (sprintf "LDAP: request %d is unknown" msg_id);
-                          failwith "LDAP protocol: unexpected MessageID" in
-                  Hashtbl.remove conn.signals msg_id;
-                  signal.signal (`Done msg);
-                  receive_messages_e conn false
+                  if msg_id = 0 then
+                    (* this can only be an unsolicited notification *)
+                    match msg with
+                      | Seq [ Integer _;
+                              Tagptr(Application, 24, _, _, _, _)
+                            ] ->
+                          let nr = decode_unsolicited_notification msg in
+                          raise (Notification nr)
+                      | _ ->
+                          failwith "LDAP protocol: unexpected ASN.1 structure"
+                  else
+                    let signal =
+                      try
+                        Hashtbl.find conn.signals msg_id
+                      with
+                        | Not_found ->
+                            dlog (sprintf "LDAP: request %d is unknown" msg_id);
+                            failwith "LDAP protocol: unexpected MessageID" in
+                    Hashtbl.remove conn.signals msg_id;
+                    signal.signal (`Done msg);
+                    receive_messages_e conn false
               | _ ->
                   failwith "LDAP protocol: unexpected ASN.1 structure"
          )
@@ -295,6 +427,20 @@ let sync e =
         match !result with
           | None -> assert false
           | Some x -> x
+
+
+let abort conn  =
+  dlog "LDAP: aborting connection";
+  ( match conn.fd with
+      | None -> ()
+      | Some fd ->
+          conn.mplex0 # inactivate();
+          conn.fd <- None
+  );
+  Hashtbl.iter
+    (fun _ s -> s.signal_eng # abort())
+    conn.signals;
+  conn.recv_eng # abort()
 
 
 let real_connect_e ?proxy (server:ldap_server) esys =
@@ -337,7 +483,7 @@ let real_connect_e ?proxy (server:ldap_server) esys =
            let dev_in_buf = Uq_io.create_in_buffer dev_in_raw in
            let dev_in = `Buffer_in dev_in_buf in
            let dev_out = `Multiplex mplex1 in
-           let next_id = 0 in
+           let next_id = 1 in
            let signals = Hashtbl.create 17 in
            let dummy_e = eps_e (`Done()) esys in
            let conn =
@@ -348,6 +494,21 @@ let real_connect_e ?proxy (server:ldap_server) esys =
            dlog "LDAP: starting message receiver";
            let e1 = receive_messages_e conn false in
            conn.recv_eng <- e1;
+           Uq_engines.when_state
+             ~is_error:(fun error ->
+                          dlog (sprintf "LDAP client: caught exception: %S"
+                                  (Netexn.to_string error));
+                          Hashtbl.iter
+                            (fun _ signal ->
+                               let g = Unixqueue.new_group conn.esys in
+                               Unixqueue.once conn.esys g 0.0
+                                 (fun () -> signal.signal (`Error error))
+                            )
+                            conn.signals;
+                          Hashtbl.clear conn.signals;
+                          abort conn
+                       )
+             e1;
            eps_e (`Done conn) esys
        | _ -> assert false
      )
@@ -368,20 +529,6 @@ let send_message_e conn msg =
   ignore(Netasn1_encode.encode_ber buf msg);
   let data = Netbuffer.to_bytes buf in
   Uq_io.really_output_e conn.dev_out (`Bytes data) 0 (Bytes.length data)
-
-
-let abort conn  =
-  dlog "LDAP: aborting connection";
-  ( match conn.fd with
-      | None -> ()
-      | Some fd ->
-          conn.mplex0 # inactivate();
-          conn.fd <- None
-  );
-  Hashtbl.iter
-    (fun _ s -> s.signal_eng # abort())
-    conn.signals;
-  conn.recv_eng # abort()
 
 
 let real_close_e conn =
@@ -451,54 +598,12 @@ let await_response_e conn msg_id f_e =
   Hashtbl.replace conn.signals msg_id s;
   when_state
     ~is_error:(fun err -> 
-                 dlog(sprintf "LDAP: processing response for %d results in \
+                 dlog(sprintf "LDAP: processing response for msg %d results in \
                                exception: %s"
                               msg_id (Netexn.to_string err))
               )
     e;
   e
-
-
-let decode_ldap_result msg =
-  let open Netasn1.Value in
-  let fail() =
-    failwith "LDAP protocol: cannot decode LDAPResult" in
-  match msg with
-    | (Enum rcode) ::
-        (Octetstring result_matched_dn) :: 
-          (Octetstring result_error_msg) ::
-            comps1 ->
-        let result_referrals, comps =
-          match comps1 with
-            | Tagptr(Context, 3, ref_pc, ref_box, ref_pos, ref_len) :: comps2 ->
-                let Netstring_tstring.Tstring_polybox(ref_ops, ref_s) =
-                  ref_box in
-                let _, ref_msg =
-                  Netasn1.decode_ber_contents_poly
-                    ~pos:ref_pos ~len:ref_len ref_ops ref_s ref_pc
-                    Netasn1.Type_name.Seq in
-                let refs =
-                  match ref_msg with
-                    | Seq list ->
-                        List.map
-                          (function
-                            | Octetstring url -> url
-                            | _ -> fail()
-                          )
-                          list
-                    | _ -> fail() in
-                refs, comps2
-            | _ ->
-                [], comps1 in
-        let r =
-          { result_code = result_code (get_int rcode);
-            result_matched_dn;
-            result_error_msg;
-            result_referrals
-          } in
-        (r, comps)
-    | _ ->
-        fail()
 
 
 let encode_simple_bind_req id bind_dn password =
@@ -547,14 +652,15 @@ let decode_bind_resp ?(ok=[`Success]) resp_msg =
             ~pos ~len ops s pc Netasn1.Type_name.Seq in
         ( match bind_resp with
             | Seq bind_seq ->
-                let bind_result, comps =
-                  decode_ldap_result bind_seq in
-                if not (List.mem bind_result.result_code ok) then (
-                  printf "ERROR %s\n%!" bind_result.result_error_msg;
-                  raise(LDAP_error(bind_result.result_code,
-                                   bind_result.result_error_msg));
+                let bind_result =
+                  decode_ldap_result bind_seq (fun comps -> comps) in
+                if not (List.mem bind_result#code ok) then (
+                  dlog (sprintf "LDAP bind error: %s\n%!"
+                                bind_result#diag_msg);
+                  raise(LDAP_error(bind_result#code,
+                                   bind_result#diag_msg));
                 );
-                (bind_result.result_code, comps)
+                bind_result
             | _ ->
                 raise Not_found
         )
@@ -563,18 +669,18 @@ let decode_bind_resp ?(ok=[`Success]) resp_msg =
 
 
 let decode_simple_bind_resp resp_msg =
-  let _, comps = decode_bind_resp resp_msg in
-  if comps <> [] then raise Not_found;
+  let r = decode_bind_resp resp_msg in
+  if r#value <> [] then raise Not_found;
   ()
 
 
 let decode_sasl_bind_resp resp_msg =
   let open Netasn1.Value in
-  let code, comps = 
+  let r = 
     decode_bind_resp ~ok:[`Success;`SaslBindInProgress] resp_msg in
   let cont =
-    code = `SaslBindInProgress in
-  match comps with
+    r#code = `SaslBindInProgress in
+  match r#partial_value with
     | [ Tagptr(Context, 7, pc, box, pos, len) ] ->
         let Netstring_tstring.Tstring_polybox(ops, s) = box in
         let _, creds_msg =
@@ -738,7 +844,220 @@ let test_bind_e ?proxy server creds esys =
 let test_bind ?proxy server creds =
   let esys = Unixqueue.create_unix_event_system() in
   sync (test_bind_e ?proxy server creds esys)
+
+let rec encode_filter_req (filter:filter) =
+  let open Netasn1.Value in
+  match filter with
+    | `And inner ->
+        if inner = [] then
+          failwith "Netldap.search: AND filter applied to empty list";
+        ITag(Context, 0, Set (List.map encode_filter_req inner))
+    | `Or inner ->
+        if inner = [] then
+          failwith "Netldap.search: OR filter applied to empty list";
+        ITag(Context, 1, Set (List.map encode_filter_req inner))
+    | `Not inner ->
+        ITag(Context, 2, encode_filter_req inner)
+    | `Equality_match(descr, value)
+    | `Greater_or_equal(descr, value)
+    | `Less_or_equal(descr, value)
+    | `Approx_match(descr, value) ->
+        let tag =
+          match filter with
+            | `Equality_match _ -> 3
+            | `Greater_or_equal _ -> 5
+            | `Less_or_equal _ -> 6
+            | `Approx_match _ -> 8
+            | _ -> assert false in
+        ITag(Context, tag, Seq [ Octetstring descr; Octetstring value ])
+    | `Present descr ->
+        ITag(Context, 7, Octetstring descr)
+    | `Substrings(descr, prefix_match, substring_matches, suffix_match) ->
+        if prefix_match=None && substring_matches=[] && suffix_match=None then
+          failwith "Netldap.search: empty SUBSTRING filter";
+        ITag(Context, 4,
+             Seq [ Octetstring descr;
+                   Seq ( (match prefix_match with
+                            | None -> []
+                            | Some pm -> [ ITag(Context, 0, Octetstring pm) ]
+                         ) @
+                         List.map
+                           (fun s -> ITag(Context, 1, Octetstring s))
+                           substring_matches @
+                         (match suffix_match with
+                            | None -> []
+                            | Some pm -> [ ITag(Context, 3, Octetstring pm) ]
+                         )
+                       )
+                 ])
+    | `Extensible_match(matching_rule_id, attr_descr, value, dn_attrs) ->
+        ITag(Context, 9,
+             Seq ( (match matching_rule_id with
+                      | None -> []
+                      | Some id -> [ITag(Context, 1, Octetstring id)]
+                   ) @
+                   (match attr_descr with
+                      | None -> []
+                      | Some d -> [ITag(Context, 2, Octetstring d)]
+                   ) @
+                   [ ITag(Context, 3, Octetstring value);
+                     ITag(Context, 4, Bool dn_attrs)
+                   ]))
+
+let encode_attr_selection attrs =
+  let open Netasn1.Value in
+  if attrs = [] then
+    Seq [ Octetstring "1.1" ]
+  else
+    Seq (List.map (fun s -> Octetstring s) attrs)
+
+
+let encode_search_req id ~base ~scope ~deref_aliases ~size_limit ~time_limit
+                      ~types_only ~filter ~attributes () =
+  let open Netasn1.Value in
+  let ldap_version = 3 in
+  Seq [ Integer (int id);
+        ITag(Application, 3,
+             Seq [ Octetstring base;
+                   Enum (int (match scope with
+                                | `Base -> 0
+                                | `One -> 1
+                                | `Sub -> 2
+                             ));
+                   Enum (int (match deref_aliases with
+                                | `Never -> 0
+                                | `In_searching -> 1
+                                | `Finding_base_obj -> 2
+                                | `Always -> 3
+                             ));
+                   Integer (int size_limit);
+                   Integer (int time_limit);
+                   Bool types_only;
+                   encode_filter_req filter;
+                   encode_attr_selection attributes
+               ]
+            )
+      ]
+
+
+let decode_search_resp resp_msg to_return =
+  let open Netasn1.Value in
+  match resp_msg with
+    | Seq [ Integer _;
+            Tagptr(Application, 4, pc, box, pos, len)
+          ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
+        let _, search_result_entry_msg =
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
+        ( match search_result_entry_msg with
+            | Seq [ Octetstring dn;
+                    Seq attributes
+                  ] ->
+                let decoded_attributes =
+                  List.map
+                    (function
+                      | Seq [ Octetstring descr;
+                              Set values
+                            ] ->
+                          let decoded_values =
+                            List.map
+                              (function
+                                | Octetstring value -> value
+                                | _ -> raise Not_found
+                              )
+                              values in
+                          (descr, decoded_values)
+                      | _ ->
+                          raise Not_found
+                    )
+                    attributes in
+                `Entry(dn, decoded_attributes)
+            | _ -> 
+                raise Not_found
+        )
+    | Seq [ Integer _;
+            Tagptr(Application, 19, pc, box, pos, len)
+          ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
+        let _, search_result_ref_msg =
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
+        ( match search_result_ref_msg with
+            | Seq msg ->
+                let rf =
+                  List.map
+                    (function
+                      | Octetstring url -> url
+                      | _ -> raise Not_found
+                    )
+                    msg in
+                `Reference rf
+            | _ ->
+                raise Not_found
+        )
+    | Seq [ Integer _;
+            Tagptr(Application, 5, pc, box, pos, len)
+          ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
+        let _, search_result_done_msg =
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
+        ( match search_result_done_msg with
+            | Seq msg ->
+                let result =
+                  decode_ldap_result
+                    msg
+                    (fun comps ->
+                       if comps <> [] then raise Not_found;
+                       List.rev to_return
+                    ) in
+                `Result result
+            | _ ->
+                raise Not_found
+        )
+    | _ ->
+        raise Not_found
+
+
+(* TODO: enforce timeouts *)
+
   
+let search_e conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
+             ~types_only ~filter ~attributes () =
+  let fail() =
+    failwith "LDAP search: unexpected response" in
+  let rec receive_e id to_return =
+    await_response_e
+      conn
+      id
+      (fun resp_msg ->
+         dlog(sprintf "LDAP: search response %d" id);
+         match decode_search_resp resp_msg to_return with
+           | `Entry _ as e ->
+               receive_e id (e :: to_return)
+           | `Reference _ as r ->
+               receive_e id (r :: to_return)
+           | `Result result ->
+               dlog(sprintf "LDAP: search done %d" id);
+               eps_e (`Done result) conn.esys
+      ) in
+  let id = new_msg_id conn in
+  let req = encode_search_req
+              id ~base ~scope ~deref_aliases ~size_limit ~time_limit
+              ~types_only ~filter ~attributes () in
+  dlog(sprintf "LDAP: search request %d" id);
+  send_message_e conn req
+  ++ (fun () ->
+        receive_e id []
+     )
+
+
+
+let search conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
+           ~types_only ~filter ~attributes () =
+  sync (search_e conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
+                 ~types_only ~filter ~attributes ())
 
   
 (*
@@ -766,6 +1085,16 @@ let conn = connect server;;
 
 conn_bind conn creds1;;
 conn_bind conn creds2;;
+
+let r =
+  search conn ~base:"o=gs-adressbuch" ~scope:`Sub ~deref_aliases:`Never
+    ~size_limit:0 ~time_limit:0 ~types_only:false
+    ~filter:(`Present "objectclass") ~attributes:["*"] ();;
+
+let r =
+  search conn ~base:"o=gs-adressbuch" ~scope:`Sub ~deref_aliases:`Never
+    ~size_limit:0 ~time_limit:0 ~types_only:false
+    ~filter:(`Not(`Equality_match("ou","users"))) ~attributes:["*"] ();;
 
 close conn;;
  *)
