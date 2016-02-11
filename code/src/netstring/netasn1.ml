@@ -1019,14 +1019,17 @@ let decode_ber_header_tstring ?pos ?len ?skip_length_check ts =
 let rec streamline_seq expected seq =
   let open Netstring_tstring in
   match expected, seq with
+    | [], [] ->
+        []
+
     | [], _ ->
-        failwith "Netasn1.streamline_seq"
+        failwith "Netasn1.streamline_seq [1]"
 
     | ((exp_tc, exp_tag, exp_ty)::expected1),
       (Value.ITag(act_tc, act_tag, act_v)::seq1)
           when exp_tc=act_tc && exp_tag=act_tag ->
         if Value.type_of_value act_v <> Some exp_ty then
-          failwith "Netasn1.streamline_seq";
+          failwith "Netasn1.streamline_seq [2]";
         Some act_v :: streamline_seq expected1 seq1
 
     | ((exp_tc, exp_tag, exp_ty)::expected1),
@@ -1035,11 +1038,11 @@ let rec streamline_seq expected seq =
         let Tstring_polybox(ops,s) = box in
         let act_len, v = decode_ber_contents_poly ~pos ~len ops s pc exp_ty in
         if act_len <> len then
-          failwith "Netasn1.streamline_seq";
+          failwith "Netasn1.streamline_seq [3]";
         Some v :: streamline_seq expected1 seq1
 
     | _, (Value.Tag _ :: _) ->
-        failwith "Netasn1.streamline_seq"
+        failwith "Netasn1.streamline_seq [4]"
 
     | ((Value.Universal, exp_tag, exp_ty)::expected1),
       (v::seq1) 
@@ -1048,9 +1051,6 @@ let rec streamline_seq expected seq =
                
     | (_ :: expected1), _ ->
         None :: streamline_seq expected1 seq
-
-    | [], [] ->
-        []
 
 
 let streamline_set typeinfo set =

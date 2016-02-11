@@ -146,7 +146,13 @@ let rec encode_ber_contents buf v =
           vals;
         Value.Constructed
     | Value.ITag(_,_,v) ->
-         encode_ber_contents buf v
+         ( match v with
+            | Value.ITag _
+            | Value.Tagptr _ ->
+                encode_ber buf v
+            | _ ->
+                encode_ber_contents buf v
+         )
     | Value.Tag(_,_,_,v) ->
          encode_ber buf v
     | Value.Tagptr(_,_,pc,box,pos,len) ->
