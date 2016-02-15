@@ -231,6 +231,106 @@ val search : ldap_connection ->
                attributes:string list ->
                unit ->
                search_result list ldap_result
+  (** Same as synchronous function *)
+
+val compare_e : ldap_connection ->
+                dn:string ->
+                attr:string ->
+                value:string ->
+                unit ->
+                  bool ldap_result Uq_engines.engine
+  (** [compare_e conn ~dn ~attr ~value ()]: returns true if the attribute
+      [attr] of entry [dn] has [value] (according to equality matching)
+   *)
+
+val compare : ldap_connection ->
+              dn:string ->
+              attr:string ->
+              value:string ->
+              unit ->
+                bool ldap_result
+  (** Same as synchronous function *)
+
+
+(** {2 LDAP updates} *)
+
+val add_e : ldap_connection ->
+            dn:string ->
+            attributes:(string * string list) list ->
+            unit ->
+              unit ldap_result Uq_engines.engine
+ (** [add_e conn ~dn ~attributes]: Adds a new entry under [dn] with the
+     [attributes], given as list [(attr_descr, values)].
+  *)
+
+val add : ldap_connection ->
+          dn:string ->
+          attributes:(string * string list) list ->
+          unit ->
+            unit ldap_result
+  (** Same as synchronous function *)
+
+val delete_e : ldap_connection ->
+               dn:string ->
+               unit ->
+                 unit ldap_result Uq_engines.engine
+ (** [delete_e conn ~dn]: Deletes the entry [dn]
+  *)
+
+val delete : ldap_connection ->
+             dn:string ->
+             unit ->
+               unit ldap_result
+  (** Same as synchronous function *)
+
+type operation = [`Add|`Delete|`Replace]
+
+val modify_e : ldap_connection -> 
+               dn:string -> 
+               changes:(operation * (string * string list)) list ->
+               unit ->
+                 unit ldap_result Uq_engines.engine
+  (** [modify_e conn ~dn ~changes ()]: Modifies attributes of the entry for
+      [dn]. The [changes] are given as a list [(op, (attr_descr, values))].
+      Here, [op] is the operation to do. [attr_descr] identifies the attribute
+      to add/delete/replace. The [values] are the additional values, or the
+      values to delete, or the values to substitute. In case of "delete",
+      an empty [values] list means to delete the whole attribute.
+   *)
+
+val modify : ldap_connection -> 
+             dn:string -> 
+             changes:(operation * (string * string list)) list ->
+             unit ->
+               unit ldap_result
+  (** Same as synchronous function *)
+
+
+val modify_dn_e : ldap_connection ->
+                  dn:string ->
+                  new_rdn:string ->
+                  delete_old_rdn:bool ->
+                  new_superior:string option ->
+                  unit ->
+                    unit ldap_result Uq_engines.engine
+  (** [modify_dn_e conn ~dn ~new_rdn ~delete_old_rdn ~new_superior]:
+      renames and/or moves the entry in the tree. The entry under [dn]
+      is the modified entry. The [new_rdn] is the new name of the leaf
+      (renaming). If [delete_old_rdn], the attributes describing the old
+      name of the leaf are deleted, and otherwise retained. If
+      [new_superior] is set, the entry is additionally moved to this
+      new parent entry.
+   *)
+
+val modify_dn : ldap_connection ->
+                dn:string ->
+                new_rdn:string ->
+                delete_old_rdn:bool ->
+                new_superior:string option ->
+                unit ->
+                  unit ldap_result
+
+
 
 (** {2 LDAP routines} *)
 

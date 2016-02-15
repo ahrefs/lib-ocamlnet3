@@ -1,6 +1,14 @@
-(* $Id$ *)
-
 (* RFC 4511 *)
+
+(* TODO: 
+    - timeouts (for await_response, and for search)
+    - STARTTLS
+    - LDAP URLs
+    - testing
+    - test_password
+    - retr_password
+ *)
+
 
 open Uq_engines
 open Uq_engines.Operators
@@ -108,6 +116,8 @@ type result_code =
   | `Other
   | `Unknown_code of int
   ]
+
+type operation = [`Add|`Delete|`Replace]
 
 
 exception Timeout
@@ -265,6 +275,7 @@ let decode_ldap_result msg decode_value =
         (Octetstring result_matched_dn) :: 
           (Octetstring result_error_msg) ::
             comps1 ->
+        let rcode = get_int rcode in
         let result_referrals, comps =
           match comps1 with
             | Tagptr(Context, 3, ref_pc, ref_box, ref_pos, ref_len) :: comps2 ->
@@ -287,9 +298,9 @@ let decode_ldap_result msg decode_value =
                 refs, comps2
             | _ ->
                 [], comps1 in
-        let value = decode_value comps in
+        let value = decode_value rcode comps in
         create_result
-          (result_code (get_int rcode)) 
+          (result_code rcode) 
           result_matched_dn
           result_error_msg
           result_referrals
@@ -312,7 +323,7 @@ let decode_unsolicited_notification msg =
             | Seq notification ->
                 decode_ldap_result
                   notification
-                  (fun seq ->
+                  (fun _ seq ->
                      let ext_seq =
                        Netasn1.streamline_seq
                          [ Context, 10, Netasn1.Type_name.Octetstring;
@@ -546,7 +557,7 @@ let real_close_e conn =
           dlog (sprintf "LDAP: close request %d" id);
           send_message_e conn req_msg
           ++ (fun () ->
-              dlog "LDAP: sending EOF";
+                dlog "LDAP: sending EOF";
                 Uq_io.write_eof_e conn.dev_out
                 ++ (fun _ ->
                       (* now End_of_file is acceptable *)
@@ -653,7 +664,7 @@ let decode_bind_resp ?(ok=[`Success]) resp_msg =
         ( match bind_resp with
             | Seq bind_seq ->
                 let bind_result =
-                  decode_ldap_result bind_seq (fun comps -> comps) in
+                  decode_ldap_result bind_seq (fun _ comps -> comps) in
                 if not (List.mem bind_result#code ok) then (
                   dlog (sprintf "LDAP bind error: %s\n%!"
                                 bind_result#diag_msg);
@@ -915,7 +926,6 @@ let encode_attr_selection attrs =
 let encode_search_req id ~base ~scope ~deref_aliases ~size_limit ~time_limit
                       ~types_only ~filter ~attributes () =
   let open Netasn1.Value in
-  let ldap_version = 3 in
   Seq [ Integer (int id);
         ITag(Application, 3,
              Seq [ Octetstring base;
@@ -1008,7 +1018,7 @@ let decode_search_resp resp_msg to_return =
                 let result =
                   decode_ldap_result
                     msg
-                    (fun comps ->
+                    (fun _ comps ->
                        if comps <> [] then raise Not_found;
                        List.rev to_return
                     ) in
@@ -1025,22 +1035,24 @@ let decode_search_resp resp_msg to_return =
   
 let search_e conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
              ~types_only ~filter ~attributes () =
-  let fail() =
-    failwith "LDAP search: unexpected response" in
   let rec receive_e id to_return =
     await_response_e
       conn
       id
       (fun resp_msg ->
-         dlog(sprintf "LDAP: search response %d" id);
-         match decode_search_resp resp_msg to_return with
-           | `Entry _ as e ->
-               receive_e id (e :: to_return)
-           | `Reference _ as r ->
-               receive_e id (r :: to_return)
-           | `Result result ->
-               dlog(sprintf "LDAP: search done %d" id);
-               eps_e (`Done result) conn.esys
+         try
+           dlog(sprintf "LDAP: search response %d" id);
+           match decode_search_resp resp_msg to_return with
+             | `Entry _ as e ->
+                 receive_e id (e :: to_return)
+             | `Reference _ as r ->
+                 receive_e id (r :: to_return)
+             | `Result result ->
+                 dlog(sprintf "LDAP: search done %d" id);
+                 eps_e (`Done result) conn.esys
+         with
+           | Not_found ->
+               failwith "LDAP protocol: bad search response"
       ) in
   let id = new_msg_id conn in
   let req = encode_search_req
@@ -1058,6 +1070,227 @@ let search conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
            ~types_only ~filter ~attributes () =
   sync (search_e conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
                  ~types_only ~filter ~attributes ())
+
+
+let encode_modify_req ~dn ~changes id =
+  let open Netasn1.Value in
+  Seq [ Integer (int id);
+        ITag(Application, 6,
+             Seq [ Octetstring dn;
+                   Seq
+                     (List.map
+                        (fun (op, (descr, values)) ->
+                           Seq [ ( match op with
+                                     | `Add -> Enum (int 0)
+                                     | `Delete -> Enum (int 1)
+                                     | `Replace -> Enum (int 2)
+                                 );
+                                 Seq [ Octetstring descr;
+                                       Set
+                                         ( List.map
+                                             (fun s -> Octetstring s)
+                                             values
+                                         )
+                                     ]
+                               ]
+                        )
+                        changes
+                     )
+                 ]
+            )
+      ]
+
+
+let decode_unit_value rcode comps =
+  if comps <> [] then
+    failwith "LDAP protocol: unexpected LDAPResult components";
+  ()
+
+
+let decode_simple_resp ?(decode_value=decode_unit_value) expected_tag resp_msg =
+  let open Netasn1.Value in
+  match resp_msg with
+    | Seq [ Integer _;
+            Tagptr(Application, tag, pc, box, pos, len)
+          ] when tag = expected_tag ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
+        let _, data =
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
+        ( match data with
+            | Seq seq -> decode_ldap_result seq decode_value
+            | _ -> raise Not_found
+        )
+    | _ ->
+        raise Not_found
+
+let update_e conn name encode expected_tag =
+  let id = new_msg_id conn in
+  let req = encode id in
+  dlog(sprintf "LDAP: %s request %d" name id);
+  send_message_e conn req
+  ++ (fun () ->
+        await_response_e
+          conn
+          id
+          (fun resp_msg ->
+             dlog(sprintf "LDAP: %s response %d" name id);
+             try
+               eps_e (`Done(decode_simple_resp expected_tag resp_msg)) conn.esys
+             with
+               | Not_found ->
+                   failwith (sprintf "LDAP protocol: bad %s response" name)
+          )
+     )
+  
+
+let modify_e conn ~dn ~changes () =
+  update_e
+    conn
+    "modify"
+    (encode_modify_req ~dn ~changes)
+    7
+
+
+let modify conn ~dn ~changes () =
+  sync(modify_e conn ~dn ~changes ())
+
+
+let encode_add_req ~dn ~attributes id =
+  let open Netasn1.Value in
+  Seq [ Integer (int id);
+        ITag(Application, 6,
+             Seq [ Octetstring dn;
+                   Seq
+                     (List.map
+                        (fun (descr, values) ->
+                           Seq [ Octetstring descr;
+                                 Set
+                                   ( List.map
+                                       (fun s -> Octetstring s)
+                                       values
+                                   )
+                               ]
+                        )
+                        attributes
+                     )
+                 ]
+            )
+      ]
+
+
+let add_e conn ~dn ~attributes () =
+  update_e
+    conn
+    "add"
+    (encode_add_req ~dn ~attributes)
+    9
+
+
+let add conn ~dn ~attributes () =
+  sync(add_e conn ~dn ~attributes ())
+
+
+let encode_delete_req ~dn id =
+  let open Netasn1.Value in
+  Seq [ Integer (int id);
+        ITag(Application, 10, Octetstring dn)
+      ]
+
+
+let delete_e conn ~dn () =
+  update_e
+    conn
+    "delete"
+    (encode_delete_req ~dn)
+    11
+
+
+let delete conn ~dn () =
+  sync(delete_e conn ~dn ())
+
+let encode_modify_dn_req ~dn ~new_rdn ~delete_old_rdn ~new_superior id =
+  let open Netasn1.Value in
+  Seq [ Integer (int id);
+        ITag(Application, 12,
+             Seq ( [ Octetstring dn;
+                     Octetstring new_rdn;
+                     Bool delete_old_rdn;
+                   ] @
+                     ( match new_superior with
+                         | None -> []
+                         | Some dn ->
+                             [ ITag(Context, 0, Octetstring dn) ]
+                     )
+                 )
+            )
+      ]
+  
+
+
+let modify_dn_e conn ~dn ~new_rdn ~delete_old_rdn ~new_superior () =
+  update_e
+    conn
+    "modify_dn"
+    (encode_modify_dn_req  ~dn ~new_rdn ~delete_old_rdn ~new_superior)
+    13
+
+let modify_dn conn ~dn ~new_rdn ~delete_old_rdn ~new_superior () =
+  sync(modify_dn_e conn ~dn ~new_rdn ~delete_old_rdn ~new_superior ())
+
+
+let encode_compare_req ~dn ~attr ~value id =
+  let open Netasn1.Value in
+  Seq [ Integer (int id);
+        ITag(Application, 14,
+             Seq [ Octetstring dn;
+                   Seq [ Octetstring attr;
+                         Octetstring value
+                       ]
+                 ]
+            )
+      ]
+
+
+let derive_compare_result (r : unit ldap_result) : bool ldap_result =
+  object
+    method code = r#code
+    method matched_dn = r#matched_dn
+    method diag_msg = r#diag_msg
+    method referral = r#referral
+    method value =
+      match r#code with
+        | `CompareFalse -> false
+        | `CompareTrue -> true
+        | code ->
+            raise (LDAP_error(code, r#diag_msg))
+    method partial_value = (r#code = `CompareTrue)
+  end
+
+
+let compare_e conn ~dn ~attr ~value () =
+  let id = new_msg_id conn in
+  let req = encode_compare_req ~dn ~attr ~value id in
+  dlog(sprintf "LDAP: compare request %d" id);
+  send_message_e conn req
+  ++ (fun () ->
+        await_response_e
+          conn
+          id
+          (fun resp_msg ->
+             dlog(sprintf "LDAP: compare response %d" id);
+             try
+               let r1 = decode_simple_resp 15 resp_msg in
+               let r2 = derive_compare_result r1 in
+               eps_e (`Done r2) conn.esys
+             with
+               | Not_found ->
+                   failwith "LDAP protocol: bad compare response"
+          )
+     )
+
+let compare conn ~dn ~attr ~value () =
+  sync(compare_e conn ~dn ~attr ~value ())
 
   
 (*
