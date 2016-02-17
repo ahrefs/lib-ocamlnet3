@@ -1,12 +1,9 @@
 (* RFC 4511 *)
 
 (* TODO: 
-    - timeouts (for await_response, and for search)
     - STARTTLS
     - LDAP URLs
     - testing
-    - test_password
-    - retr_password
  *)
 
 
@@ -535,11 +532,18 @@ let connect ?proxy server =
   sync (connect_e ?proxy server esys)
 
 
-let send_message_e conn msg =
+let send_message_no_tmo_e conn msg =
   let buf = Netbuffer.create 80 in
   ignore(Netasn1_encode.encode_ber buf msg);
   let data = Netbuffer.to_bytes buf in
   Uq_io.really_output_e conn.dev_out (`Bytes data) 0 (Bytes.length data)
+
+
+let send_message_e conn msg =
+  Uq_engines.timeout_engine
+    conn.srv#ldap_timeout
+    Timeout
+    (send_message_no_tmo_e conn msg)
 
 
 let real_close_e conn =
@@ -601,7 +605,7 @@ let with_conn_e f conn =
     
 
 
-let await_response_e conn msg_id f_e =
+let await_response_no_tmo_e conn msg_id f_e =
   (* Invoke f_e with the response message when a response for msg_id arrives *)
   let signal_eng, signal = Uq_engines.signal_engine conn.esys in
   let s = { signal_eng; signal } in
@@ -615,6 +619,13 @@ let await_response_e conn msg_id f_e =
               )
     e;
   e
+
+
+let await_response_e conn msg_id f_e =
+  Uq_engines.timeout_engine
+    conn.srv#ldap_timeout
+    Timeout
+    (await_response_no_tmo_e conn msg_id f_e)
 
 
 let encode_simple_bind_req id bind_dn password =
@@ -1030,9 +1041,6 @@ let decode_search_resp resp_msg to_return =
         raise Not_found
 
 
-(* TODO: enforce timeouts *)
-
-  
 let search_e conn ~base ~scope ~deref_aliases ~size_limit ~time_limit
              ~types_only ~filter ~attributes () =
   let rec receive_e id to_return =
@@ -1159,7 +1167,7 @@ let modify conn ~dn ~changes () =
 let encode_add_req ~dn ~attributes id =
   let open Netasn1.Value in
   Seq [ Integer (int id);
-        ITag(Application, 6,
+        ITag(Application, 8,
              Seq [ Octetstring dn;
                    Seq
                      (List.map
@@ -1292,6 +1300,109 @@ let compare_e conn ~dn ~attr ~value () =
 let compare conn ~dn ~attr ~value () =
   sync(compare_e conn ~dn ~attr ~value ())
 
+
+let upwd_re = Netstring_str.regexp "^{\\([0-9A-Za-z./_-]+\\)}\\(.*\\)$"
+let apwd_re = Netstring_str.regexp "^[ ]*\\([0-9A-Za-z./_-]+\\)[ ]*[$][ ]*\\([^ $]*\\)[ ]*[$][ ]*\\([^ ]+\\)[ ]*$"
+
+
+let retr_password_e ~dn srv creds esys =
+  connect_e srv esys
+  ++ (fun conn -> 
+        conn_bind_e conn creds
+        ++ (fun () -> 
+              search_e
+                ~base:dn ~scope:`Base ~deref_aliases:`Never ~size_limit:1
+                ~time_limit:0 ~types_only:false
+                ~filter:(`Present("objectclass"))
+                ~attributes:[ "userPassword" ]
+                conn
+                ()
+           )
+        ++ (fun resp ->
+              let resp_list = resp#value in
+              let upwd_list =
+                List.flatten
+                  (List.map
+                     (function
+                       | `Entry(_, [_, values]) ->
+                           List.flatten
+                             (List.map
+                                (fun v ->
+                                   match Netstring_str.string_match upwd_re v 0
+                                   with
+                                     | Some m ->
+                                         let scheme =
+                                           Netstring_str.matched_group m 1 v in
+                                         let data =
+                                           Netstring_str.matched_group m 2 v in
+                                         [ "userPassword-" ^ 
+                                               String.uppercase scheme,
+                                           data,
+                                           []
+                                         ]
+                                     | _ ->
+                                         [ "password", v, [] ]
+                                )
+                                values
+                             )
+                       | _ ->
+                           []
+                     )
+                     resp_list
+                  ) in
+              search_e
+                ~base:dn ~scope:`Base ~deref_aliases:`Never ~size_limit:1
+                ~time_limit:0 ~types_only:false
+                ~filter:(`Present("objectclass"))
+                ~attributes:[ "authPassword" ]
+                conn
+                ()
+              ++ (fun resp ->
+                    let resp_list = resp#value in
+                    let apwd_list =
+                      List.flatten
+                        (List.map
+                           (function
+                             | `Entry(_, [_, values]) ->
+                                 List.flatten
+                                   (List.map
+                                      (fun v ->
+                                       match Netstring_str.string_match
+                                               apwd_re v 0
+                                       with
+                                         | Some m ->
+                                             let scheme =
+                                               Netstring_str.matched_group m 1 v in
+                                             let info =
+                                               Netstring_str.matched_group m 2 v in
+                                             let data =
+                                               Netstring_str.matched_group m 3 v in
+                                             [ "authPassword-" ^
+                                                 String.uppercase scheme,
+                                               data,
+                                               [ "info", info ]
+                                             ]
+                                         | _ -> []
+                                      )
+                                      values
+                                   )
+                             | _ ->
+                                 []
+                           )
+                           resp_list
+                        ) in
+                    eps_e (`Done (upwd_list @ apwd_list)) conn.esys
+                 )
+           )
+     )
+
+
+let retr_password ~dn srv creds =
+  let esys = Unixqueue.create_unix_event_system() in
+  sync(retr_password_e ~dn srv creds esys)
+
+
+
   
 (*
 #use "topfind";;
@@ -1328,6 +1439,18 @@ let r =
   search conn ~base:"o=gs-adressbuch" ~scope:`Sub ~deref_aliases:`Never
     ~size_limit:0 ~time_limit:0 ~types_only:false
     ~filter:(`Not(`Equality_match("ou","users"))) ~attributes:["*"] ();;
+
+let r = add conn ~dn:"cn=sample, ou=adressen, o=gs-adressbuch" ~attributes:["cn", ["sample"]; "objectClass", ["inetOrgPerson"]; "sn", ["surname"]] ();;
+
+let r = delete conn ~dn:"cn=sample, ou=adressen, o=gs-adressbuch"();;
+
+let r = modify conn ~dn:"cn=sample, ou=adressen, o=gs-adressbuch" ~changes:[`Replace, ("sn", ["surname1"])] ();;
+
+let r = search conn ~base:"cn=sample2, ou=adressen, o=gs-adressbuch" ~scope:`Base ~deref_aliases:`Never ~size_limit:0 ~time_limit:0 ~types_only:false ~filter:(`Present "objectclass") ~attributes:["*"] ();;
+
+let r = modify_dn conn ~dn:"cn=sample, ou=adressen, o=gs-adressbuch" ~new_rdn:"cn=sample2" ~delete_old_rdn:true ~new_superior:None ();;
+
+retr_password ~dn:bind_dn server creds1;;
 
 close conn;;
  *)

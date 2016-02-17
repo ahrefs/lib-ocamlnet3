@@ -46,8 +46,17 @@ type result_code =
   ]
 
 exception Timeout
+  (** Raised when the TCP connection times out. Timeouts should be considered
+      as non-recoverable by the user, and the connection should be aborted.
+   *)
+
 exception LDAP_error of result_code * string
+  (** The server indicates a (logical) error. Such errors are normal messages,
+      and the connection remains intact.
+   *)
+
 exception Auth_error of string
+  (** Authentication error *)
 
 (** {2 Specifying the LDAP server} *)
 
@@ -89,11 +98,19 @@ val connect :
       ldap_server -> ldap_connection
 
 val close_e : ldap_connection -> unit Uq_engines.engine
+  (** Close the connection using the close protocol *)
+
 val close : ldap_connection -> unit
+  (** Same as synchronous function *)
+
 val abort : ldap_connection -> unit
+  (** Close the connection immediately *)
 
 val conn_bind_e : ldap_connection -> bind_creds -> unit Uq_engines.engine
+  (** Bind the connection to credentials *)
+
 val conn_bind : ldap_connection -> bind_creds -> unit
+  (** Same as synchronous function *)
 
 (** {2 LDAP results} *)
 
@@ -117,7 +134,9 @@ class type ['a] ldap_result =
 
 exception Notification of string ldap_result
   (** An unsolicited notification. The string is the OID. Best reaction is
-      to terminate the connection.
+      to terminate the connection. This is e.g. sent when the server cannot
+      decode the client message, but also for other special conditions.
+      [Notification] exception are directly raised by the LDAP client functions.
    *)
 
 
@@ -254,6 +273,17 @@ val compare : ldap_connection ->
 
 (** {2 LDAP updates} *)
 
+(** Although updates do not return a regular result, there might be an
+    error message. An exception is not automatically raised. It is done,
+    though, when the [value] method of the result is invoked (returning
+    normally just [()]). Example:
+
+{[
+let () = (add conn ~dn ~attributes) # value
+]}
+
+ *)
+
 val add_e : ldap_connection ->
             dn:string ->
             attributes:(string * string list) list ->
@@ -329,6 +359,7 @@ val modify_dn : ldap_connection ->
                 new_superior:string option ->
                 unit ->
                   unit ldap_result
+  (** Same as synchronous function *)
 
 
 
@@ -337,16 +368,30 @@ val modify_dn : ldap_connection ->
 val test_bind_e : ?proxy:#Uq_engines.client_endpoint_connector ->
                   ldap_server -> bind_creds -> 
                   Unixqueue.event_system -> bool Uq_engines.engine
+  (** Tries to bind to the server with the given credentials. Returns whether
+      successful.
+   *)
+
 val test_bind : ?proxy:#Uq_engines.client_endpoint_connector ->
                 ldap_server -> bind_creds -> bool
+  (** Same as synchronous function *)
 
-(*
 val retr_password_e : dn:string -> ldap_server -> bind_creds ->
-                      (string * string * (string * string) list) list engine
+                      Unixqueue.event_system -> 
+                      (string * string * (string * string) list) list Uq_engines.engine
+  (** Connects and binds to the server, and retrieves the [userPassword] and
+      [authPassword] attributes of the entry referenced by [dn]. The
+      passwords are returned in the format outlined in {!Credentials}.
+      This function can process these password formats:
+       - [userPassword] in RFC-2307 format using any schemes
+       - [authPassword] in RFC-3112 format using any schemes
+
+      Raises an [LDAP_error] exception when problems occur.
+   *)
+
 val retr_password : dn:string -> ldap_server -> bind_creds ->
                       (string * string * (string * string) list) list
-*)
-
+  (** Same as synchronous function *)
 
 (** {1 Debugging} *)
 
