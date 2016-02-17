@@ -1,8 +1,9 @@
-(* RFC 4511 *)
+(* main RFC: 4511 *)
 
 (* TODO: 
     - STARTTLS
     - LDAP URLs
+    - RFC-3062 (modify password ext)
     - testing
  *)
 
