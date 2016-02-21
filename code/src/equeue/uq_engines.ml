@@ -559,6 +559,11 @@ object(self)
 	| Some e -> 
 	    e # abort()
 	| None -> ()
+    );
+    ( match !proxy with
+	| Some e -> 
+	    e # abort()
+	| None -> ()
     )
 end;;
 
