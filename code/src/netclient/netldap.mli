@@ -1,5 +1,14 @@
 (* $Id$ *)
 
+(** LDAP client *)
+
+(** This is a simple asynchronous LDAP client.
+
+    Regarding LDAP URLs, please note that there are some special functions
+    in {!Neturl_ldap}.
+
+ *)
+
 (** {2 Error handling} *)
 
 type result_code =
