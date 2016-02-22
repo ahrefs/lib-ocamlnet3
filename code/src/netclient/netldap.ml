@@ -1,13 +1,5 @@
 (* main RFC: 4511 *)
 
-(* TODO: 
-    - STARTTLS
-    - LDAP URLs
-    - RFC-3062 (modify password ext)
-    - testing
- *)
-
-
 open Uq_engines
 open Uq_engines.Operators
 open Printf
@@ -29,12 +21,15 @@ type signal =
       signal : asn1_message final_state -> unit
     }
 
+type tls_mode = [ `Disabled | `Immediate | `StartTLS | `StartTLS_if_possible ]
+
 class type ldap_server =
 object
   method ldap_endpoint : Netsockaddr.socksymbol
   method ldap_timeout : float
   method ldap_peer_name : string option
   method ldap_tls_config : (module Netsys_crypto_types.TLS_CONFIG) option
+  method ldap_tls_mode : tls_mode
 end
 
 type sasl_bind_creds =
@@ -172,30 +167,59 @@ type search_result =
 let ldap_server ?(timeout=15.0)
                 ?peer_name 
                 ?tls_config
-                ?(tls_enable = false)
+                ?(tls_mode = `StartTLS_if_possible)
                 addr : ldap_server =
   let tls_config =
-    if tls_enable then
-      match tls_config with
-        | None ->
-            let p = Netsys_crypto.current_tls() in
-            let c =
-              Netsys_tls.create_x509_config
-                ~system_trust:true
-                ~peer_auth:`Required
-                p in
-            Some c
-        | Some tls ->
-            Some tls
-    else
-      None in
+    match tls_mode with
+      | `Immediate
+      | `StartTLS
+      | `StartTLS_if_possible ->
+          ( match tls_config with
+              | None ->
+                  if tls_mode=`StartTLS_if_possible && 
+                       Netsys_crypto.current_tls_opt()=None
+                  then
+                    None
+                  else
+                    let p = Netsys_crypto.current_tls() in
+                    let c =
+                      Netsys_tls.create_x509_config
+                        ~system_trust:true
+                        ~peer_auth:`Required
+                        p in
+                    Some c
+              | Some tls ->
+                  Some tls
+          )
+      | _ ->
+          None in
   ( object
       method ldap_endpoint = addr
       method ldap_timeout = timeout
       method ldap_peer_name = peer_name
       method ldap_tls_config = tls_config
+      method ldap_tls_mode = tls_mode
     end
   )
+
+let ldap_server_of_url ?timeout ?tls_config ?tls_mode url =
+  let sch = Neturl.url_scheme url in
+  let dport =
+    match sch with
+      | "ldap" -> 389
+      | "ldaps" -> 636
+      | _ -> failwith "Netldap.ldap_server_of_url: not an LDAP URL" in
+  let socksym = Neturl.url_socksymbol url dport in
+  let tls_mode =
+    match tls_mode, sch with
+      | _, "ldaps" -> Some `Immediate
+      | Some `Immediate, "ldap" -> Some `StartTLS
+      | _, _ -> tls_mode in
+  ldap_server ?timeout ?tls_config ?tls_mode socksym
+
+
+let anon_bind_creds =
+  Simple("","")
 
 let simple_bind_creds ~dn ~pw =
   Simple(dn,pw)
@@ -452,87 +476,6 @@ let abort conn  =
   conn.recv_eng # abort()
 
 
-let real_connect_e ?proxy (server:ldap_server) esys =
-  let addr =
-    `Socket(Uq_client.sockspec_of_socksymbol
-              Unix.SOCK_STREAM
-              server#ldap_endpoint,
-            Uq_client.default_connect_options) in
-  Uq_client.connect_e ?proxy addr esys
-  ++ (function
-       | `Socket(fd,fd_spec) ->
-           dlog(sprintf "LDAP: connected to %s"
-                  (Netsockaddr.string_of_socksymbol server#ldap_endpoint));
-           let mplex0 =
-             Uq_multiplex.create_multiplex_controller_for_connected_socket
-               ~close_inactive_descr:true
-               ~supports_half_open_connection:true
-               (* timeout *)
-               fd esys in
-           let mplex1 =
-             match server#ldap_tls_config with
-               | None -> mplex0
-               | Some tls ->
-                   Uq_multiplex.tls_multiplex_controller
-                     ~role:`Client
-                     ~peer_name:(match server#ldap_peer_name with
-                                   | Some n -> Some n
-                                   | None ->
-                                       ( match addr with
-                                           | `Socket(`Sock_inet_byname(_,p,_),
-                                                     _) ->
-                                               Some p
-                                           | _ ->
-                                               None
-                                       )
-                                )
-                     tls
-                     mplex0 in
-           let dev_in_raw = `Multiplex mplex1 in
-           let dev_in_buf = Uq_io.create_in_buffer dev_in_raw in
-           let dev_in = `Buffer_in dev_in_buf in
-           let dev_out = `Multiplex mplex1 in
-           let next_id = 1 in
-           let signals = Hashtbl.create 17 in
-           let dummy_e = eps_e (`Done()) esys in
-           let conn =
-             { srv = server;
-               fd = Some fd;
-               esys; mplex0; mplex1; dev_in; dev_in_buf; dev_out; next_id;
-               signals; recv_eng = dummy_e } in
-           dlog "LDAP: starting message receiver";
-           let e1 = receive_messages_e conn false in
-           conn.recv_eng <- e1;
-           Uq_engines.when_state
-             ~is_error:(fun error ->
-                          dlog (sprintf "LDAP client: caught exception: %S"
-                                  (Netexn.to_string error));
-                          Hashtbl.iter
-                            (fun _ signal ->
-                               let g = Unixqueue.new_group conn.esys in
-                               Unixqueue.once conn.esys g 0.0
-                                 (fun () -> signal.signal (`Error error))
-                            )
-                            conn.signals;
-                          Hashtbl.clear conn.signals;
-                          abort conn
-                       )
-             e1;
-           eps_e (`Done conn) esys
-       | _ -> assert false
-     )
-
-let connect_e ?proxy server esys =
-  Uq_engines.timeout_engine
-    server#ldap_timeout
-    Timeout
-    (real_connect_e ?proxy server esys)
-
-let connect ?proxy server =
-  let esys = Unixqueue.create_unix_event_system() in
-  sync (connect_e ?proxy server esys)
-
-
 let send_message_no_tmo_e conn msg =
   let buf = Netbuffer.create 80 in
   ignore(Netasn1_encode.encode_ber buf msg);
@@ -545,6 +488,230 @@ let send_message_e conn msg =
     conn.srv#ldap_timeout
     Timeout
     (send_message_no_tmo_e conn msg)
+
+
+let await_response_no_tmo_e conn msg_id f_e =
+  (* Invoke f_e with the response message when a response for msg_id arrives *)
+  let signal_eng, signal = Uq_engines.signal_engine conn.esys in
+  let s = { signal_eng; signal } in
+  let e = signal_eng ++ f_e in
+  Hashtbl.replace conn.signals msg_id s;
+  when_state
+    ~is_error:(fun err -> 
+                 dlog(sprintf "LDAP: processing response for msg %d results in \
+                               exception: %s"
+                              msg_id (Netexn.to_string err))
+              )
+    e;
+  e
+
+
+let await_response_e conn msg_id f_e =
+  Uq_engines.timeout_engine
+    conn.srv#ldap_timeout
+    Timeout
+    (await_response_no_tmo_e conn msg_id f_e)
+
+
+let addr_of_server server =
+  `Socket(Uq_client.sockspec_of_socksymbol
+            Unix.SOCK_STREAM
+            server#ldap_endpoint,
+          Uq_client.default_connect_options)
+
+
+
+let tls_peer_name server =
+  let addr = addr_of_server server in
+  match server#ldap_peer_name with
+    | Some n -> Some n
+    | None ->
+        ( match addr with
+            | `Socket(`Sock_inet_byname(_,p,_), _) ->
+                Some p
+            | _ ->
+                None
+        )
+
+let enable_receiver conn =
+  dlog "LDAP: starting message receiver";
+  let e1 = receive_messages_e conn false in
+  conn.recv_eng <- e1;
+  Uq_engines.when_state
+    ~is_error:(fun error ->
+                 dlog (sprintf "LDAP client: caught exception: %S"
+                               (Netexn.to_string error));
+                 Hashtbl.iter
+                   (fun _ signal ->
+                      let g = Unixqueue.new_group conn.esys in
+                      Unixqueue.once conn.esys g 0.0
+                                     (fun () -> signal.signal (`Error error))
+                   )
+                   conn.signals;
+                 Hashtbl.clear conn.signals;
+                 abort conn
+              )
+    e1
+
+
+let tls_wrap_e conn tls =
+  dlog "LDAP: replacing message receiver";
+  conn.recv_eng # abort();
+  let signal_eng, signal = Uq_engines.signal_engine conn.esys in
+  let mplex1 =
+    Uq_multiplex.tls_multiplex_controller
+      ~on_handshake:(fun _ -> signal(`Done()))
+      ~role:`Client
+      ~peer_name:(tls_peer_name conn.srv)
+      tls
+      conn.mplex0 in
+  let dev_in_raw = `Multiplex mplex1 in
+  let dev_in_buf = Uq_io.create_in_buffer dev_in_raw in
+  let dev_in = `Buffer_in dev_in_buf in
+  let dev_out = `Multiplex mplex1 in
+  let conn' =
+    { conn with
+      mplex1; dev_in; dev_in_buf; dev_out
+    } in
+  enable_receiver conn';
+  signal_eng
+  ++ (fun _ ->
+        eps_e (`Done conn') conn'.esys
+     )
+
+
+let real_connect_e ?proxy (server:ldap_server) esys =
+  let addr = addr_of_server server in
+  Uq_client.connect_e ?proxy addr esys
+  ++ (function
+       | `Socket(fd,fd_spec) ->
+           dlog(sprintf "LDAP: connected to %s"
+                  (Netsockaddr.string_of_socksymbol server#ldap_endpoint));
+           let mplex0 =
+             Uq_multiplex.create_multiplex_controller_for_connected_socket
+               ~close_inactive_descr:true
+               ~supports_half_open_connection:true
+               (* timeout *)
+               fd esys in
+           let mplex1 = mplex0 in
+           let dev_in_raw = `Multiplex mplex1 in
+           let dev_in_buf = Uq_io.create_in_buffer dev_in_raw in
+           let dev_in = `Buffer_in dev_in_buf in
+           let dev_out = `Multiplex mplex1 in
+           let next_id = 1 in
+           let signals = Hashtbl.create 17 in
+           let dummy_e = eps_e (`Done()) esys in
+           let conn =
+             { srv = server;
+               fd = Some fd;
+               esys; mplex0; mplex1; dev_in; dev_in_buf; dev_out; next_id;
+               signals; recv_eng = dummy_e } in
+           ( match server#ldap_tls_mode, server#ldap_tls_config with
+               | `Immediate, Some tls ->
+                   tls_wrap_e conn tls
+               | _ ->
+                   enable_receiver conn;
+                   eps_e (`Done conn) esys
+           )                   
+       | _ -> assert false
+     )
+
+let encode_starttls_req id =
+  let open Netasn1.Value in
+    Seq [ Integer (int id);
+          ITag(Application, 23,
+               Seq [ ITag(Context, 0, Octetstring "1.3.6.1.4.1.1466.20037") ]
+              )
+        ]
+
+
+let decode_starttls_resp msg =
+  let open Netasn1.Value in
+  match msg with
+    | Seq [ Integer _;
+            Tagptr(Application, 24, pc, box, pos, len)
+          ] ->
+        let Netstring_tstring.Tstring_polybox(ops, s) = box in
+        let _, data =
+          Netasn1.decode_ber_contents_poly
+            ~pos ~len ops s pc Netasn1.Type_name.Seq in
+        ( match data with
+            | Seq seq ->
+                decode_ldap_result
+                  seq
+                  (fun _ seq ->
+                     let ext_seq =
+                       Netasn1.streamline_seq
+                         [ Context, 10, Netasn1.Type_name.Octetstring;
+                           Context, 11, Netasn1.Type_name.Octetstring
+                         ]
+                         seq in
+                     match ext_seq with
+                       | [ None; None ]
+                       | [ Some(Octetstring "1.3.6.1.4.1.1466.20037"); None ] ->
+                           ()
+                       | _ -> raise Not_found
+                  )
+            | _ -> raise Not_found
+        )
+    | _ ->
+        raise Not_found
+
+let starttls_e conn =
+  let server = conn.srv in
+  match server#ldap_tls_mode, server#ldap_tls_config with
+    | (`StartTLS | `StartTLS_if_possible), Some tls ->
+        let id = new_msg_id conn in
+        let req = encode_starttls_req id in
+        dlog(sprintf "LDAP: STARTTLS request %d" id);
+        send_message_e conn req
+        ++ (fun () ->
+              await_response_e
+                conn
+                id
+                (fun resp_msg ->
+                   dlog(sprintf "LDAP: STARTTLS response %d" id);
+                   try
+                     let resp = decode_starttls_resp resp_msg in
+                     if resp#code = `Success then
+                       tls_wrap_e conn tls
+                     else
+                       if server#ldap_tls_mode = `StartTLS_if_possible then
+                         eps_e (`Done conn) conn.esys
+                       else
+                         failwith "LDAP server unwilling to start TLS session"
+                   with
+                     | Not_found ->
+                         failwith "LDAP protocol: bad STARTTLS response"
+                )
+           )
+    | _ ->
+        eps_e (`Done conn) conn.esys
+
+
+let tls_session_props conn =
+  conn.mplex1 # tls_session_props
+
+
+let connect_e ?proxy server esys =
+  Uq_engines.timeout_engine
+    server#ldap_timeout
+    Timeout
+    (real_connect_e ?proxy server esys
+     ++ (fun conn ->
+           starttls_e conn
+           >> (function
+                | `Done conn -> `Done conn
+                | `Error e -> abort conn; `Error e
+                | `Aborted -> abort conn; `Aborted
+              )
+        )
+    )
+
+
+let connect ?proxy server =
+  let esys = Unixqueue.create_unix_event_system() in
+  sync (connect_e ?proxy server esys)
 
 
 let real_close_e conn =
@@ -604,29 +771,6 @@ let with_conn_e f conn =
         ++ (fun () -> eps_e (st :> _ engine_state) conn.esys)
      )
     
-
-
-let await_response_no_tmo_e conn msg_id f_e =
-  (* Invoke f_e with the response message when a response for msg_id arrives *)
-  let signal_eng, signal = Uq_engines.signal_engine conn.esys in
-  let s = { signal_eng; signal } in
-  let e = signal_eng ++ f_e in
-  Hashtbl.replace conn.signals msg_id s;
-  when_state
-    ~is_error:(fun err -> 
-                 dlog(sprintf "LDAP: processing response for msg %d results in \
-                               exception: %s"
-                              msg_id (Netexn.to_string err))
-              )
-    e;
-  e
-
-
-let await_response_e conn msg_id f_e =
-  Uq_engines.timeout_engine
-    conn.srv#ldap_timeout
-    Timeout
-    (await_response_no_tmo_e conn msg_id f_e)
 
 
 let encode_simple_bind_req id bind_dn password =
@@ -1116,22 +1260,27 @@ let decode_unit_value rcode comps =
   ()
 
 
-let decode_simple_resp ?(decode_value=decode_unit_value) expected_tag resp_msg =
+let decode_simple_resp_gen ?(decode_value=fun _ _ -> assert false)
+                           expected_tag resp_msg =
   let open Netasn1.Value in
   match resp_msg with
     | Seq [ Integer _;
             Tagptr(Application, tag, pc, box, pos, len)
           ] when tag = expected_tag ->
-        let Netstring_tstring.Tstring_polybox(ops, s) = box in
-        let _, data =
-          Netasn1.decode_ber_contents_poly
-            ~pos ~len ops s pc Netasn1.Type_name.Seq in
-        ( match data with
-            | Seq seq -> decode_ldap_result seq decode_value
-            | _ -> raise Not_found
-        )
+       let Netstring_tstring.Tstring_polybox(ops, s) = box in
+       let _, data =
+         Netasn1.decode_ber_contents_poly
+           ~pos ~len ops s pc Netasn1.Type_name.Seq in
+       ( match data with
+           | Seq seq -> decode_ldap_result seq decode_value
+           | _ -> raise Not_found
+       )
     | _ ->
-        raise Not_found
+       raise Not_found
+
+let decode_simple_resp expected_tag resp_msg =
+  decode_simple_resp_gen ~decode_value:decode_unit_value expected_tag resp_msg
+
 
 let update_e conn name encode expected_tag =
   let id = new_msg_id conn in
@@ -1403,6 +1552,86 @@ let retr_password ~dn srv creds =
   sync(retr_password_e ~dn srv creds esys)
 
 
+let encode_modify_password_req id uid_opt old_pw_opt new_pw_opt =
+  let open Netasn1.Value in
+  let req_val =
+    Seq ( ( match uid_opt with
+              | None -> []
+              | Some uid -> [ Octetstring uid ]
+          ) @
+          ( match old_pw_opt with
+              | None -> []
+              | Some old_pw -> [ Octetstring old_pw ]
+          ) @
+          ( match new_pw_opt with
+              | None -> []
+              | Some new_pw -> [ Octetstring new_pw ]
+          )
+        ) in
+  Seq [ Integer (int id);
+        ITag(Application, 23,
+             Seq [ ITag(Context, 0, Octetstring "1.3.6.1.4.1.4203.1.11.1");
+                   ITag(Context, 1, req_val)
+                 ]
+            )
+      ]
+
+
+let decode_modify_password_resp msg =
+  let open Netasn1.Value in
+  decode_simple_resp_gen
+    ~decode_value:(fun _ seq ->
+                     let ext_seq =
+                       Netasn1.streamline_seq
+                         [ Context, 10, Netasn1.Type_name.Octetstring;
+                           Context, 11, Netasn1.Type_name.Seq
+                         ]
+                         seq in
+                     match ext_seq with
+                       | [ None; None ] ->
+                           None
+                       | [ None; Some(Seq seq) ] ->
+                           let ext_seq =
+                             Netasn1.streamline_seq
+                               [ Context, 0, 
+                                 Netasn1.Type_name.Octetstring ]
+                               seq in
+                           ( match ext_seq with
+                               | [ None ] ->
+                                   None
+                               | [ Some (Octetstring pw) ] ->
+                                   Some pw
+                               | _ ->
+                                   assert false
+                           )
+                       | _ ->
+                           failwith "LDAP protocol: bad modify-passwd result"
+                  )
+    24
+    msg
+
+let modify_password_e conn ~uid ~old_pw ~new_pw () =
+  let id = new_msg_id conn in
+  let req = encode_modify_password_req id uid old_pw new_pw in
+  dlog (sprintf "LDAP: modify-passwd request %d" id);
+  send_message_e conn req
+  ++ (fun () ->
+        await_response_e
+          conn
+          id
+          (fun resp_msg ->
+             dlog(sprintf "LDAP: modify-passwd response %d" id);
+             try
+               let r = decode_modify_password_resp resp_msg in
+               eps_e (`Done r) conn.esys
+             with
+               | Not_found ->
+                   failwith "LDAP protocol: bad modify-passwd response"
+          )
+     )
+
+let modify_password conn ~uid ~old_pw ~new_pw () =
+  sync (modify_password_e conn ~uid ~old_pw ~new_pw ())
 
   
 (*
@@ -1416,6 +1645,7 @@ let bind_dn = "uid=gerdsasl,ou=users,o=gs-adressbuch";;
 
 let server =
   ldap_server
+    ~peer_name:"gps.dynxs.de"
     (`Inet_byname("office1", 389)) ;;
 
 let creds1 = simple_bind_creds ~dn:bind_dn ~pw:password;;

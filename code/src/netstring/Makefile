@@ -9,7 +9,7 @@ OBJECTS  = netconst.cmo netstring_str.cmo netbuffer.cmo netunichar.cmo \
            netulex.cmo netencoding.cmo netstream.cmo netdate.cmo \
 	   netmime_string.cmo \
            nethtml_scanner.cmo nethtml.cmo \
-	   neturl.cmo netsaslprep_data.cmo netsaslprep.cmo \
+	   neturl.cmo neturl_ldap.cmo netsaslprep_data.cmo netsaslprep.cmo \
 	   netaddress.cmo netcompression.cmo \
 	   netmime.cmo netmime_header.cmo netmime_channels.cmo \
 	   netsendmail.cmo nethttp.cmo \
@@ -43,7 +43,7 @@ INSTALL_EXTRA = $(INSTALL_EXTRA_CMO:=.cmo) \
 
 DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netmime.mli netsendmail.mli neturl.mli netaddress.mli netbuffer.mli \
-	netmime_header.mli netmime_channels.mli \
+	netmime_header.mli netmime_channels.mli neturl_ldap.mli \
 	netdate.mli netencoding.mli netulex.mli netaccel.mli \
 	netaccel_link.mli nethtml.mli netstring_str.mli \
 	netmappings.mli netaux.mli nethttp.mli netpagebuffer.mli \

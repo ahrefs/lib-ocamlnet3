@@ -60,24 +60,65 @@ exception Auth_error of string
 
 (** {2 Specifying the LDAP server} *)
 
+type tls_mode = [ `Disabled | `Immediate | `StartTLS | `StartTLS_if_possible ]
+  (** Options:
+       - [`Disabled]: do not negotiate TLS
+       - [`Immediate]: assume that the connection directly requires TLS
+       - [`StartTLS]: upgrade an initially unprotected connection to TLS
+       - [`StartTLS_if_possible]: upgrade an unprotected connection to TLS
+         if possible (i.e. if supported by both ends of the connection)
+   *)
+
 class type ldap_server =
 object
   method ldap_endpoint : Netsockaddr.socksymbol
   method ldap_timeout : float
   method ldap_peer_name : string option
   method ldap_tls_config : (module Netsys_crypto_types.TLS_CONFIG) option
+  method ldap_tls_mode : tls_mode
 end
 
 val ldap_server : ?timeout:float ->
                   ?peer_name:string ->
                   ?tls_config:(module Netsys_crypto_types.TLS_CONFIG) ->
-                  ?tls_enable:bool ->
+                  ?tls_mode:tls_mode ->
                   Netsockaddr.socksymbol -> ldap_server
+  (** Specifies how to reach the server: e.g.
+
+      {[
+let server = ldap_server (`Inet_byname("hostname", 389))
+      ]}
+
+      Options:
+
+       - [timeout]: The timeout for connecting and for subsequent 
+         request/response cycles. Defaults to 15 seconds.
+       - [peer_name]: The expected domain name in the certificate for
+         TLS-secured connections. If not passed, the name is derived from
+         the socksymbol argument.
+       - [tls_config]: The TLS configuration (i.e. the TLS provider and
+         how to use it). Defaults to the provider set in {!Netsys_crypto},
+         and to requiring valid server certificates.
+       - [tls_mode]: Whether and how to negotiate TLS. Defaults to
+         [`StartTLS_if_possible].
+   *)
+
+val ldap_server_of_url : ?timeout:float ->
+                         ?tls_config:(module Netsys_crypto_types.TLS_CONFIG) ->
+                         ?tls_mode:tls_mode ->
+                         Neturl.url -> ldap_server
+  (** Gets the host and port from an LDAP URL. Otherwise the same as
+      [ldap_server].
+
+      The URL can have schemes "ldap" or "ldaps". In the latter case, the
+      [tls_mode] is automatically adjusted to [`Immediate].
+   *)
 
 (** {2 Specifying LDAP credentials} *)
 
 type bind_creds
 
+val anon_bind_creds : bind_creds
 val simple_bind_creds : dn:string -> pw:string -> bind_creds
 val sasl_bind_creds : dn:string -> user:string -> authz:string ->
                        creds:(string * string * (string * string)list)list ->
@@ -111,6 +152,9 @@ val conn_bind_e : ldap_connection -> bind_creds -> unit Uq_engines.engine
 
 val conn_bind : ldap_connection -> bind_creds -> unit
   (** Same as synchronous function *)
+
+val tls_session_props : ldap_connection -> Nettls_support.tls_session_props option
+  (** Returns the TLS session properties *)
 
 (** {2 LDAP results} *)
 
@@ -361,6 +405,29 @@ val modify_dn : ldap_connection ->
                   unit ldap_result
   (** Same as synchronous function *)
 
+
+val modify_password_e : ldap_connection ->
+                        uid:string option ->
+                        old_pw:string option ->
+                        new_pw:string option ->
+                        unit ->
+                          string option ldap_result Uq_engines.engine
+  (** This is the LDAP extension for modifying passwords (potentially
+      outside the tree; RFC 3062). [uid] is the user ID to modify
+      (which can be a DN but needs not to). The old password can be
+      specified in [old_pw]. The new password is in [new_pw].
+
+      In cases where the server generates a password, this one is contained
+      in the returned result.
+   *)
+
+val modify_password : ldap_connection ->
+                      uid:string option ->
+                      old_pw:string option ->
+                      new_pw:string option ->
+                      unit ->
+                        string option ldap_result
+  (** Same as synchronous function *)
 
 
 (** {2 LDAP routines} *)

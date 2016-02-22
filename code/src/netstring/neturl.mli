@@ -212,6 +212,7 @@ val common_url_syntax : (string, url_syntax) Hashtbl.t
    * - ["data"]: scheme, other (RFC 2397). "other" is not further decomposed.
    * - ["ipp"], ["ipps"]: scheme, host, port? , path?, query? (RFC 3510)
    * - ["cid"], ["mid"]: Content/message identifiers: scheme, other
+   * - ["ldap"]: scheme, host?, port?, path?, query? (RFC 4516)
    *
    * Notes:
    * - These syntax descriptions can be weakened for partial/relative URLs
@@ -628,6 +629,7 @@ val local_path_of_file_url : url -> string
 val print_url : url -> unit
   (** Printer for the toploop. *)
 
+
 (* ---------------------------------------------------------------------- *)
 
 (* Special accessors *)
@@ -682,3 +684,5 @@ val data_contents : url -> XXX
 
 (* ---------------------------------------------------------------------- *)
 
+(**/**)
+val ldap_url_syntax : url_syntax

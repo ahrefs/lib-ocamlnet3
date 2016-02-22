@@ -235,6 +235,7 @@ for other libraries.
    Netulex
    Netunichar
    Neturl
+   Neturl_ldap
    Netx509
    Netx509_pubkey
    Netx509_pubkey_crypto
