@@ -85,7 +85,8 @@ Overview: What you can do with OCamlnet:
           Privacy{tdend intro}
 {td intro}TLS (via GnuTLS),{br x}
           SASL,{br x}
-          GSSAPI (Kerberos){tdend intro}
+          GSSAPI (Kerberos),{br x}
+          LDAP client{tdend intro}
 {td intro}Pluggable security providers{br x} for TLS, SASL, GSSAPI,{br x}
           Digests,{br x}
           Symmetric ciphers{tdend intro}
