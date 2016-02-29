@@ -31,7 +31,7 @@ else
     read answer
     case "$answer" in
 	y|Y|yes|YES)
-            git tag -s ocamlnet-$version
+            git tag -a ocamlnet-$version
             git push origin master
 	    echo "New tag: ocamlnet-$version"
 	    ;;
