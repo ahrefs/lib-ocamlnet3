@@ -218,6 +218,7 @@ for other libraries.
    Netmech_scram
    Netmech_scram_gssapi
    Netmech_scram_sasl
+   Netmech_scram_http
    Netmech_spnego_http
    Netmime
    Netmime_channels

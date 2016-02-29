@@ -1123,9 +1123,9 @@ class digest_auth_handler :
   (** Digest authentication. Authentication information is obtained by
     * the passed key_handler.
     *
-    * This handler is compatible with RFC 2069 and RFC 2617. In particular,
+    * This handler is compatible with RFCs 2069, 2617 and 7616. In particular,
     * the following protocol options are available:
-    * - The algorithms MD5 and MD5-sess are implemented
+    * - The algorithms MD5, MD5-sess, SHA256 and SHA256-sess are implemented
     * - The quality of protection mode "auth" is implemented. The optional
     *   mode "auth-int" has been omitted.
     * - The information of the [Authentication-Info] header is completely

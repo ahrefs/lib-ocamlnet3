@@ -74,7 +74,7 @@ A few other notable updates:
  - [rpc-auth-dh] has been deleted. Use the GSSAPI-based authentication
    for RPC instead.
 
-{2 Bytes (since 4.1)}
+{2 Bytes (in 4.1)}
 
 Since OCamlnet-4.1, the new [Bytes] module is fully supported. All
 interfaces have been checked whether the typing needed to be changed from
@@ -101,6 +101,29 @@ characters):
    This third variant looks a little bit strange, but is certainly useful
    for helping users to transition to [bytes] buffers. This variant will be
    removed in a later version of OCamlnet again.
+
+{2 More authentication (in 4.1)}
+
+The IETF recently did some work on authentication, and some results
+could already be incorporated into OCamlnet. The update of the HTTP
+Digest authentication method to the SHA-256 hash function (instead of
+MD5) went in and is automatically available for HTTP clients. Note
+that there is no update on the same-named SASL mechanism, which is now
+considered as "historic" in favor of the SCRAM family of mechanisms.
+
+Regarding SCRAM for HTTP, there is an RFC draft, and the RFC is
+expected soon.  I've added an experimental (but somewhat incomplete)
+implementation according to the draft ({!Netmech_scram_http}).
+
+In order to support public key mechanisms in later OCamlnet versions,
+there is now pluggable public key cryptography. For users the module
+{!Netx509_pubkey_crypto} makes this feature available. However, at
+present there is no mechanism using this already.
+
+Another new feature is the {!Netldap} client, wrapping the most common
+LDAP client operations. This is most useful for servers wanting to
+authenticate against an LDAP server. Of course, it is also useful for
+other purposes, as LDAP can be used for storing any kind of information.
 
 
 {2 Not yet}

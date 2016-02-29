@@ -6,6 +6,8 @@
      - {!Netsys_tls} for using TLS
      - {!Netsys_ciphers} for using (symmetric) ciphers
      - {!Netsys_digests} for using digests
+     - {!Netx509_pubkey} and {!Netx509_pubkey_crypto} for using public-key
+       ciphers
  *)
 
 val current_tls : unit -> (module Netsys_crypto_types.TLS_PROVIDER)

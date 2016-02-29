@@ -53,6 +53,7 @@ DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netoid.mli netstring_tstring.mli \
 	netdn.mli netx509.mli netascii_armor.mli nettls_support.mli \
 	netmech_scram.mli netmech_scram_gssapi.mli netmech_scram_sasl.mli \
+        netmech_scram_http.mli \
 	netgssapi_support.mli netgssapi_auth.mli netchannels_crypto.mli \
 	netx509_pubkey.mli netx509_pubkey_crypto.mli netsaslprep.mli \
 	netmech_plain_sasl.mli netmech_crammd5_sasl.mli \

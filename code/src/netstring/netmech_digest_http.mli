@@ -13,7 +13,11 @@ module Digest :  Nethttp.HTTP_CLIENT_MECHANISM
 
       There is no support for the "auth-int" level of protection.
 
-      How to use with {!Nethttp_client}: You need the adapter
+      How to use with {!Nethttp_client}: The handlers
+      {!Nethttp_client.unified_auth_handler} and
+      {!Nethttp_client.digest_aith_handler} wrap this mechanism already.
+      Additionally, there is also the option of plugging in this module
+      directly. For this, you need the adapter
       {!Nethttp_client.generic_auth_handler}, e.g.
 
       {[
@@ -43,7 +47,8 @@ module Digest_mutual :  Nethttp.HTTP_CLIENT_MECHANISM
       it is recommended to ensure that requests not carrying any sensitive
       data precede those requests that need protection.
 
-      See {!Netmech_digest_http.Digest} for tips how to use this mechanism.
+      You need to explicitly plug in this module into the HTTP client
+      in order to enable it. See {!Netmech_digest_http.Digest} for details.
    *)
 
 
