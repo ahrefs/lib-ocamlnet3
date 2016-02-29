@@ -499,28 +499,28 @@ module Cookie = struct
       | '\000' .. '\031' -> decr encoded_length (* ignore *)
       | _ -> ()
     done;
-    let s = String.create (!encoded_length + 2) in
-    String.unsafe_set s 0 '\"';
+    let s = Bytes.create (!encoded_length + 2) in
+    Bytes.unsafe_set s 0 '\"';
     let j = ref 1 in
     for i = 0 to len - 1 do
       (match String.unsafe_get s0 i with
       | '\"' | '\\' as c ->
-	  String.unsafe_set s !j '\\'; incr j;
-	  String.unsafe_set s !j c; incr j
+	  Bytes.unsafe_set s !j '\\'; incr j;
+	  Bytes.unsafe_set s !j c; incr j
       | '\n' ->
-	  String.unsafe_set s !j '\\'; incr j;
-	  String.unsafe_set s !j 'n'; incr j
+	  Bytes.unsafe_set s !j '\\'; incr j;
+	  Bytes.unsafe_set s !j 'n'; incr j
       | '\r' ->
-	  String.unsafe_set s !j '\\'; incr j;
-	  String.unsafe_set s !j 'r'; incr j
+	  Bytes.unsafe_set s !j '\\'; incr j;
+	  Bytes.unsafe_set s !j 'r'; incr j
       | '\000' .. '\031' ->
 	  () (* Ignore these control chars, useless for comments *)
       | c ->
-	  String.unsafe_set s !j c; incr j
+	  Bytes.unsafe_set s !j c; incr j
       );
     done;
-    String.unsafe_set s !j '\"';
-    s
+    Bytes.unsafe_set s !j '\"';
+    Bytes.unsafe_to_string s
 
   (* [gen_cookie c] returns a buffer containing an attribute suitable
      for "Set-Cookie" (RFC 2109) and "Set-Cookie2" (RFC 2965).
@@ -606,30 +606,30 @@ module Cookie = struct
   let unescape_range s low up =
     if low >= up then "" else
       let len = up - low in
-      let s = String.sub s low len in
+      let b = Bytes.create len in
       let rec decode i j =
 	if i < len then (
-	  match String.unsafe_get s i with
+	  match String.unsafe_get s (i+low) with
 	  | '\\' ->
 	      let i = i + 1 in
 	      if i < len then (
-		(match String.unsafe_get s i with
-		 | '\"' | '\\' as c -> String.unsafe_set s j c
-		 | 'n' -> String.unsafe_set s j '\n'
-		 | 'r' -> String.unsafe_set s j '\r'
-		 | 't' -> String.unsafe_set s j '\t'
-		 | c -> String.unsafe_set s j c
+		(match String.unsafe_get s (i+low) with
+		 | '\"' | '\\' as c -> Bytes.unsafe_set b j c
+		 | 'n' -> Bytes.unsafe_set b j '\n'
+		 | 'r' -> Bytes.unsafe_set b j '\r'
+		 | 't' -> Bytes.unsafe_set b j '\t'
+		 | c -> Bytes.unsafe_set b j c
 		);
 		decode (i + 1) (j + 1)
 	      )
 	      else j
 	  | c ->
-	      String.unsafe_set s j c;
+	      Bytes.unsafe_set b j c;
 	      decode (i + 1) (j + 1)
 	)
 	else j in
       let j = decode 0 0 in
-      if j < len then String.sub s 0 j else s
+      Bytes.sub_string b 0 j
 
 
   let ports_of_string s =
@@ -2075,7 +2075,7 @@ type match_result =
     ]
 
 
-module type HTTP_MECHANISM =
+module type HTTP_CLIENT_MECHANISM =
   sig
     val mechanism_name : string
     val available : unit -> bool
@@ -2096,15 +2096,16 @@ module type HTTP_MECHANISM =
           unit ->
             client_session
     val client_configure_channel_binding : client_session -> 
-                                           Netsys_sasl_types.cb -> unit
+                                           Netsys_sasl_types.cb ->
+                                             client_session
     val client_restart : params:(string * string * bool) list -> 
-                         client_session -> unit
+                         client_session -> client_session
     val client_process_challenge :
           client_session -> string -> string -> #http_header_ro -> 
-          Header.auth_challenge -> unit
+          Header.auth_challenge -> client_session
     val client_emit_response :
           client_session -> string -> string -> #http_header_ro ->
-          Header.auth_credentials * (string * string) list
+          client_session * Header.auth_credentials * (string * string) list
     val client_channel_binding : client_session -> Netsys_sasl_types.cb
     val client_user_name : client_session -> string
     val client_stash_session :

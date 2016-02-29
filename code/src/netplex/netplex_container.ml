@@ -34,6 +34,11 @@ let string_of_sys_id =
 
 let t_poll = 0.1
 
+type accepted =
+  | OS_socket : Unix.file_descr -> accepted
+  | Poly_socket : 'a polysocket_kind * 'a Netsys_polysocket.polyserver ->
+                    accepted
+
 
 class std_container ?esys
                     ptype sockserv =
@@ -52,6 +57,7 @@ object(self)
   val mutable nr_conns = 0
   val mutable nr_conns_total = 0
   val mutable engines = []
+  val mutable int_engines = []
   val mutable vars = Hashtbl.create 10 
   val         vars_mutex = !Netsys_oothr.provider # create_mutex()
   val mutable polling = None
@@ -88,26 +94,42 @@ object(self)
     );
     (* Note: fd_clnt and sys_fd_clnt are closed by the caller *)
     let rpc_cl =
-      Netplex_ctrl_clnt.Control.V1.create_client
-      ~esys
-      (Rpc_client.Descriptor fd_clnt)
-      Rpc.Tcp in
+      match fd_clnt with
+        | OS_descr fd ->
+            Netplex_ctrl_clnt.Control.V1.create_client
+              ~esys
+              (Rpc_client.Descriptor fd)
+              Rpc.Tcp
+        | Poly_endpoint ep ->
+            Netplex_ctrl_clnt.Control.V1.create_client2
+              ~esys
+              (`Internal_endpoint ep) in
     if not !Debug.enable then
       Rpc_client.Debug.disable_for_client rpc_cl;
+    Rpc_client.set_debug_name
+      rpc_cl (sprintf "netplex.%s.ctrl" ssn);
     rpc <- Some rpc_cl;
     let sys_rpc_cl =
-      Netplex_ctrl_clnt.System.V1.create_client
-	~esys:sys_esys
-	(Rpc_client.Descriptor sys_fd_clnt)
-	Rpc.Tcp in
+      match sys_fd_clnt with
+        | OS_descr fd ->
+            Netplex_ctrl_clnt.System.V1.create_client
+	      ~esys:sys_esys
+	      (Rpc_client.Descriptor fd)
+	      Rpc.Tcp
+        | Poly_endpoint ep ->
+            Netplex_ctrl_clnt.System.V1.create_client2
+              ~esys:sys_esys
+              (`Internal_endpoint ep) in
     if not !Debug.enable then
       Rpc_client.Debug.disable_for_client sys_rpc_cl;
+    Rpc_client.set_debug_name
+      sys_rpc_cl (sprintf "netplex.%s.sys" ssn);
     sys_rpc <- Some sys_rpc_cl;
     self # setup_container_sockets();
     dlogr 
       (fun () -> 
-	 sprintf "Container %d: Starting (start) in %s" 
-	   (Oo.id self) (string_of_sys_id sys_id));
+	 sprintf "Container %d ssn=%s: Starting (start) in %s" 
+	   (Oo.id self) ssn (string_of_sys_id sys_id));
     self # protect "post_start_hook"
       (sockserv # processor # post_start_hook)
       (self : #container :> container);
@@ -125,8 +147,12 @@ object(self)
     self # close_container_sockets();
     rpc <- None;
 
+    Rpc_client.shut_down sys_rpc_cl;
+    sys_rpc <- None;
+
     dlogr
-      (fun () -> sprintf "Container %d: Finishing (finish)" (Oo.id self))
+      (fun () -> sprintf "Container %d ssn=%s: Finishing (finish)"
+                         (Oo.id self) ssn)
 
 
   method private protect : 's. string -> ('s -> unit) -> 's -> unit =
@@ -134,7 +160,8 @@ object(self)
       ( try
 	  dlogr
 	    (fun () -> 
-	       sprintf "Container %d: calling hook %s" (Oo.id self) label);
+	       sprintf "Container %d ssn=%s: calling hook %s" 
+                       (Oo.id self) ssn label);
 	  f arg 
 	with
 	  | error ->
@@ -213,7 +240,7 @@ object(self)
 	    (fun () -> 
 	       sprintf "Container %d: Polling nr_conns=%d fully_busy=%B"
 		 (Oo.id self) nr_conns fully_busy);
-	  polling <- Some(nr_conns,fully_busy,engines=[]);
+	  polling <- Some(nr_conns,fully_busy,engines=[] && int_engines=[]);
 	  Netplex_ctrl_clnt.Control.V1.poll'async r (nr_conns,fully_busy)
 	    (fun getreply ->
 	       polling <- None;
@@ -264,17 +291,7 @@ object(self)
 				   (* can happen in the admin case: *)
 				 | Netplex_cenv.Not_in_container_thread -> ()
 			     );
-			     ( match rpc with
-				 | None -> ()
-				 | Some r -> 
-				     rpc <- None;
-				     Rpc_client.trigger_shutdown 
-				       r
-				       self # shutdown_extra;
-				     (* We ensure that shutdown_extra is called
-                                        when the client is already taken down
-				      *)
-			     );
+                             self # rpc_shutdown 0;
 			     false
 			 | `event_system_shutdown ->
 			     self # protect
@@ -298,9 +315,39 @@ object(self)
 	       if continue then
 		 self # setup_polling()
 	    )
+
+  method private rpc_shutdown attempt =
+    match rpc with
+      | None -> ()
+      | Some r ->
+          let (n_delayed, n_waiting, n_pending) = Rpc_client.get_stats r in
+          if attempt < 100 && (n_delayed > 0 || n_waiting > 0 || n_pending > 0)
+          then (
+            (* another pending activity. Delay the shutdown for some time *)
+	    dlogr
+	      (fun () -> 
+	         sprintf "Container %d: delaying rpc shutdown for a moment"
+			 (Oo.id self));
+	    let g = Unixqueue.new_group esys in
+	    Unixqueue.once
+              esys g 0.1
+	      (fun () -> self # rpc_shutdown (attempt-1))
+          )
+          else (
+	    dlogr
+	      (fun () -> 
+	         sprintf "Container %d: rpc shutdown" (Oo.id self));
+	    rpc <- None;
+	    Rpc_client.trigger_shutdown 
+	      r
+	      self # shutdown_extra;
+	    (* We ensure that shutdown_extra is called
+               when the client is already taken down
+	     *)
+          )
     
   method private enable_accepting n_accept =
-    if engines = [] then (
+    if engines = [] && int_engines = [] then (
       List.iter
 	(fun (proto, fd_array) ->
 	   Array.iter
@@ -330,7 +377,7 @@ object(self)
 				     (Netsys.int64_of_file_descr fd_slave));
 			      self # disable_accepting();
 			      self # greedy_accepting
-				(n_accept - 1) [fd_slave, proto]
+				(n_accept - 1) [OS_socket fd_slave, proto]
 			   )
 		  ~is_error:(fun err ->
 			       self # log `Crit
@@ -342,8 +389,47 @@ object(self)
 	     )
 	     fd_array
 	)
-	sockserv#sockets
+	sockserv#sockets;
+      List.iter
+        (fun (proto, Polyserver_box(kind, srv)) ->
+           self # enable_internal proto kind srv n_accept
+        )
+        sockserv#internal_sockets
     )
+
+  method private enable_internal : 'a . string -> 'a polysocket_kind ->
+                                   'a Netsys_polysocket.polyserver -> int ->
+                                   unit =
+    fun proto kind srv n_accept ->
+      let accept() =
+        let polysock = Poly_socket(kind, srv) in
+        dlogr
+          (fun () ->
+             sprintf "Container %d: Pending internal connection"
+                     (Oo.id self));
+        self # disable_accepting();
+        self # greedy_accepting (n_accept-1) [polysock, proto] in
+      let e = new Uq_engines.signal_engine esys in
+      Netsys_polysocket.set_accept_notify
+        srv
+        (fun () ->
+           e # signal (`Done());
+        );
+      let e = (e :> _ Uq_engines.engine) in
+      if Netsys_polysocket.pending_connection srv then (
+        e # abort();
+        accept()
+      ) else (
+        int_engines <- e :: int_engines;
+        Uq_engines.when_state 
+          ~is_done:accept
+	  ~is_error:(fun err ->
+		       self # log `Crit
+			    ("internal connection: Exception " ^ 
+			       Netexn.to_string err)
+		    )
+          e;
+      )
 
   method private disable_accepting() =
     dlogr
@@ -351,6 +437,8 @@ object(self)
 	 sprintf "Container %d: No longer accepting" (Oo.id self));
     List.iter (fun e -> e # abort()) engines;
     engines <- [];
+    List.iter (fun e -> e # abort()) int_engines;
+    int_engines <- [];
 
   method private greedy_accepting n_accept accept_list =
     let n_accept = ref n_accept in
@@ -380,7 +468,7 @@ object(self)
 		      try
 			let fd_slave, _ = Unix.accept fd in
 			cont := true;  (* try for another round *)
-			accept_list := (fd_slave, proto) :: !accept_list;
+			accept_list := (OS_socket fd_slave, proto) :: !accept_list;
 			Unix.set_nonblock fd_slave;
 			dlogr
 			  (fun () ->
@@ -408,26 +496,27 @@ object(self)
 	| Exit ->
 	    ()
     );
+    (* FIXME: no greedy accepting on internal sockets yet *)
     match !accept_list with
       | [] -> ()
-      | (fd_slave_last,proto_last) :: l ->
+      | (sock_last,proto_last) :: l ->
 	  List.iter
-	    (fun (fd_slave, proto) ->
-	       self # accepted_greedy fd_slave proto
+	    (fun (slave, proto) ->
+	       self # accepted_greedy slave proto
 	    )
 	    (List.rev l);
 	  (* The last connection in this round is always processed in
 	     non-greedy style, so the controller gets a notification.
 	   *)
-	  self # accepted_nongreedy fd_slave_last proto_last
+	  self # accepted_nongreedy sock_last proto_last
 
-  method private accepted_nongreedy fd_slave proto =
+  method private accepted_nongreedy sock proto =
     (* We first respond with the "accepted" message to the controller.
        This is especially important for synchronous processors, because
        this is the last chance to notify the controller about the state
        change in sync contexts.
      *)
-    self # prep_socket fd_slave proto;
+    self # prep_socket sock proto;
     match rpc with
       | None -> assert false
       | Some r ->
@@ -439,16 +528,24 @@ object(self)
 	  Rpc_client.unbound_async_call
 	    r Netplex_ctrl_aux.program_Control'V1 "accepted" Netxdr.XV_void
 	    (fun _ ->
-	       self # process_conn fd_slave proto
+	       self # process_conn sock proto
 	    )
 
-  method private accepted_greedy fd_slave proto =
-    self # prep_socket fd_slave proto;
-    self # process_conn fd_slave proto
+  method private accepted_greedy sock proto =
+    self # prep_socket sock proto;
+    self # process_conn sock proto
 
-  method private process_conn fd_slave proto =
+  method private process_conn sock proto =
     nr_conns <- nr_conns + 1;
     nr_conns_total <- nr_conns_total + 1;
+    match sock with
+      | OS_socket fd ->
+          self # process_conn_os fd proto
+      | Poly_socket _ ->
+          self # process_conn_internal sock proto
+
+
+  method private process_conn_os fd_slave proto =
     let regid = self # reg_conn fd_slave in
     let when_done_called = ref false in
     dlogr
@@ -463,7 +560,7 @@ object(self)
     self # protect
       "process"
       (sockserv # processor # process
-	 ~when_done:(fun fd ->
+	 ~when_done:(fun () ->
 		       (* Note: It is up to the user to close
                           the descriptor. So the descriptor can
                           already be used for different purposes
@@ -492,18 +589,61 @@ object(self)
     if not !when_done_called then
       self # restart_polling();
 
-  method private prep_socket fd_slave proto =
-    try
-      let proto_obj =
-	List.find
-	  (fun proto_obj ->
-	     proto_obj#name = proto
-	  )
-	  sockserv#socket_service_config#protocols in
-      if proto_obj#tcp_nodelay then
-	Unix.setsockopt fd_slave Unix.TCP_NODELAY true
-    with
-      | Not_found -> ()
+  method private process_conn_internal sock proto =
+    match sock with
+      | OS_socket _ -> assert false
+      | Poly_socket(kind,srv) ->
+          let when_done_called = ref false in
+          dlogr
+            (fun () -> 
+               sprintf
+                 "Container %d: processing internal (total conns: %d)" 
+                 (Oo.id self) 
+                 nr_conns
+            );
+          self # workload_hook true;
+          self # protect
+            "process_internal"
+            (sockserv # processor # process_internal
+               ~when_done:(fun () ->
+                             if not !when_done_called then (
+                               nr_conns <- nr_conns - 1;
+                               when_done_called := true;
+                               self # workload_hook false;
+                               self # restart_polling();
+                               dlogr
+                                 (fun () ->
+                                  sprintf "Container %d: \
+                                           Done with internal connection \
+                                           (total conns %d)"
+                                          (Oo.id self) 
+                                          nr_conns);
+                             )
+                          )
+               (self : #container :> container)
+               (Polyserver_box(kind,srv))
+            )
+            proto;
+        if not !when_done_called then
+          self # restart_polling();
+
+  method private prep_socket sock proto =
+    match sock with
+      | OS_socket fd_slave ->
+          ( try
+              let proto_obj =
+                List.find
+                  (fun proto_obj ->
+                     proto_obj#name = proto
+                  )
+                  sockserv#socket_service_config#protocols in
+              if proto_obj#tcp_nodelay then
+                Unix.setsockopt fd_slave Unix.TCP_NODELAY true
+            with
+              | Not_found -> ()
+          )
+      | Poly_socket _ ->
+          ()
 
 
   val mutable reg_conns = Hashtbl.create 10
@@ -596,13 +736,20 @@ object(self)
     if mt_case then (
       let mutex = !Netsys_oothr.provider # create_mutex() in
       let cond = !Netsys_oothr.provider # create_condition() in
+      let signalled = ref false in
+      mutex # lock();
       let g = Unixqueue.new_group esys in
       Unixqueue.once esys g 0.0
 	(fun () ->
 	   self # shutdown_action();
-	   cond # signal()
+           mutex # lock();
+	   cond # signal();
+           mutex # unlock();
 	);
-      cond # wait mutex
+      while not !signalled do
+        cond # wait mutex
+      done;
+      mutex # unlock();
     )
     else
       self # shutdown_action()
@@ -721,7 +868,8 @@ object(self)
 	      sys_mon
 	      (Netplex_ctrl_clnt.System.V1.call_plugin'async r)
 	      ((Int64.of_int (Oo.id p)), proc_name, arg_str) in
-	  let res = Netxdr.unpack_xdr_value ~fast:true res_str res_ty [] in
+	  let res,_ =
+            Netxdr.unpack_xdr_value_str ~fast:true res_str res_ty [] in
 	  res
 	    
   method private receive_admin_message msg =
@@ -818,13 +966,13 @@ object(self)
 	  Gc.print_stat outch;
 	  close_out outch;
 	  let n = in_channel_length inch in
-	  let s = String.create n in
+	  let s = Bytes.create n in
 	  really_input inch s 0 n;
 	  close_in inch;
 	  Sys.remove name;
 	  self # log `Info
 	    (sprintf "GC stats pid %d:\n%s"
-	       (Unix.getpid()) s)
+	       (Unix.getpid()) (Bytes.unsafe_to_string s))
 
       | _ ->
 	  self # forward_admin_message msg
@@ -998,6 +1146,11 @@ end
    system-wide controller
  *)
 
+let get_os_fd =
+  function
+  | OS_descr fd -> fd
+  | _ -> assert false
+
 class admin_container esys ptype sockserv =
 object(self)
   inherit std_container ~esys ptype sockserv as super
@@ -1006,6 +1159,8 @@ object(self)
   val mutable c_sys_fd_clnt = None
 
   method start fd_clnt sys_fd_clnt =
+    let fd_clnt = get_os_fd fd_clnt in
+    let sys_fd_clnt = get_os_fd sys_fd_clnt in
     if rpc <> None then
       failwith "#start: already started";
     let rpc_cl =

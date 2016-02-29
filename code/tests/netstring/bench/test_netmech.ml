@@ -36,15 +36,15 @@ let test_sasl
   let module M = (val m) in
   let sc = M.init_credentials server_creds in
   let lookup = (fun _ _ -> Some sc) in
-  let ss = M.create_server_session ~lookup ~params:server_params() in
+  let ss = ref (M.create_server_session ~lookup ~params:server_params()) in
 
   let cc = M.init_credentials client_creds in
   let cs =
-    M.create_client_session ~user ~authz ~creds:cc ~params:client_params() in
+    ref (M.create_client_session ~user ~authz ~creds:cc ~params:client_params()) in
   
-  assert((M.server_state ss = `Emit && M.client_state cs = `Wait && 
+  assert((M.server_state !ss = `Emit && M.client_state !cs = `Wait && 
             M.client_first <> `Required) ||
-           (M.server_state ss = `Wait && M.client_state cs = `Emit && 
+           (M.server_state !ss = `Wait && M.client_state !cs = `Emit && 
               M.client_first = `Required));
 
   let stop = ref false in
@@ -52,56 +52,60 @@ let test_sasl
   let last_client = ref "" in
   while not !stop do
     (* Emit server challenge and process it on the client *)
-    if M.server_state ss = `Emit then (
-      let msg = M.server_emit_challenge ss in
-      assert(M.server_state ss = `Wait || M.server_sends_final_data);
+    if M.server_state !ss = `Emit then (
+      let ss', msg = M.server_emit_challenge !ss in
+      ss := ss';
+      assert(M.server_state !ss = `Wait || M.server_sends_final_data);
       if !verbose then
         printf "S: %S\n%!" msg;
       last_server := msg;
 
-      assert(M.client_state cs = `Wait);
-      M.client_process_challenge cs msg;
+      assert(M.client_state !cs = `Wait);
+      let cs' = M.client_process_challenge !cs msg in
+      cs := cs';
 
-      stop := (M.client_state cs = `OK || is_auth_error (M.client_state cs));
+      stop := (M.client_state !cs = `OK || is_auth_error (M.client_state !cs));
     );
     (* Emit client response and process it on the server *)
-    if M.client_state cs = `Emit || M.client_state cs = `Stale then (
-      let msg = M.client_emit_response cs in
+    if M.client_state !cs = `Emit || M.client_state !cs = `Stale then (
+      let cs', msg = M.client_emit_response !cs in
+      cs := cs';
       if !verbose then
         printf "C: %S\n%!" msg;
       last_client := msg;
 
-      assert(M.server_state ss = `Wait);
-      M.server_process_response ss msg;
+      assert(M.server_state !ss = `Wait);
+      let ss' = M.server_process_response !ss msg in
+      ss := ss';
 
-      stop := (M.client_state cs = `OK || is_auth_error (M.client_state cs) ||
-                 M.server_state ss = `OK || is_auth_error (M.server_state ss))
+      stop := (M.client_state !cs = `OK || is_auth_error (M.client_state !cs) ||
+                 M.server_state !ss = `OK || is_auth_error (M.server_state !ss))
     )
   done;
 
-  assert(M.server_state ss = `OK || is_auth_error (M.server_state ss));
+  assert(M.server_state !ss = `OK || is_auth_error (M.server_state !ss));
 
   (* It is possible that the server reaches `Auth_error, but the client
      is not told that via SASL, but with the normal protocol.
    *)
-  assert((M.server_state ss = `OK && M.client_state cs = `OK) ||
-           is_auth_error (M.server_state ss));
+  assert((M.server_state !ss = `OK && M.client_state !cs = `OK) ||
+           is_auth_error (M.server_state !ss));
 
   assert(check_final_server !last_server);
   assert(check_final_client !last_client);
 
   List.iter
     (fun (k,v) ->
-       assert(M.server_prop ss k = v)
+       assert(M.server_prop !ss k = v)
     )
     check_server_props;
   List.iter
     (fun (k,v) ->
-       assert(M.client_prop cs k = v)
+       assert(M.client_prop !cs k = v)
     )
     check_client_props;
 
-  M.server_state ss
+  M.server_state !ss
 
 
 let test f n =
@@ -264,6 +268,38 @@ let t_scramsha1_03() =
   r = `OK
 
 
+let t_scramsha256_01() =
+  (* example from SCRAM-256/HTTP draft *)
+  let i = 4096 in
+  let salt_b64 = "W22ZaJ0SNY7soEsUEjb6gQ==" in
+  let salt = Netencoding.Base64.decode salt_b64 in
+  let h = `SHA_256 in
+  let (st_key,srv_key) = Netmech_scram.stored_key h "pencil" salt i in
+  let value =
+        Netencoding.Base64.encode st_key ^ ":" ^ 
+          Netencoding.Base64.encode srv_key in
+  let s_creds = [ "authPassword-SCRAM-SHA-256", 
+                  value,
+                  [ "info", sprintf "%d:%s" i salt_b64 ]
+                ] in
+  let c_creds = [ "password", "pencil", [] ] in
+  let s_params = [ "nonce", "%hvYDpWUa2RaTCAfuxFIlj)hNlF", true ] in
+  let c_params = [ "nonce", "rOprNGfwEbeRWgbNEkqO", true ] in
+  let r =
+    test_sasl
+      ~check_final_client:(fun msg ->
+                             true
+                             (*contains ~pat:"p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=" msg*)
+                          )
+      ~check_final_server:(fun msg ->
+                             true
+                             (*contains ~pat:"v=rmF9pqV8S7suAoZWja4dJRkFsKQ=" msg*)
+                          )
+      (module Netmech_scram_sasl.SCRAM_SHA256) 
+      c_creds s_creds c_params s_params "user" "" in
+  r = `OK
+
+
 let () =
   test t_plain_01 "t_plain_01";
   test t_plain_02 "t_plain_02";
@@ -279,3 +315,5 @@ let () =
   test t_scramsha1_01 "t_scramsha1_01";
   test t_scramsha1_02 "t_scramsha1_02";
   test t_scramsha1_03 "t_scramsha1_03";
+
+  test t_scramsha256_01 "t_scramsha256_01";

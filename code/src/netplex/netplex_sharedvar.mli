@@ -61,21 +61,20 @@ val plugin : plugin
    *)
 
 
+(** {2 Classical API} *)
 
-(** The folloing functions can all be invoked in container
-    contexts. In controller context, access is limited to [get_value].
-
-    If called from the wrong context the exception
-    {!Netplex_cenv.Not_in_container_thread} is raised. 
+(** Most of the folloing functions can be invoked in both container
+    and controller contexts, with the notable exception of
+    [wait_for_value].
  *)
 
 val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
-                 string -> bool
+                 ?ssn:string -> string -> bool
   (** Create the variable with the passed name with an empty string
       (or the exception [Sharedvar_null]) as
       initial value. If the creation is possible (i.e. the variable did
       not exist already), the function returns [true], otherwise 
-      the already existing variable is left modified, and [false] is
+      the already existing variable is left unchanged, and [false] is
       passed back. By default, the variable can be modified and deleted
       by any other container. Two options allow you to change that:
 
@@ -84,7 +83,7 @@ val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
         last component of the socket service terminates, the variable is
         automatically deleted. The deletion happens after the
         [post_finish_hook] is executed, so the variable is still accessible
-        from this hook.
+        from this hook. Note that the controller has unlimited access anyway.
       - [ro]: if true, only the owner can set the value
       - [enc]: if true, the variable stores encapsulated values, otherwise
         strings
@@ -92,6 +91,8 @@ val create_var : ?own:bool -> ?ro:bool -> ?enc:bool -> ?timeout:float ->
       - [timeout]: if passed, the variable will be automatically deleted
         after this number of seconds. The timeout starts anew with every
         read or write of the variable.
+      - [ssn]: If called from the controller and [own], this must be set to the
+        socket service name of the owner
 
       Variable names are global to the whole netplex system. By convention,
       these names are formed like ["service_name.local_name"], i.e. they
@@ -132,9 +133,6 @@ val get_value : string -> string option
 
       Raises [Sharedvar_type_mismatch] if the variable is not a string
       variable.
-
-      As an exception of the general rules, this function can also be
-      called from the controller, and not only from a container.
    *)
 
 val get_enc_value : string -> encap option
@@ -142,9 +140,6 @@ val get_enc_value : string -> encap option
       variable does not exist, [None] is returned.
 
       Raises [Sharedvar_type_mismatch] if the variable is not encapsulated
-
-      As an exception of the general rules, this function can also be
-      called from the controller, and not only from a container.
    *)
 
 val wait_for_value : string -> string option
@@ -157,6 +152,8 @@ val wait_for_value : string -> string option
 
       An ongoing wait is interrupted when the variable is deleted. In this
       case [None] is returned.
+
+      {b This function can only be invoked from container context!}
    *)
 
 val wait_for_enc_value : string -> encap option
@@ -179,6 +176,8 @@ val get_lazily : string -> (unit -> string) -> string option
       No provisions are taken to delete the variable. If [delete_var]
       is called by user code (which is allowed at any time), and
       [get_lazily] is called again, the lazy value will again be computed.
+
+      {b This function can only be invoked from container context!}
    *)
 
 val get_enc_lazily : string -> (unit -> encap) -> encap option
@@ -188,6 +187,54 @@ val dump : string -> Netlog.level -> unit
   (** Dumps the access counter of this variable to {!Netlog}. The
       string argument "*" dumps all variables.
    *)
+
+(** {2 API with versioned access} *)
+
+(** The API with versioned values can very quickly check whether newer
+    values are available (the check consists just of a memory read). If a newer
+    version is avaiable, the value still needs to be retrieved with an
+    RPC call, though.
+
+    The central function is [vv_update]. See also the limitations mentioned
+    there.
+ *)
+
+type 'a versioned_value
+  (** Cache for the current value *)
+
+val vv_access : string -> string versioned_value
+  (** Get the current value of this variable. This succeeds even when the
+      variable does not exist.
+   *)
+
+val vv_access_enc : string -> encap versioned_value
+  (** Same for encapsulated variables *)
+
+val vv_get : 'a versioned_value -> 'a option
+  (** Extract the current value, or [None] if the variable cannot be found. *)
+
+val vv_version : _ versioned_value -> int64
+  (** Get the current version number.  The version number is increased by
+      every "set" operation. Raised [Not_found] if the variable cannot be
+      found.
+   *)
+
+val vv_update : _ versioned_value -> bool
+  (** Check whether there is a new version of the value, and update the
+      cache. Return whether the update occurred.
+
+      Note that there is a limitation on the number of variables that can
+      use [vv_update]. For every [versioned_value] a slot in a shared memory
+      segment is allocated. However, there is only a limited number of such
+      slots (currently 1023). If more slots are needed, the performance will
+      be degraded.
+   *)
+
+val vv_set : 'a versioned_value -> 'a -> bool
+  (** Set the current value. Return whether successful *)
+
+
+(** {2 Classical functor} *)
 
 module Make_var_type(T:Netplex_cenv.TYPE) : 
           Netplex_cenv.VAR_TYPE with type t = T.t
@@ -210,6 +257,46 @@ module Make_var_type(T:Netplex_cenv.TYPE) :
       ]}
    *)
 
+(** {2 Functor with versioned access} *)
+
+module type VV_TYPE =
+  sig
+    type t
+    type var
+    val access : string -> var
+    val get : var -> t
+    val set : var -> t -> unit
+    val version : var -> int64
+    val update : var -> bool
+  end
+
+module Make_vv(T:Netplex_cenv.TYPE) : 
+          VV_TYPE with type t = T.t
+
+
+(** {2 Netsys_global} *)
+
+(** This is a propagator for {!Netsys_global}. It is automatically activated
+    when the Netplex controller is started.
+ *)
+
+val global_propagator : unit -> Netsys_global.propagator
+(** Create a new propagator, and initialize {!Netplex_sharedvar}
+    with the current variables from {!Netsys_global}. Note that a
+    global variable with name [n] appears in Netplex as variable
+    ["global." ^ n].
+
+    The version numbers appearing in both modules are unrelated.
+
+    This function must be called from controller context.
+  *)
+
+val propagate_back : Netplex_types.controller -> unit
+  (** Copy the global variables from {!Netplex_sharedvar} (with prefix
+      "global.") back to {!Netsys_global}
+   *)
+
+(** {2 Examples} *)
 
 (** Example code:
 

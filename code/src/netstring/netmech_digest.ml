@@ -65,11 +65,11 @@ type credentials =
     (string * string * (string * string) list) list
 
 type server_session = 
-    { mutable sstate : Netsys_sasl_types.server_state;
-      mutable sresponse : (response_params * string * string) option;
-      mutable snextnc : int;
-      mutable sstale : bool;
-      mutable snonce : string;
+    { sstate : Netsys_sasl_types.server_state;
+      sresponse : (response_params * string * string) option;
+      snextnc : int;
+      sstale : bool;
+      snonce : string;
       srealm : string option;   (* always UTF-8 *)
       sprofile : profile;
       sutf8 : bool;             (* whether to use UTF-8 on the wire *)
@@ -78,9 +78,9 @@ type server_session =
     }
 
 let create_nonce() =
-  let nonce_data = String.create 16 in
+  let nonce_data = Bytes.create 16 in
   Netsys_rng.fill_random nonce_data;
-  Netencoding.to_hex nonce_data
+  Netencoding.to_hex (Bytes.to_string nonce_data)
                      
 let hash iana_name =
   if iana_name = `MD5 then
@@ -221,25 +221,29 @@ let server_emit_initial_challenge_kv ?(quote=false) ss =
         ( if ss.sutf8 then [ "charset", "utf-8" ] else [] ) @
           [ "algorithm", String.uppercase h_name ^ 
                            (if ss.snosess then "" else "-sess") ] in
-  ss.sstate <- `Wait;
-  ss.sstale <- false;
-  l
+  ( { ss with
+      sstate = `Wait;
+      sstale = false;
+    },
+    l
+  )
 
 let server_emit_final_challenge_kv ?(quote=false) ss =
   let q s = if quote then qstring s else s in
   match ss.sresponse with
     | None -> assert false
     | Some(rp,_,srv_resp) ->
-        ss.sstate <- `OK;
-        [ "rspauth", q srv_resp ] @
-          ( match ss.sprofile.ptype with
-              | `SASL -> []
-              | `HTTP ->
-                   [ "qop", "auth";
-                     "cnonce", q rp.r_cnonce;
-                     "nc", sprintf "%08x" rp.r_nc
-                   ]
-          )
+        ( { ss with sstate = `OK; },
+          [ "rspauth", q srv_resp ] @
+            ( match ss.sprofile.ptype with
+                | `SASL -> []
+                | `HTTP ->
+                    [ "qop", "auth";
+                      "cnonce", q rp.r_cnonce;
+                      "nc", sprintf "%08x" rp.r_nc
+                    ]
+            )
+        )
 
 
 let iana_sess_alist =
@@ -354,16 +358,18 @@ let server_process_response_kv ss msg_params method_name =
     let password = validate_response ss r response in
     (* success: *)
     let srv_response = compute_response r password ":" in
-    ss.snextnc <- r.r_nc + 1;
-    ss.sresponse <- Some(r, response, srv_response);
-    ss.sstate <- `Emit;
+    { ss with
+      snextnc = r.r_nc + 1;
+      sresponse = Some(r, response, srv_response);
+      sstate = `Emit;
+    }
   with
     | Failure msg ->
-         ss.sstate <- `Auth_error msg
+         { ss with sstate = `Auth_error msg }
     | Not_found ->
-         ss.sstate <- `Auth_error "unspecified"
+         { ss with sstate = `Auth_error "unspecified" }
     | Restart id ->
-         ss.sstate <- `Restart id
+         { ss with sstate = `Restart id }
 
 
 let server_process_response_restart_kv ss msg_params set_stale method_name =
@@ -386,24 +392,46 @@ let server_process_response_restart_kv ss msg_params set_stale method_name =
        || old_r.r_utf8 <> new_r.r_utf8 then raise Not_found;
     let password = validate_response ss new_r response in
     (* success *)
-    if set_stale then (
-      ss.sstale <- true;
-      raise Not_found
-    ) else (
-      let srv_response = compute_response new_r password ":" in
-      ss.snextnc <- new_r.r_nc + 1;
-      ss.sresponse <- Some(new_r, response, srv_response);
-      ss.sstate <- `Emit;
+    if set_stale then raise Exit;
+    let srv_response = compute_response new_r password ":" in
+    ( { ss with
+        snextnc = new_r.r_nc + 1;
+        sresponse = Some(new_r, response, srv_response);
+        sstate = `Emit;
+      },
       true
     )
   with
-    | Failure _
+    | Failure _ ->  (* from validate_response *)
+         ( { ss with
+             snonce = create_nonce();
+             snextnc = 1;
+             sresponse = None;
+             sstate = `Emit;
+           },
+           false
+         )
+
     | Not_found ->
-         ss.snonce <- create_nonce();
-         ss.snextnc <- 1;
-         ss.sresponse <- None;
-         ss.sstate <- `Emit;
-         false
+         ( { ss with
+             snonce = create_nonce();
+             snextnc = 1;
+             sresponse = None;
+             sstate = `Emit;
+           },
+           false
+         )
+    | Exit ->
+         ( { ss with
+             snonce = create_nonce();
+             snextnc = 1;
+             sresponse = None;
+             sstate = `Emit;
+             sstale = true
+           },
+           false
+         )
+
 
 
 let server_stash_session_i ss =
@@ -456,8 +484,8 @@ let server_prop_i ss key =
         )
 
 type client_session =
-    { mutable cstate : Netsys_sasl_types.client_state;
-      mutable cresp : response_params option;
+    { cstate : Netsys_sasl_types.client_state;
+      cresp : response_params option;
       cdigest_uri : string;
       cmethod : string;
       cprofile : profile;
@@ -465,7 +493,7 @@ type client_session =
       cuser : string;           (* always UTF-8 *)
       cauthz : string;          (* always UTF-8 *)
       cpasswd : string;         (* always UTF-8 *)
-      mutable cnonce : string;
+      cnonce : string;
     }
 
 
@@ -474,8 +502,10 @@ let client_restart_i cs =
     | None -> assert false
     | Some rp ->
         let rp_next = { rp with r_nc = rp.r_nc+1 } in
-        cs.cresp <- Some rp_next;
-        cs.cstate <- `Emit
+        { cs with
+          cresp = Some rp_next;
+          cstate = `Emit
+        }
 
 let client_process_final_challenge_kv cs msg_params =
   try
@@ -489,14 +519,14 @@ let client_process_final_challenge_kv cs msg_params =
             let pw = to_client rp.r_utf8 cs.cpasswd in
             let resp = compute_response rp pw ":" in
             if resp <> rspauth then raise Not_found;
-            cs.cstate <- `OK;
+            { cs with cstate = `OK }
     ) else
-      cs.cstate <- `OK
+      { cs with cstate = `OK }
   with
     | Failure msg ->
-       cs.cstate <- `Auth_error msg
+       { cs with cstate = `Auth_error msg }
     | Not_found ->
-       cs.cstate <- `Auth_error "cannot authenticate server"
+       { cs with cstate = `Auth_error "cannot authenticate server" }
 
 
 let client_process_initial_challenge_kv cs msg_params =
@@ -545,7 +575,6 @@ let client_process_initial_challenge_kv cs msg_params =
       match cs.cresp with
         | None -> cs.cnonce
         | Some _ -> create_nonce() in
-    cs.cnonce <- cnonce;
     let rp =
       { r_ptype = cs.cprofile.ptype;
         r_hash = hash;
@@ -564,13 +593,16 @@ let client_process_initial_challenge_kv cs msg_params =
         r_domain = domain;
         r_userhash = userhash;
       } in
-    cs.cresp <- Some rp;
-    cs.cstate <- if stale then `Stale else `Emit;
+    { cs with 
+      cresp = Some rp;
+      cstate = if stale then `Stale else `Emit;
+      cnonce = cnonce;
+    }
   with 
     | Failure msg ->
-        cs.cstate <- `Auth_error msg
+        { cs with cstate = `Auth_error msg }
     | Not_found ->
-        cs.cstate <- `Auth_error "unspecified"
+        { cs with cstate = `Auth_error "unspecified" }
 
 let client_modify ?mod_method ?mod_uri cs =
   match cs.cresp with
@@ -588,7 +620,7 @@ let client_modify ?mod_method ?mod_uri cs =
                               | Some u -> u
                            )
           } in
-        cs.cresp <- Some rp1
+        { cs with cresp = Some rp1 }
 
 
 let client_emit_response_kv ?(quote=false) cs =
@@ -645,8 +677,9 @@ let client_emit_response_kv ?(quote=false) cs =
                           if rp.r_no_sess then "" else "-sess" in
                         [ "algorithm", alg ^ suffix ]
                     ) in
-        cs.cstate <- (if cs.cprofile.mutual then `Wait else `OK);
-        l
+        ( { cs with cstate = (if cs.cprofile.mutual then `Wait else `OK) },
+          l
+        )
 
 let client_stash_session_i cs =
   "client,t=DIGEST;" ^ 

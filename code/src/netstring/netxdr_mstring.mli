@@ -121,11 +121,14 @@ object
   method length : int
     (** The length of the managed string *)
 
-  method blit_to_string :  int -> string -> int -> int -> unit
-    (** [blit_to_string mpos s spos len]: Copies the substring of the
+  method blit_to_bytes :  int -> Bytes.t -> int -> int -> unit
+    (** [blit_to_bytes mpos s spos len]: Copies the substring of the
 	managed string from [mpos] to [mpos+len-1] to the substring of
 	[s] from [spos] to [spos+len-1]
      *)
+
+  method blit_to_string :  int -> Bytes.t -> int -> int -> unit
+    (* DEPRECATED("Use blit_to_bytes instead.") *)
 
   method blit_to_memory : int -> memory -> int -> int -> unit
     (** [blit_to_string mpos mem mempos len]: Copies the substring of the
@@ -133,11 +136,14 @@ object
 	[mem] from [mempos] to [mempos+len-1]
      *)
 
-  method as_string : string * int
-    (** Returns the contents as string. It is undefined whether the returned
+  method as_bytes : Bytes.t * int
+    (** Returns the contents as bytes. It is undefined whether the returned
 	string is a copy or the underlying buffer. The int is the position
 	where the contents start
      *)
+
+  method as_string : string * int
+    (** Returns the contents as string (this is always a copy) *)
 
   method as_memory : memory * int
     (** Returns the contents as memory. It is undefined whether the returned
@@ -145,8 +151,8 @@ object
 	where the contents start
      *)
 
-  method preferred : [ `Memory | `String ]
-    (** Whether [as_memory] or [as_string] is cheaper *)
+  method preferred : [ `Memory | `Bytes ]
+    (** Whether [as_memory] or [as_bytes] is cheaper *)
 
 end
 
@@ -155,6 +161,14 @@ end
 class type mstring_factory =
 object
   method create_from_string : string -> int -> int -> bool -> mstring
+    (** [create_from_string s pos len must_copy]: Creates the [mstring] from the
+	sub string of s starting at [pos] with length [len]
+
+        The [must_copy] flag is ignored (and exists for backwards
+        compatibility).
+     *)
+
+  method create_from_bytes : Bytes.t -> int -> int -> bool -> mstring
     (** [create_from_string s pos len must_copy]: Creates the [mstring] from the
 	sub string of s starting at [pos] with length [len]
 
@@ -172,11 +186,17 @@ object
 
 end
 
+val bytes_based_mstrings : mstring_factory
+  (** Uses bytes to represent mstrings *)
+
 val string_based_mstrings : mstring_factory
-  (** Uses strings to represent mstrings *)
+  DEPRECATED("Use bytes_based_mstrings instead.")
 
 val string_to_mstring : ?pos:int -> ?len:int -> string -> mstring
   (** Represent a string as mstring (no copy) *)
+
+val bytes_to_mstring : ?pos:int -> ?len:int -> Bytes.t -> mstring
+  (** Represent bytes as mstring (no copy) *)
 
 val memory_based_mstrings : mstring_factory
   (** Uses memory to represent mstrings. The memory bigarrays are allocated
@@ -185,7 +205,6 @@ val memory_based_mstrings : mstring_factory
 
 val memory_to_mstring : ?pos:int -> ?len:int -> memory -> mstring
   (** Represent memory as mstring (no copy) *)
-
 val paligned_memory_based_mstrings : mstring_factory
   (** Uses memory to represent mstrings. The memory bigarrays are allocated
       with {!Netsys_mem.alloc_memory_pages} if available, and 
@@ -206,10 +225,16 @@ val concat_mstrings : mstring list -> string
       string may be shared with one of the mstrings passed in.
    *)
 
+val concat_mstrings_bytes : mstring list -> Bytes.t
+  (** Same, returning bytes *)
+
 val prefix_mstrings : mstring list -> int -> string
   (** [prefix_mstrings l n]: returns the first [n] chars of the 
       concatenated mstrings [l] as single string
    *)
+
+val prefix_mstrings_bytes : mstring list -> int -> Bytes.t
+  (** Same, returning bytes *)
 
 val blit_mstrings_to_memory : mstring list -> memory -> unit
   (** blits the mstrings one after the other to the memory, so that

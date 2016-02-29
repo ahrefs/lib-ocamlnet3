@@ -42,10 +42,16 @@ let string_match pat s pos =
   with Not_found -> None
 ;;
 
+let bytes_match pat s pos =
+  string_match pat (Bytes.unsafe_to_string s) pos
+
 let search_forward pat s pos =
   let result = Pcre.exec ~rex:pat ~pos s in
   fst (Pcre.get_substring_ofs result 0), result
 ;;
+
+let search_forward_bytes pat s pos =
+  search_forward pat (Bytes.unsafe_to_string s) pos
 
 let search_backward pat s pos =
   let rec search p =
@@ -60,6 +66,9 @@ let search_backward pat s pos =
   search pos
 ;;
 
+let search_backward_bytes pat s pos =
+  search_backward pat (Bytes.unsafe_to_string s) pos
+
 let matched_string result _ =
   (* Unfortunately, Pcre.get_substring will not raise Not_found if there is
    * no matched string. Instead, it returns "", but this value cannot be
@@ -72,6 +81,9 @@ let matched_string result _ =
   ignore(Pcre.get_substring_ofs result 0);
   Pcre.get_substring result 0
 ;;
+
+let matched_bytes result s =
+  Bytes.unsafe_of_string(matched_string result (Bytes.unsafe_to_string s))
 
 let match_beginning result =
   fst (Pcre.get_substring_ofs result 0)
@@ -87,6 +99,9 @@ let matched_group result n _ =
   ignore(Pcre.get_substring_ofs result n);
   Pcre.get_substring result n
 ;;
+
+let matched_group_bytes result n s =
+  Bytes.unsafe_of_string(matched_group result n (Bytes.unsafe_to_string s))
 
 let group_beginning result n =
   fst (Pcre.get_substring_ofs result n)
@@ -252,17 +267,27 @@ let regexp_string_case_fold _ =
   invalid_arg "Netstring_pcre: unavailable"
 let string_match _ _ _ = 
   invalid_arg "Netstring_pcre: unavailable"
+let bytes_match _ _ _ = 
+  invalid_arg "Netstring_pcre: unavailable"
 let search_forward _ _ _ = 
+  invalid_arg "Netstring_pcre: unavailable"
+let search_forward_bytes _ _ _ = 
   invalid_arg "Netstring_pcre: unavailable"
 let search_backward _ _ _ =
   invalid_arg "Netstring_pcre: unavailable"
+let search_backward_bytes _ _ _ =
+  invalid_arg "Netstring_pcre: unavailable"
 let matched_string _ _ = 
+  invalid_arg "Netstring_pcre: unavailable"
+let matched_bytes _ _ = 
   invalid_arg "Netstring_pcre: unavailable"
 let match_beginning _ = 
   invalid_arg "Netstring_pcre: unavailable"
 let match_end _ = 
   invalid_arg "Netstring_pcre: unavailable"
 let matched_group _ _ _ = 
+  invalid_arg "Netstring_pcre: unavailable"
+let matched_group_bytes _ _ _ = 
   invalid_arg "Netstring_pcre: unavailable"
 let group_beginning _ _ = 
   invalid_arg "Netstring_pcre: unavailable"

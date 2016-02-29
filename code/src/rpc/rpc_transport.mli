@@ -196,6 +196,7 @@ end
 
 
 val stream_rpc_multiplex_controller :
+       ?dbg_name : string ref ->
        ?close_inactive_descr:bool ->
        ?preclose:(unit -> unit) ->
        ?tls:((module Netsys_crypto_types.TLS_CONFIG) * string option) ->
@@ -214,12 +215,25 @@ val stream_rpc_multiplex_controller :
 
 
 val datagram_rpc_multiplex_controller :
+       ?dbg_name : string ref ->
        ?close_inactive_descr:bool ->
        ?preclose:(unit -> unit) ->
        role:[`Client|`Server] ->
        Unix.file_descr -> Unixqueue.event_system ->
          rpc_multiplex_controller
   (** The multiplex controller for datagrams ((D)TLS not yet supported) *)
+
+
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+val internal_rpc_multiplex_controller :
+       ?dbg_name : string ref ->
+       ?close_inactive_descr:bool ->
+       ?preclose:(unit -> unit) ->
+       internal_pipe -> internal_pipe -> Unixqueue.event_system ->
+         rpc_multiplex_controller
+  (** The multiplex controller for internal connections *)
 
 
 (** {1 Debugging} *)

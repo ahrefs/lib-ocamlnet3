@@ -121,6 +121,7 @@ type extended_address =
     | `W32_pipe of string
     | `W32_pipe_file of string
     | `Container of string * string * string * [ thread_sys_id | `Any ]
+    | `Internal of string
     ]
   (** Possible addresses:
        - [`Socket s]: The socket at this socket address
@@ -138,7 +139,62 @@ type extended_address =
          a socket or named pipe. If any container of a service is meant,
          the value [`Any] is substituted as a placeholder for a not yet
          known [thread_id].
+       - [`Internal name]: an internal service called [name]. Internal sockets
+         are only available for multithreaded programs, and are registered
+         at {!Netplex_internal}.
    *)
+
+(** Equality witness *)
+type (_,_) eq =
+  | Equal : ('a,'a) eq
+  | Not_equal
+
+(** List possible argument types for polysockets ({!Netsys_polysocket}),
+    which are the basis for internal services. Since OCaml-4.02 this
+    type is extensible by the user.
+ *)
+#ifdef HAVE_EXTENSIBLE_VARIANTS
+type _ polysocket_kind = ..
+type _ polysocket_kind +=
+#else
+type _ polysocket_kind =
+#endif
+   | Txdr : Netxdr.xdr_value polysocket_kind
+   | Tstring : string polysocket_kind
+
+
+(** Helper type for a polymorphic check whether a kind this the expected
+    kind *)
+type 'a kind_check =
+  { kind_check : 'b . 'b polysocket_kind ->  ('a,'b) eq
+  }
+
+(** Boxed version of [polysocket_kind] where the type parameter is hidden *)
+type polysocket_kind_box =
+  | Polysocket_kind_box : _ polysocket_kind -> polysocket_kind_box
+
+
+(** This type pairs a [polysocket_kind] with a [polyserver] as GADT. The
+    type parameter is hidden.
+ *)
+type polyserver_box =
+  | Polyserver_box : 'a polysocket_kind * 
+                     'a Netsys_polysocket.polyserver ->
+                        polyserver_box
+
+(** This type pairs a [polysocket_kind] with a [polyclient]
+    as GADT. The type parameter is hidden.
+ *)
+type polyclient_box =
+  | Polyclient_box : 'a polysocket_kind * 
+                     'a Netsys_polysocket.polyclient ->
+                        polyclient_box
+
+(** Internally used *)
+type extfd =
+  | OS_descr of Unix.file_descr
+  | Poly_endpoint of Netxdr.xdr_value Netsys_polysocket.polyendpoint
+
 
 (** The controller is the object in the Netplex master process/thread
     that manages the containers, logging, and service definitions
@@ -302,6 +358,11 @@ object
       * on a list of sockets (which may be bound to different addresses).
       * The sockets corresponding to [`Container] addresses are missing
       * here.
+     *)
+
+  method internal_sockets : (string * polyserver_box) list
+    (** The internal sockets for internal services: pairs of
+        ([protocol,server])
      *)
 
   method socket_service_config : socket_service_config
@@ -502,6 +563,24 @@ object
       * the arguments.
      *)
 
+  method config_internal : (string * polysocket_kind_box) list
+    (** For internal services, this list configures which message kind
+        is used for which protocol.
+     *)
+
+  method process_internal : 
+           when_done:(unit -> unit) ->
+           container -> polyserver_box -> string -> unit
+    (** [process_internal ~when_done cont client protocol]: This function
+        is called instead of [process] when a connection to an internal
+        service is made. This method has to accept or reject the connection
+        with {!Netsys_polysocket.accept} or {!Netsys_polysocket.refuse},
+        respectively. The default is to refuse.
+
+        Like [process], the function must call [when_done] when the connection
+        is fully processed.
+     *)
+
   method system_shutdown : unit -> unit
     (** A user-supplied function that is called when a system shutdown
       * notification arrives. This notification is just for information
@@ -589,7 +668,7 @@ object
   method event_system : Unixqueue.unix_event_system
     (** The event system the container uses *)
 
-  method start : Unix.file_descr -> Unix.file_descr -> unit
+  method start : extfd -> extfd -> unit
     (** {b Internal Method.} Called by the controller to start the container.
       * It is the responsibility of the container to call the 
       * [post_start_hook] and the [pre_finish_hook].

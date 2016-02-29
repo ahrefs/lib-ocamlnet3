@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PKGNAME  = rpc-generator
 ARCHIVE  = rpc_generator
 OBJECTS  = config.cmo syntax.cmo options.cmo parser.cmo lexer.cmo rename.cmo \
@@ -11,6 +13,11 @@ ALL_EXTRA = ocamlrpcgen$(EXEC_SUFFIX) rpcgen-packlist
 PACKLIST = rpcgen-packlist
 
 INCLUDES += $(INC_NETSTRING)
+
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules
 

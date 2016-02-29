@@ -101,7 +101,7 @@ object(self)
 
   val group = Unixqueue.new_group ues
 
-  val buf = String.create buf_max_size
+  val buf = Bytes.create buf_max_size
   val mutable buf_size = 0
 
   val mutable in_eof = false
@@ -261,7 +261,7 @@ object(self)
 	  if buf_size > 0 then (
 	    let n = dst # output buf 0 buf_size in
 	    if n > 0 then (
-	      String.blit buf n buf 0 (buf_size - n);
+	      Bytes.blit buf n buf 0 (buf_size - n);
 	      buf_size <- buf_size - n;
 	      if (buf_size > 0 && dst#can_output) || in_eof then
 		Unixqueue.add_event ues (receiver_attn group);
@@ -316,7 +316,7 @@ object(self)
 
   val group = Unixqueue.new_group ues
 
-  val buf = String.create buf_max_size
+  val buf = Bytes.create buf_max_size
   val mutable buf_size = 0
 
   val mutable in_eof = false
@@ -420,7 +420,7 @@ object(self)
     if not out_eof then
       try
 	let n = Unix.single_write dst buf 0 buf_size in
-	String.blit buf n buf 0 (buf_size - n);
+	Bytes.blit buf n buf 0 (buf_size - n);
 	buf_size <- buf_size - n;
 	if buf_size = 0 && in_eof then (
 	  out_eof <- true;
@@ -478,7 +478,7 @@ object(self)
        *)
       try
 	if src#can_input then (
-	  let l = String.length buf in
+	  let l = Bytes.length buf in
 	  if buf_size < l then (
 	    try
 	      let n = src # input buf buf_size (l-buf_size) in
@@ -533,7 +533,7 @@ object (self)
 		      * data_top_pos
 		      *)
 
-  val buf = String.create buf_max_size
+  val buf = Bytes.create buf_max_size
 	      (* The output buffer. The strings from data_queue are
 	       * appended to this buffer to reduce the number of
 	       * Unix.write syscalls
@@ -554,7 +554,7 @@ object (self)
   val mutable shutdown_done = false
 
   method output s p l =
-    if p < 0 || l < 0 || p > String.length s || p+l > String.length s then
+    if p < 0 || l < 0 || p > Bytes.length s || p+l > Bytes.length s then
       invalid_arg "Uq.engines.output_async_mplex#output";
 
     if in_eof then raise Closed_channel;
@@ -563,12 +563,12 @@ object (self)
       match buffer_size with
 	  None ->
 	    (* Unrestricted buffers *)
-	    if l > 0 then Queue.add (String.sub s p l) data_queue;
+	    if l > 0 then Queue.add (Bytes.sub s p l) data_queue;
 	    l
 	| Some max_size ->
 	    let size = data_queue_length + buf_size in
 	    let n = min l (max_size - size) in
-	    if n > 0 then Queue.add (String.sub s p n) data_queue;
+	    if n > 0 then Queue.add (Bytes.sub s p n) data_queue;
 	    n
     in
 
@@ -642,14 +642,14 @@ object (self)
       (* Refill buf: *)
       while buf_size < buf_max_size && not (Queue.is_empty data_queue) do
 	let s0 = Queue.top data_queue in
-	let m = String.length s0 - data_top_pos in
+	let m = Bytes.length s0 - data_top_pos in
 	let space = buf_max_size - buf_size in
 	let n = min space m in
-	String.blit s0 data_top_pos buf buf_size n;
+	Bytes.blit s0 data_top_pos buf buf_size n;
 	buf_size <- buf_size + n;
 	data_top_pos <- data_top_pos + n;
 	data_queue_length <- data_queue_length - n;
-	if data_top_pos >= String.length s0 then (
+	if data_top_pos >= Bytes.length s0 then (
 	  ignore(Queue.take data_queue);
 	  data_top_pos <- 0
 	);
@@ -664,7 +664,7 @@ object (self)
 			match exn_opt with
 			  | None ->
 			      assert(buf_size = cur_buf_size);
-			      String.blit buf n buf 0 (buf_size - n);
+			      Bytes.blit buf n buf 0 (buf_size - n);
 			      buf_size <- buf_size - n;
 			      self # check_for_output();
 			      if n > 0 then self # oam_count();
@@ -755,7 +755,7 @@ object (self)
 		      * data_top_pos
 		      *)
 
-  val buf = String.create buf_max_size
+  val buf = Bytes.create buf_max_size
 	      (* The input buffer *)
 
   val mutable pos_in = 0
@@ -768,7 +768,7 @@ object (self)
 
 
   method input s p l =
-    if p < 0 || l < 0 || p > String.length s || p+l > String.length s then
+    if p < 0 || l < 0 || p > Bytes.length s || p > Bytes.length s - l then
       invalid_arg "Uq.engines.input_async_mplex#input";
 
     if in_eof then raise Closed_channel;
@@ -779,12 +779,12 @@ object (self)
 
     while !l_todo > 0 do
       let u = try Queue.peek data_queue with Queue.Empty -> assert false in
-      let n = min !l_todo (String.length u - data_top_pos) in
-      String.blit u data_top_pos s !s_pos n;
+      let n = min !l_todo (Bytes.length u - data_top_pos) in
+      Bytes.blit u data_top_pos s !s_pos n;
       s_pos := !s_pos + n;
       data_top_pos <- data_top_pos + n;
       l_todo := !l_todo - n;
-      if data_top_pos = String.length u then (
+      if data_top_pos = Bytes.length u then (
 	let _ = Queue.take data_queue in
 	data_top_pos <- 0
       )
@@ -850,15 +850,15 @@ object (self)
       (* Space to read something? *)
       let space =
 	match buffer_size with
-	  | None -> String.length buf
-	  | Some m -> min (String.length buf) (m - data_queue_length) in
+	  | None -> Bytes.length buf
+	  | Some m -> min (Bytes.length buf) (m - data_queue_length) in
       if space > 0 then (
 	mplex # start_reading 
 	  ~when_done:(fun exn_opt n ->
 			match exn_opt with
 			  | None ->
 			      if n > 0 then (
-				let s = String.sub buf 0 n in
+				let s = Bytes.sub buf 0 n in
 				Queue.add s data_queue;
 				data_queue_length <- data_queue_length + n;
 				assert(data_queue_length >= 0);

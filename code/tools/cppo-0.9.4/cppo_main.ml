@@ -40,6 +40,12 @@ let () =
     "DIR
           Add directory DIR to the search path for included files";
 
+    "-include", Arg.String (fun s -> header := (sprintf "#include %S\n" s) ::
+                                                 !header),
+    "FILE
+          Equivalent of interpreting '#include \"FILE\"' before processing the
+          input";
+
     "-o", Arg.String (fun s -> out_file := Some s),
     "FILE
           Output file";

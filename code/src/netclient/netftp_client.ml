@@ -2016,7 +2016,7 @@ let gssapi_method ~config ~required
       let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
       G.interface # wrap
         ~context ~conf_req ~qop_req:0l ~input_message
-        ~output_message_preferred_type:`String
+        ~output_message_preferred_type:`Bytes
         ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
                 A1.check_status ~fn:"wrap" ~minor_status major_status;
                 Netxdr_mstring.concat_mstrings output_message
@@ -2037,7 +2037,7 @@ let gssapi_method ~config ~required
       let input_message = [ Netxdr_mstring.string_to_mstring msg ] in
       G.interface # unwrap
         ~context ~input_message
-        ~output_message_preferred_type:`String
+        ~output_message_preferred_type:`Bytes
         ~out:(fun ~output_message ~conf_state ~qop_state
                   ~minor_status ~major_status () ->
                 A1.check_status ~fn:"unwrap" ~minor_status major_status;

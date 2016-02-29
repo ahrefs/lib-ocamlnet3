@@ -20,7 +20,9 @@ object
                    Netsys_types.memory -> Netsys_types.memory -> int * int
   method decrypt : last:bool -> 
                    Netsys_types.memory -> Netsys_types.memory -> int * int
+  method encrypt_bytes : Bytes.t -> Bytes.t
   method encrypt_string : string -> string
+  method decrypt_bytes : Bytes.t -> Bytes.t
   method decrypt_string : string -> string
   method mac : unit -> string
 end
@@ -65,6 +67,19 @@ let process_string proc s =
   process_substring proc s 0 (String.length s)
 
 
+let process_subbytes proc s pos len =
+  Bytes.unsafe_of_string
+    (process_substring
+       proc (Bytes.unsafe_to_string s) pos len
+    )
+
+let process_bytes proc s =
+  Bytes.unsafe_of_string
+    (process_string
+       proc (Bytes.unsafe_to_string s)
+    )
+
+
 module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
   let ctx_obj_no_padding c ctx : cipher_ctx =
     let bs = Impl.block_constraint c in
@@ -101,7 +116,9 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
           if not ok then failwith "decrypt";
         );
         (n,n)
+      method encrypt_bytes s = process_bytes self#encrypt s
       method encrypt_string s = process_string self#encrypt s
+      method decrypt_bytes s = process_bytes self#decrypt s
       method decrypt_string s = process_string self#decrypt s
       method mac() = Impl.mac ctx
     end
@@ -206,7 +223,9 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
         )
         else
           (n1,n1)
+      method encrypt_bytes s = process_bytes self#encrypt s
       method encrypt_string s = process_string self#encrypt s
+      method decrypt_bytes s = process_bytes self#decrypt s
       method decrypt_string s = process_string self#decrypt s
       method mac() = Impl.mac ctx
     end
@@ -342,7 +361,9 @@ module Cipher(Impl : Netsys_crypto_types.SYMMETRIC_CRYPTO) = struct
           else (n1,n1)          
         )
         else (n1,n1)
+      method encrypt_bytes s = process_bytes self#encrypt s
       method encrypt_string s = process_string self#encrypt s
+      method decrypt_bytes s = process_bytes self#decrypt s
       method decrypt_string s = process_string self#decrypt s
       method mac() = Impl.mac ctx
     end

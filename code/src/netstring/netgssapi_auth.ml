@@ -97,7 +97,7 @@ module Auth (G:Netsys_gssapi.GSSAPI)(C:CONFIG) = struct
       () 
 
   let get_initiator_cred ~initiator_name (config:Netsys_gssapi.client_config) =
-    let mech_type = config#mech_type in
+    (* let mech_type = config#mech_type in *)
     match config#initiator_cred with
       | Some(G.Credential cred) ->
           (* Check that this is the cred for init_name *)

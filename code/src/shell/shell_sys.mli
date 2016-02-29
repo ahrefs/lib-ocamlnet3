@@ -14,6 +14,8 @@
     you should call {!Shell_sys.install_job_handlers}.
  *)
 
+open Netsys_types
+
 (** {1 Common exceptions} *)
 
 exception Fatal_error of exn
@@ -407,6 +409,14 @@ val from_string :
    *    always caught, and implicitly handled by closing the pipeline.
    *)
 
+val from_tstring :
+      ?pos:int ->                  (* default: 0 *)
+      ?len:int ->                  (* default: until end of string *)
+      ?epipe:(unit -> unit) ->     (* default: empty function *)
+      tstring ->
+        (Unix.file_descr -> bool)
+  (** Same for tagged strings *)
+
 val from_stream :
       ?epipe:(unit -> unit) ->     (* default: empty function *)
       string Stream.t ->
@@ -451,6 +461,12 @@ val to_buffer :
    * used as [consumer] argument for [add_consumer]. The data received
    * from the subprocess is added to the buffer [b]. 
    *)
+
+val to_netbuffer :
+      Netbuffer.t ->
+        (Unix.file_descr -> bool)
+  (** Same for a {!Netbuffer} *)
+
 
 type group_mode = 
     Same_as_caller    (** The job runs in the same process group as the current process *)

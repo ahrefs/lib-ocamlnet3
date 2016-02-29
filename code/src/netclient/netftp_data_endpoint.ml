@@ -81,9 +81,11 @@ object(self)
   method output_char = out # output_char
   method output_string = out # output_string
   method output_byte = out # output_byte
+  method output_bytes = out # output_bytes
   method output_buffer = out # output_buffer
   method output_channel = out # output_channel
   method really_output = out # really_output
+  method really_output_string = out # really_output_string
 
   method output_eor() =
     out # output_string eor_s;
@@ -238,9 +240,11 @@ object(self)
   method output_char = out # output_char
   method output_string = out # output_string
   method output_byte = out # output_byte
+  method output_bytes = out # output_bytes
   method output_buffer = out # output_buffer
   method output_channel = out # output_channel
   method really_output = out # really_output
+  method really_output_string = out # really_output_string
 
   method output_eor() : unit =
     ()
@@ -265,6 +269,7 @@ object(self)
   method input_byte = ch # input_byte
   method input_line = ch # input_line
   method really_input = ch # really_input
+  method really_input_string = ch # really_input_string
 
   method input_eor() : unit =
     raise End_of_file
@@ -318,7 +323,7 @@ object(self)
 	buf 
 	(fun s' p' l' ->
 	   let ll = min l l' in
-	   String.blit s p s' p' ll;
+	   Bytes.blit s p s' p' ll;
 	   ll
 	) in
     pos <- pos + n;
@@ -847,23 +852,23 @@ class block_record_writer
    *)
 object(self)
   val mutable buf = Netbuffer.create 4096
-  val mutable data = ""         (* Data to insert immediately *)
+  val mutable data = Bytes.create 0  (* Data to insert immediately *)
   val mutable eof = false       (* Set only if buf is already empty *)
   val mutable pos_in = ch # pos_in
   val mutable closed = false
 
   method input s p l = 
-    if eof && data = "" then (
+    if eof && Bytes.length data = 0 then (
       (* Return EOF condition *)
       ondata();
       raise End_of_file
     );
     let n =
-      if data <> "" then (
+      if Bytes.length data > 0 then (
 	(* Fetching from [data] has precedence *)
-	let l' = min l (String.length data) in
-	String.blit data 0 s p l';
-	data <- String.sub data l' (String.length data - l');
+	let l' = min l (Bytes.length data) in
+	Bytes.blit data 0 s p l';
+	data <- Bytes.sub data l' (Bytes.length data - l');
 	l'
       )
       else (
@@ -882,9 +887,9 @@ object(self)
 	    let len = Netbuffer.length buf in
 	    let msb = len lsr 8 in
 	    let lsb = len land 0xff in
-	    data <- String.copy "\000XX";
-	    data.[1] <- Char.chr msb;
-	    data.[2] <- Char.chr lsb;
+	    data <- Bytes.of_string "\000XX";
+	    Bytes.set data 1 (Char.chr msb);
+	    Bytes.set data 2 (Char.chr lsb);
 	    self # input s p l
 	  with
 	      End_of_file ->
@@ -892,12 +897,12 @@ object(self)
 		( try
 		    ch # input_eor();
 		    (* It is EOR: *)
-		    data <- "\128\000\000";
+		    data <- Bytes.of_string "\128\000\000";
 		  with
 		    End_of_file ->
 		      (* It is EOF! *)
 		      eof <- true;
-		      data <- "\064\000\000";
+		      data <- Bytes.of_string "\064\000\000";
 		);
 		self # input s p l
       )
@@ -970,14 +975,15 @@ let copy_e src dst =
 
 
 let rec unwrap_input_loop_e strbuf buf1 buf2 p esys src dst =
-  let s = String.make 4 '\000' in
-  Uq_io.really_input_e src (`String s) 0 4
+  let s = Bytes.make 4 '\000' in
+  Uq_io.really_input_e src (`Bytes s) 0 4
   ++ (fun () ->
-        if s.[0] <> '\000' then
+        if Bytes.get s 0 <> '\000' then
           raise Ftp_data_protocol_error;
         let n =
-          (Char.code s.[1] lsl 16) lor 
-            (Char.code s.[2] lsl 8) lor Char.code s.[3] in
+          (Char.code (Bytes.get s 1) lsl 16) lor 
+            (Char.code (Bytes.get s 2) lsl 8) lor
+              Char.code (Bytes.get s 3) in
         if n > Bigarray.Array1.dim buf1 then
           raise Ftp_data_protocol_error;
         Uq_io.really_input_e src (`Memory buf1) 0 n
@@ -992,7 +998,7 @@ let rec unwrap_input_loop_e strbuf buf1 buf2 p esys src dst =
                (* NB. async channels do not support `Memory, so we do this
                   superflous copy here
                 *)
-               Netsys_mem.blit_memory_to_string buf2_sub 0 strbuf 0 n_out;
+               Netsys_mem.blit_memory_to_bytes buf2_sub 0 strbuf 0 n_out;
                Uq_io.really_output_e dst (`String strbuf) 0 n_out
                ++ (fun () ->
                      unwrap_input_loop_e strbuf buf1 buf2 p esys src dst
@@ -1004,12 +1010,12 @@ let rec unwrap_input_loop_e strbuf buf1 buf2 p esys src dst =
 let unwrap_input_e p esys src dst =
   let buf1 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
   let buf2 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
-  let strbuf = String.create Netsys_mem.default_block_size in
+  let strbuf = Bytes.create Netsys_mem.default_block_size in
   unwrap_input_loop_e strbuf buf1 buf2 p esys src dst
 
 
 let rec wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst =
-  ( Uq_io.input_e src (`String strbuf) 0 limit
+  ( Uq_io.input_e src (`Bytes strbuf) 0 limit
     >> Uq_io.eof_as_none
   )
   ++ (fun n_opt ->
@@ -1020,15 +1026,15 @@ let rec wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst =
         (* NB. async channels do not support `Memory, so we do this
            superflous copy here
          *)
-        Netsys_mem.blit_string_to_memory strbuf 0 buf1 0 n;
+        Netsys_mem.blit_bytes_to_memory strbuf 0 buf1 0 n;
         let buf1_sub = Bigarray.Array1.sub buf1 0 n in
         let n_out = p.ftp_wrap_m buf1_sub buf2 in
         let buf2_sub = Bigarray.Array1.sub buf2 0 n_out in
-        let s = String.make 4 '\000' in
-        s.[1] <- Char.chr ((n_out lsr 16) land 0xff);
-        s.[2] <- Char.chr ((n_out lsr 8) land 0xff);
-        s.[3] <- Char.chr (n_out land 0xff);
-        Uq_io.really_output_e dst (`String s) 0 4
+        let s = Bytes.make 4 '\000' in
+        Bytes.set s 1 (Char.chr ((n_out lsr 16) land 0xff));
+        Bytes.set s 2 (Char.chr ((n_out lsr 8) land 0xff));
+        Bytes.set s 3 (Char.chr (n_out land 0xff));
+        Uq_io.really_output_e dst (`Bytes s) 0 4
         ++ (fun () ->
               Uq_io.really_output_e dst (`Memory buf2_sub) 0 n_out
               ++ (fun () ->
@@ -1043,7 +1049,7 @@ let rec wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst =
 let wrap_output_e p esys src dst =
   let buf1 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
   let buf2 = Netsys_mem.pool_alloc_memory Netsys_mem.default_pool in
-  let strbuf = String.create Netsys_mem.default_block_size in
+  let strbuf = Bytes.create Netsys_mem.default_block_size in
   let limit = p.ftp_wrap_limit() in
   wrap_output_loop_e strbuf buf1 buf2 limit p esys src dst
 

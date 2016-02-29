@@ -1,3 +1,58 @@
+2016-01-31  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Authentication: the module types for SASL and HTTP authentication
+	  have been changed to a stateless style. Added an experimental
+	  SCRAM module for HTTP.
+
+2016-01-29  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Nethttp_client: Supporting Digest authentication with
+	  SHA-256 as hash algorithm. Supporting Basic authentication
+	  with "charset" parameter.
+
+2016-01-24  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* XDR/RPC: supporting that direct mappings can be disabled
+	  when this is disadvantegous. For now, this is done for
+	  internal RPC services, because direct mappings do not
+	  copy values, which would be very surprising here.
+
+2015-12-01  Gerd Stolpmann  <gerd@thinkpad.lan.sumadev.de>
+
+	* Netplex: adding support for so-called internal services.
+	  This is a fast and type-safe way of exchanging messages
+	  between netplex containers.
+
+2015-11-28  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* ALL MODULES: Transitioning to the new "bytes" type for
+	  mutable strings while using "string" only for immutable
+	  strings. If compiled with OCaml-4.02 or newer, Ocamlnet
+	  is built with the -safe-string compiler option.
+
+2015-11-16  Gerd Stolpmann  <gerd@zotac>
+
+	* Netplex_sharedvar: implementing a new protocol that uses shared
+	  memory for announcing variable updates. Also, almost all functions
+	  can now be called from controller context.
+
+	* Netsys_global: new module, for keeping a dictionary of global
+	  strings. The dictionary is connected with Netplex_sharedvar, so
+	  that the strings can be updated across process boundaries if used
+	  with Netplex.
+
+	* Netsys_polysocket: adding this module
+
+2015-07-05  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netsys_polypipe: adding this module
+
+2015-01-05  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Netasn1_encoder: new module for encding ASN.1 messages
+
+-- OCamlnet-4.1 fork
+
 2015-10-03  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Netnumber: on 64 bit platforms, the functions lt_uint4 and

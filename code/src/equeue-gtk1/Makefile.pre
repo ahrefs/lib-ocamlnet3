@@ -1,9 +1,13 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = equeue-gtk1
 GENERATE = META
 NODEP = @true
+
+PP_OPTIONS = -pp "$(CPPO) $(GTK_DEFINES) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include ./Makefile.gtk
 

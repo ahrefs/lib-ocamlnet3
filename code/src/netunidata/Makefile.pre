@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = netunidata
 
@@ -25,6 +27,8 @@ INSTOTHER = install-netdb
 PACKLIST = netdb-packlist
 INSTALL_EXTRA = $(MAPPINGS:.ml=.cmo) $(MAPPINGS:.ml=.cmx) $(MAPPINGS:.ml=.o) \
                 netuniinit.cmo netuniinit.cmx netuniinit.o
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules
 

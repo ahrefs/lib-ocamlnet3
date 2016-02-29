@@ -198,10 +198,11 @@ object (self)
 
     tcl_last_file_handlers <- ht;
 
+(*
     let watching_files = infiles <> [] || 
 			 outfiles <> [] || 
 			 oobfiles <> [] in
-    
+ *)  
 
     (* Remove the old timer, if any. *)
     begin match tcl_last_timer with
@@ -238,7 +239,7 @@ object (self)
 			Netexn.to_string any);
 
   method private tcl_handler 
-                   ((infiles, outfiles, oobfiles, time) as watch_tuple) () =
+                   (infiles, outfiles, oobfiles, time) () =
 
     (* IMPORTANT:
      * It is possible that this is a "ghost event". We need to test whether

@@ -15,29 +15,34 @@ let hexdigit_lc =
 let to_hex ?(lc=false) s =
   let hexdigit = if lc then hexdigit_lc else hexdigit_uc in
   let l = String.length s in
-  let u = String.create (2*l) in
+  let u = Bytes.create (2*l) in
   for k = 0 to l-1 do
     let c = String.unsafe_get s k in
     let j = k lsl 1 in
-    String.unsafe_set u j     hexdigit.(Char.code c lsr 4);
-    String.unsafe_set u (j+1) hexdigit.(Char.code c land 15);
+    Bytes.unsafe_set u j     hexdigit.(Char.code c lsr 4);
+    Bytes.unsafe_set u (j+1) hexdigit.(Char.code c land 15);
   done;
-  u
+  Bytes.unsafe_to_string u
 
 
 module Base64 = struct
-  let b64_pattern plus slash =
+  let alphabet =
     [| 'A'; 'B'; 'C'; 'D'; 'E'; 'F'; 'G'; 'H'; 'I'; 'J'; 'K'; 'L'; 'M';
        'N'; 'O'; 'P'; 'Q'; 'R'; 'S'; 'T'; 'U'; 'V'; 'W'; 'X'; 'Y'; 'Z';
        'a'; 'b'; 'c'; 'd'; 'e'; 'f'; 'g'; 'h'; 'i'; 'j'; 'k'; 'l'; 'm';
        'n'; 'o'; 'p'; 'q'; 'r'; 's'; 't'; 'u'; 'v'; 'w'; 'x'; 'y'; 'z';
-       '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7'; '8'; '9'; plus; slash |];;
+       '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7'; '8'; '9'; '+'; '/' |];;
 
+  let mod_alphabet plus slash =
+    if plus <> '+' || slash <> '/' then (
+      let a = Array.copy alphabet in
+      a.(62) <- plus;
+      a.(63) <- slash;
+      a
+    ) else
+      alphabet
 
-  let rfc_pattern = b64_pattern '+' '/';;
-  let url_pattern = b64_pattern '-' '/';;
-
-  let encode_with_options b64 equal s pos len 
+  let encode_with_options ops b64 equal s pos len 
                           linelen first_linelen crlf =
   (* encode using "base64".
    * 'b64': The encoding table, created by b64_pattern.
@@ -49,10 +54,11 @@ module Base64 = struct
    * Returns: (s,last_linelen) where [s] is the encoded string, and 
    *   [last_linelen] is the length of the last line
    *)
+    let open Netstring_tstring in
     assert (Array.length b64 = 64);
-    if len < 0 || pos < 0 || pos > String.length s || linelen < 0 then
+    if len < 0 || pos < 0 || pos > ops.length s || linelen < 0 then
       invalid_arg "Netencoding.Base64.encode";
-    if pos + len > String.length s then
+    if pos + len > ops.length s then
       invalid_arg "Netencoding.Base64.encode";
 
     let linelen = (linelen asr 2) lsl 2 in
@@ -74,7 +80,7 @@ module Base64 = struct
     in
     (* l_t': length of the result with CRLF or LF characters *)
     
-    let t = String.make l_t' equal in
+    let t = Bytes.make l_t' equal in
     let j = ref 0 in
     let q = ref (linelen - first_linelen) in
     for k = 0 to len / 3 - 1 do
@@ -87,15 +93,13 @@ module Base64 = struct
        * So it is proved that the following unsafe string accesses always
        * work.
        *)
-      let bits = (Char.code (String.unsafe_get s (p))   lsl 16) lor
-		 (Char.code (String.unsafe_get s (p+1)) lsl  8) lor
-		 (Char.code (String.unsafe_get s (p+2))) in
+      let bits = ops.unsafe_get3 s p in
       (* Obviously, 'bits' is a 24 bit entity (i.e. bits < 2**24) *)
       assert(!j + 3 < l_t');
-      String.unsafe_set t !j     (Array.unsafe_get b64 ( bits lsr 18));
-      String.unsafe_set t (!j+1) (Array.unsafe_get b64 ((bits lsr 12) land 63));
-      String.unsafe_set t (!j+2) (Array.unsafe_get b64 ((bits lsr  6) land 63));
-      String.unsafe_set t (!j+3) (Array.unsafe_get b64 ( bits         land 63));
+      Bytes.unsafe_set t !j     (Array.unsafe_get b64 ( bits lsr 18));
+      Bytes.unsafe_set t (!j+1) (Array.unsafe_get b64 ((bits lsr 12) land 63));
+      Bytes.unsafe_set t (!j+2) (Array.unsafe_get b64 ((bits lsr  6) land 63));
+      Bytes.unsafe_set t (!j+3) (Array.unsafe_get b64 ( bits         land 63));
       j := !j + 4;
       if linelen > 3 then begin
 	q := !q + 4;
@@ -104,12 +108,12 @@ module Base64 = struct
 	   * a line ending.
 	   *)
 	  if crlf then begin
-	    t.[ !j ] <- '\013';
-	    t.[ !j+1 ] <- '\010';
+	    Bytes.set t !j '\013';
+	    Bytes.set t (!j+1) '\010';
 	    j := !j + 2;
 	  end
 	  else begin 
-	    t.[ !j ] <- '\010';
+	    Bytes.set t !j '\010';
 	    incr j
 	  end;
 	  q := 0;
@@ -122,17 +126,17 @@ module Base64 = struct
       match m with
 	  0 -> ()
 	| 1 ->
-            let bits = Char.code (s.[pos + len - 1]) in
-	    t.[ !j     ] <- b64.( bits lsr 2);
-	    t.[ !j + 1 ] <- b64.( (bits land 0x03) lsl 4);
+            let bits = Char.code (ops.get s (pos + len - 1)) in
+	    Bytes.set t !j b64.( bits lsr 2);
+	    Bytes.set t (!j + 1) b64.( (bits land 0x03) lsl 4);
 	    j := !j + 4;
 	    q := !q + 4;
 	| 2 ->
-	    let bits = (Char.code (s.[pos + len - 2]) lsl 8) lor
-                       (Char.code (s.[pos + len - 1])) in
-	    t.[ !j     ] <- b64.( bits lsr 10);
-	    t.[ !j + 1 ] <- b64.((bits lsr  4) land 0x3f);
-	    t.[ !j + 2 ] <- b64.((bits lsl  2) land 0x3f);
+	    let bits = (Char.code (ops.get s (pos + len - 2)) lsl 8) lor
+                       (Char.code (ops.get s (pos + len - 1))) in
+	    Bytes.set t !j b64.( bits lsr 10);
+	    Bytes.set t (!j + 1) b64.((bits lsr  4) land 0x3f);
+	    Bytes.set t (!j + 2) b64.((bits lsl  2) land 0x3f);
 	    j := !j + 4;
 	    q := !q + 4;
 	| _ -> assert false
@@ -142,12 +146,12 @@ module Base64 = struct
 
     if linelen > 3 && !q > 0 && len > 0 then begin
       if crlf then begin
-	t.[ !j ] <- '\013';
-	t.[ !j+1 ] <- '\010';
+	Bytes.set t !j '\013';
+	Bytes.set t (!j+1) '\010';
 	j := !j + 2;
       end
       else begin 
-	t.[ !j ] <- '\010';
+	Bytes.set t !j '\010';
 	incr j;
       end;	
     end;
@@ -156,24 +160,37 @@ module Base64 = struct
 
 
 
-  let encode ?(pos=0) ?len ?(linelength=0) ?(crlf=false) s =
-    let l = match len with None -> String.length s - pos | Some x -> x in
+  let encode_poly ?(pos=0) ?len ?(linelength=0) ?(crlf=false) ?(plus='+')
+                  ?(slash='/') ops s =
+    let open Netstring_tstring in
+    let alpha = mod_alphabet plus slash in
+    let l = match len with None -> ops.length s - pos | Some x -> x in
     let s,_ = 
-      encode_with_options rfc_pattern '=' s pos l linelength linelength crlf in
+      encode_with_options
+        ops alpha '=' s pos l linelength linelength crlf in
     s
   ;;
 
 
-  let url_encode ?(pos=0) ?len ?(linelength=0) ?(crlf=false) s =
-    let l = match len with None -> String.length s - pos | Some x -> x in
-    let s,_ = 
-      encode_with_options url_pattern '.' s pos l linelength linelength crlf in
-    s
-  ;;
+  let encode ?pos ?len ?linelength ?crlf ?plus ?slash s =
+    let ops = Netstring_tstring.string_ops in
+    let s = encode_poly ?pos ?len ?linelength ?crlf ?plus ?slash ops s in
+    Bytes.unsafe_to_string s
 
 
-  let encoding_pipe_conv ?(linelength = 0) ?(crlf = false) lastlen 
+  let encode_tstring ?pos ?len ?linelength ?crlf ?plus ?slash ts =
+    Netstring_tstring.with_tstring
+      { Netstring_tstring.with_fun =
+          (fun ops s ->
+             encode_poly ?pos ?len ?linelength ?crlf ?plus ?slash ops s
+          )
+      }
+      ts
+
+  let encoding_pipe_conv ?(linelength = 0) ?(crlf = false) ~plus ~slash
+                         alpha lastlen 
                          incoming incoming_eof outgoing =
+    let ops = Netstring_tstring.bytes_ops in
     let linelength = (linelength asr 2) lsl 2 in
     let len = Netbuffer.length incoming in
     let len' =
@@ -184,7 +201,7 @@ module Base64 = struct
     in
     let (s,ll) = 
       encode_with_options 
-	rfc_pattern '=' (Netbuffer.unsafe_buffer incoming) 0 len' 
+	ops alpha '=' (Netbuffer.unsafe_buffer incoming) 0 len' 
 	linelength (linelength - !lastlen) crlf
     in
     Netbuffer.delete incoming 0 len';
@@ -192,14 +209,14 @@ module Base64 = struct
      * if ll = 0 or at EOF. In the other cases, this additional LF/CRLF
      * must not be added to [outgoing].
      *)
-    if linelength < 3  ||  ll=0  ||  s="" then begin
-      Netbuffer.add_string outgoing s;
+    if linelength < 3  ||  ll=0  ||  Bytes.length s = 0 then begin
+      Netbuffer.add_bytes outgoing s;
     end
     else begin
-      let sl = String.length s in
-      assert(s.[sl-1] = '\n');
+      let sl = Bytes.length s in
+      assert(Bytes.get s (sl-1) = '\n');
       let sl' = if crlf then sl-2 else sl-1 in
-      Netbuffer.add_sub_string outgoing s 0 sl';
+      Netbuffer.add_subbytes outgoing s 0 sl';
     end;
     lastlen := ll;
     (* Ensure there is a LF/CRLF at the end: *)
@@ -210,27 +227,30 @@ module Base64 = struct
        *)
 
 
-  class encoding_pipe ?linelength ?crlf () =
+  class encoding_pipe ?linelength ?crlf  ?(plus='+') ?(slash='/') () =
+    let alpha = mod_alphabet plus slash in
     let lastlen = ref 0 in
-    Netchannels.pipe ~conv:(encoding_pipe_conv ?linelength ?crlf lastlen) ()
+    let conv = 
+      encoding_pipe_conv ?linelength ?crlf ~plus ~slash alpha lastlen in
+    Netchannels.pipe ~conv ()
     
 
-  let decode_prefix t pos len p_url p_spaces p_full p_null =
+  let decode_prefix ops t pos len plus slash p_spaces p_full p_null =
     (* Decodes the prefix of a Base64-encoded string. Returns a triple
      * (s,n,eof) where s is the decoded prefix, and n is the number of 
      * processed characters from t (i.e. the characters pos to pos+n-1 have
      * been processed), and where eof is the boolean flag whether the
      * padding '=' characters at the end of the string have been seen.
      *
-     * p_url: accepts strings produced by url_endode
      * p_spaces: accepts spaces in [t] (at the price of reduced speed)
      * p_full: [t] must be a closed encoded string (i.e. no prefix)
      * p_null: [t] must be an encoded null string
      *)
+    let open Netstring_tstring in
 
-    if len < 0 || pos < 0 || pos > String.length t then
+    if len < 0 || pos < 0 || pos > ops.length t then
       invalid_arg "Netencoding.Base64.decode";
-    if pos + len > String.length t then
+    if pos + len > ops.length t then
       invalid_arg "Netencoding.Base64.decode";
 
     (* Compute the number of effective characters l_t in 't';
@@ -242,18 +262,16 @@ module Base64 = struct
 	let c = ref 0 in
 	let p = ref 0 in
 	for i = pos to pos + len - 1 do
-	  match String.unsafe_get t i with
+	  match ops.unsafe_get t i with
 	      (' '|'\t'|'\r'|'\n'|'>') -> ()
-	    | ('='|'.') as ch ->
-		if ch = '.' && not p_url then
-		  invalid_arg "Netencoding.Base64.decode";
+	    | '=' ->
 		incr c;
 		incr p;
 		if !p > 2 then
 		  invalid_arg "Netencoding.Base64.decode";
 		for j = i+1 to pos + len - 1 do
-		  match String.unsafe_get t j with
-		      (' '|'\t'|'\r'|'\n'|'.'|'=') -> ()
+		  match ops.unsafe_get t j with
+		      (' '|'\t'|'\r'|'\n'|'=') -> ()
 		    | _ ->
 			(* Only another '=' or spaces allowed *)
 			invalid_arg "Netencoding.Base64.decode";
@@ -265,11 +283,9 @@ module Base64 = struct
       else
 	len,
 	( if len > 0 then (
-	    if String.sub t (len - 2) 2 = "==" || 
-	       (p_url && String.sub t (len - 2) 2 = "..") then 2
+	    if ops.substring t (len - 2) 2 = "==" then 2
 	    else 
-	      if String.sub t (len - 1) 1 = "=" || 
-		 (p_url && String.sub t (len - 1) 1 = ".") then 1
+	      if ops.substring t (len - 1) 1 = "=" then 1
 	      else
 		0
 	  )
@@ -293,26 +309,24 @@ module Base64 = struct
     in
 
     let l_s = (l_t / 4) * 3 - pad_chars in
-    let s = String.create l_s in
+    let s = Bytes.create l_s in
 
     let decode_char c =
       match c with
 	  'A' .. 'Z'  -> Char.code(c) - 65     (* 65 = Char.code 'A' *)
 	| 'a' .. 'z'  -> Char.code(c) - 71     (* 71 = Char.code 'a' - 26 *)
 	| '0' .. '9'  -> Char.code(c) + 4      (* -4 = Char.code '0' - 52 *)
-	| '+'         -> 62
-	| '-'         -> if not p_url then 
-	                   invalid_arg "Netencoding.Base64.decode";
-	                 62
-	| '/'         -> 63
-	| _           -> invalid_arg "Netencoding.Base64.decode";
+        | _ ->
+            if c = plus then 62
+            else if c = slash then 63
+            else invalid_arg "Netencoding.Base64.decode";
     in
 
     (* Decode all but the last quartet: *)
 
     let cursor = ref pos in
     let rec next_char() = 
-      match t.[ !cursor ] with
+      match ops.get t !cursor with
 	  (' '|'\t'|'\r'|'\n'|'>') -> 
 	    if p_spaces then (incr cursor; next_char())
 	    else invalid_arg "Netencoding.Base64.decode"
@@ -334,9 +348,9 @@ module Base64 = struct
 	let x0 = (n0 lsl 2) lor (n1 lsr 4) in
 	let x1 = ((n1 lsl 4) land 0xf0) lor (n2 lsr 2) in
 	let x2 = ((n2 lsl 6) land 0xc0) lor n3 in
-	String.unsafe_set s q     (Char.chr x0);
-	String.unsafe_set s (q+1) (Char.chr x1);
-	String.unsafe_set s (q+2) (Char.chr x2);
+	Bytes.unsafe_set s q     (Char.chr x0);
+	Bytes.unsafe_set s (q+1) (Char.chr x1);
+	Bytes.unsafe_set s (q+2) (Char.chr x2);
       done;
     end
     else begin
@@ -344,20 +358,21 @@ module Base64 = struct
       for k = 0 to l_t / 4 - 2 do
 	let p = pos + 4*k in
 	let q = 3*k in
-	let c0 = String.unsafe_get t p in
-	let c1 = String.unsafe_get t (p + 1) in
-	let c2 = String.unsafe_get t (p + 2) in
-	let c3 = String.unsafe_get t (p + 3) in
-	let n0 = decode_char c0 in
-	let n1 = decode_char c1 in
-	let n2 = decode_char c2 in
+        let c012 = ops.unsafe_get3 t p in
+        let c0 = c012 lsr 16 in
+        let c1 = (c012 lsr 8) land 0xff in
+        let c2 = c012 land 0xff in
+	let c3 = ops.unsafe_get t (p + 3) in
+	let n0 = decode_char (Char.unsafe_chr c0) in
+	let n1 = decode_char (Char.unsafe_chr c1) in
+	let n2 = decode_char (Char.unsafe_chr c2) in
 	let n3 = decode_char c3 in
 	let x0 = (n0 lsl 2) lor (n1 lsr 4) in
 	let x1 = ((n1 lsl 4) land 0xf0) lor (n2 lsr 2) in
 	let x2 = ((n2 lsl 6) land 0xc0) lor n3 in
-	String.unsafe_set s q     (Char.chr x0);
-	String.unsafe_set s (q+1) (Char.chr x1);
-	String.unsafe_set s (q+2) (Char.chr x2);
+	Bytes.unsafe_set s q     (Char.chr x0);
+	Bytes.unsafe_set s (q+1) (Char.chr x1);
+	Bytes.unsafe_set s (q+2) (Char.chr x2);
       done;
       cursor := pos + l_t - 4;
     end;
@@ -371,21 +386,21 @@ module Base64 = struct
       let c2 = next_char() in
       let c3 = next_char() in
 
-      if (c2 = '=' && c3 = '=') || (p_url && c2 = '.' && c3 = '.') then begin
+      if (c2 = '=' && c3 = '=') then begin
 	let n0 = decode_char c0 in
 	let n1 = decode_char c1 in
 	let x0 = (n0 lsl 2) lor (n1 lsr 4) in
-	s.[ q ]   <- Char.chr x0;
+	Bytes.set s q (Char.chr x0);
       end
       else
-	if (c3 = '=') || (p_url && c3 = '.') then begin
+	if (c3 = '=') then begin
 	  let n0 = decode_char c0 in
 	  let n1 = decode_char c1 in
 	  let n2 = decode_char c2 in
 	  let x0 = (n0 lsl 2) lor (n1 lsr 4) in
 	  let x1 = ((n1 lsl 4) land 0xf0) lor (n2 lsr 2) in
-	  s.[ q ]   <- Char.chr x0;
-	  s.[ q+1 ] <- Char.chr x1;
+	  Bytes.set s q (Char.chr x0);
+	  Bytes.set s (q+1) (Char.chr x1);
 	end
 	else begin
 	  let n0 = decode_char c0 in
@@ -395,9 +410,9 @@ module Base64 = struct
 	  let x0 = (n0 lsl 2) lor (n1 lsr 4) in
 	  let x1 = ((n1 lsl 4) land 0xf0) lor (n2 lsr 2) in
 	  let x2 = ((n2 lsl 6) land 0xc0) lor n3 in
-	  s.[ q ]   <- Char.chr x0;
-	  s.[ q+1 ] <- Char.chr x1;
-	  s.[ q+2 ] <- Char.chr x2;
+	  Bytes.set s q (Char.chr x0);
+	  Bytes.set s (q+1) (Char.chr x1);
+	  Bytes.set s (q+2) (Char.chr x2);
 	end
 
     end
@@ -407,70 +422,70 @@ module Base64 = struct
   ;;
 
 
-  let decode ?(pos=0) ?len ?(url_variant=true) ?(accept_spaces=false) s =
-    let l = match len with None -> String.length s - pos | Some x -> x in
-    let (s,_,_) = decode_prefix s pos l url_variant accept_spaces true false in
-    s
-  ;;
+  let decode_poly ?(pos=0) ?len ?(accept_spaces=false) ?(plus='+') ?(slash='/')
+                  ops s =
+    let open Netstring_tstring in
+    let l = match len with None -> ops.length s - pos | Some x -> x in
+    let (s,_,_) =
+      decode_prefix ops s pos l plus slash accept_spaces true false in
+    s    
+
+  let decode ?pos ?len ?accept_spaces ?plus ?slash s =
+    let ops = Netstring_tstring.string_ops in
+    let s' = decode_poly ?pos ?len ?accept_spaces ?plus ?slash ops s in
+    Bytes.unsafe_to_string s'
+
+
+  let decode_tstring ?pos ?len ?accept_spaces ?plus ?slash ts =
+    Netstring_tstring.with_tstring
+      { Netstring_tstring.with_fun =
+          (fun ops s ->
+             decode_poly ?pos ?len ?accept_spaces ?plus ?slash ops s
+          )
+      }
+      ts
 
 
   (* TODO: Use Netbuffer.add_inplace instead of creating an intermediate 
    * string s in [decoding_pipe_conv].
    *)
 
-  let decoding_pipe_conv url_variant accept_spaces padding_seen
+  let decoding_pipe_conv plus slash accept_spaces padding_seen
                          incoming incoming_eof outgoing =
+    let ops = Netstring_tstring.bytes_ops in
     let len = Netbuffer.length incoming in
     let t = Netbuffer.unsafe_buffer incoming in
     if !padding_seen then begin
       (* Only accept the null string: *)
-      let _,_,_ = decode_prefix t 0 len url_variant accept_spaces false true in
+      let _,_,_ =
+        decode_prefix ops t 0 len plus slash accept_spaces false true in
       Netbuffer.clear incoming
     end 
     else begin
       let (s,n,ps) = 
-	decode_prefix t 0 len url_variant accept_spaces incoming_eof false in
+	decode_prefix ops t 0 len plus slash accept_spaces incoming_eof false in
       padding_seen := ps;
       if incoming_eof then 
 	Netbuffer.clear incoming
       else
 	Netbuffer.delete incoming 0 n;
-      Netbuffer.add_string outgoing s
+      Netbuffer.add_bytes outgoing s
     end;
 
 
-  class decoding_pipe ?(url_variant=true) ?(accept_spaces=false) () =
+  class decoding_pipe ?(accept_spaces=false) ?(plus='+') ?(slash='/') () =
     let padding_seen = ref false in
-    Netchannels.pipe 
-      ~conv:(decoding_pipe_conv url_variant accept_spaces padding_seen) ()
-
-
-  module Deprecated = struct
-
-    let encode_substring s ~pos ~len ~linelength ~crlf =
-      let s,_ =
-	encode_with_options 
-	  rfc_pattern '=' s pos len linelength linelength crlf in
-      s ;;
-
-    let decode_ignore_spaces s =
-      let (s,_,_) = decode_prefix s 0 (String.length s) true true true false in
-      s ;;
-
-    let decode_substring s ~pos ~len ~url_variant ~accept_spaces =
-      let (s,_,_) = decode_prefix s pos len url_variant accept_spaces true false
-      in
-      s ;;
-
-  end
-
+    let conv =
+      decoding_pipe_conv plus slash accept_spaces padding_seen in
+    Netchannels.pipe ~conv ()
 end
 
 
 
 module QuotedPrintable = struct
 
-  let encode_substring ?(crlf = true) ?(eot = false) ?(line_length = ref 0) s ~pos ~len =
+  let encode_sub ?(crlf = true) ?(eot = false) ?(line_length = ref 0) ~pos ~len
+                 ops s =
     (* line_length:
      * - on input, the length of the line where the encoding starts
      * - on output, the length of the last written line
@@ -479,10 +494,11 @@ module QuotedPrintable = struct
      * - true: the chunk may be at the end of the text
      * eot has only an effect on trailing spaces
      *)
+    let open Netstring_tstring in
     
-    if len < 0 or pos < 0 or pos > String.length s then
+    if len < 0 || pos < 0 || pos > ops.length s then
       invalid_arg "Netencoding.QuotedPrintable.encode";
-    if pos + len > String.length s then
+    if pos + len > ops.length s then
       invalid_arg "Netencoding.QuotedPrintable.encode";
 
     let eol_len = if crlf then 2 else 1 in    (* length of eol *)
@@ -497,7 +513,7 @@ module QuotedPrintable = struct
        * i: input byte count
        *)
       if i < len then
-	match String.unsafe_get s (pos+i) with
+	match ops.unsafe_get s (pos+i) with
 	    '\r' ->              (* CR is deleted *)
 	      count l n (i+1)
 	  | '\n' ->              (* LF may be expanded to CR/LF *)
@@ -514,7 +530,8 @@ module QuotedPrintable = struct
 	      count (l+3) (n+3) (i+1)
 	  | ' ' when (i=len-1 && eot) ||   (* at end of text *)
 	             l>69 ||               (* line too long *)
-                     (i<len-1 && (s.[pos+i+1]='\r' || s.[pos+i+1]='\n')) 
+                     (i<len-1 && (ops.get s (pos+i+1) = '\r' ||
+                                    ops.get s (pos+i+1) = '\n')) 
 		        (* end of line *)
 		     ->
 	      (* Protect spaces only if they occur at the end of a line,
@@ -536,24 +553,24 @@ module QuotedPrintable = struct
     in
 
     let t_len = count !line_length 0 0 in
-    let t = String.create t_len in
+    let t = Bytes.create t_len in
     
     let k = ref 0 in
 
     let add_quoted c =
-      t.[ !k ]   <- '=';
-      t.[ !k+1 ] <- hexdigit_uc.( Char.code c lsr 4 );
-      t.[ !k+2 ] <- hexdigit_uc.( Char.code c land 15 )
+      Bytes.set t !k '=';
+      Bytes.set t (!k+1) (hexdigit_uc.( Char.code c lsr 4 ));
+      Bytes.set t (!k+2) (hexdigit_uc.( Char.code c land 15 ))
     in
 
     let add_soft_break() =
-      t.[ !k ]   <- '=';
+      Bytes.set t !k '=';
       if crlf then (
-	t.[ !k+1 ] <- '\r';
-	t.[ !k+2 ] <- '\n';
+	Bytes.set t (!k+1) '\r';
+	Bytes.set t (!k+2) '\n';
       )
       else
-	t.[ !k+1 ] <- '\n';
+	Bytes.set t (!k+1) '\n';
     in
 
     (* In the following, the soft break criterion is [!l > 72]. Why?
@@ -565,16 +582,16 @@ module QuotedPrintable = struct
 
     let l = ref !line_length in
     for i = 0 to len - 1 do
-      match String.unsafe_get s i with
+      match ops.unsafe_get s i with
 	  '\r' ->   (* CR is deleted *)
 	    ()
 	| '\n' ->   (* LF is expanded to CR/LF *)
 	    if crlf then (
-	      t.[ !k ] <- '\r';
-	      t.[ !k+1 ] <- '\n';
+	      Bytes.set t !k '\r';
+	      Bytes.set t (!k+1) '\n';
 	      k := !k + 2;
 	    ) else (
-	      t.[ !k ] <- '\n';
+	      Bytes.set t !k '\n';
 	      k := !k + 1;
 	    );
 	    l := 0
@@ -596,7 +613,8 @@ module QuotedPrintable = struct
 	    l := !l + 3;
 	| ' ' when ((i=len-1 && eot) ||
 	              !l > 69 ||
-                     (i<len-1 && (s.[pos+i+1]='\r' || s.[pos+i+1]='\n'))) ->
+                     (i<len-1 && (ops.get s (pos+i+1) = '\r' || 
+                                    ops.get s (pos+i+1) = '\n'))) ->
 	    add_quoted ' ';
 	    k := !k + 3;
 	    l := !l + 3;
@@ -606,7 +624,7 @@ module QuotedPrintable = struct
 	      l := 0;
 	    )
 	| c ->
-	    String.unsafe_set t !k c;
+	    Bytes.unsafe_set t !k c;
 	    incr k;
 	    incr l;
 	    if !l > 72 then (
@@ -623,10 +641,26 @@ module QuotedPrintable = struct
     t ;;
 
 
-  let encode ?crlf ?(pos=0) ?len s =
-    let l = match len with None -> String.length s - pos | Some x -> x in 
-    encode_substring ?crlf ~eot:true s ~pos ~len:l;;
+  let encode_poly ?crlf ?(pos=0) ?len ops s =
+    let open Netstring_tstring in
+    let l = match len with None -> ops.length s - pos | Some x -> x in 
+    encode_sub ?crlf ~eot:true ~pos ~len:l ops s;;
 
+
+  let encode ?crlf ?pos ?len s =
+    let ops = Netstring_tstring.string_ops in
+    let s' = encode_poly ?crlf ?pos ?len ops s in
+    Bytes.unsafe_to_string s'
+
+
+  let encode_tstring ?crlf ?pos ?len ts =
+    Netstring_tstring.with_tstring
+      { Netstring_tstring.with_fun =
+          (fun ops s ->
+             encode_poly ?crlf ?pos ?len ops s
+          )
+      }
+      ts
 
   let encoding_pipe_conv ?crlf line_length incoming incoming_eof outgoing =
     (* Problematic case: the incoming buffer ends with a space, but we are
@@ -634,16 +668,18 @@ module QuotedPrintable = struct
      * the space needs to be quoted.
      * Solution: Do not convert such spaces, they remain in the buffer.
      *)
+    let open Netstring_tstring in
+    let ops = Netstring_tstring.bytes_ops in
     let s = Netbuffer.unsafe_buffer incoming in
     let len = Netbuffer.length incoming in
     let (len',eot) =
-      if not incoming_eof && len > 0 && s.[len-1] = ' ' then
+      if not incoming_eof && len > 0 && ops.get s (len-1) = ' ' then
 	(len-1, false)
       else
 	(len, true)
     in
-    let s' = encode_substring ?crlf ~eot ~line_length s ~pos:0 ~len:len' in
-    Netbuffer.add_string outgoing s';
+    let s' = encode_sub ?crlf ~eot ~line_length ~pos:0 ~len:len' ops s in
+    Netbuffer.add_bytes outgoing s';
     Netbuffer.delete incoming 0 len'
   ;;
     
@@ -653,11 +689,12 @@ module QuotedPrintable = struct
     Netchannels.pipe ~conv:(encoding_pipe_conv ?crlf line_length) ()
 
 
-  let decode_substring s ~pos ~len =
-    
-    if len < 0 || pos < 0 || pos > String.length s then
+  let decode_sub ~pos ~len ops s =
+    let open Netstring_tstring in
+
+    if len < 0 || pos < 0 || pos > ops.length s then
       invalid_arg "Netencoding.QuotedPrintable.decode";
-    if pos + len > String.length s then
+    if pos + len > ops.length s then
       invalid_arg "Netencoding.QuotedPrintable.decode";
 
     let decode_hex c =
@@ -671,17 +708,17 @@ module QuotedPrintable = struct
 
     let rec count n i =
       if i < len then
-	match String.unsafe_get s (pos+i) with
+	match ops.unsafe_get s (pos+i) with
 	    '=' ->
 	      if i+1 = len then
 		(* A '=' at EOF is ignored *)
 		count n (i+1)
 	      else
 		if i+1 < len then
-		  match s.[pos+i+1] with
+		  match ops.get s (pos+i+1) with
 		      '\r' ->
 			(* Official soft break *)
-			if i+2 < len && s.[pos+i+2] = '\n' then
+			if i+2 < len && ops.get s (pos+i+2) = '\n' then
 			  count n (i+3)
 			else
 			  count n (i+2)
@@ -692,8 +729,8 @@ module QuotedPrintable = struct
 			if i+2 >= len then
 			  invalid_arg 
 			    "Netencoding.QuotedPrintable.decode";
-			let _ = decode_hex s.[pos+i+1] in
-			let _ = decode_hex s.[pos+i+2] in
+			let _ = decode_hex (ops.get s (pos+i+1)) in
+			let _ = decode_hex (ops.get s (pos+i+2)) in
 			count (n+1) (i+3)
 		else
 		  invalid_arg "Netencoding.QuotedPrintable.decode"
@@ -704,23 +741,23 @@ module QuotedPrintable = struct
     in
 
     let l = count 0 0 in
-    let t = String.create l in
+    let t = Bytes.create l in
     let k = ref pos in
     let e = pos + len in
     let i = ref 0 in
 
     while !i < l do
-      match String.unsafe_get s !k with
+      match ops.unsafe_get s !k with
 	  '=' ->
 	    if !k+1 = e then
 	      (* A '=' at EOF is ignored *)
 	      ()
 	    else
 	      if !k+1 < e then
-		match s.[!k+1] with
+		match ops.get s (!k+1) with
 		    '\r' ->
 		      (* Official soft break *)
-		      if !k+2 < e & s.[!k+2] = '\n' then
+		      if !k+2 < e && ops.get s (!k+2) = '\n' then
 			k := !k + 3
 		      else
 			k := !k + 2
@@ -731,15 +768,15 @@ module QuotedPrintable = struct
 		      if !k+2 >= e then
 			invalid_arg 
 			  "Netencoding.QuotedPrintable.decode_substring";
-		      let x1 = decode_hex s.[!k+1] in
-		      let x2 = decode_hex s.[!k+2] in
-		      t.[ !i ] <- Char.chr ((x1 lsl 4) lor x2);
+		      let x1 = decode_hex (ops.get s (!k+1)) in
+		      let x2 = decode_hex (ops.get s (!k+2)) in
+		      Bytes.set t !i (Char.chr ((x1 lsl 4) lor x2));
 		      k := !k + 3;
 		      incr i
 	      else
 		invalid_arg "Netencoding.QuotedPrintable.decode_substring"
 	| c ->
-	    String.unsafe_set t !i c;
+	    Bytes.unsafe_set t !i c;
 	    incr k;
 	    incr i
     done;
@@ -747,9 +784,26 @@ module QuotedPrintable = struct
     t ;;
 
 
-  let decode ?(pos=0) ?len s =
-    let l = match len with None -> String.length s - pos | Some x -> x in 
-    decode_substring s pos l;;
+  let decode_poly ?(pos=0) ?len ops s =
+    let open Netstring_tstring in
+    let l = match len with None -> ops.length s - pos | Some x -> x in 
+    decode_sub ~pos ~len:l ops s;;
+
+
+  let decode ?pos ?len s =
+    let ops = Netstring_tstring.string_ops in
+    let s' = decode_poly ?pos ?len ops s in
+    Bytes.unsafe_to_string s'
+
+
+  let decode_tstring ?pos ?len ts =
+    Netstring_tstring.with_tstring
+      { Netstring_tstring.with_fun =
+          (fun ops s ->
+             decode_poly ?pos ?len ops s
+          )
+      }
+      ts
 
 
   let decoding_pipe_conv incoming incoming_eof outgoing =
@@ -757,14 +811,16 @@ module QuotedPrintable = struct
      * case these characters remain in the buffer, because they will be
      * completed to a full hex sequence by the next conversion call.
      *)
+    let open Netstring_tstring in
+    let ops = Netstring_tstring.bytes_ops in
     let s = Netbuffer.unsafe_buffer incoming in
     let len = Netbuffer.length incoming in
     let len' =
       if not incoming_eof then begin
-	if len > 0 && s.[len-1] = '=' then
+	if len > 0 && ops.get s (len-1) = '=' then
 	  len - 1  
 	else
-	  if len > 1 && s.[len-2] = '=' then
+	  if len > 1 && ops.get s (len-2) = '=' then
 	    len - 2
 	  else
 	    len
@@ -772,35 +828,30 @@ module QuotedPrintable = struct
       else
 	len
     in
-    let s' = decode ~len:len' s in
-    Netbuffer.add_string outgoing s';
+    let s' = decode_poly ~len:len' ops s in
+    Netbuffer.add_bytes outgoing s';
     Netbuffer.delete incoming 0 len'
   ;;
 
     
   class decoding_pipe () =
     Netchannels.pipe ~conv:decoding_pipe_conv ()
-
-
-  module Deprecated = struct
-    let encode_substring = encode_substring ?line_length:None
-    let decode_substring = decode_substring
-  end
 end
 
 	      
 module Q = struct
 
-  let encode_substring s ~pos ~len =
-    
-    if len < 0 || pos < 0 || pos > String.length s then
+  let encode_sub ~pos ~len ops s =
+    let open Netstring_tstring in
+
+    if len < 0 || pos < 0 || pos > ops.length s then
       invalid_arg "Netencoding.Q.encode_substring";
-    if pos + len > String.length s then
+    if pos + len > ops.length s then
       invalid_arg "Netencoding.Q.encode_substring";
 
     let rec count n i =
       if i < len then
-	match String.unsafe_get s (pos+i) with
+	match ops.unsafe_get s (pos+i) with
 	  | ('A'..'Z'|'a'..'z'|'0'..'9') ->
 	      count (n+1) (i+1)
 	  | _ ->
@@ -810,20 +861,20 @@ module Q = struct
     in
 
     let l = count 0 0 in
-    let t = String.create l in
+    let t = Bytes.create l in
     
     let k = ref 0 in
 
     let add_quoted c =
-      t.[ !k ]   <- '=';
-      t.[ !k+1 ] <- hexdigit_uc.( Char.code c lsr 4 );
-      t.[ !k+2 ] <- hexdigit_uc.( Char.code c land 15 )
+      Bytes.set t !k '=';
+      Bytes.set t (!k+1) (hexdigit_uc.( Char.code c lsr 4 ));
+      Bytes.set t (!k+2) (hexdigit_uc.( Char.code c land 15 ))
     in
 
     for i = 0 to len - 1 do
-      match String.unsafe_get s i with
+      match ops.unsafe_get s i with
 	| ('A'..'Z'|'a'..'z'|'0'..'9') as c ->
-	    String.unsafe_set t !k c;
+	    Bytes.unsafe_set t !k c;
 	    incr k
 	| c ->
 	    add_quoted c;
@@ -833,17 +884,35 @@ module Q = struct
     t ;;
 
 
-  let encode ?(pos=0) ?len s =
-    let l = match len with None -> String.length s - pos | Some x -> x in 
-    encode_substring s pos l;;
+  let encode_poly ?(pos=0) ?len ops s =
+    let open Netstring_tstring in
+    let l = match len with None -> ops.length s - pos | Some x -> x in 
+    encode_sub ~pos ~len:l ops s;;
+
+
+  let encode ?pos ?len s =
+    let ops = Netstring_tstring.string_ops in
+    let s' = encode_poly ?pos ?len ops s in
+    Bytes.unsafe_to_string s'
+
+
+  let encode_tstring ?pos ?len ts =
+    Netstring_tstring.with_tstring
+      { Netstring_tstring.with_fun =
+          (fun ops s ->
+             encode_poly ?pos ?len ops s
+          )
+      }
+      ts
 
 
 
-  let decode_substring s ~pos ~len =
-    
-    if len < 0 || pos < 0 || pos > String.length s then
+  let decode_sub ~pos ~len ops s =
+    let open Netstring_tstring in
+
+    if len < 0 || pos < 0 || pos > ops.length s then
       invalid_arg "Netencoding.Q.decode_substring";
-    if pos + len > String.length s then
+    if pos + len > ops.length s then
       invalid_arg "Netencoding.Q.decode_substring";
 
     let decode_hex c =
@@ -857,12 +926,12 @@ module Q = struct
 
     let rec count n i =
       if i < len then
-	match String.unsafe_get s (pos+i) with
+	match ops.unsafe_get s (pos+i) with
 	    '=' ->
 	      if i+2 >= len then
 		invalid_arg "Netencoding.Q.decode_substring";
-	      let _ = decode_hex s.[pos+i+1] in
-	      let _ = decode_hex s.[pos+i+2] in
+	      let _ = decode_hex (ops.get s (pos+i+1)) in
+	      let _ = decode_hex (ops.get s (pos+i+2)) in
 	      count (n+1) (i+3)
 	  | _ ->  (* including '_' *)
 	      count (n+1) (i+1)
@@ -871,44 +940,53 @@ module Q = struct
     in
 
     let l = count 0 0 in
-    let t = String.create l in
+    let t = Bytes.create l in
     let k = ref pos in
     let e = pos + len in
     let i = ref 0 in
 
     while !i < l do
-      match String.unsafe_get s !k with
+      match ops.unsafe_get s !k with
 	  '=' ->
 	    if !k+2 >= e then
 	      invalid_arg "Netencoding.Q.decode_substring";
-	    let x1 = decode_hex s.[!k+1] in
-	    let x2 = decode_hex s.[!k+2] in
-	    t.[ !i ] <- Char.chr ((x1 lsl 4) lor x2);
+	    let x1 = decode_hex (ops.get s (!k+1)) in
+	    let x2 = decode_hex (ops.get s (!k+2)) in
+	    Bytes.set t !i (Char.chr ((x1 lsl 4) lor x2));
 	    k := !k + 3;
 	    incr i
 	| '_' ->
-	    String.unsafe_set t !i ' ';
+	    Bytes.unsafe_set t !i ' ';
 	    incr k;
 	    incr i
 	| c ->
-	    String.unsafe_set t !i c;
+	    Bytes.unsafe_set t !i c;
 	    incr k;
 	    incr i
     done;
 
     t ;;
 
+  let decode_poly ?(pos=0) ?len ops s =
+    let open Netstring_tstring in
+    let l = match len with None -> ops.length s - pos | Some x -> x in 
+    decode_sub ~pos ~len:l ops s;;
 
-  let decode ?(pos=0) ?len s =
-    let l = match len with None -> String.length s - pos | Some x -> x in 
-    decode_substring s pos l ;;
+
+  let decode ?pos ?len s =
+    let ops = Netstring_tstring.string_ops in
+    let s' = decode_poly ?pos ?len ops s in
+    Bytes.unsafe_to_string s'
 
 
-  module Deprecated = struct
-    let encode_substring = encode_substring
-    let decode_substring = decode_substring
-  end
-
+  let decode_tstring ?pos ?len ts =
+    Netstring_tstring.with_tstring
+      { Netstring_tstring.with_fun =
+          (fun ops s ->
+             decode_poly ?pos ?len ops s
+          )
+      }
+      ts
 end
 
 
@@ -919,10 +997,10 @@ module Url = struct
 
   let to_hex2 k =
     (* Converts k to a 2-digit hex string *)
-    let s = String.create 2 in
-    s.[0] <- hex_digits.( (k lsr 4) land 15 );
-    s.[1] <- hex_digits.( k land 15 );
-    s ;;
+    let s = Bytes.create 2 in
+    Bytes.set s 0 (hex_digits.( (k lsr 4) land 15 ));
+    Bytes.set s 1 (hex_digits.( k land 15 ));
+    Bytes.unsafe_to_string s ;;
 
 
   let of_hex1 c =
@@ -1381,10 +1459,17 @@ module Html = struct
 	)
   ;;
 
+
+  let encode_quickly_poly ~prefer_name ~unsafe_chars ~ops ~out_kind () =
+    Netstring_tstring.polymorph_string_transformation
+      (encode_quickly ~prefer_name ~unsafe_chars ())
+      ops
+      out_kind
+
   let msb_set = (
-    let s = String.create 128 in
-    for k = 0 to 127 do s.[k] <- Char.chr (128+k) done;
-    s
+    let s = Bytes.create 128 in
+    for k = 0 to 127 do Bytes.set s k (Char.chr (128+k)) done;
+    Bytes.unsafe_to_string s
   )
 
   let encode_ascii ~in_enc ~prefer_name ~unsafe_chars () =
@@ -1436,6 +1521,14 @@ module Html = struct
   ;;
 
 
+  let encode_ascii_poly ~in_enc ~prefer_name ~unsafe_chars ~ops ~out_kind () =
+    Netstring_tstring.polymorph_string_transformation
+      (encode_ascii ~in_enc ~prefer_name ~unsafe_chars ())
+      ops
+      out_kind
+
+
+
   let encode_from_latin1 =            (* backwards compatible *)
     encode_ascii 
       ~in_enc:`Enc_iso88591 ~prefer_name:true ~unsafe_chars:unsafe_chars_html4
@@ -1443,8 +1536,10 @@ module Html = struct
   ;;
 
 
-  let encode 
+  let encode_poly
         ~in_enc
+        ~in_ops
+        ~out_kind
         ?(out_enc = `Enc_usascii)
 	?(prefer_name = true)
 	?(unsafe_chars = unsafe_chars_html4)
@@ -1461,9 +1556,11 @@ module Html = struct
     let in_single = Netconversion.is_single_byte in_enc in
     let in_subset = match in_enc with `Enc_subset(_,_) -> true | _ -> false in
     if not in_subset && in_enc=out_enc && in_single then 
-      encode_quickly ~prefer_name ~unsafe_chars ()
+      encode_quickly_poly
+        ~prefer_name ~unsafe_chars ~ops:in_ops ~out_kind ()
     else if not in_subset && out_enc=`Enc_usascii && in_single then
-      encode_ascii ~in_enc ~prefer_name ~unsafe_chars ()
+      encode_ascii_poly
+        ~in_enc ~prefer_name ~unsafe_chars ~ops:in_ops ~out_kind ()
     else begin
       (* ... only the general implementation is applicable. *)
       (* Create the domain function: *)
@@ -1491,10 +1588,29 @@ module Html = struct
 	  name
       in
       (* Recode: *)
-      Netconversion.recode_string 
-        ~in_enc ~out_enc:(`Enc_subset(out_enc,dom)) ~subst
+      (fun s ->
+         Netconversion.convert_poly
+           ~in_ops ~out_kind ~subst ~in_enc ~out_enc:(`Enc_subset(out_enc,dom))
+           s
+      )
     end
   ;;
+
+  let encode ~in_enc ?out_enc ?prefer_name ?unsafe_chars () =
+    let in_ops = Netstring_tstring.string_ops in
+    let out_kind = Netstring_tstring.String_kind in
+    encode_poly ~in_enc ~in_ops ~out_kind ?out_enc ?prefer_name ?unsafe_chars ()
+
+
+  let encode_tstring ~in_enc ~out_kind ?out_enc ?prefer_name ?unsafe_chars () =
+    Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun in_ops s ->
+           encode_poly
+             ~in_enc ~in_ops ~out_kind ?out_enc ?prefer_name ?unsafe_chars ()
+             s
+        )
+    }
 
   type entity_set = [ `Html | `Xml | `Empty ];;
 
@@ -1552,8 +1668,9 @@ module Html = struct
     search pos []
       
 
-  let decode 
+  let decode_half_poly
         ~in_enc
+        ~out_kind
         ~out_enc
         ?(lookup=fun name -> 
 	    failwith ("Netencoding.Html.decode: Unknown entity `" ^ name ^ "'"))
@@ -1591,22 +1708,28 @@ module Html = struct
     (* Recode strings: *)
     let recode_str =
       if total_enc in_enc && in_enc = out_enc then
-	(fun s -> s)
+	(fun s pos len ->
+           if pos=0 && len=(String.length s) then
+             s
+           else
+             String.sub s pos len
+        )
       else
-	Netconversion.recode_string ~in_enc ~out_enc ~subst
+	(fun s range_pos range_len ->
+           Netconversion.convert
+             ~in_enc ~out_enc ~subst ~range_pos ~range_len s)
     in
     (fun s ->
        (* Find all occurrences of &name; or &#num; or &#xnum; *)
        let occurrences = search_all eref_re s 0  in
        (* Collect the resulting string in a buffer *)
-       let buf = Buffer.create 250 in
+       let buf = Netbuffer.create 250 in
        let n = ref 0 in
        List.iter
 	 (fun (n0,r) ->
 	    let n1 = Netstring_str.match_end r in
 	    if n0 > !n then
-	      Buffer.add_string buf (recode_str (String.sub s !n (n0 - !n)));
-	    (* TODO: avoid String.sub *)
+	      Netbuffer.add_string buf (recode_str s !n (n0 - !n));
 	    let replacement =
 	      let num = 
 		try Netstring_str.matched_group r 2 s with Not_found -> "" in
@@ -1638,18 +1761,42 @@ module Html = struct
 		end
 	      end
 	    in
-	    Buffer.add_string buf replacement;
+	    Netbuffer.add_string buf replacement;
 	    n := n1;
 	 )
 	 occurrences;
        let n0 = String.length s in
        if n0 > !n then
-	 Buffer.add_string buf (recode_str (String.sub s !n (n0 - !n)));
-       (* TODO: avoid String.sub *)
+	 Netbuffer.add_string buf (recode_str s !n (n0 - !n));
        (* Return *)
-       Buffer.contents buf
+       Netbuffer.to_tstring_poly buf out_kind
     )
   ;;
+
+  let decode_poly
+        ~in_enc ~in_ops ~out_kind ~out_enc ?lookup ?subst ?entity_base () s =
+    let open Netstring_tstring in
+    decode_half_poly
+      ~in_enc ~out_kind ~out_enc ?lookup ?subst ?entity_base () 
+      (in_ops.string s)
+
+
+  let decode ~in_enc ~out_enc ?lookup ?subst ?entity_base () =
+    let out_kind = Netstring_tstring.String_kind in
+    decode_half_poly
+      ~in_enc ~out_kind ~out_enc ?lookup ?subst ?entity_base ()
+
+
+  let decode_tstring ~in_enc ~out_kind ~out_enc ?lookup ?subst ?entity_base () =
+    Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun in_ops s ->
+           decode_poly
+             ~in_enc ~in_ops ~out_kind ~out_enc ?lookup ?subst ?entity_base ()
+             s
+        )
+    }
+
      
   let decode_to_latin1 =
     decode ~in_enc:`Enc_iso88591 ~out_enc:`Enc_iso88591 

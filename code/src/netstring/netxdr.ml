@@ -145,6 +145,91 @@ let equal_sets l1 l2 =
 
 
 (**********************************************************************)
+(* definition of XDR values                                           *)
+(**********************************************************************)
+
+type xdr_value_version =
+    [ `V1 | `V2 | `V3 | `V4 | `Ocamlrpcgen ]
+
+type xdr_value =
+    XV_int of int4
+  | XV_uint of uint4
+  | XV_hyper of int8
+  | XV_uhyper of uint8
+  | XV_enum of string
+  | XV_float of fp4
+  | XV_double of fp8
+  | XV_opaque of string
+  | XV_string of string
+  | XV_array of xdr_value array
+  | XV_struct of (string * xdr_value) list
+  | XV_union_over_int of (int4 * xdr_value)
+  | XV_union_over_uint of (uint4 * xdr_value)
+  | XV_union_over_enum of (string * xdr_value)
+  | XV_void
+  | XV_enum_fast of int
+  | XV_struct_fast of xdr_value array
+  | XV_union_over_enum_fast of (int * xdr_value)
+  | XV_array_of_string_fast of string array
+  | XV_mstring of Netxdr_mstring.mstring
+  | XV_direct of exn * int * (exn -> xdr_value)
+;;
+
+let xv_true = XV_enum_fast 1 (* "TRUE" *);;
+let xv_false = XV_enum_fast 0 (*  "FALSE" *);;
+
+let xv_none = XV_union_over_enum_fast (0,XV_void);;
+let xv_some v = XV_union_over_enum_fast (1,v);;
+
+exception Dest_failure
+
+let dest_xv_int v =
+  match v with XV_int x -> x | _ -> raise Dest_failure;;
+let dest_xv_uint v =
+  match v with XV_uint x -> x | _ -> raise Dest_failure;;
+let dest_xv_hyper v =
+  match v with XV_hyper x -> x | _ -> raise Dest_failure;;
+let dest_xv_uhyper v =
+  match v with XV_uhyper x -> x | _ -> raise Dest_failure;;
+let dest_xv_enum v =
+  match v with XV_enum x -> x | _ -> raise Dest_failure;;
+let dest_xv_enum_fast v =
+  match v with XV_enum_fast x -> x | _ -> raise Dest_failure;;
+let dest_xv_float v =
+  match v with XV_float x -> x | _ -> raise Dest_failure;;
+let dest_xv_double v =
+  match v with XV_double x -> x | _ -> raise Dest_failure;;
+let dest_xv_opaque v =
+  match v with XV_opaque x -> x | _ -> raise Dest_failure;;
+let dest_xv_string v =
+  match v with XV_string x -> x | _ -> raise Dest_failure;;
+let dest_xv_mstring v =
+  match v with XV_mstring x -> x | _ -> raise Dest_failure;;
+let dest_xv_array v =
+  match v with XV_array x -> x | _ -> raise Dest_failure;;
+let dest_xv_array_of_string_fast v =
+  match v with XV_array_of_string_fast x -> x | _ -> raise Dest_failure;;
+let dest_xv_struct v =
+  match v with XV_struct x -> x | _ -> raise Dest_failure;;
+let dest_xv_struct_fast v =
+  match v with XV_struct_fast x -> x | _ -> raise Dest_failure;;
+let dest_xv_void v =
+  match v with XV_void -> () | _ -> raise Dest_failure;;
+
+let dest_xv_union_over_int v =
+  match v with XV_union_over_int x -> x | _ -> raise Dest_failure;;
+
+let dest_xv_union_over_uint v =
+  match v with XV_union_over_uint x -> x | _ -> raise Dest_failure;;
+
+let dest_xv_union_over_enum v =
+  match v with XV_union_over_enum x -> x | _ -> raise Dest_failure;;
+
+let dest_xv_union_over_enum_fast v =
+  match v with XV_union_over_enum_fast x -> x | _ -> raise Dest_failure;;
+
+
+(**********************************************************************)
 (* definition of XDR types and type systems                           *)
 (**********************************************************************)
 
@@ -181,9 +266,10 @@ type xdr_type_term =
   | X_rec of (string * xdr_type_term)      (* define a recursive type *)
   | X_refer of string                      (* refer to a recursive type *)
   | X_direct of xdr_type_term * 
-                (string -> int ref -> int -> exn) *
-                (exn -> string -> int ref -> unit) *
-                (exn -> int)
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
+                (exn -> int) *
+                (exn -> xdr_value)
 ;;
 
 
@@ -230,9 +316,10 @@ and xdr_term =
   | T_rec of (string * xdr_type0)
   | T_refer of (string * xdr_type0)
   | T_direct of xdr_type0 * 
-                (string -> int ref -> int -> exn) *
-                (exn -> string -> int ref -> unit) *
-                (exn -> int)
+                (Bytes.t -> int ref -> int -> exn) *
+                (exn -> Bytes.t -> int ref -> unit) *
+                (exn -> int) *
+                (exn -> xdr_value)
 ;;
 
 type xdr_type =
@@ -301,91 +388,6 @@ let x_mstring_max name =
 
 let x_array_max t =
   X_array (t,  (mk_uint4 ('\255', '\255', '\255', '\255')));;
-
-(**********************************************************************)
-(* definition of XDR values                                           *)
-(**********************************************************************)
-
-type xdr_value_version =
-    [ `V1 | `V2 | `V3 | `V4 | `Ocamlrpcgen ]
-
-type xdr_value =
-    XV_int of int4
-  | XV_uint of uint4
-  | XV_hyper of int8
-  | XV_uhyper of uint8
-  | XV_enum of string
-  | XV_float of fp4
-  | XV_double of fp8
-  | XV_opaque of string
-  | XV_string of string
-  | XV_array of xdr_value array
-  | XV_struct of (string * xdr_value) list
-  | XV_union_over_int of (int4 * xdr_value)
-  | XV_union_over_uint of (uint4 * xdr_value)
-  | XV_union_over_enum of (string * xdr_value)
-  | XV_void
-  | XV_enum_fast of int
-  | XV_struct_fast of xdr_value array
-  | XV_union_over_enum_fast of (int * xdr_value)
-  | XV_array_of_string_fast of string array
-  | XV_mstring of Netxdr_mstring.mstring
-  | XV_direct of exn * int
-;;
-
-let xv_true = XV_enum_fast 1 (* "TRUE" *);;
-let xv_false = XV_enum_fast 0 (*  "FALSE" *);;
-
-let xv_none = XV_union_over_enum_fast (0,XV_void);;
-let xv_some v = XV_union_over_enum_fast (1,v);;
-
-exception Dest_failure
-
-let dest_xv_int v =
-  match v with XV_int x -> x | _ -> raise Dest_failure;;
-let dest_xv_uint v =
-  match v with XV_uint x -> x | _ -> raise Dest_failure;;
-let dest_xv_hyper v =
-  match v with XV_hyper x -> x | _ -> raise Dest_failure;;
-let dest_xv_uhyper v =
-  match v with XV_uhyper x -> x | _ -> raise Dest_failure;;
-let dest_xv_enum v =
-  match v with XV_enum x -> x | _ -> raise Dest_failure;;
-let dest_xv_enum_fast v =
-  match v with XV_enum_fast x -> x | _ -> raise Dest_failure;;
-let dest_xv_float v =
-  match v with XV_float x -> x | _ -> raise Dest_failure;;
-let dest_xv_double v =
-  match v with XV_double x -> x | _ -> raise Dest_failure;;
-let dest_xv_opaque v =
-  match v with XV_opaque x -> x | _ -> raise Dest_failure;;
-let dest_xv_string v =
-  match v with XV_string x -> x | _ -> raise Dest_failure;;
-let dest_xv_mstring v =
-  match v with XV_mstring x -> x | _ -> raise Dest_failure;;
-let dest_xv_array v =
-  match v with XV_array x -> x | _ -> raise Dest_failure;;
-let dest_xv_array_of_string_fast v =
-  match v with XV_array_of_string_fast x -> x | _ -> raise Dest_failure;;
-let dest_xv_struct v =
-  match v with XV_struct x -> x | _ -> raise Dest_failure;;
-let dest_xv_struct_fast v =
-  match v with XV_struct_fast x -> x | _ -> raise Dest_failure;;
-let dest_xv_void v =
-  match v with XV_void -> () | _ -> raise Dest_failure;;
-
-let dest_xv_union_over_int v =
-  match v with XV_union_over_int x -> x | _ -> raise Dest_failure;;
-
-let dest_xv_union_over_uint v =
-  match v with XV_union_over_uint x -> x | _ -> raise Dest_failure;;
-
-let dest_xv_union_over_enum v =
-  match v with XV_union_over_enum x -> x | _ -> raise Dest_failure;;
-
-let dest_xv_union_over_enum_fast v =
-  match v with XV_union_over_enum_fast x -> x | _ -> raise Dest_failure;;
-
 
 let fail_map_xv_enum_fast k =
   failwith ("Netxdr.map_xv_enum_fast [" ^ string_of_int k ^ "]") ;;
@@ -659,8 +661,8 @@ let rec validate_xdr_type_i1
       node
   | X_refer name ->
       mktype (T_refer (name, List.assoc name b))
-  | X_direct(s, read, write, size) ->
-      mktype (T_direct (validate_xdr_type_i1 r b s, read, write, size))
+  | X_direct(s, read, write, size, expand) ->
+      mktype (T_direct (validate_xdr_type_i1 r b s, read, write, size, expand))
 ;;
 
 
@@ -703,7 +705,7 @@ let rec find_params (t:xdr_type0) : StringSet.t =
                       u
   | T_rec (_,t') ->
       find_params t'
-  | T_direct(t',_,_,_) ->
+  | T_direct(t',_,_,_,_) ->
       find_params t'
   | _ ->
       StringSet.empty
@@ -767,8 +769,8 @@ let rec elim_rec t = (* get rid of T_rec and T_refer *)
 	elim_rec t'
     | T_refer(n,t') ->
 	t'
-    | T_direct(t',read,write,size) ->
-	{ t with term = T_direct(elim_rec t', read, write, size) }
+    | T_direct(t',read,write,size,expand) ->
+	{ t with term = T_direct(elim_rec t', read, write, size, expand) }
 
 
 let rec calc_min_size t =
@@ -870,7 +872,7 @@ let rec calc_min_size t =
 	| T_param p ->
 	    (* not optimal, but we do not know it better at this point *)
 	    t.min_size <- 0
-	| T_direct(t',_,_,_) ->
+	| T_direct(t',_,_,_,_) ->
 	    calc_min_size t';
 	    t.min_size <- t'.min_size
 	| T_rec (_,t') ->
@@ -1018,8 +1020,8 @@ let rec xdr_type_term0 (t:xdr_type0) : xdr_type_term =
 	  )
       in
       X_union_over_enum (xdr_type_term0 e_term, u', conv_option d)
-  | T_direct (t', read, write, size) -> 
-      X_direct (xdr_type_term0 t',read, write, size)
+  | T_direct (t', read, write, size, expand) -> 
+      X_direct (xdr_type_term0 t',read, write, size, expand)
   | _ ->
       assert false
 ;;
@@ -1107,8 +1109,8 @@ let rec expanded_xdr_type_term (s:xdr_type_term_system) (t:xdr_type_term)
       r [] s
   | X_rec (n, t') ->
       X_rec (n, expanded_xdr_type_term s t')
-  | X_direct (t',read, write, size) ->
-      X_direct ((expanded_xdr_type_term s t'), read, write, size)
+  | X_direct (t',read, write, size, expand) ->
+      X_direct ((expanded_xdr_type_term s t'), read, write, size, expand)
   | _ ->
       t
 ;;
@@ -1151,7 +1153,7 @@ let are_compatible (s1:xdr_type) (s2:xdr_type) : bool =
  *)
 
 type encoder = Netxdr_mstring.mstring list -> Netxdr_mstring.mstring list
-type decoder = string -> int -> int -> (string * int)
+type decoder = Bytes.t -> int -> int -> (Bytes.t * int)
 
 
 let overflow() =
@@ -1295,9 +1297,9 @@ let pack_size
 	  get_size v t'
       | T_refer (n, t') ->
 	  get_size v t'
-      | T_direct(t', _, _, _) ->
+      | T_direct(t', _, _, _, _) ->
 	  ( match v with
-	      | XV_direct(_,size) -> size
+	      | XV_direct(_,size,_) -> size
 	      | _ -> get_size v t'
 	  )
 
@@ -1328,7 +1330,7 @@ let pack_size
 		  )
 		  else 
 		    raise (Xdr_failure "array length mismatch")
-	      | T_direct(t1, _, _, _) ->
+	      | T_direct(t1, _, _, _, _) ->
 		  get_array_size v t1 n cmp
 	      | _ -> 
 		  raise Dest_failure
@@ -1344,9 +1346,9 @@ let print_string_padding l buf pos =
   let n = 4-(l land 3) in
   if n < 4 then begin
     let p = !pos in
-    if n >= 1 then String.unsafe_set buf p '\000';
-    if n >= 2 then String.unsafe_set buf (p + 1) '\000';
-    if n >= 3 then String.unsafe_set buf (p + 2) '\000';
+    if n >= 1 then Bytes.unsafe_set buf p '\000';
+    if n >= 2 then Bytes.unsafe_set buf (p + 1) '\000';
+    if n >= 3 then Bytes.unsafe_set buf (p + 2) '\000';
     pos := p + n
   end
 
@@ -1365,7 +1367,7 @@ let rec pack_mstring
      not include encoded parameters
    *)
 
-  let buf = String.create size in
+  let buf = Bytes.create size in
   let buf_start = ref 0 in
   let buf_pos = ref 0 in
 
@@ -1375,7 +1377,7 @@ let rec pack_mstring
   let save_buf() =
     if !buf_pos > !buf_start then (
       let x =
-	Netxdr_mstring.string_based_mstrings # create_from_string
+	Netxdr_mstring.bytes_based_mstrings # create_from_bytes
 	  buf !buf_start (!buf_pos - !buf_start) false in
       result := x :: !result;
       buf_start := !buf_pos
@@ -1383,7 +1385,7 @@ let rec pack_mstring
   in
 
   let print_string s l =
-    String.unsafe_blit s 0 buf !buf_pos l;
+    Bytes.blit_string s 0 buf !buf_pos l;  (* FIXME: unsafe_blit_string ? *)
     buf_pos := !buf_pos + l;
     print_string_padding l buf buf_pos
   in
@@ -1515,9 +1517,9 @@ let rec pack_mstring
 	  pack v t'
       | T_refer (n, t') ->
 	  pack v t'
-      | T_direct(t', _, write, _) ->
+      | T_direct(t', _, write, _, _) ->
 	  ( match v with
-	      | XV_direct(x,xv_size) ->
+	      | XV_direct(x,xv_size,_) ->
 		  let old = !buf_pos in
 		  write x buf buf_pos;
 (* Printf.eprintf "old=%d new=%d size=%d\n" old !buf_pos size; *)
@@ -1545,7 +1547,7 @@ let rec pack_mstring
 		       print_string s s_len
 		    )
 		    x
-	      | T_direct(t1,_,_,_) ->
+	      | T_direct(t1,_,_,_,_) ->
 		  pack_array v t1 n have_array_header
 	      | _ -> raise Dest_failure
 	  )
@@ -1601,86 +1603,8 @@ let value_matches_type
 (* pack and unpack values                                             *)
 (**********************************************************************)
 
-let pack_xdr_value
-    ?(encode = [])
-    (v:xdr_value)
-    ((_,t):xdr_type)
-    (p:(string * xdr_type) list)
-    (print:string->unit)
-  : unit =
-
-  (* DEBUG *)
-  (* List.iter (fun pn -> prerr_endline ("param " ^ pn)) t.params; *)
-
-  if StringSet.for_all (fun n -> List.mem_assoc n p) t.params &&
-     List.for_all (fun (n,t') -> StringSet.is_empty (fst t').params) p then
-    try
-      let mstrings = 
-	pack_mstring v t
-	  (fun n -> List.assoc n p) 
-	  (fun n -> try Some(List.assoc n encode) with Not_found -> None) in
-      List.iter
-	(fun ms ->
-	   let (s,p) = ms#as_string in
-	   print (String.sub s p ms#length)
-	)
-	mstrings
-    with
-      | Dest_failure ->
-	  raise(Xdr_failure "Netxdr.pack_xdr_value [2]: XDR type mismatch")
-      | Netnumber.Cannot_represent _ ->
-	  raise(Xdr_failure "Netxdr.pack_xdr_value [3]: integer not representable")
-      | Netnumber.Out_of_range ->
-	  raise(Xdr_failure "Netxdr.pack_xdr_value [4]: index out of range")
-      | Failure s ->
-	  raise(Xdr_failure ("Netxdr.pack_xdr_value [5]: " ^ s))
-  else
-    raise(Xdr_failure "Netxdr.pack_xdr_value [1]")
-;;
-
-
-let pack_xdr_value_as_string
-    ?(rm = false)
-    ?(encode = [])
-    (v:xdr_value)
-    ((_,t):xdr_type)
-    (p:(string * xdr_type) list)
-  : string =
-
-  if StringSet.for_all (fun n -> List.mem_assoc n p) t.params &&
-     List.for_all (fun (n,t') -> StringSet.is_empty (fst t').params) p then
-    try
-      let mstrings0 = 
-	pack_mstring v t 
-	  (fun n -> List.assoc n p) 
-	  (fun n -> try Some(List.assoc n encode) with Not_found -> None) in
-      let rm_prefix =
-	if rm then
-	  let s = "\000\000\000\000" in
-	  [ Netxdr_mstring.string_based_mstrings # create_from_string s 0 4 false ]
-	else
-	  [] in
-      let mstrings = rm_prefix @ mstrings0 in
-      Netxdr_mstring.concat_mstrings mstrings
-    with
-      | Dest_failure ->
-(*let bt = Printexc.get_backtrace() in
-eprintf "Backtrace: %s\n" bt; *)
-	  raise(Xdr_failure
-		  "Netxdr.pack_xdr_value_as_string [2]: XDR type mismatch")
-      | Netnumber.Cannot_represent _ ->
-	  raise(Xdr_failure
-		  "Netxdr.pack_xdr_value_as_string [3]: integer not representable")
-      | Netnumber.Out_of_range ->
-	  raise(Xdr_failure
-		  "Netxdr.pack_xdr_value_as_string [4]: index out of range")
-      | Failure s ->
-	  raise(Xdr_failure ("Netxdr.pack_xdr_value_as_string [5]: " ^ s))
-  else
-    raise(Xdr_failure "Netxdr.pack_xdr_value_as_string [1]")
-;;
-
 let pack_xdr_value_as_mstrings
+    ?(rm = false)
     ?(encode = [])
     (v:xdr_value)
     ((_,t):xdr_type)
@@ -1690,9 +1614,17 @@ let pack_xdr_value_as_mstrings
   if StringSet.for_all (fun n -> List.mem_assoc n p) t.params &&
      List.for_all (fun (n,t') -> StringSet.is_empty (fst t').params) p then
     try
-      pack_mstring v t 
-	(fun n -> List.assoc n p)
-	(fun n -> try Some(List.assoc n encode) with Not_found -> None)
+      let mstrings0 = 
+        pack_mstring v t 
+	  (fun n -> List.assoc n p)
+	  (fun n -> try Some(List.assoc n encode) with Not_found -> None) in
+      let rm_prefix =
+	if rm then
+	  let s = "\000\000\000\000" in
+	  [ Netxdr_mstring.bytes_based_mstrings # create_from_string s 0 4 false ]
+	else
+	  [] in
+      rm_prefix @ mstrings0
     with
       | Dest_failure ->
 	  raise(Xdr_failure
@@ -1709,6 +1641,30 @@ let pack_xdr_value_as_mstrings
   else
     raise(Xdr_failure "Netxdr.pack_xdr_value_as_mstring [1]")
 ;;
+
+
+let pack_xdr_value_as_bytes ?rm ?encode v ty p =
+  let mstrings =
+    pack_xdr_value_as_mstrings ?rm ?encode v ty p in
+  Netxdr_mstring.concat_mstrings_bytes mstrings
+
+
+let pack_xdr_value_as_string ?rm ?encode v ty p =
+  let mstrings =
+    pack_xdr_value_as_mstrings ?rm ?encode v ty p in
+  Netxdr_mstring.concat_mstrings mstrings
+
+
+let pack_xdr_value ?encode v ty p print =
+  let mstrings =
+    pack_xdr_value_as_mstrings ?encode v ty p in
+  List.iter
+    (fun ms ->
+       let (s,p) = ms#as_bytes in
+       print (Bytes.sub s p ms#length)
+    )
+    mstrings
+
 
 (* "let rec" prevents that these functions are inlined. This is wanted here,
    because these are error cases, and for a function call less code
@@ -1762,10 +1718,10 @@ let read_string_fixed n str k k_end = (* exported *)
   let k0 = !k in
   let m = if n land 3 = 0 then n else n+4-(n land 3) in
   if k0 > k_end - m then raise_xdr_format_too_short ();
-  let s = String.create n in
-  String.unsafe_blit str k0 s 0 n;
+  let s = Bytes.create n in
+  Bytes.unsafe_blit str k0 s 0 n;
   k := k0 + m;
-  s
+  Bytes.unsafe_to_string s
 
 let read_string n str k k_end = (* exported *)
   let k0 = !k in
@@ -1778,7 +1734,8 @@ let read_string n str k k_end = (* exported *)
   read_string_fixed (int_of_uint4 m) str k k_end
   
 
-let empty_mf = Hashtbl.create 1
+let empty_mf = (Hashtbl.create 1 :
+                  (string, Netxdr_mstring.mstring_factory) Hashtbl.t)
 
 let rec unpack_term
     ?(pos = 0)
@@ -1787,7 +1744,7 @@ let rec unpack_term
     ?(prefix = false)
     ?(mstring_factories = empty_mf)
     ?(xv_version = if fast then `Ocamlrpcgen else `V1)
-    (str:string)
+    (str:Bytes.t)
     (t:xdr_type0)
     (get_param:string->xdr_type)
     (get_decoder:string->decoder option)
@@ -1806,11 +1763,11 @@ let rec unpack_term
 
   let len =
     match len with
-	None -> String.length str - pos
+	None -> Bytes.length str - pos
       | Some l -> l
   in
 
-  if pos < 0 || len < 0 || len > String.length str - pos then
+  if pos < 0 || len < 0 || len > Bytes.length str - pos then
     invalid_arg "Netxdr.unpack_xdr_value";
 
   let k_end = pos+len in
@@ -1866,7 +1823,7 @@ let rec unpack_term
     let m = int_of_uint4 m in
     let p = if m land 3 = 0 then m else m+4-(m land 3) in
     if !k > k_end - p then raise_xdr_format_too_short ();
-    let ms = factory # create_from_string str !k m false in
+    let ms = factory # create_from_bytes str !k m false in
     k := !k + p;
     ms
   in
@@ -1981,11 +1938,11 @@ let rec unpack_term
     | T_rec (_, t')
     | T_refer (_, t') ->
 	unpack t'
-    | T_direct(t', read, _, _) ->
+    | T_direct(t', read, _, _, expand) ->
 	if v4 then
 	  let k0 = !k in
 	  let xv = read str k k_end in
-	  XV_direct(xv, !k-k0)
+	  XV_direct(xv, !k-k0, expand)
 	else
 	  unpack t'
     | _ ->
@@ -2061,7 +2018,7 @@ let rec unpack_term
 
 let unpack_xdr_value
     ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?(decode=[])
-    (str:string)
+    (str:Bytes.t)
     ((_,t):xdr_type)
     (p:(string * xdr_type) list)
   : xdr_value =
@@ -2083,7 +2040,7 @@ let unpack_xdr_value
 
 let unpack_xdr_value_l
     ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?(decode=[])
-    (str:string)
+    (str:Bytes.t)
     ((_,t):xdr_type)
     (p:(string * xdr_type) list)
   : xdr_value * int =
@@ -2101,3 +2058,39 @@ let unpack_xdr_value_l
     failwith "Netxdr.unpack_xdr_value"
 ;;
 
+
+let unpack_xdr_value_str
+    ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?decode
+    (str:string) ty p =
+  unpack_xdr_value_l
+    ?pos ?len ?fast ?prefix ?mstring_factories ?xv_version ?decode
+    (Bytes.unsafe_of_string str) ty p
+
+
+type ctx =
+  { ctx_direct : bool;
+    ctx_direct_sub : bool;
+    ctx_copy_string : string -> string
+  }
+
+
+let default_ctx =
+  (* By default, disallow direct mappings *)
+  { ctx_direct = false;
+    ctx_direct_sub = false;
+    ctx_copy_string = String.copy
+  }
+
+let expand_ctx =
+  (* Special ctx for the generated "_expand_<t>" functions *)
+  { ctx_direct = false;
+    ctx_direct_sub = true;
+    ctx_copy_string = String.copy
+  }
+
+let direct_ctx =
+  (* This ctx allows to use direct mappings *)
+  { ctx_direct = true;
+    ctx_direct_sub = true;
+    ctx_copy_string = (fun s -> s) 
+  }

@@ -150,11 +150,23 @@ let uint4_max m =
        if p then n else acc)
     m
     (Netnumber.uint4_of_int 0) ;;
-       
+
+
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyserver
+
+
+type acceptor =
+  | Sock_acc of server_endpoint_acceptor
+  | Engine_acc of unit Uq_engines.engine
 
 
 type t =
       { mutable main_socket_name : Rpc_transport.sockaddr;
+        mutable dbg_name : string ref;
 	mutable dummy : bool;
 	mutable service : (Rpc_program.t * binding Uint4Map.t) 
 	                    Uint4Map.t Uint4Map.t;
@@ -170,11 +182,12 @@ type t =
 	mutable auth_methods : (string, t pre_auth_method) Hashtbl.t;
 	mutable auth_peekers : (auth_peeker * t pre_auth_method) list;
 	mutable connections : connection list;
-	mutable master_acceptor : server_endpoint_acceptor option;
+	mutable master_acceptor : acceptor option;
 	mutable transport_timeout : float;
 	mutable nolog : bool;
 	mutable get_last_proc : unit->string;
 	mutable mstring_factories : Netxdr_mstring.named_mstring_factories;
+        mutable internal : bool;
       }
 
 and connection =
@@ -244,12 +257,12 @@ and connector =
 
 and binding_sync =
       { sync_name : string;
-	sync_proc : xdr_value -> xdr_value
+	sync_proc : t -> xdr_value -> xdr_value
       }
 
 and binding_async =
       { async_name : string;
-	async_invoke : session -> xdr_value -> unit
+	async_invoke : t -> session -> xdr_value -> unit
                                             (* invocation of this procedure *)
       }
 
@@ -324,6 +337,7 @@ let dlog0 = Netlog.Debug.mk_dlog "Rpc_server" Debug.enable
 let dlogr0 = Netlog.Debug.mk_dlogr "Rpc_server" Debug.enable
 
 let dlog srv m = if not srv.nolog then dlog0 m
+let dlogf srv fmt = ksprintf (dlog srv) fmt
 let dlogr srv m = if not srv.nolog then dlogr0 m
 
 let dlog0_ctrace = Netlog.Debug.mk_dlog "Rpc_server.Ctrace" Debug.enable_ctrace
@@ -423,6 +437,25 @@ let no_conn_id = new no_connection_id
 
 let check_for_output = ref (fun _ _ -> ())
 
+let pack_accepting_reply srv =
+  if srv.internal then
+    Rpc_packer.pack_accepting_reply_pseudo
+  else
+    Rpc_packer.pack_accepting_reply
+
+let pack_rejecting_reply srv =
+  if srv.internal then
+    Rpc_packer.pack_rejecting_reply_pseudo
+  else
+    Rpc_packer.pack_rejecting_reply
+
+
+let pack_successful_reply ?encoder srv =
+  if srv.internal then
+    Rpc_packer.pack_successful_reply_pseudo
+  else
+    Rpc_packer.pack_successful_reply ?encoder
+
   (*****)
 
 type reaction =
@@ -509,8 +542,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_accepting_reply xid
-			     ret_flav ret_data condition in
+	       let reply =
+                 pack_accepting_reply srv xid ret_flav ret_data condition in
 	       let answer = 
 		 make_immediate_answer xid "" reply 
 		   (fun () -> "Error " ^ errname condition) in
@@ -528,17 +561,17 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		      (Netexn.to_string e)
 		 );
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_accepting_reply xid
-			     ret_flav ret_data Garbage in
+	       let reply =
+                 pack_accepting_reply srv xid ret_flav ret_data Garbage in
 	       let answer = make_immediate_answer xid "" reply 
-		 (fun () -> "Error Garbage") in
+ 		 (fun () -> "Error Garbage") in
 	       schedule_answer answer
 	    )
       | Rpc_server condition ->
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_rejecting_reply xid condition in
+	       let reply = pack_rejecting_reply srv xid condition in
 	       let answer = make_immediate_answer xid "" reply 
 		 (fun () -> "Error " ^ errname condition) in
 	       schedule_answer answer
@@ -555,8 +588,8 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	  protect_protect
 	    (fun () ->
 	       let xid = Rpc_packer.peek_xid message in
-	       let reply = Rpc_packer.pack_accepting_reply xid
-			     ret_flav ret_data System_err in
+	       let reply =
+                 pack_accepting_reply srv xid ret_flav ret_data System_err in
 	       let answer = make_immediate_answer xid "" reply
 		 (fun () -> "Error System_err") in
 	       schedule_answer answer
@@ -576,10 +609,12 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 	     dlogr_ptrace srv
 	       (fun () ->
 		  sprintf
-		    "Request (sock=%s,peer=%s,xid=%lu) for [0x%lx,0x%lx,0x%lx]"
+		    "Request (sock=%s,peer=%s,xid=%lu,dbgname=%s) for \
+                     [0x%lx,0x%lx,0x%lx]"
 		    (Rpc_transport.string_of_sockaddr sockaddr)
 		    (Rpc_transport.string_of_sockaddr peeraddr)
 		    (Netnumber.logical_int32_of_uint4 xid)
+                    !(srv.dbg_name)
 		    (Netnumber.logical_int32_of_uint4 prog_nr)
 		    (Netnumber.logical_int32_of_uint4 vers_nr)
 		    (Netnumber.logical_int32_of_uint4 proc_nr)
@@ -689,10 +724,11 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		       dlogr_ptrace srv
 			 (fun () ->
 			    sprintf
-			      "Invoke (sock=%s,peer=%s,xid=%lu): %s"
+			      "Invoke (sock=%s,peer=%s,xid=%lu,dbgname=%s): %s"
 			      (Rpc_transport.string_of_sockaddr sockaddr)
 			      (Rpc_transport.string_of_sockaddr peeraddr)
 			      (Netnumber.logical_int32_of_uint4 xid)
+                              !(srv.dbg_name)
 			      (Rpc_util.string_of_request
 				 !Debug.ptrace_verbosity
 				 prog
@@ -704,14 +740,14 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
 		       begin match proc with
 			   Sync p ->
 			     let result_value =
-			       p.sync_proc param
+			       p.sync_proc srv param
 			     in
 			     (* Exceptions raised by the encoder are
 				handled by [protect]
 			      *)
 			     let reply = 
-			       Rpc_packer.pack_successful_reply
-				 ?encoder:enc_opt
+                               pack_successful_reply
+                                 ?encoder:enc_opt srv
 				 prog p.sync_name xid
 				 ret_flav ret_data result_value in
 			     let answer = make_immediate_answer
@@ -751,12 +787,15 @@ let process_incoming_message srv conn sockaddr_lz peeraddr message reaction =
                                  gssapi_props = gss;
 			       } in
 			     conn.next_call_id <- conn.next_call_id + 1;
-			     p.async_invoke this_session param
+			     p.async_invoke srv this_session param
 		       end
 		    )
 		  | Auth_negative code ->
 		      protect (fun () -> raise(Rpc_server code))
 		  | Auth_reply (data, ret_flav, ret_data) ->
+                      if srv.internal then
+                        failwith "Rpc_server: raw auth replies not supported \
+                                  for internal connections";
 		      let reply = 
 			Rpc_packer.pack_successful_reply_raw
 			  xid ret_flav ret_data data in
@@ -788,9 +827,10 @@ let terminate_any srv conn =
     | Some mplex ->
 	dlogr_ctrace srv
 	  (fun () ->
-	     sprintf "(sock=%s,peer=%s): Closing"
+	     sprintf "(sock=%s,peer=%s,dbgname=%s): Closing"
 	       (Rpc_transport.string_of_sockaddr mplex#getsockname)
-	       (Rpc_transport.string_of_sockaddr mplex#getpeername));
+	       (Rpc_transport.string_of_sockaddr mplex#getpeername)
+               !(srv.dbg_name));
 	conn.trans <- None;
 	mplex # abort_rw();
 	( try
@@ -870,9 +910,10 @@ let rec handle_incoming_message srv conn r =
 		  dlogr_ptrace srv
 		    (fun () ->
 		       sprintf
-			 "Request (sock=%s,peer=%s): Deny"
+			 "Request (sock=%s,peer=%s,dbgname=%s): Deny"
 			 (Rpc_transport.string_of_sockaddr trans_sockaddr)
 			 (Rpc_transport.string_of_sockaddr peeraddr)
+                         !(srv.dbg_name)
 		    );
 		  terminate_connection srv conn (* for safety *)
 	      | `Drop ->
@@ -880,9 +921,10 @@ let rec handle_incoming_message srv conn r =
 		  dlogr_ptrace srv
 		    (fun () ->
 		       sprintf
-			 "Request (sock=%s,peer=%s): Drop"
+			 "Request (sock=%s,peer=%s,dbgname=%s): Drop"
 			 (Rpc_transport.string_of_sockaddr trans_sockaddr)
 			 (Rpc_transport.string_of_sockaddr peeraddr)
+                         !(srv.dbg_name)
 		    );
 		  ()
 	      | `Accept pv ->
@@ -901,7 +943,7 @@ let rec handle_incoming_message srv conn r =
 	)
 
     | `End_of_file ->
-        dlog srv "End of file";
+        dlogf srv "End_of_file dbgname=%s" !(srv.dbg_name);
 	terminate_connection srv conn
 
 
@@ -1029,11 +1071,12 @@ and next_outgoing_message' srv conn trans =
 	       try `Sockaddr (Lazy.force reply.sockaddr)
 	       with _ -> `Implied in
 	     sprintf
-	       "Response (sock=%s,peer=%s,cid=%d,xid=%ld): %s"
+	       "Response (sock=%s,peer=%s,cid=%d,xid=%ld,dbgname=%s): %s"
 	       (Rpc_transport.string_of_sockaddr sockaddr)
 	       (Rpc_transport.string_of_sockaddr reply.peeraddr)
 	       reply.call_id
 	       (Netnumber.logical_int32_of_uint4 reply.client_id)
+               !(srv.dbg_name)
 	       reply.ptrace_result
 	  );
 
@@ -1056,6 +1099,7 @@ class type socket_config =
 object
   method listen_options : listen_options
   method multiplexing : 
+    dbg_name:string ref ->
     close_inactive_descr:bool ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller engine
@@ -1067,6 +1111,8 @@ type mode2 =
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
     | `Dummy of protocol
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
 
 
@@ -1083,9 +1129,10 @@ let create2_srv prot esys =
   Hashtbl.add none "AUTH_NONE" auth_none;
 
   let mf = Hashtbl.create 1 in
-  Hashtbl.add mf "*" Netxdr_mstring.string_based_mstrings;
+  Hashtbl.add mf "*" Netxdr_mstring.bytes_based_mstrings;
   
   { main_socket_name = `Implied;
+    dbg_name = ref "<server>";
     dummy = false;
     service = Uint4Map.empty;
     portmapped = None;
@@ -1102,7 +1149,8 @@ let create2_srv prot esys =
     transport_timeout = (-1.0);
     nolog = false;
     get_last_proc = (fun () -> "");
-    mstring_factories = mf 
+    mstring_factories = mf;
+    internal = false;
   }  
 ;;
 
@@ -1156,9 +1204,13 @@ let disable_nagle fd =
   with _ -> ()
 
 
-let create2_multiplexer_endpoint mplex =
+let create2_multiplexer_endpoint ?dbg_name mplex =
   let prot = mplex#protocol in
   let srv  = create2_srv prot mplex#event_system in
+  ( match dbg_name with
+      | None -> ()
+      | Some sref -> srv.dbg_name <- sref
+  );
   let conn = connection srv mplex in
   srv.main_socket_name <- mplex # getsockname;
   conn.fd <- mplex # file_descr;
@@ -1172,9 +1224,10 @@ let create2_multiplexer_endpoint mplex =
        if conn.trans <> None then (
 	 dlogr_ctrace srv
 	   (fun () ->
-	      sprintf "(sock=%s,peer=%s): Serving connection"
+	      sprintf "(sock=%s,peer=%s,dbgname=%s): Serving connection"
 		(Rpc_transport.string_of_sockaddr mplex#getsockname)
-		(portoptname mplex#file_descr));
+		(portoptname mplex#file_descr)
+                !(srv.dbg_name));
 	 if srv.transport_timeout >= 0.0 then
 	   mplex # set_timeout 
 	     ~notify:(on_trans_timeout srv conn) srv.transport_timeout;
@@ -1187,12 +1240,13 @@ let create2_multiplexer_endpoint mplex =
 ;;
 
 
-let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
+let mplex_of_fd ~dbg_name ~close_inactive_descr ~tls prot fd esys =
   let preclose() =
     Netlog.Debug.release_fd fd in
   match prot with
     | Tcp ->
         Rpc_transport.stream_rpc_multiplex_controller
+          ~dbg_name
           ~close_inactive_descr ~preclose ~role:`Server ?tls fd esys
     | Udp ->
         if tls <> None then (* a little ad... *)
@@ -1203,6 +1257,7 @@ let mplex_of_fd ~close_inactive_descr ~tls prot fd esys =
                     in your pockets, you may support Gerd Stolpmann to \
                     implement this feature. Contact gerd@gerd-stolpmann.de";
         Rpc_transport.datagram_rpc_multiplex_controller
+          ~dbg_name
           ~close_inactive_descr ~preclose ~role:`Server fd esys 
 ;;
 
@@ -1211,8 +1266,9 @@ class default_socket_config : socket_config =
 object
   method listen_options = Uq_server.default_listen_options
 
-  method multiplexing ~close_inactive_descr prot fd esys =
-    let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
+  method multiplexing ~dbg_name ~close_inactive_descr prot fd esys =
+    let mplex =
+      mplex_of_fd ~dbg_name ~close_inactive_descr ~tls:None prot fd esys in
     let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
 
     when_state
@@ -1228,9 +1284,10 @@ class tls_socket_config tls_config : socket_config =
 object
   method listen_options = Uq_server.default_listen_options
 
-  method multiplexing ~close_inactive_descr prot fd esys =
+  method multiplexing ~dbg_name ~close_inactive_descr prot fd esys =
     let tls = Some(tls_config,None) in
-    let mplex = mplex_of_fd ~close_inactive_descr ~tls prot fd esys in
+    let mplex =
+      mplex_of_fd ~dbg_name ~close_inactive_descr ~tls prot fd esys in
     let eng = new Uq_engines.epsilon_engine (`Done mplex) esys in
 
     when_state
@@ -1246,12 +1303,14 @@ let default_socket_config = new default_socket_config
 let tls_socket_config = new tls_socket_config 
 
 
-let create2_socket_endpoint ?(close_inactive_descr=true) 
+let create2_socket_endpoint ?(close_inactive_descr=true)
                             prot fd esys =
   disable_nagle fd;
   if close_inactive_descr then track fd;
-  let mplex = mplex_of_fd ~close_inactive_descr ~tls:None prot fd esys in
-  create2_multiplexer_endpoint mplex 
+  let dbg_name = ref "" in
+  let mplex =
+    mplex_of_fd ~dbg_name ~close_inactive_descr ~tls:None prot fd esys in
+  create2_multiplexer_endpoint ~dbg_name mplex 
 ;;
 
 
@@ -1270,10 +1329,11 @@ let create2_socket_server ?(config = default_socket_config)
       lstn_backlog = backlog
     } in
 
-  let create_multiplexer_eng ?(close_inactive_descr = true) fd prot =
+  let create_multiplexer_eng ?(close_inactive_descr = true)  fd prot =
     disable_nagle fd;
     if close_inactive_descr then track fd;
-    config # multiplexing ~close_inactive_descr prot fd esys in
+    let dbg_name = srv.dbg_name in
+    config # multiplexing ~close_inactive_descr ~dbg_name prot fd esys in
 
   let rec accept_connections acc =  (* for stream sockets *)
     let eng = acc # accept () in
@@ -1286,10 +1346,12 @@ let create2_socket_server ?(config = default_socket_config)
 				conn.fd <- Some slave_fd;
 				dlogr_ctrace srv
 				  (fun () ->
-				     sprintf "(sock=%s,peer=%s): Serving connection"
+				     sprintf "(sock=%s,peer=%s,dbgname=%s): \
+                                              Serving connection"
 				       (Rpc_transport.string_of_sockaddr 
 					  mplex#getsockname)
-				       (portname slave_fd));
+				       (portname slave_fd)
+                                       !(srv.dbg_name));
 				if srv.transport_timeout >= 0.0 then
 				  mplex # set_timeout 
 				    ~notify:(on_trans_timeout srv conn) 
@@ -1385,10 +1447,12 @@ let create2_socket_server ?(config = default_socket_config)
 		      conn.fd <- Some fd;
 		      dlogr_ctrace srv
 			(fun () ->
-			   sprintf "(sock=%s,peer=%s): Accepting datagrams"
+			   sprintf "(sock=%s,peer=%s,dbgname=%s): \
+                                    Accepting datagrams"
 			     (Rpc_transport.string_of_sockaddr 
 				mplex#getsockname)
-			     (portname fd));
+			     (portname fd)
+                             !(srv.dbg_name));
 		      if srv.transport_timeout >= 0.0 then
 			mplex # set_timeout 
 			  ~notify:(on_trans_timeout srv conn) 
@@ -1418,11 +1482,58 @@ let create2_socket_server ?(config = default_socket_config)
 	    ~close_on_shutdown: close_inactive_descr
 	    ~preclose:(fun () -> Netlog.Debug.release_fd fd)
 	    fd esys in
-	srv.master_acceptor <- Some acc;
+	srv.master_acceptor <- Some (Sock_acc acc);
 	accept_connections acc;
 	srv
 ;;
 
+
+let rec set_internal_acceptor srv psock esys =
+  dlog_ctrace srv "(internal): waiting for connect";
+  let rec attempt() =
+    srv.master_acceptor <- None;
+    let ok =
+      try
+        let (rd,wr) =
+          Netsys_polysocket.accept ~nonblock:true psock in
+        dlog_ctrace srv "(internal): connected";
+        let mplex =
+          Rpc_transport.internal_rpc_multiplex_controller
+            ~dbg_name:srv.dbg_name ~close_inactive_descr:true
+            rd wr esys in
+        let conn = connection srv mplex in
+        conn.fd <- None;
+        dlog_ctrace srv "(internal): Serving connection";
+        if srv.transport_timeout >= 0.0 then
+          mplex # set_timeout 
+                ~notify:(on_trans_timeout srv conn) 
+                srv.transport_timeout;
+        (* Try to peek credentials. This can be too
+         * early, however.
+         *)
+        peek_credentials srv conn;
+        next_incoming_message srv conn;
+        true
+      with
+        | Unix.Unix_error(Unix.EAGAIN,_,_)
+        | Unix.Unix_error(Unix.EINTR,_,_) ->
+            false in
+    if ok then wait()
+  and wait() =
+    let e1 = new Uq_engines.signal_engine esys in
+    Netsys_polysocket.set_accept_notify
+      psock
+      (fun () ->
+         e1 # signal (`Done());
+      );
+    let e1 = (e1 :> _ Uq_engines.engine) in
+    srv.master_acceptor <- Some(Engine_acc e1);
+    Uq_engines.when_state
+      ~is_done:attempt
+      e1;
+    attempt() in
+  wait()
+    
 
 let create2 mode esys =
   match mode with
@@ -1439,6 +1550,20 @@ let create2 mode esys =
 	let srv = create2_srv prot esys in
 	srv.dummy <- true;
 	srv
+    | `Internal_endpoint(rd,wr) ->
+        let dbg_name = ref "<server>" in
+        let mplex =
+          Rpc_transport.internal_rpc_multiplex_controller
+            ~dbg_name ~close_inactive_descr:true
+            rd wr esys in
+        let srv = create2_multiplexer_endpoint ~dbg_name mplex in
+        srv.internal <- true;
+        srv
+    | `Internal_socket psock ->
+        let srv = create2_srv Rpc.Tcp esys in
+        srv.internal <- true;
+        set_internal_acceptor srv psock esys;
+        srv
 ;;
 
 
@@ -1726,6 +1851,12 @@ let create ?program_number ?version_number
 
   (*****)
 
+let set_debug_name srv name =
+  srv.dbg_name := name
+
+let get_debug_name srv =
+  !(srv.dbg_name)
+
 let get_event_system a_session =
     a_session.server.whole_server.esys
 
@@ -1782,13 +1913,13 @@ let reply_error a_session condition =
 	| Unavailable_procedure
 	| Garbage
 	| System_err ->
-	    Rpc_packer.pack_accepting_reply
-	      a_session.client_id
+	    pack_accepting_reply
+	      srv a_session.client_id
 	      a_session.auth_ret_flav a_session.auth_ret_data
               condition
 	| _ ->
-	    Rpc_packer.pack_rejecting_reply
-	      a_session.client_id condition
+	    pack_rejecting_reply
+	      srv a_session.client_id condition
     in
 
     let reply_session =
@@ -1814,8 +1945,9 @@ let reply a_session result_value =
 
   dlogr srv
     (fun () ->
-       sprintf "reply xid=%Ld have_encoder=%B"
+       sprintf "reply xid=%Ld dbgname=%s have_encoder=%B"
 	 (Netnumber.int64_of_uint4 a_session.client_id)
+         !(srv.dbg_name)
 	 (a_session.encoder <> None)
     );
   
@@ -1828,12 +1960,12 @@ let reply a_session result_value =
 
   let f =
     try
-      let reply = Rpc_packer.pack_successful_reply
-	?encoder:a_session.encoder
-	prog a_session.procname a_session.client_id
-	a_session.auth_ret_flav a_session.auth_ret_data
-	result_value
-      in
+      let reply =
+        pack_successful_reply
+	  ?encoder:a_session.encoder
+	  srv prog a_session.procname a_session.client_id
+	  a_session.auth_ret_flav a_session.auth_ret_data
+	  result_value in
   
       let reply_session =
 	{ a_session with
@@ -1903,8 +2035,11 @@ let stop_server ?(graceful = false) srv =
        sprintf "Stopping %s" (if graceful then " gracefully" else ""));
   (* Close TCP server socket, if present: *)
   ( match srv.master_acceptor with
-      | Some acc -> 
+      | Some (Sock_acc acc) -> 
 	  acc # shut_down();
+	  srv.master_acceptor <- None
+      | Some (Engine_acc e) ->
+          e # abort();
 	  srv.master_acceptor <- None
       | None -> ()
   );
@@ -1954,8 +2089,12 @@ let detach srv =
 	   | None -> ()
       )
       l
-  
-  
+
+let xdr_ctx srv =
+  if srv.internal then
+    Netxdr.default_ctx
+  else
+    Netxdr.direct_ctx
 
 let verbose b =
   Debug.enable := b;

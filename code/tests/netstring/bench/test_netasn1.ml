@@ -138,22 +138,33 @@ let constr007 () =
 let tagged001 () =
   let s = "\x81\x05ABCDE" in
   let (len, v) = decode_ber s in
-  len = 7 && v = Value.Tagptr(Value.Context, 1, Value.Primitive, s, 2, 5)
+  len = 7 && 
+    match v with
+      | Value.Tagptr(Value.Context, 1, Value.Primitive, 
+                     Netstring_tstring.Tstring_polybox(ops, s1), 2, 5) ->
+          Netstring_tstring.(ops.string s1) = s
+      | _ -> false
 
 
 let tagged002 () =
   let s = "\xa1\x0c\x04\x05ABCDE\x04\x03FGH" in
   let (len, v) = decode_ber s in
-  len = 14 && v = Value.Tagptr(Value.Context, 1, Value.Constructed, s, 2, 12)
+  len = 14 &&
+    match v with
+      | Value.Tagptr(Value.Context, 1, Value.Constructed, 
+                     Netstring_tstring.Tstring_polybox(ops, s1), 2, 12) ->
+          Netstring_tstring.(ops.string s1) = s
+      | _ -> false
 
 let tagged003 () =
   let s = "\xa1\x0c\x04\x05ABCDE\x04\x03FGH" in
   let (len, v) = decode_ber s in
   match v with
-    | Value.Tagptr(_, _, Value.Constructed, s, pos, len) ->
+    | Value.Tagptr(_, _, Value.Constructed, 
+                   Netstring_tstring.Tstring_polybox(ops, s1), pos, len) ->
         let (ilen, iv) = 
-          decode_ber_contents
-            ~pos ~len s Value.Constructed Type_name.UTF8String in
+          decode_ber_contents_poly
+            ~pos ~len ops s1 Value.Constructed Type_name.UTF8String in
         ilen = 12 && iv = Value.UTF8String "ABCDEFGH"
     | _ ->
         false
@@ -162,10 +173,11 @@ let tagged004 () =
   let s = "\xa1\x80\x04\x05ABCDE\x04\x03FGH\x00\x00" in
   let (len, v) = decode_ber s in
   match v with
-    | Value.Tagptr(_, _, Value.Constructed, s, pos, len) ->
+    | Value.Tagptr(_, _, Value.Constructed, 
+                   Netstring_tstring.Tstring_polybox(ops, s1), pos, len) ->
         let (ilen, iv) = 
-          decode_ber_contents
-            ~pos ~len s Value.Constructed Type_name.UTF8String in
+          decode_ber_contents_poly
+            ~pos ~len ops s1 Value.Constructed Type_name.UTF8String in
         ilen = 12 && iv = Value.UTF8String "ABCDEFGH"
     | _ ->
         false

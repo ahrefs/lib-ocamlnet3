@@ -1103,9 +1103,9 @@ type match_result =
     | `Accept_reroute of string * string option * transport_layer_id
     | `Reject
     ]
-  (** See {!Nethttp.HTTP_MECHANISM.client_match} *)
+  (** See {!Nethttp.HTTP_CLIENT_MECHANISM.client_match} *)
 
-module type HTTP_MECHANISM =
+module type HTTP_CLIENT_MECHANISM =
   sig
     val mechanism_name : string
 
@@ -1132,6 +1132,10 @@ module type HTTP_MECHANISM =
           {[
             [ "password", "ThE sEcReT", [] ]
           ]}
+
+          The password is encoded in UTF-8. However, note that not all
+          protocols are able to transmit all of UTF-8. If a non-transmittable
+          character is found, the authentication will fail.
 
           The password can have parameters:
 
@@ -1204,11 +1208,12 @@ module type HTTP_MECHANISM =
        *)
 
     val client_configure_channel_binding : client_session -> 
-                                           Netsys_sasl_types.cb -> unit
+                                           Netsys_sasl_types.cb ->
+                                             client_session
       (** Configure GS2-style channel binding *)
 
     val client_restart : params:(string * string * bool) list -> 
-                         client_session -> unit
+                         client_session -> client_session
       (** Restart the session for another authentication round. The session
           must be in state [`OK]. After the restart the session will be in
           state [`Emit].
@@ -1219,7 +1224,7 @@ module type HTTP_MECHANISM =
 
     val client_process_challenge :
           client_session -> string -> string -> #http_header_ro ->
-          Header.auth_challenge -> unit
+          Header.auth_challenge -> client_session
       (** [client_process_challenge cs method uri header challenge]:
 
           Process the challenge from the server. The state must be [`Wait].
@@ -1231,7 +1236,7 @@ module type HTTP_MECHANISM =
 
     val client_emit_response :
           client_session -> string -> string -> #http_header_ro ->
-          Header.auth_credentials * (string * string) list
+          client_session * Header.auth_credentials * (string * string) list
       (** [let (creds,new_headers) = client_emit_response cs method uri header]:
 
           Emit a new response as a pair [(creds,new_headers)]. 

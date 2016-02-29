@@ -222,7 +222,7 @@ class poll_process_engine : ?period:float ->
 			      [Unix.process_status] engine ;;
 
 class type async_out_channel = object
-  method output : string -> int -> int -> int
+  method output : Bytes.t -> int -> int -> int
   method close_out : unit -> unit
   method pos_out : int
   method flush : unit -> unit
@@ -231,7 +231,7 @@ class type async_out_channel = object
 end
 
 class type async_in_channel = object
-  method input : string -> int -> int -> int
+  method input : Bytes.t -> int -> int -> int
   method close_in : unit -> unit
   method pos_in : int
   method can_input : bool
@@ -397,9 +397,9 @@ class type wrapped_datagram_socket =
 object
   method descriptor : Unix.file_descr
   method sendto : 
-    string -> int -> int -> Unix.msg_flag list -> sockspec -> int
+    Bytes.t -> int -> int -> Unix.msg_flag list -> sockspec -> int
   method recvfrom : 
-    string -> int -> int -> Unix.msg_flag list -> (int * sockspec)
+    Bytes.t -> int -> int -> Unix.msg_flag list -> (int * sockspec)
   method shut_down : unit -> unit
   method datagram_type : datagram_type
   method socket_domain : Unix.socket_domain
@@ -430,7 +430,7 @@ object
   method reading : bool
   method start_reading : 
     ?peek:(unit -> unit) ->
-    when_done:(exn option -> int -> unit) -> string -> int -> int -> unit
+    when_done:(exn option -> int -> unit) -> Bytes.t -> int -> int -> unit
   method start_mem_reading : 
     ?peek:(unit -> unit) ->
     when_done:(exn option -> int -> unit) -> Netsys_mem.memory -> int -> int ->
@@ -438,7 +438,7 @@ object
   method cancel_reading : unit -> unit
   method writing : bool
   method start_writing :
-    when_done:(exn option -> int -> unit) -> string -> int -> int -> unit
+    when_done:(exn option -> int -> unit) -> Bytes.t -> int -> int -> unit
   method start_mem_writing : 
     when_done:(exn option -> int -> unit) -> Netsys_mem.memory -> int -> int ->
     unit

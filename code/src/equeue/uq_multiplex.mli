@@ -41,7 +41,7 @@ object
 
   method start_reading : 
     ?peek:(unit -> unit) ->
-    when_done:(exn option -> int -> unit) -> string -> int -> int -> unit
+    when_done:(exn option -> int -> unit) -> Bytes.t -> int -> int -> unit
     (** Start reading from the connection. When data is available, the
       * [when_done] callback is invoked. The int is the number of read
       * bytes. It is 0 if an error occurred which is indicated by the
@@ -88,7 +88,7 @@ object
    (** True iff there is a writer *)
 
   method start_writing :
-    when_done:(exn option -> int -> unit) -> string -> int -> int -> unit
+    when_done:(exn option -> int -> unit) -> Bytes.t -> int -> int -> unit
     (** Start writing to the connection. When data is written, the
       * [when_done] callback is invoked. The int is the number of written
       * bytes. It is 0 if an error occurred which is indicated by the

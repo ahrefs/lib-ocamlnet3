@@ -1,15 +1,8 @@
-# Inclusion of Makefile.conf may fail when cleaning up:
-
--include $(TOP_DIR)/Makefile.conf
-
-# Makefile.conf: written by "configure".
-
 # How to invoke compilers and tools:
 # (May be moved to Makefile.conf if necessary)
 
 OCAMLC    = $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
-OCAMLC_MLI= $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(WARNINGS)
-# Note that PP_OPTIONS do not affect .mli! (usually breaks ocamldoc)
+OCAMLC_MLI= $(OCAMLFIND) ocamlc -g $(OCAMLC_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
 
 OCAMLOPT  = $(OCAMLFIND) ocamlopt -g $(OCAMLOPT_OPTIONS) $(INCLUDES) -package "$(REQUIRES)" $(PP_OPTIONS) $(WARNINGS)
 OCAMLDEP  = $(OCAMLFIND) ocamldep $(OCAMLDEP_OPTIONS) $(PP_OPTIONS)
@@ -17,7 +10,7 @@ OCAMLFIND = ocamlfind
 OCAMLYACC = ocamlyacc
 OCAMLLEX  = ocamllex
 OCAMLMKLIB = $(TOP_DIR)/tools/mkstublib
-OCAMLDOC  = $(OCAMLFIND) ocamldoc
+OCAMLDOC  = $(OCAMLFIND) ocamldoc $(OCAMLDOC_OPTIONS) $(PP_OPTIONS)
 STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
 
 # CPPO: is set by Makefile.conf
@@ -26,7 +19,8 @@ STUBCC    = $(TOP_DIR)/tools/stubcc -ocamlc ocamlc
 # 3: whether to report deprecated features. This is disabled because we are
 #    massively using mutable strings (deprecated in 4.02)
 # 25: "all clauses guarded". I like this.
-WARNINGS  = -w -3-25
+#WARNINGS  = -w -3-25
+WARNINGS = -w -25
 
 TOOLS_DIR = $(TOP_DIR)/tools
 COLLECT_FILES = $(TOOLS_DIR)/collect_files
@@ -57,6 +51,8 @@ ARCHIVE_CMXA ?= $(ARCHIVE).cmxa
 ARCHIVE_P ?= $(ARCHIVE).p
 ARCHIVE_P_CMXA ?= $(ARCHIVE_P).cmxa
 
+MT_TYPE ?= posix
+HAVE_GPROF ?= 0
 ALL ?= $(ARCHIVE_CMA) $(ALL_EXTRA) \
        all-mt-$(MT_TYPE)
 OPT ?= $(ARCHIVE_CMXA) $(OPT_EXTRA) \
@@ -133,7 +129,15 @@ CLEAN_LIST = *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa dll* packlist-* \
 # the simplest way of ensuring that.
 
 ocamldoc.dump: $(DOBJECTS) $(OBJECTS)
+	rm -f ocamldoc.dump
 	$(OCAMLDOC) -dump ocamldoc.dump -stars $(INCLUDES) -package "$(REQUIRES)" $(OCAMLDOC_OPTIONS) $(DOBJECTS) || { rm -f ocamldoc.dump; exit 1; }
+
+
+.PHONY: doc-dump
+doc-dump:
+	@$(MAKE) ocamldoc.dump || { if [ -n "$(DOC_IGNORABLE)" ]; then echo "*** Ignoring error"; else exit 1; fi }
+
+
 
 # Install rules:
 

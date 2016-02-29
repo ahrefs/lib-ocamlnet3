@@ -181,7 +181,7 @@ let t008() =
 
 let t020() =
   (* DECODE. First test without spaces *)
-  let dec = Base64.decode ~url_variant:false in
+  let dec = Base64.decode in
   dec "" = "" &&
   dec "YQ==" = "a" &&
   dec "YWI=" = "ab" &&
@@ -194,7 +194,7 @@ let t020() =
 
 let t021() =
   (* DECODE. With spaces *)
-  let dec = Base64.decode ~url_variant:false ~accept_spaces:true in
+  let dec = Base64.decode ~accept_spaces:true in
   dec " \r\n\t" = "" &&
   dec " Y W J j\n Z G U = " = "abcde"
 ;;
@@ -202,15 +202,14 @@ let t021() =
 
 let t022() =
   (* DECODE. With URL characters and spaces *)
-  let dec = Base64.decode ~url_variant:true ~accept_spaces:true in
-  dec " Y W J j\n Z G U = " = "abcde" &&
-  dec " Y W J j\n Z G U . " = "abcde"
+  let dec = Base64.decode ~plus:'-' ~slash:'_' ~accept_spaces:true in
+  dec "amR-Mm7_" = "jd~2n\xff"
 ;;
 
 
 let t023() =
   (* DECODING PIPE *)
-  let p = new Base64.decoding_pipe ~url_variant:false ~accept_spaces:false() in
+  let p = new Base64.decoding_pipe ~accept_spaces:false() in
   let x = String.make 30 ' ' in
   p#output_string "YWJ";
   ( try ignore(p#input_char()); failwith "code A" 
@@ -233,7 +232,7 @@ let t023() =
 
 let t024() =
   (* DECODING PIPE w/ spaces *)
-  let p = new Base64.decoding_pipe ~url_variant:false ~accept_spaces:true () in
+  let p = new Base64.decoding_pipe ~accept_spaces:true () in
   let x = String.make 30 ' ' in
   p#output_string " Y W J ";
   ( try ignore(p#input_char()); failwith "code A" 

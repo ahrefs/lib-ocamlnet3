@@ -28,7 +28,7 @@ let decode_mime_body hdr =
 	(fun s -> 
 	   new output_filter 
 	     (new Netencoding.Base64.decoding_pipe 
-	      ~url_variant:false ~accept_spaces:true ()) s)
+	        ~accept_spaces:true ()) s)
     | "quoted-printable" ->
 	(fun s ->
 	   new output_filter
@@ -191,7 +191,7 @@ let rec write_mime_message_int ?(wr_header = true) ?(wr_body = true) ?(nr = 0)
     let rec gather_data parts =
       match parts with
 	  (_,`Body body) :: parts' ->
-	    let s = String.make 240 ' ' in  (* So it is in the minor heap *)
+	    let s = Bytes.make 240 ' ' in  (* So it is in the minor heap *)
 	    with_in_obj_channel
 	      (body # open_value_rd())
 	      (fun ch ->
@@ -200,7 +200,7 @@ let rec write_mime_message_int ?(wr_header = true) ?(wr_body = true) ?(nr = 0)
 		 with
 		     End_of_file -> ()  (* When body is empty *)
 	      );
-	    [s]
+	    [Bytes.unsafe_to_string s]
 	| (_,`Parts_ag(_, parts'')) :: parts' ->
 	    (try gather_data parts'' with Not_found -> gather_data parts')
 	| [] ->

@@ -3,6 +3,9 @@
  *
  *)
 
+open Netsys_types
+open Netstring_tstring
+
 exception Closed_channel
 exception Buffer_underrun
 exception Command_failure of Unix.process_status
@@ -29,7 +32,7 @@ let () =
 
 
 class type rec_in_channel = object
-  method input : string -> int -> int -> int
+  method input : Bytes.t -> int -> int -> int
   method close_in : unit -> unit
 end
 
@@ -47,11 +50,11 @@ class type enhanced_raw_in_channel =
 object 
   inherit raw_in_channel
   method private enhanced_input_line : unit -> string
-  method private enhanced_input : string -> int -> int -> input_result
+  method private enhanced_input : Bytes.t -> int -> int -> input_result
 end
 
 class type rec_out_channel = object
-  method output : string -> int -> int -> int
+  method output : Bytes.t -> int -> int -> int
   method close_out : unit -> unit
   method flush : unit -> unit
 end
@@ -68,7 +71,8 @@ end
 
 class type compl_in_channel = object
   (* Classic operations: *)
-  method really_input : string -> int -> int -> unit
+  method really_input : Bytes.t -> int -> int -> unit
+  method really_input_string : int -> string
   method input_char : unit -> char
   method input_line : unit -> string
   method input_byte : unit -> int
@@ -82,8 +86,10 @@ end
 
 class type compl_out_channel = object
   (* Classic operations: *)
-  method really_output : string -> int -> int -> unit
+  method really_output : Bytes.t -> int -> int -> unit
+  method really_output_string : string -> int -> int -> unit
   method output_char : char -> unit
+  method output_bytes : Bytes.t -> unit
   method output_string : string -> unit
   method output_byte : int -> unit
   method output_buffer : Buffer.t -> unit
@@ -152,6 +158,7 @@ object(self)
   method close_in() = if close then ch#close_in()
   method pos_in = ch#pos_in
   method really_input = ch#really_input
+  method really_input_string = ch#really_input_string
   method input_char = ch#input_char
   method input_line = ch#input_line
   method input_byte = ch#input_byte
@@ -182,8 +189,10 @@ object(self)
   method flush = ch#flush
   method pos_out = ch#pos_out
   method really_output = ch#really_output
+  method really_output_string = ch#really_output_string
   method output_char = ch#output_char
   method output_string = ch#output_string
+  method output_bytes = ch#output_bytes
   method output_byte = ch#output_byte
   method output_buffer = ch#output_buffer
   method output_channel = ch#output_channel
@@ -213,6 +222,16 @@ object (self)
     if closed then self # complain_closed();
     Pervasives.really_input ch buf pos len 
 
+  method really_input_string len = 
+    if closed then self # complain_closed();
+    #ifdef HAVE_BYTES
+      Pervasives.really_input_string ch len 
+    #else
+      let buf = String.create len in
+      Pervasives.really_input ch buf 0 len;
+      buf
+    #endif
+
   method input_char () =
     if closed then self # complain_closed();
     Pervasives.input_char ch 
@@ -236,6 +255,8 @@ object (self)
 end
 ;;
 
+let input_channel = new input_channel
+
 
 class input_command cmd =
 let ch = Unix.open_process_in cmd in
@@ -252,23 +273,25 @@ object (self)
 end
 ;;
 
+let input_command = new input_command
 
-class input_string ?(pos = 0) ?len s : in_obj_channel =
+
+class ['t] input_generic name ops ?(pos = 0) ?len (s:'t) : in_obj_channel =
 object (self)
   val mutable str = s
   val mutable str_len = 
     match len with 
-	None   -> String.length s 
+	None   -> ops.length s 
       | Some l -> pos + l
 
   val mutable str_pos = pos
   val mutable closed = false
 
   initializer
-    if str_pos < 0 || str_pos > String.length str || 
-       str_len < 0 || str_len > String.length s 
+    if str_pos < 0 || str_pos > ops.length str || 
+       str_len < 0 || str_len > ops.length s 
     then
-      invalid_arg "new Netchannels.input_string";
+      invalid_arg ("new Netchannels." ^ name)
 	  
 
   method private complain_closed() =
@@ -276,11 +299,11 @@ object (self)
 
   method input buf pos len =
     if closed then self # complain_closed();
-    if pos < 0 || len < 0 || pos+len > String.length buf then
+    if pos < 0 || len < 0 || pos+len > Bytes.length buf then
       invalid_arg "input";
 
     let n = min len (str_len - str_pos) in
-    String.blit str str_pos buf pos n;
+    ops.blit_to_bytes str str_pos buf pos n;
     
     str_pos <- str_pos + n;
 
@@ -289,7 +312,7 @@ object (self)
 
   method really_input buf pos len =
     if closed then self # complain_closed();
-    if pos < 0 || len < 0 || pos+len > String.length buf then
+    if pos < 0 || len < 0 || pos+len > Bytes.length buf then
       invalid_arg "really_input";
 
     let n = self # input buf pos len in
@@ -297,10 +320,21 @@ object (self)
     ()
 
 
+  method really_input_string len =
+    if closed then self # complain_closed();
+    if len < 0 then
+      invalid_arg "really_input_string";
+
+    let buf = Bytes.create len in
+    let n = self # input buf 0 len in
+    if n <> len then raise End_of_file;
+    Bytes.to_string buf
+
+
   method input_char() =
     if closed then self # complain_closed();
     if str_pos >= str_len then raise End_of_file;
-    let c = str.[ str_pos ] in
+    let c = ops.get str str_pos in
     str_pos <- str_pos + 1;
     c
 
@@ -308,16 +342,16 @@ object (self)
   method input_line() =
     if closed then self # complain_closed();
     try
-      let k = String.index_from str str_pos '\n' in
+      let k = ops.index_from str str_pos '\n' in
       (* CHECK: Are the different end of line conventions important here? *)
-      let line = String.sub str str_pos (k - str_pos) in
+      let line = ops.substring str str_pos (k - str_pos) in
       str_pos <- k+1;
       line
     with
 	Not_found ->
 	  if str_pos >= str_len then raise End_of_file;
 	  (* Implicitly add linefeed at the end of the file: *)
-	  let line = String.sub str str_pos (str_len - str_pos) in
+	  let line = ops.substring str str_pos (str_len - str_pos) in
 	  str_pos <- str_len;
 	  line
 
@@ -327,7 +361,7 @@ object (self)
 
 
   method close_in() =
-    str <- "";
+    (* str <- ""; *)
     closed <- true;
 
 
@@ -337,6 +371,28 @@ object (self)
 
 end
 ;;
+
+
+class input_string =
+  [string] input_generic "input_string" Netstring_tstring.string_ops
+
+let input_string = new input_string
+
+class input_bytes =
+  [Bytes.t] input_generic "input_bytes" Netstring_tstring.bytes_ops
+
+let input_bytes = new input_bytes
+
+class input_memory =
+  [memory] input_generic "input_memory" Netstring_tstring.memory_ops
+
+let input_memory = new input_memory
+
+let input_tstring ?pos ?len ts =
+  match ts with
+    | `String s -> input_string ?pos ?len s
+    | `Bytes s -> input_bytes ?pos ?len s
+    | `Memory s -> input_memory ?pos ?len s
 
 
 class type nb_in_obj_channel =
@@ -357,29 +413,37 @@ object (self)
   method private complain_closed() =
     raise Closed_channel
 
+  method private input_into : type t . (int -> int -> t) -> int -> t =
+    fun f len ->
+      let n = min len (Netbuffer.length b - offset) in
+      if n = 0 && len>0 then begin
+        if eof then raise End_of_file else raise Buffer_underrun
+      end
+      else begin
+        let result = f offset n in
+        if keep_data then
+          offset <- offset + n
+        else
+          Netbuffer.delete b 0 n;
+        ch_pos <- ch_pos + n;
+        result
+      end
+
   method input buf pos len =
     if closed then self # complain_closed();
-    if pos < 0 || len < 0 || pos > String.length buf - len then
+    if pos < 0 || len < 0 || pos > Bytes.length buf - len then
       invalid_arg "input";
 
-    let n = min len (Netbuffer.length b - offset) in
-    if n = 0 && len>0 then begin
-      if eof then raise End_of_file else raise Buffer_underrun
-    end
-    else begin
-      Netbuffer.blit b offset buf pos n;
-      if keep_data then
-        offset <- offset + n
-      else
-        Netbuffer.delete b 0 n;
-      ch_pos <- ch_pos + n;
-      n
-    end
-
+    self # input_into
+      (fun b_offs n ->
+        Netbuffer.blit b b_offs buf pos n;
+        n
+      )
+      len
 
   method really_input buf pos len =
     if closed then self # complain_closed();
-    if pos < 0 || len < 0 || pos+len > String.length buf then
+    if pos < 0 || len < 0 || pos+len > Bytes.length buf then
       invalid_arg "really_input";
 
     let n = self # input buf pos len in
@@ -387,11 +451,23 @@ object (self)
     ()
 
 
+  method really_input_string len =
+    if closed then self # complain_closed();
+    if len < 0 then
+      invalid_arg "really_input_string";
+
+    self # input_into
+      (fun b_offs n ->
+         if n <> len then raise End_of_file;
+         Netbuffer.sub b b_offs n
+      )
+      len
+
   method input_char() =
     if closed then self # complain_closed();
-    let s = String.create 1 in
+    let s = Bytes.create 1 in
     match self # input s 0 1 with
-      | 1 -> s.[0]
+      | 1 -> Bytes.get s 0
       | _ -> assert false
 
 
@@ -461,7 +537,7 @@ let lexbuf_of_in_obj_channel (objch : in_obj_channel) : Lexing.lexbuf =
 ;;
 
 
-let string_of_in_obj_channel (objch : in_obj_channel) : string =
+let bytes_of_in_obj_channel (objch : in_obj_channel) : Bytes.t =
   (* There are similarities to copy_channel below. *)
   (* The following algorithm uses only up to 2 * N memory, not 3 * N
    * as with the Buffer module.
@@ -471,32 +547,35 @@ let string_of_in_obj_channel (objch : in_obj_channel) : string =
   let k = ref 0 in
   try
     while true do
-      let s = String.create slen in
+      let s = Bytes.create slen in
       let n = objch # input s 0 slen in
       if n = 0 then 
-	failwith "Netchannels.string_of_in_obj_channel: No data (non-blocking I/O?)";
+	failwith "Netchannels.bytes_of_in_obj_channel: No data (non-blocking I/O?)";
       k := !k + n;
       if n < slen then
-	l := (String.sub s 0 n) :: !l
+	l := (Bytes.sub s 0 n) :: !l
       else
 	l := s :: !l;
     done;
     assert false
   with
       End_of_file -> 
-	let s = String.create !k in
+	let s = Bytes.create !k in
 	while !l <> [] do
 	  match !l with
 	      u :: l' ->
-		let n = String.length u in
+		let n = Bytes.length u in
 		k := !k - n;
-		String.blit u 0 s !k n;
+		Bytes.blit u 0 s !k n;
 		l := l'
 	    | [] -> assert false
 	done;
 	assert (!k = 0);
 	s
 ;;
+
+let string_of_in_obj_channel objch =
+  Bytes.unsafe_to_string (bytes_of_in_obj_channel objch)
 
 
 let lines_of_in_obj_channel ch =
@@ -525,7 +604,7 @@ let with_in_obj_channel ch f =
 
 class virtual augment_raw_in_channel =
 object (self)
-  method virtual input : string -> int -> int -> int
+  method virtual input : Bytes.t -> int -> int -> int
   method virtual close_in : unit -> unit
   method virtual pos_in : int
 
@@ -540,29 +619,34 @@ object (self)
     in
     read_rest 0
 
+  method really_input_string len =
+    let b = Bytes.create len in
+    self#really_input b 0 len;
+    Bytes.unsafe_to_string b
+
   method input_char () =
-    let s = String.create 1 in
+    let s = Bytes.create 1 in
     self # really_input s 0 1;
-    s.[0]
+    Bytes.get s 0
 
   method input_byte () =
-    let s = String.create 1 in
+    let s = Bytes.create 1 in
     self # really_input s 0 1;
-    Char.code s.[0]
+    Char.code (Bytes.get s 0)
 
   method input_line () =
-    let s = String.create 1 in
+    let s = Bytes.create 1 in
     let b = Buffer.create 80 in
     let m = self # input s 0 1 in
     if m = 0 then raise Sys_blocked_io;
-    while s.[0] <> '\n' do
-      Buffer.add_char b s.[0];
+    while Bytes.get s 0 <> '\n' do
+      Buffer.add_char b (Bytes.get s 0);
       try
 	let m = self # input s 0 1 in
 	if m = 0 then raise Sys_blocked_io;
       with
 	  End_of_file ->
-	    s.[0] <- '\n'
+            Bytes.set s 0 '\n'
     done;
     Buffer.contents b
 
@@ -628,7 +712,7 @@ class buffered_raw_in_channel
 object (self)
   val out = ch
   val bufsize = buffer_size
-  val buf = String.create buffer_size
+  val buf = Bytes.create buffer_size
   val mutable bufpos = 0
   val mutable buflen = 0
   val mutable eof = false
@@ -651,7 +735,7 @@ object (self)
 	    self # refill();
 	);
 	let n = min len (buflen - bufpos) in
-	String.blit buf bufpos s pos n;
+	Bytes.blit buf bufpos s pos n;
 	bufpos <- bufpos + n;
 	n
       )
@@ -663,7 +747,7 @@ object (self)
   method private refill() =
     let d = bufpos in
     if d > 0 && d < buflen then (
-      String.blit buf d buf 0 (buflen-d)
+      Bytes.blit buf d buf 0 (buflen-d)
     );
     bufpos <- 0;
     buflen <- buflen - d;
@@ -705,10 +789,10 @@ object (self)
        *)
       let eol0 = eol.[0] in
       try
-	let k = String.index_from buf bufpos eol0 in (* or Not_found *)
+	let k = Bytes.index_from buf bufpos eol0 in (* or Not_found *)
 	if k>=buflen then raise Not_found;
 	let k' = min buflen (k+String.length eol) in
-	let s = String.sub buf k (k' - k) in
+	let s = Bytes.sub_string buf k (k' - k) in
 	if s = eol then
 	  EOL_found(k, String.length eol)
 	else
@@ -764,17 +848,17 @@ object (self)
 	match best with
 	    EOL_not_found -> 
 	      let n = min len (buflen - bufpos) in
-	      String.blit buf bufpos s pos n;
+	      Bytes.blit buf bufpos s pos n;
 	      bufpos <- bufpos + n;
 	      result := Some(`Data n)
 	  | EOL_found(p,l) ->
 	      if p = bufpos then (
 		bufpos <- bufpos + l;
-		result := Some(`Separator(String.sub buf p l))
+		result := Some(`Separator(Bytes.sub_string buf p l))
 	      )
 	      else (
 		let n = min len (p - bufpos) in
-		String.blit buf bufpos s pos n;
+		Bytes.blit buf bufpos s pos n;
 		bufpos <- bufpos + n;
 		result := Some(`Data n)
 	      )
@@ -786,7 +870,7 @@ object (self)
 	      )
 	      else (
 		let n = min len (p - bufpos) in
-		String.blit buf bufpos s pos n;
+		Bytes.blit buf bufpos s pos n;
 		bufpos <- bufpos + n;
 		result := Some(`Data n)
 	      )
@@ -799,7 +883,7 @@ object (self)
 
   method private enhanced_input_line() =
     if closed then raise Closed_channel;
-    let b = Buffer.create 80 in
+    let b = Netbuffer.create 80 in
     let eol_found = ref false in
     if bufpos = buflen then (
       self # refill();  (* may raise End_of_file *)
@@ -809,15 +893,15 @@ object (self)
       try
 	match best with
 	    EOL_not_found ->
-	      Buffer.add_substring b buf bufpos (buflen-bufpos);
+	      Netbuffer.add_subbytes b buf bufpos (buflen-bufpos);
 	      bufpos <- buflen;
 	      self # refill();     (* may raise End_of_file *)
 	  | EOL_partially_found pos ->
-	      Buffer.add_substring b buf bufpos (pos-bufpos);
+	      Netbuffer.add_subbytes b buf bufpos (pos-bufpos);
 	      bufpos <- pos;
 	      self # refill();     (* may raise End_of_file *)
 	  | EOL_found(pos,len) ->
-	      Buffer.add_substring b buf bufpos (pos-bufpos);
+	      Netbuffer.add_subbytes b buf bufpos (pos-bufpos);
 	      bufpos <- pos+len;
 	      eol_found := true
 	with
@@ -827,7 +911,7 @@ object (self)
 	      eof <- true;
 	      eol_found := true
     done;
-    Buffer.contents b
+    Netbuffer.contents b
 end
 ;;
 
@@ -868,11 +952,11 @@ let lift_in ?(eol = ["\n"]) ?(buffered=true) ?buffer_size ?pass_through
 exception No_end_of_file
 
 let copy_channel 
-      ?(buf = String.create 1024)
+      ?(buf = Bytes.create 1024)
       ?len (src_ch : in_obj_channel) (dest_ch : out_obj_channel) =
   (* Copies contents from src_ch to dest_ch. Returns [true] if at EOF.
    *)
-  let slen = String.length buf in
+  let slen = Bytes.length buf in
   let k = ref 0 in
   try
     while true do
@@ -936,6 +1020,14 @@ object (self)
     if closed then self # complain_closed();
     monitored (Pervasives.output ch buf pos) len
 
+  method really_output_string buf pos len =
+    if closed then self # complain_closed();
+    #ifdef HAVE_BYTES
+      monitored (Pervasives.output_substring ch buf pos) len
+    #else
+      monitored (Pervasives.output ch buf pos) len
+    #endif
+
   method output_char c =
     if closed then self # complain_closed();
     monitored (Pervasives.output_char ch) c
@@ -943,6 +1035,14 @@ object (self)
   method output_string s =
     if closed then self # complain_closed();
     monitored (Pervasives.output_string ch) s
+
+  method output_bytes s =
+    if closed then self # complain_closed();
+    #ifdef HAVE_BYTES
+      monitored (Pervasives.output_bytes ch) s
+    #else
+      monitored (Pervasives.output_string ch) s
+    #endif
 
   method output_byte b =
     if closed then self # complain_closed();
@@ -1024,12 +1124,24 @@ object(self)
 
   method output buf pos len =
     if closed then self # complain_closed();
-    Buffer.add_substring buffer buf pos len;
+    #ifdef HAVE_BYTES
+      Buffer.add_subbytes buffer buf pos len;
+    #else
+      Buffer.add_substring buffer buf pos len;
+    #endif
     len
 
   method really_output buf pos len =
     if closed then self # complain_closed();
-    Buffer.add_substring buffer buf pos len
+    #ifdef HAVE_BYTES
+      Buffer.add_subbytes buffer buf pos len;
+    #else
+      Buffer.add_substring buffer buf pos len;
+    #endif
+
+  method really_output_string buf pos len =
+    if closed then self # complain_closed();
+    Buffer.add_substring buffer buf pos len;
 
   method output_char c =
     if closed then self # complain_closed();
@@ -1038,6 +1150,14 @@ object(self)
   method output_string s =
     if closed then self # complain_closed();
     Buffer.add_string buffer s
+
+  method output_bytes s =
+    if closed then self # complain_closed();
+    #ifdef HAVE_BYTES
+      Buffer.add_bytes buffer s
+    #else
+      Buffer.add_string buffer s
+    #endif
 
   method output_byte b =
     if closed then self # complain_closed();
@@ -1081,13 +1201,18 @@ object(self)
 
   method output buf pos len =
     if closed then self # complain_closed();
-    Netbuffer.add_sub_string buffer buf pos len;
+    Netbuffer.add_subbytes buffer buf pos len;
     ch_pos <- ch_pos + len;
     len
 
   method really_output buf pos len =
     if closed then self # complain_closed();
-    Netbuffer.add_sub_string buffer buf pos len;
+    Netbuffer.add_subbytes buffer buf pos len;
+    ch_pos <- ch_pos + len;
+
+  method really_output_string buf pos len =
+    if closed then self # complain_closed();
+    Netbuffer.add_substring buffer buf pos len;
     ch_pos <- ch_pos + len;
 
   method output_char c =
@@ -1099,6 +1224,11 @@ object(self)
     if closed then self # complain_closed();
     Netbuffer.add_string buffer s;
     ch_pos <- ch_pos + String.length s
+
+  method output_bytes s =
+    if closed then self # complain_closed();
+    Netbuffer.add_bytes buffer s;
+    ch_pos <- ch_pos + Bytes.length s
 
   method output_byte b =
     if closed then self # complain_closed();
@@ -1149,12 +1279,18 @@ object(self)
   method really_output s start len =
     if closed then self # complain_closed();
     pos <- pos + len
+  method really_output_string s start len =
+    if closed then self # complain_closed();
+    pos <- pos + len
   method output_char _ =
     if closed then self # complain_closed();
     pos <- pos + 1
   method output_string s =
     if closed then self # complain_closed();
     pos <- pos + String.length s
+  method output_bytes s =
+    if closed then self # complain_closed();
+    pos <- pos + Bytes.length s
   method output_byte _ =
     if closed then self # complain_closed();
     pos <- pos + 1
@@ -1192,7 +1328,7 @@ let with_out_obj_channel ch f =
 
 class virtual augment_raw_out_channel =
 object (self)
-  method virtual output : string -> int -> int -> int
+  method virtual output : Bytes.t -> int -> int -> int
   method virtual close_out : unit -> unit
   method virtual flush : unit -> unit
   method virtual pos_out : int
@@ -1208,14 +1344,20 @@ object (self)
     in
     print_rest 0
 
+  method really_output_string s pos len =
+    self # really_output (Bytes.unsafe_of_string s) pos len
+
   method output_char c =
-    ignore(self # output (String.make 1 c) 0 1)
+    ignore(self # output (Bytes.make 1 c) 0 1)
 
   method output_byte n =
-    ignore(self # output (String.make 1 (Char.chr n)) 0 1)
+    ignore(self # output (Bytes.make 1 (Char.chr n)) 0 1)
 
   method output_string s =
-    self # really_output s 0 (String.length s)
+    self # really_output_string s 0 (String.length s)
+
+  method output_bytes s =
+    self # really_output s 0 (Bytes.length s)
 
   method output_buffer b =
     self # output_string (Buffer.contents b)
@@ -1283,7 +1425,7 @@ class buffered_raw_out_channel
 object (self)
   val out = ch
   val bufsize = buffer_size
-  val buf = String.create buffer_size
+  val buf = Bytes.create buffer_size
   val mutable bufpos = 0
   val mutable closed = false
 
@@ -1293,7 +1435,7 @@ object (self)
       ch # output s pos len
     else
       let n = min len (bufsize - bufpos) in
-      String.blit s pos buf bufpos n;
+      Bytes.blit s pos buf bufpos n;
       bufpos <- bufpos + n;
       if bufpos = bufsize then
 	self # flush();
@@ -1541,8 +1683,10 @@ object (self)
 
   method output         = !trans # output
   method really_output  = !trans # really_output
+  method really_output_string = !trans # really_output_string
   method output_char    = !trans # output_char
   method output_string  = !trans # output_string
+  method output_bytes   = !trans # output_bytes
   method output_byte    = !trans # output_byte
   method output_buffer  = !trans # output_buffer
   method output_channel = !trans # output_channel
@@ -1674,8 +1818,11 @@ object (self)
 
   method output         = if need_clear then self#clear(); trans # output
   method really_output  = if need_clear then self#clear(); trans # really_output
+  method really_output_string =
+    if need_clear then self#clear(); trans # really_output_string
   method output_char    = if need_clear then self#clear(); trans # output_char
   method output_string  = if need_clear then self#clear(); trans # output_string
+  method output_bytes   = if need_clear then self#clear(); trans # output_bytes
   method output_byte    = if need_clear then self#clear(); trans # output_byte
   method output_buffer  = if need_clear then self#clear(); trans # output_buffer
   method output_channel = if need_clear then self#clear(); trans #output_channel
@@ -1827,6 +1974,12 @@ object(self)
     call_input self#refill (input_super#really_input str pos) len;
     pos_in <- pos_in + len
 
+  method really_input_string len =
+    let buf = Bytes.create len in
+    call_input self#refill (input_super#really_input buf 0) len;
+    pos_in <- pos_in + len;
+    Bytes.unsafe_to_string buf
+
   method input_char() =
     let c = call_input self#refill (input_super#input_char) () in
     pos_in <- pos_in + 1;
@@ -1865,7 +2018,7 @@ object(self)
   val p = p
   val mutable p_closed = false  (* output side of p is closed *)
   val out = out
-  val buf = String.create 1024  (* for copy_channel *)
+  val buf = Bytes.create 1024  (* for copy_channel *)
 
   method output s pos len =
     if p_closed then raise Closed_channel;
@@ -1878,6 +2031,11 @@ object(self)
     p # really_output s pos len;
     self # transfer();
 
+  method really_output_string s pos len =
+    if p_closed then raise Closed_channel;
+    p # really_output_string s pos len;
+    self # transfer();
+
   method output_char c =
     if p_closed then raise Closed_channel;
     p # output_char c;
@@ -1886,6 +2044,11 @@ object(self)
   method output_string s =
     if p_closed then raise Closed_channel;
     p # output_string s;
+    self # transfer();
+
+  method output_bytes s =
+    if p_closed then raise Closed_channel;
+    p # output_bytes s;
     self # transfer();
 
   method output_byte b =
@@ -1969,7 +2132,7 @@ class input_filter
 object(self)
   val inp = inp
   val p = p
-  val buf = String.create 1024  (* for copy_channel *)
+  val buf = Bytes.create 1024  (* for copy_channel *)
 
   method private refill() =
     (* Copy some data from [inp] to [p] *)
@@ -1977,7 +2140,7 @@ object(self)
      * because we can pass the copy buffer ~buf
      *)
     let eof = 
-      copy_channel ~len:(String.length buf) ~buf inp (p :> out_obj_channel) in
+      copy_channel ~len:(Bytes.length buf) ~buf inp (p :> out_obj_channel) in
     if eof then p # close_out();
 
   method input str pos =
@@ -1988,6 +2151,9 @@ object(self)
 
   method really_input str pos =
     filter_input self#refill (p#really_input str pos)
+
+  method really_input_string =
+    filter_input self#refill p#really_input_string
 
   method input_char =
     filter_input self#refill (p#input_char)

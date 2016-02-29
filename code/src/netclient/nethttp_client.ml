@@ -144,20 +144,9 @@ let rec syscall f =
 ;;
 
 
-let hex_digits = [| '0'; '1'; '2'; '3'; '4'; '5'; '6'; '7';
-		    '8'; '9'; 'a'; 'b'; 'c'; 'd'; 'e'; 'f' |];;
-
 let encode_hex s =
   (* encode with lowercase hex digits *)
-  let l = String.length s in
-  let t = String.make (2*l) ' ' in
-  for n = 0 to l - 1 do
-    let x = Char.code s.[n] in
-    t.[2*n]   <- hex_digits.( x lsr 4 );
-    t.[2*n+1] <- hex_digits.( x land 15 );
-  done;
-  t
-;;
+  Netencoding.to_hex ~lc:true s
 
 
 type synchronization =
@@ -1820,9 +1809,16 @@ let format_credentials is_proxy (creds:Nethttp.Header.auth_credentials) =
     hdr#fields
 
 
+let recode enc s : string =
+  Netconversion.convert
+    ~in_enc:`Enc_utf8
+    ~out_enc:enc
+    s
+
+
 let core_basic_auth_session 
         enable_reauth key_handler is_proxy 
-        request_domain auth_domain trans_id realm
+        request_domain auth_domain trans_id realm charset
         : auth_session =
   (* If enable_reauth, we return [auth_domain] when [auth_domain] is called.
      Usually [auth_domain] is set to the current URI after setting the path to
@@ -1847,18 +1843,28 @@ let core_basic_auth_session
       method auth_user = key # user
       method auth_session_id = None
       method authenticate call reauth_flag =
-        let code = call # private_api # response_code in
-        if reauth_flag || code = special_code then
-          if reauth_flag || !first_attempt then (
-            first_attempt := false;
-            let basic_cookie = 
-              Netencoding.Base64.encode 
-	        (key#user ^ ":" ^ key#password) in
-            let creds = ("Basic", [ "credentials", `Q basic_cookie]) in
-            `Continue (format_credentials is_proxy creds)
-          )
-          else `Auth_error
-        else `OK
+        try
+          let user, password =
+            if charset = `Enc_utf8 then
+              key#user, key#password
+            else
+              recode charset key#user, recode charset key#password in
+          let code = call # private_api # response_code in
+          if reauth_flag || code = special_code then
+            if reauth_flag || !first_attempt then (
+              first_attempt := false;
+              let basic_cookie = 
+                Netencoding.Base64.encode 
+	          (user ^ ":" ^ password) in
+              let creds = ("Basic", [ "credentials", `Q basic_cookie]) in
+              `Continue (format_credentials is_proxy creds)
+            )
+            else `Auth_error
+          else `OK
+        with
+          | Netconversion.Malformed_code
+          | Netconversion.Cannot_represent _ ->
+              `Auth_error
       method invalidate call =
         key_handler # invalidate_key key;
     end
@@ -1875,9 +1881,17 @@ let basic_auth_session enable_reauth
   let realms = get_realms "basic" call is_proxy in
   iterate
     (fun (realm,params) ->
+       let charset =  (* RFC-7617 extension *)
+         try
+           let cs = List.assoc "charset" params in
+           if String.lowercase cs = "utf-8" then
+             `Enc_utf8
+           else
+             `Enc_iso88591
+         with Not_found -> `Enc_iso88591 in
        core_basic_auth_session
          enable_reauth 
-         key_handler is_proxy request_domain auth_domain trans_id realm
+         key_handler is_proxy request_domain auth_domain trans_id realm charset
     )
     realms
 
@@ -1908,7 +1922,7 @@ object(self)
     try
       let trans_id = call # private_api # transport_layer options in
       Some(core_basic_auth_session
-             false key_handler false None [] trans_id "anywhere")
+             false key_handler false None [] trans_id "anywhere" `Enc_iso88591)
     with
 	Not_applicable ->
 	  None
@@ -1959,7 +1973,8 @@ let generic_auth_session_for_challenge
       options
       (key_handler : #key_handler) mech call is_proxy initial_challenge
     : auth_session =
-  let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let ( !! ) arg = Lazy.force !arg in
+  let module M = (val mech : Nethttp.HTTP_CLIENT_MECHANISM) in
   let mname = M.mechanism_name in
   dlogr (fun () -> sprintf "generic_auth(%s): create" mname);
   let cur_trans_id = ref (call # private_api # transport_layer options) in
@@ -1985,26 +2000,27 @@ let generic_auth_session_for_challenge
   let creds =
     M.init_credentials key#credentials in
   let session_lz =
-    lazy
-      (M.create_client_session
-         ~user:key#user ~creds 
-         ~params:( [ "realm", realm, true ] @ 
-                     match_params @
-                       match id_option with
-                         | None -> []
-                         | Some id -> [ "id", id, true ]
-                 )
-         ()
-      ) in
+    ref
+      (lazy
+         (M.create_client_session
+            ~user:key#user ~creds 
+            ~params:( [ "realm", realm, true ] @ 
+                        match_params @
+                          match id_option with
+                            | None -> []
+                            | Some id -> [ "id", id, true ]
+                    )
+            ()
+      )) in
   let first = ref true in
   let cur_auth_domain = ref [] in
   let dbg_state() =
     match !match_result with
       | `Accept _ ->
-           let session = Lazy.force session_lz in
+           let session = Lazy.force !session_lz in
            Netsys_sasl_util.string_of_client_state (M.client_state session)
       | `Accept_reroute _ ->
-           let session = Lazy.force session_lz in
+           let session = Lazy.force !session_lz in
            Netsys_sasl_util.string_of_client_state (M.client_state session) ^
              "+reroute"
       | `Reroute _ ->
@@ -2072,9 +2088,8 @@ let generic_auth_session_for_challenge
         match !match_result with
           | `Accept _
           | `Accept_reroute _ ->
-               let session = Lazy.force session_lz in
                first := false;
-               ( match M.client_state session with
+               ( match M.client_state !!session_lz with
                    | `OK ->
                         (* re-authentication *)
                         if reauth_flag then (
@@ -2089,7 +2104,9 @@ let generic_auth_session_for_challenge
                                 match id_option with
                                   | None -> []
                                   | Some id -> [ "id", id, true ] in
-                          M.client_restart ~params:r_params session;
+                          let session =
+                            M.client_restart ~params:r_params !!session_lz in
+                          session_lz := lazy session;
                           dlogr (fun () -> 
                                    sprintf "generic_auth(%s): state=%s" 
                                            mname (dbg_state()));
@@ -2102,8 +2119,10 @@ let generic_auth_session_for_challenge
                         let meth = auth_call # request_method in
                         let uri = auth_call # effective_request_uri in
                         let hdr = auth_call # response_header in
-                        M.client_process_challenge
-                          session meth uri hdr challenge;
+                        let session =
+                          M.client_process_challenge
+                            !!session_lz meth uri hdr challenge in
+                        session_lz := lazy session;
                         dlogr (fun () -> 
                                  sprintf "generic_auth(%s): state=%s" 
                                          mname (dbg_state()));
@@ -2114,11 +2133,11 @@ let generic_auth_session_for_challenge
                    | `Auth_error _ ->
                         ()
                );
-               ( match M.client_state session with
+               ( match M.client_state !!session_lz with
                    | `OK ->
                         (* Save the protection space: *)
                         if not is_proxy then (
-                          let auth_domain_s = M.client_domain session in
+                          let auth_domain_s = M.client_domain !!session_lz in
                           let auth_domain =
                             try
                               List.map
@@ -2132,7 +2151,8 @@ let generic_auth_session_for_challenge
                           cur_auth_domain := auth_domain;
                         );
                         ( try
-                            let gssapi_props = M.client_gssapi_props session in
+                            let gssapi_props =
+                              M.client_gssapi_props !!session_lz in
                             call # private_api # set_gssapi_props gssapi_props;
                           with Not_found -> ()
                         );
@@ -2147,8 +2167,9 @@ let generic_auth_session_for_challenge
                             new Netmime.basic_mime_header []
                           else
                             auth_call # response_header in
-                        let (creds, new_headers) = 
-                          M.client_emit_response session meth uri hdr in
+                        let (session, creds, new_headers) = 
+                          M.client_emit_response !!session_lz meth uri hdr in
+                        session_lz := lazy session;
                         dlogr (fun () -> 
                                  sprintf "generic_auth(%s): state=%s" 
                                          mname (dbg_state()));
@@ -2187,8 +2208,7 @@ let generic_auth_session_for_challenge
         match !match_result with
           | `Accept _
           | `Accept_reroute _ ->
-               let session = Lazy.force session_lz in
-               M.client_session_id session
+               M.client_session_id !!session_lz
           | _ ->
                None
     end
@@ -2198,7 +2218,7 @@ let generic_auth_session_for_challenge
 let generic_auth_session options
                          (key_handler : #key_handler) mech call is_proxy 
     : auth_session =
-  let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+  let module M = (val mech : Nethttp.HTTP_CLIENT_MECHANISM) in
   dlogr (fun () -> 
            sprintf "generic_auth(%s): searching challenge" M.mechanism_name);
   let match_params = get_match_params options call in
@@ -2228,7 +2248,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
   let mechs =
     List.filter
       (fun m -> 
-         let module M = (val m : Nethttp.HTTP_MECHANISM) in
+         let module M = (val m : Nethttp.HTTP_CLIENT_MECHANISM) in
          M.available()
       )
       mechs in
@@ -2237,7 +2257,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
     let mech =
       List.find
         (fun m ->
-         let module M = (val m : Nethttp.HTTP_MECHANISM) in
+         let module M = (val m : Nethttp.HTTP_CLIENT_MECHANISM) in
            let mname = String.lowercase M.mechanism_name in
            List.exists
              (fun (ch_mech,_) -> String.lowercase ch_mech = mname)
@@ -2261,7 +2281,7 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
       let mech = find_mech all_challenges is_proxy call in
       dlogr
         (fun () -> 
-           let module M = (val mech : Nethttp.HTTP_MECHANISM) in
+           let module M = (val mech : Nethttp.HTTP_CLIENT_MECHANISM) in
            sprintf "generic_auth(%s): selected this mechanism" M.mechanism_name
         );
       Some (generic_auth_session options key_handler mech call is_proxy)
@@ -3100,7 +3120,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
     (****************************** OUTPUT ********************************)
 
     val send_queue = Q.create()
-    val send_buf = String.create 4096
+    val send_buf = Bytes.create 4096
 
     val mutable sending = false
 
@@ -3192,7 +3212,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 	write_body_next_chunk_e d ()
 
       and write_body_next_chunk_e d () =
-	input_opt_e d (`String send_buf) 0 (String.length send_buf)
+	input_opt_e d (`Bytes send_buf) 0 (Bytes.length send_buf)
 	++ (function
 	      | Some n ->
 		  if !options.verbose_request_contents then
@@ -3204,7 +3224,7 @@ let io_buffer options fd mplex fd_state : io_buffer =
 		  let s = sprintf "%x\r\n" n in
 		  Uq_io.output_string_e dev s
 		  ++ (fun () -> 
-			Uq_io.really_output_e dev (`String send_buf) 0 n)
+			Uq_io.really_output_e dev (`Bytes send_buf) 0 n)
 		  ++ (fun () -> Uq_io.output_string_e dev "\r\n")
 		  ++ write_body_next_chunk_e d
 	      | None ->

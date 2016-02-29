@@ -59,3 +59,33 @@ end
 let digests = ref (module Empty_digests : Netsys_crypto_types.DIGESTS)
 let current_digests() = !digests
 let set_current_digests p = digests := p
+
+
+module Empty_pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
+  type public_key = unit
+  type private_key = unit
+  type pin_callback = unit
+  type algorithm = unit
+  type x509_private_key = string * string
+
+  let unavailable() = failwith "No registered provider for pubkey crypto"
+  let supported_x509 = []
+  let algorithm_x509 _ _ = unavailable()
+  let import_public_key_x509 _ = unavailable()
+  let import_public_key_uri _ = unavailable()
+  let import_public_key_uri_with_pin _ _ = unavailable()
+  let import_private_key_x509 _ = unavailable()
+  let import_private_key_uri _ = unavailable()
+  let import_private_key_uri_with_pin _ _ = unavailable()
+  let import_public_key_from_private _ = unavailable()
+  let simple_pin_callback _ = ()
+  let encrypt _ _ _ = unavailable()
+  let decrypt _ _ _ = unavailable()
+  let verify _ _ _ _ = false
+  let sign _ _ _ = unavailable()
+end
+
+let pubkey_crypto =
+  ref (module Empty_pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO)
+let current_pubkey_crypto() = !pubkey_crypto
+let set_current_pubkey_crypto p = pubkey_crypto := p

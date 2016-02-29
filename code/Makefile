@@ -41,7 +41,7 @@ doc:
 	    test ! -f $$pkg/Makefile -o -f $$pkg/doc-ignore || \
 		{ ( cd $$pkg && $(MAKE) -f Makefile.pre generate ) || exit; \
 		  ( cd $$pkg && $(MAKE) -f Makefile.pre depend ) || exit; \
-		  ( cd $$pkg && $(MAKE) ocamldoc.dump ) || exit; \
+		  ( cd $$pkg && $(MAKE) doc-dump ) || exit; \
 		}; \
 	done
 	cd doc; $(MAKE) doc

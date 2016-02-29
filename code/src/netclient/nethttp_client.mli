@@ -932,14 +932,14 @@ class delete : string -> http_call
 class type key =
 object
   method user : string
-    (** The user name *)
+    (** The user name (UTF-8) *)
   method password : string
-    (** The password in cleartext *)
+    (** The password in cleartext (UTF-8) *)
   method realm : string
     (** The realm *)
   method domain : Neturl.url list
     (** The domain URIs defining the protection space. The domain URIs
-     * are absolute URIs. For proxy keys the list must be empty.
+     * are absolute URIs. For proxy access the list must be empty.
      *
      * Normally, this is just a list with one element. The URI must include
      * the protocol scheme, the host name, the port, and a path (at minimum "/"). 
@@ -954,15 +954,19 @@ object
      *)
   method credentials : (string * string * (string * string) list) list
     (** The key in the common "credentials" format that is used by
-        generic mechanisms. See {!Nethttp.HTTP_MECHANISM.init_credentials}
+        generic mechanisms. See {!Nethttp.HTTP_CLIENT_MECHANISM.init_credentials}
         for details.
+
+        {b Note that since Ocamlnet-4.1 we explicitly specify that cleartext
+        passwords are encoded in UTF-8 - independently of what the
+        protocol assumes.}
      *)
 end
 
 
 val key : user:string -> password:string -> realm:string -> 
           domain:Neturl.url list -> key
-  (** Create a key object *)
+  (** Create a key object. [user] and [password] are encoded in UTF-8. *)
 
 val key_creds : user:string ->
                 creds:(string * string * (string * string) list) list ->
@@ -1027,7 +1031,7 @@ object
   method auth_realm : string
     (** The realm *)
   method auth_user : string
-    (** The user identifier *)
+    (** The user identifier (UTF-8) *)
   method authenticate : http_call -> bool -> (string * string) list auth_status
     (** Returns a list of additional headers that will authenticate 
       * the passed call for this session. (This is usually only one
@@ -1119,9 +1123,9 @@ class digest_auth_handler :
   (** Digest authentication. Authentication information is obtained by
     * the passed key_handler.
     *
-    * This handler is compatible with RFC 2069 and RFC 2617. In particular,
+    * This handler is compatible with RFCs 2069, 2617 and 7616. In particular,
     * the following protocol options are available:
-    * - The algorithms MD5 and MD5-sess are implemented
+    * - The algorithms MD5, MD5-sess, SHA256 and SHA256-sess are implemented
     * - The quality of protection mode "auth" is implemented. The optional
     *   mode "auth-int" has been omitted.
     * - The information of the [Authentication-Info] header is completely
@@ -1146,7 +1150,7 @@ class unified_auth_handler : ?insecure:bool -> #key_handler -> auth_handler
 
 
 class generic_auth_handler : #key_handler ->
-                             (module Nethttp.HTTP_MECHANISM) list ->
+                             (module Nethttp.HTTP_CLIENT_MECHANISM) list ->
                                auth_handler
   (** Authenticate with the passed generic HTTP mechanisms *)
 

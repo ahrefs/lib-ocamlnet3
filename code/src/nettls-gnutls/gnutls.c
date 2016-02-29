@@ -10,6 +10,10 @@
 #include <gnutls/crypto.h>
 #endif
 
+#ifdef HAVE_GNUTLS_ABSTRACT_H
+#include <gnutls/abstract.h>
+#endif
+
 #include <errno.h>
 
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -695,6 +699,23 @@ CAMLprim value net_gnutls_x509_crl_list_import(value datav, value formatv,
 
 static int net_have_crypto(void) {
 #ifdef HAVE_FUN_gnutls_cipher_encrypt2
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+
+#ifndef HAVE_GNUTLS_ABSTRACT_H
+typedef void *gnutls_pubkey_t;
+typedef void *gnutls_privkey_t;
+static void gnutls_pubkey_deinit(gnutls_pubkey_t key) {}
+static void gnutls_privkey_deinit(gnutls_privkey_t key) {}
+#endif
+
+
+static int net_have_pubkey(void) {
+#ifdef HAVE_FUN_gnutls_pubkey_encrypt_data
     return 1;
 #else
     return 0;

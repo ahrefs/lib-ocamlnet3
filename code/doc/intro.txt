@@ -85,7 +85,8 @@ Overview: What you can do with OCamlnet:
           Privacy{tdend intro}
 {td intro}TLS (via GnuTLS),{br x}
           SASL,{br x}
-          GSSAPI (Kerberos){tdend intro}
+          GSSAPI (Kerberos),{br x}
+          LDAP client{tdend intro}
 {td intro}Pluggable security providers{br x} for TLS, SASL, GSSAPI,{br x}
           Digests,{br x}
           Symmetric ciphers{tdend intro}
@@ -190,6 +191,7 @@ for other libraries.
    Netaccel_link
    Netaddress
    Netasn1
+   Netasn1_encode
    Netauth
    Netaux
    Netbuffer
@@ -216,6 +218,7 @@ for other libraries.
    Netmech_scram
    Netmech_scram_gssapi
    Netmech_scram_sasl
+   Netmech_scram_http
    Netmech_spnego_http
    Netmime
    Netmime_channels
@@ -229,11 +232,15 @@ for other libraries.
    Netsockaddr
    Netstream
    Netstring_str
+   Netstring_tstring
    Nettls_support
    Netulex
    Netunichar
    Neturl
+   Neturl_ldap
    Netx509
+   Netx509_pubkey
+   Netx509_pubkey_crypto
    Netxdr
    Netxdr_mstring
 }
@@ -325,6 +332,7 @@ build web servers, and with [rpc] to build RPC servers.
     Netplex_sharedvar
     Netplex_mbox
     Netplex_encap
+    Netplex_internal
     Rpc_netplex}
     
 
@@ -369,11 +377,14 @@ other Ocamlnet libraries.
     Netsys_tmp
     Netsys_mem
     Netsys_sem
+    Netsys_global
     Netsys_pollset
     Netsys_pollset_generic
     Netsys_pollset_posix
     Netsys_pollset_win32
     Netsys_win32
+    Netsys_polypipe
+    Netsys_polysocket
     Netsys_rng
     Netsys_crypto_types
     Netsys_crypto
@@ -583,9 +594,9 @@ processes, and sending messages between them.
 
 {divend guide}
 
-{2:netclient The [netclient] library: HTTP, FTP, Telnet, POP, SMTP}
+{2:netclient The [netclient] library: HTTP, FTP, Telnet, POP, SMTP, LDAP}
 
-This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
+This library includes clients for HTTP, Telnet, FTP, SMTP, POP, and LDAP.
 
 {!modules:
    Nethttp_client
@@ -594,6 +605,7 @@ This library includes clients for HTTP, Telnet, FTP, SMTP, and POP.
    Netftp_client
    Netftp_data_endpoint
    Netftp_fs
+   Netldap
    Nettelnet_client
    Netpop
    Netsmtp

@@ -34,7 +34,7 @@ object(self)
 
   method virtual window_length : int
 
-  method virtual input : string -> int -> int -> int
+  method virtual input : Bytes.t -> int -> int -> int
 
 
   (* The following input methods base all on [input] *)
@@ -54,17 +54,22 @@ object(self)
     self # want len;  (* may raise Buffer_underrun *)
     read 0
 
+  method really_input_string len =
+    let buf = Bytes.create len in
+    self # really_input buf 0 len;
+    Bytes.unsafe_to_string buf
+
 
   method input_char () =
-    let s = String.create 1 in
+    let s = Bytes.create 1 in
     self # really_input s 0 1;
-    s.[0]
+    Bytes.get s 0
 
 
   method input_byte () =
-    let s = String.create 1 in
+    let s = Bytes.create 1 in
     self # really_input s 0 1;
-    int_of_char s.[0]
+    int_of_char (Bytes.get s 0)
 
 
   method input_line () =
@@ -84,13 +89,10 @@ object(self)
     let n = find_eol() in
     if n >= self#window_length then begin
       if n = 0 then raise End_of_file;
-      let s = String.create n in
-      self#really_input s 0 n;
-      s
+      self#really_input_string n
     end
     else begin
-      let s = String.create n in
-      self#really_input s 0 n;
+      let s = self#really_input_string n in
       ignore(self#input_char());    (* '\n' *)
       s
     end

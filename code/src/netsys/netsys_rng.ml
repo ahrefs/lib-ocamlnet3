@@ -9,7 +9,7 @@ let default_rng() =
 	(fun s ->
 	   let fd = Unix.openfile "/dev/urandom" [Unix.O_RDONLY] 0 in
 	   try
-	     Netsys.really_gread `Read_write fd s 0 (String.length s);
+	     Netsys.really_gread `Read_write fd s 0 (Bytes.length s);
 	     Unix.close fd
 	   with e -> Unix.close fd; raise e
 	)

@@ -130,10 +130,16 @@ let rec run_controller ctrl =
     Unixqueue.run ctrl#event_system
   with
     | error ->
+        let bt = Printexc.get_backtrace() in
 	ctrl # logger # log
 	  ~component:"netplex.controller"
 	  ~level:`Crit
 	  ~message:("Uncaught exception: " ^ Netexn.to_string error);
+        if bt <> "" then
+	  ctrl # logger # log
+	    ~component:"netplex.controller"
+	    ~level:`Crit
+	    ~message:("Backtrace: " ^ bt);
 	run_controller ctrl
 ;;
 
@@ -285,6 +291,9 @@ let startup ?(late_initializer = fun _ _ -> ())
 	     par controller_config in
 	 Netplex_cenv.register_ctrl controller;
 
+         let prop = Netplex_sharedvar.global_propagator() in
+         Netsys_global.set_propagator (Some prop);
+
 	 (* Change to / so we don't block filesystems without need.
             Do this after controller creation so the controller has a
             chance to remember the cwd
@@ -300,11 +309,17 @@ let startup ?(late_initializer = fun _ _ -> ())
 	        with
 	          | error ->
 		       (* An error is ... *)
-		       controller # logger # log
-                         ~component:"netplex.controller"
-		         ~level:`Crit
-		         ~message:("Uncaught exception in late initialization: " ^ 
-			             Netexn.to_string error);
+                      let bt = Printexc.get_backtrace() in
+		      controller # logger # log
+                        ~component:"netplex.controller"
+		        ~level:`Crit
+		        ~message:("Uncaught exception in late initialization: " ^ 
+			            Netexn.to_string error);
+                      if bt <> "" then
+		        controller # logger # log
+                          ~component:"netplex.controller"
+		          ~level:`Crit
+		          ~message:("Backtrace: " ^ bt);
 	      );
 
 	      init_done();
@@ -312,6 +327,8 @@ let startup ?(late_initializer = fun _ _ -> ())
 	      run_controller controller;
 	      controller # free_resources();
 	      Netplex_cenv.unregister_ctrl controller;
+              Netsys_global.set_propagator None;
+              Netplex_sharedvar.propagate_back controller;
               remove_pid_file();
            )
        with
@@ -349,13 +366,19 @@ let run ?(config_parser = Netplex_config.read_config_file)
 	     late_initializer config_file controller
 	   with
 	     | error ->
-		  (* An error is ... *)
-		  controller # logger # log
-                    ~component:"netplex.controller"
-		    ~level:`Crit
-		    ~message:("Uncaught exception in late initialization: " ^ 
-			        Netexn.to_string error);
-                  raise error in
+		 (* An error is ... *)
+                 let bt = Printexc.get_backtrace() in
+		 controller # logger # log
+                   ~component:"netplex.controller"
+		   ~level:`Crit
+		   ~message:("Uncaught exception in late initialization: " ^ 
+			       Netexn.to_string error);
+                 if bt <> "" then
+		   controller # logger # log
+                     ~component:"netplex.controller"
+		     ~level:`Crit
+		     ~message:("Backtrace: " ^ bt);
+                 raise error in
 	 run_controller controller;
          let result = extract_result controller late_value in
 	 controller # free_resources();

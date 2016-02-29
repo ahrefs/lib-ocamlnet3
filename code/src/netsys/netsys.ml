@@ -119,9 +119,9 @@ let binop_inet_addr f (ip1 : Unix.inet_addr) (ip2 : Unix.inet_addr) =
   let l = String.length s1 in
   if l <> String.length s2 then
     failwith "logand_inet_addr";
-  let s3 = String.create l in
+  let s3 = Bytes.create l in
   for k = 0 to l-1 do
-    s3.[k] <- Char.chr(f (Char.code s1.[k]) (Char.code s2.[k]));
+    Bytes.set s3 k (Char.chr(f (Char.code s1.[k]) (Char.code s2.[k])));
   done;
   (Obj.magic s3 : Unix.inet_addr)
 
@@ -268,7 +268,7 @@ let get_fd_style fd =
 
 let string_of_sockaddr ?(norm=false) =
   function
-    | Unix.ADDR_INET(inet,port) as addr ->
+    | Unix.ADDR_INET(inet,port) ->
         let inet =
           if norm then norm_inet_addr inet else inet in
 	( match domain_of_inet_addr inet with
@@ -458,20 +458,52 @@ let rec restart_wait mode fd_style fd f arg =
          restart_wait mode fd_style fd f arg
 
 
-let gwrite fd_style fd s pos len =
+let gwrite_tstr fd_style fd ts pos len =
   dlogr (fun () -> sprintf "gwrite fd=%Ld len=%d"
 	   (int64_of_file_descr fd) len);
   match fd_style with
     | `Read_write ->
-	Unix.single_write fd s pos len
+        ( match ts with
+            | `Bytes s ->
+	        Unix.single_write fd s pos len
+            | `String s ->
+                #ifdef HAVE_BYTES
+                  Unix.single_write_substring fd s pos len
+                #else
+  	          Unix.single_write fd s pos len
+                #endif
+            | `Memory s ->
+                Netsys_mem.mem_write fd s pos len
+        )
     | `Recv_send _ 
     | `Recv_send_implied ->
-	Unix.send fd s pos len []
+        ( match ts with
+            | `Bytes s ->
+	        Unix.send fd s pos len []
+            | `String s ->
+                #ifdef HAVE_BYTES
+	          Unix.send_substring fd s pos len []
+                #else
+                  Unix.send fd s pos len []
+                #endif
+            | `Memory s ->
+                Netsys_mem.mem_send fd s pos len []
+        )
     | `Recvfrom_sendto ->
 	failwith "Netsys.gwrite: the socket is unconnected"
     | `W32_pipe ->
 	let ph = Netsys_win32.lookup_pipe fd in
-	Netsys_win32.pipe_write ph s pos len
+        ( match ts with
+            | `Bytes s ->
+	        Netsys_win32.pipe_write ph s pos len
+            | `String s ->
+	        Netsys_win32.pipe_write_string ph s pos len
+            | `Memory s ->
+                let b =
+                  Netsys_mem.bytes_of_memory
+                    (Bigarray.Array1.sub s pos len) in
+	        Netsys_win32.pipe_write ph b 0 len
+        )
     | `W32_pipe_server ->
 	failwith "Netsys.gwrite: cannot write to pipe servers"
     | `W32_event ->
@@ -482,42 +514,104 @@ let gwrite fd_style fd s pos len =
 	failwith "Netsys.gwrite: cannot write to input thread"
     | `W32_output_thread ->
 	let othr = Netsys_win32.lookup_output_thread fd in
-	Netsys_win32.output_thread_write othr s pos len
+        ( match ts with
+            | `Bytes s ->
+	        Netsys_win32.output_thread_write othr s pos len
+            | `String s ->
+	        Netsys_win32.output_thread_write_string othr s pos len
+            | `Memory s ->
+                let b =
+                  Netsys_mem.bytes_of_memory
+                    (Bigarray.Array1.sub s pos len) in
+	        Netsys_win32.output_thread_write othr b 0 len
+        )
     | `TLS endpoint ->
-        Netsys_tls.send (Netsys_tls.endpoint endpoint) s pos len
+        let ep = Netsys_tls.endpoint endpoint in
+        ( match ts with
+            | `Bytes s ->
+	        Netsys_tls.send ep s pos len        
+            | `String s ->
+	        Netsys_tls.str_send ep s pos len        
+            | `Memory s ->
+	        Netsys_tls.mem_send ep s pos len        
+        )
 
 
-let rec really_gwrite fd_style fd s pos len =
+let gwrite fd_style fd s pos len =
+  gwrite_tstr fd_style fd (`Bytes s) pos len
+
+let gwrite_tbuf fd_style fd tb pos len =
+  let ts =
+    match tb with
+      | `Bytes s -> `Bytes s
+      | `String s -> `Bytes s
+      | `Memory m -> `Memory m in
+  gwrite_tstr fd_style fd ts pos len
+
+
+let rec really_gwrite_tstr fd_style fd ts pos len =
   try
-    let n = gwrite fd_style fd s pos len in
+    let n = gwrite_tstr fd_style fd ts pos len in
     if n > 0 then
-      really_gwrite fd_style fd s (pos+n) (len-n)
+      really_gwrite_tstr fd_style fd ts (pos+n) (len-n)
   with
     | Unix.Unix_error(Unix.EINTR, _, _) ->
-	really_gwrite fd_style fd s pos len
+	really_gwrite_tstr fd_style fd ts pos len
     | Unix.Unix_error( (Unix.EAGAIN | Unix.EWOULDBLOCK), _, _)
     | Netsys_types.EAGAIN_WR ->
 	ignore(wait_until_writable fd_style fd (-1.0));
-	really_gwrite fd_style fd s pos len
+	really_gwrite_tstr fd_style fd ts pos len
     | Netsys_types.EAGAIN_RD ->
 	ignore(wait_until_readable fd_style fd (-1.0));
-	really_gwrite fd_style fd s pos len
+	really_gwrite_tstr fd_style fd ts pos len
+
+let really_gwrite fd_style fd s pos len =
+  really_gwrite_tstr fd_style fd (`Bytes s) pos len
+
+let really_gwrite_tbuf fd_style fd tb pos len =
+  let ts =
+    match tb with
+      | `Bytes s -> `Bytes s
+      | `String s -> `Bytes s
+      | `Memory m -> `Memory m in
+  really_gwrite_tstr fd_style fd ts pos len
 
 
-let gread fd_style fd s pos len =
+let gread_tbuf fd_style fd buf pos len =
   dlogr (fun () -> sprintf "gread fd=%Ld len=%d"
 	   (int64_of_file_descr fd) len);
   match fd_style with
     | `Read_write ->
-	Unix.read fd s pos len
+        ( match buf with
+            | `Bytes s
+            | `String s ->
+	        Unix.read fd s pos len
+            | `Memory s ->
+                Netsys_mem.mem_read fd s pos len
+        )
     | `Recv_send _ 
     | `Recv_send_implied ->
-	Unix.recv fd s pos len []
+        ( match buf with
+            | `Bytes s
+            | `String s ->
+	        Unix.recv fd s pos len []
+            | `Memory s ->
+                Netsys_mem.mem_recv fd s pos len []
+        )
     | `Recvfrom_sendto ->
 	failwith "Netsys.gread: the socket is unconnected"
     | `W32_pipe ->
 	let ph = Netsys_win32.lookup_pipe fd in
-	Netsys_win32.pipe_read ph s pos len
+        ( match buf with
+            | `Bytes s
+            | `String s ->
+	        Netsys_win32.pipe_read ph s pos len
+            | `Memory s ->
+                let b = Bytes.create len in
+	        let n = Netsys_win32.pipe_read ph b 0 len in
+                Netsys_mem.blit_bytes_to_memory b 0 s 0 n;
+                n
+        )
     | `W32_pipe_server ->
 	failwith "Netsys.gwrite: cannot read from pipe servers"
     | `W32_event ->
@@ -528,15 +622,34 @@ let gread fd_style fd s pos len =
 	failwith "Netsys.gread: cannot read from output thread"
     | `W32_input_thread ->
 	let ithr = Netsys_win32.lookup_input_thread fd in
-	Netsys_win32.input_thread_read ithr s pos len
+        ( match buf with
+            | `Bytes s
+            | `String s ->
+	        Netsys_win32.input_thread_read ithr s pos len
+            | `Memory s ->
+                let b = Bytes.create len in
+	        let n = Netsys_win32.input_thread_read ithr b 0 len in
+                Netsys_mem.blit_bytes_to_memory b 0 s 0 n;
+                n
+        )
     | `TLS endpoint ->
-        Netsys_tls.recv (Netsys_tls.endpoint endpoint) s pos len
+        let ep = Netsys_tls.endpoint endpoint in
+        ( match buf with
+            | `Bytes s
+            | `String s ->
+                Netsys_tls.recv ep s pos len
+            | `Memory s ->
+                Netsys_tls.mem_recv ep s pos len
+        )
 
-let blocking_gread fd_style fd s pos len =
+let gread fd_style fd buf pos len =
+  gread_tbuf fd_style fd (`Bytes buf) pos len
+
+let blocking_gread_tbuf fd_style fd s pos len =
   let rec loop pos len p =
     if len >= 0 then
       try
-	let n = gread fd_style fd s pos len in
+	let n = gread_tbuf fd_style fd s pos len in
 	if n=0 then
 	  p
 	else
@@ -557,10 +670,17 @@ let blocking_gread fd_style fd s pos len =
   loop pos len 0
 
 
-let really_gread fd_style fd s pos len =
-  let p = blocking_gread fd_style fd s pos len in
+let blocking_gread fd_style fd s pos len =
+  blocking_gread_tbuf fd_style fd (`Bytes s) pos len
+  
+
+let really_gread_tbuf fd_style fd ts pos len =
+  let p = blocking_gread_tbuf fd_style fd ts pos len in
   if p < len then raise End_of_file;
   ()
+
+let really_gread fd_style fd s pos len =
+  really_gread_tbuf fd_style fd (`Bytes s) pos len
 
 
 let wait_until_connected fd tmo =

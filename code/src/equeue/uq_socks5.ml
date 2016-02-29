@@ -59,7 +59,7 @@ object(self)
   val mutable in_eof = false
   val mutable in_polling = false
 
-  val mutable message = ""
+  val mutable message = Bytes.create 0
     (* The message buffer *)
 
   val mutable message_length = 0
@@ -73,7 +73,7 @@ object(self)
     (* Initially, we do not poll *)
 
   method message =
-    if message_length = String.length message then
+    if message_length = Bytes.length message then
       message
     else
       failwith "incomplete message"
@@ -82,7 +82,7 @@ object(self)
     (* Reset the message, and expect that the next message will have 
      * n bytes 
      *)
-    message <- String.create n;
+    message <- Bytes.create n;
     message_length <- 0;
     self # check_input_polling()
 
@@ -125,7 +125,7 @@ object(self)
 
 
   method private handle_input() =
-    let message_expected = String.length message in
+    let message_expected = Bytes.length message in
     if not in_eof && message_length < message_expected then
       try
 	let n = Unix.read 
@@ -155,7 +155,7 @@ object(self)
      *)
     match self#state with
 	`Working _ ->
-	  let message_expected = String.length message in
+	  let message_expected = Bytes.length message in
 	  let need_polling = not in_eof && message_length < message_expected in
 	  ( if need_polling && not in_polling then
 	      Unixqueue.add_resource ues group (Unixqueue.Wait_in src, -1.0)
@@ -191,38 +191,38 @@ let create_socks_request rq_type sockspec =
 	  (* should be caught earlier *)
   in
   let len = 6 + dst_addr_len in
-  let rq = String.create len in
-  rq.[0] <- '\005';
-  rq.[1] <- (match rq_type with
+  let rq = Bytes.create len in
+  Bytes.set rq 0 '\005';
+  Bytes.set rq 1 (match rq_type with
 		 `Connect       -> '\001'
 	       | `Bind          -> '\002'
 	       | `UDP_associate -> '\003'
 	    );
-  rq.[2] <- '\000';
+  Bytes.set rq 2 '\000';
   ( match sockspec with
 	`Sock_inet(_, addr, port) ->
 	  ( match Netsys.domain_of_inet_addr addr with
 	      | Unix.PF_INET ->
-		  rq.[3] <- '\001';
+		  Bytes.set rq 3 '\001';
 		  let p = Netsys.protostring_of_inet_addr addr in
-		  String.blit p 0 rq 4 4;
-		  rq.[8] <- Char.chr (port lsr 8);
-		  rq.[9] <- Char.chr (port land 0xff);
+		  Bytes.blit_string p 0 rq 4 4;
+		  Bytes.set rq 8 (Char.chr (port lsr 8));
+		  Bytes.set rq 9 (Char.chr (port land 0xff));
 	      | Unix.PF_INET6 ->
-		  rq.[3] <- '\004';
+		  Bytes.set rq 3 '\004';
 		  let p = Netsys.protostring_of_inet_addr addr in
-		  String.blit p 0 rq 4 16;
-		  rq.[20] <- Char.chr (port lsr 8);
-		  rq.[21] <- Char.chr (port land 0xff);
+		  Bytes.blit_string p 0 rq 4 16;
+		  Bytes.set rq 20 (Char.chr (port lsr 8));
+		  Bytes.set rq 21 (Char.chr (port land 0xff));
 	      | _ -> assert false
 	  )
        | `Sock_inet_byname(_, name, port) ->
-	  rq.[3] <- '\003';
+	  Bytes.set rq 3 '\003';
 	  let l = String.length name in
-	  rq.[4] <- Char.chr l;
-	  String.blit name 0 rq 5 l;
-	  rq.[5+l] <- Char.chr (port lsr 8);
-	  rq.[6+l] <- Char.chr (port land 0xff);
+	  Bytes.set rq 4 (Char.chr l);
+	  Bytes.blit_string name 0 rq 5 l;
+	  Bytes.set rq (5+l) (Char.chr (port lsr 8));
+	  Bytes.set rq (6+l) (Char.chr (port land 0xff));
       | _ ->
 	  assert false
   );
@@ -250,33 +250,33 @@ let fill_udp_header buf sockspec =
 	  (* should be caught earlier *)
   in
   let len = 6 + dst_addr_len in
-  buf.[0] <- '\000';
-  buf.[1] <- '\000';
-  buf.[2] <- '\000';   (* no fragmentation *)
+  Bytes.set buf 0 '\000';
+  Bytes.set buf 1 '\000';
+  Bytes.set buf 2 '\000';   (* no fragmentation *)
   ( match sockspec with
 	`Sock_inet(_, addr, port) ->
 	  ( match Netsys.domain_of_inet_addr addr with
 	      | Unix.PF_INET ->
-		  buf.[3] <- '\001';
+		  Bytes.set buf 3 '\001';
 		  let p = Netsys.protostring_of_inet_addr addr in
-		  String.blit p 0 buf 4 4;
-		  buf.[8] <- Char.chr (port lsr 8);
-		  buf.[9] <- Char.chr (port land 0xff);
+		  Bytes.blit_string p 0 buf 4 4;
+		  Bytes.set buf 8 (Char.chr (port lsr 8));
+		  Bytes.set buf 9 (Char.chr (port land 0xff));
 	      | Unix.PF_INET6 ->
-		  buf.[3] <- '\004';
+		  Bytes.set buf 3 '\004';
 		  let p = Netsys.protostring_of_inet_addr addr in
-		  String.blit p 0 buf 4 16;
-		  buf.[20] <- Char.chr (port lsr 8);
-		  buf.[21] <- Char.chr (port land 0xff);
+		  Bytes.blit_string p 0 buf 4 16;
+		  Bytes.set buf 20 (Char.chr (port lsr 8));
+		  Bytes.set buf 21 (Char.chr (port land 0xff));
 	      | _ -> assert false
 	  )
        | `Sock_inet_byname(_, name, port) ->
-	  buf.[3] <- '\003';
+	  Bytes.set buf 3 '\003';
 	  let l = String.length name in
-	  buf.[4] <- Char.chr l;
-	  String.blit name 0 buf 5 l;
-	  buf.[5+l] <- Char.chr (port lsr 8);
-	  buf.[6+l] <- Char.chr (port land 0xff);
+	  Bytes.set buf 4 (Char.chr l);
+	  Bytes.blit_string name 0 buf 5 l;
+	  Bytes.set buf (5+l) (Char.chr (port lsr 8));
+	  Bytes.set buf (6+l) (Char.chr (port land 0xff));
       | _ ->
 	  assert false
   );
@@ -287,35 +287,35 @@ let fill_udp_header buf sockspec =
 exception Fragmented
 
 let read_udp_header buf len =
-  if buf.[0] <> '\000' || buf.[1] <> '\000' then
+  if Bytes.get buf 0 <> '\000' || Bytes.get buf 1 <> '\000' then
     socks_error "Protocol error";
 
-  if buf.[2] <> '\000' then raise Fragmented;
+  if Bytes.get buf 2 <> '\000' then raise Fragmented;
 
-  match buf.[3] with
+  match Bytes.get buf 3 with
       '\001' ->
 	(* IP version 4 address *)
 	if len < 10 then socks_error "Protocol error";
-	let addr = Netsys.inet_addr_of_protostring (String.sub buf 4 4) in
-	let p1 = Char.code buf.[8] in
-	let p0 = Char.code buf.[9] in
+	let addr = Netsys.inet_addr_of_protostring (Bytes.sub_string buf 4 4) in
+	let p1 = Char.code (Bytes.get buf 8) in
+	let p0 = Char.code (Bytes.get buf 9) in
 	let port = (p1 lsl 8) lor p0 in
 	(10, `Sock_inet(Unix.SOCK_DGRAM, addr, port))
     | '\004' ->
 	(* IP version 6 address *)
 	if len < 22 then socks_error "Protocol error";
-	let addr = Netsys.inet_addr_of_protostring (String.sub buf 4 16) in
-	let p1 = Char.code buf.[20] in
-	let p0 = Char.code buf.[21] in
+	let addr = Netsys.inet_addr_of_protostring (Bytes.sub_string buf 4 16) in
+	let p1 = Char.code (Bytes.get buf 20) in
+	let p0 = Char.code (Bytes.get buf 21) in
 	let port = (p1 lsl 8) lor p0 in
 	(10, `Sock_inet(Unix.SOCK_DGRAM, addr, port))
     | '\003' ->
 	(* Domainname *)
-	let namelen = Char.code buf.[4] in
+	let namelen = Char.code (Bytes.get buf 4) in
 	if len < 7+namelen then socks_error "Protocol error";
-	let name = String.sub buf 5 namelen in
-	let p1 = Char.code buf.[5+namelen] in
-	let p0 = Char.code buf.[6+namelen] in
+	let name = Bytes.sub_string buf 5 namelen in
+	let p1 = Char.code (Bytes.get buf (5+namelen)) in
+	let p0 = Char.code (Bytes.get buf (6+namelen)) in
 	let port = (p1 lsl 8) lor p0 in
 	(7+namelen, `Sock_inet_byname(Unix.SOCK_DGRAM, name, port))
     | _ ->
@@ -327,7 +327,7 @@ let read_udp_header buf len =
 class socks5_datagram_socket socks_sock udp_sock 
       : wrapped_datagram_socket =
 object(self)
-  val buf = String.create 8192
+  val buf = Bytes.create 8192
 	      (* Sufficient for UDP *)
 
   val mutable active = true
@@ -335,28 +335,28 @@ object(self)
   method descriptor = udp_sock
 
   method sendto s p n flags addrspec =
-    if p < 0 || n < 0 || p+n > String.length s then
+    if p < 0 || n < 0 || p+n > Bytes.length s then
       invalid_arg "sendto";
     if self#check_eof() then self#shut_down();
     if not active then socks_error "Proxy connection broken";
     let k = fill_udp_header buf addrspec in
-    if k+n > String.length buf then
+    if k+n > Bytes.length buf then
       (* socks_error "Datagram too large" *)
       raise(Unix.Unix_error(Unix.EMSGSIZE, "sendto(SOCKS)", ""));
-    String.blit s p buf k n;
+    Bytes.blit s p buf k n;
     let m = Unix.send udp_sock buf 0 (k+n) flags in
     m - k
     
   method recvfrom s p n flags =
-    if p < 0 || n < 0 || p+n > String.length s then
+    if p < 0 || n < 0 || p+n > Bytes.length s then
       invalid_arg "recvfrom";
     if self#check_eof() then self#shut_down();
     if not active then socks_error "Proxy connection broken";
     try
-      let m = Unix.recv udp_sock buf 0 (String.length buf) flags in
+      let m = Unix.recv udp_sock buf 0 (Bytes.length buf) flags in
       let (k, addrspec) = read_udp_header buf m in
       let m' = min (m-k) n in
-      String.blit buf k s p m';
+      Bytes.blit buf k s p m';
       (m', addrspec)
     with
 	Fragmented ->
@@ -364,7 +364,7 @@ object(self)
 
   method private check_eof() =
     (* Is there an EOF? - Assumes that socks_sock is non-blocking *)
-    let b = String.make 1 ' ' in
+    let b = Bytes.make 1 ' ' in
     try
       let n = Unix.read socks_sock b 0 1 in
       n = 0
@@ -480,8 +480,8 @@ object(self)
   method private virtual finish : 't -> unit
     
   method private output s =
-    let n = (Lazy.force socks_out) # output s 0 (String.length s) in
-    assert(n = String.length s)
+    let n = (Lazy.force socks_out) # output s 0 (Bytes.length s) in
+    assert(n = Bytes.length s)
       (* because socks_out is unconstrained *)
 
   (* The engine interface: *)
@@ -499,7 +499,7 @@ end
 
 let hello_and_authentication output socks_in followup =
   let rec start_state() =
-    let s = "\005\001\000" in
+    let s = Bytes.of_string "\005\001\000" in
     (* SOCKS Version 5; One auth method; Auth method 0
      * = no authentication
      *)
@@ -510,10 +510,10 @@ let hello_and_authentication output socks_in followup =
   and got_auth_method_state() =
     (* Interpret incoming message: *)
     let msg = socks_in # message in
-    assert(String.length msg = 2);
-    if msg.[0] <> '\005' then
+    assert(Bytes.length msg = 2);
+    if Bytes.get msg 0 <> '\005' then
       socks_error "Bad SOCKS protocol version";
-    if msg.[1] <> '\000' then
+    if Bytes.get msg 1 <> '\000' then
       socks_error "Authentication method not supported";
     followup()
 
@@ -530,11 +530,11 @@ let receive_socks_reply socks_in stype followup =
      * of the reply (until ATYP field) 
      *)
     let msg = socks_in # message in
-    assert(String.length msg = 4);
-    if msg.[0] <> '\005' then
+    assert(Bytes.length msg = 4);
+    if Bytes.get msg 0 <> '\005' then
       socks_error "Bad SOCKS protocol version";
-    if msg.[1] <> '\000' then (
-      match msg.[1] with
+    if Bytes.get msg 1 <> '\000' then (
+      match Bytes.get msg 1 with
 	  '\001' -> socks_error "General SOCKS server failure"
 	| '\002' -> socks_error "Connection not allowed by ruleset"
 	| '\003' -> socks_error "Network is unreachable"
@@ -545,7 +545,7 @@ let receive_socks_reply socks_in stype followup =
 	| '\008' -> socks_error "Address type not supported"
 	| _      -> socks_error "Protocol error (1)"
     );
-    match msg.[3] with
+    match Bytes.get msg 3 with
 	'\001' ->  (* IPV4 address *)
 	  socks_in # expect 4;
 	  Trans got_reply_ipv4_state
@@ -561,8 +561,8 @@ let receive_socks_reply socks_in stype followup =
   and got_reply_ipv4_state() =
     (* Interpret incoming message: Four bytes forming an IPv4 address *)
     let msg = socks_in # message in
-    assert(String.length msg = 4);
-    let addr = Netsys.inet_addr_of_protostring msg in
+    assert(Bytes.length msg = 4);
+    let addr = Netsys.inet_addr_of_protostring (Bytes.to_string msg) in
     let bnd_spec = `Sock_inet(stype, addr, 0) in
     socks_in # expect 2;
     Trans (got_reply_port_state bnd_spec)
@@ -570,8 +570,8 @@ let receive_socks_reply socks_in stype followup =
   and got_reply_ipv6_state() =
     (* Interpret incoming message: 16 bytes forming an IPv6 address *)
     let msg = socks_in # message in
-    assert(String.length msg = 16);
-    let addr = Netsys.inet_addr_of_protostring msg in
+    assert(Bytes.length msg = 16);
+    let addr = Netsys.inet_addr_of_protostring (Bytes.to_string msg) in
     let bnd_spec = `Sock_inet(stype, addr, 0) in
     socks_in # expect 2;
     Trans (got_reply_port_state bnd_spec)
@@ -579,25 +579,25 @@ let receive_socks_reply socks_in stype followup =
   and got_reply_domainname_state() =
     (* Interpret incoming message: The length of the domainname *)
     let msg = socks_in # message in
-    assert(String.length msg = 1);
-    let n = Char.code msg.[0] in
+    assert(Bytes.length msg = 1);
+    let n = Char.code (Bytes.get msg 0) in
     socks_in # expect n;
     Trans (got_reply_dnstring_state n)
 
   and got_reply_dnstring_state n () =
     (* Interpret incoming message: The domainname string *)
     let msg = socks_in # message in
-    assert(String.length msg = n);
-    let bnd_spec = `Sock_inet_byname(Unix.SOCK_STREAM, msg, 0) in
+    assert(Bytes.length msg = n);
+    let bnd_spec = `Sock_inet_byname(Unix.SOCK_STREAM, Bytes.to_string msg, 0) in
     socks_in # expect 2;
     Trans (got_reply_port_state bnd_spec)
 
   and got_reply_port_state bnd_prelim_spec () =
     (* Interpret incoming message: The port number *)
     let msg = socks_in # message in
-    assert(String.length msg = 2);
+    assert(Bytes.length msg = 2);
     let port = 
-      (Char.code msg.[0] lsl 8) lor (Char.code msg.[1]) in
+      (Char.code (Bytes.get msg 0) lsl 8) lor (Char.code (Bytes.get msg 1)) in
     let bnd_spec =
       match bnd_prelim_spec with
 	  `Sock_inet(stype, addr, _) -> 

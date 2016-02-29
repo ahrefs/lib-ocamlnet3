@@ -1,3 +1,43 @@
+RPC Direct mapping + internal sockets:
+ - new conversion function:
+   _xof_<t> : context -> t -> xdr_value
+   _of_<t> : uses a compatibility context
+ - context allows to specify:
+    * enable_direct : bool
+    * string_copy : string->string
+ - Generated _clnt and _srv:
+    * get context from Rpc_client/Rpc_server
+      (in particular enable_direct=false for internal sockets)
+
+Internal sockets:
+ - TODO: ensure that a copy is always made, even in direct mode
+ - TODO: check docs
+
+ - CHECK: restrict to xdr_value for now?
+ - add [`Internal of string] to Netplex_types.extended_address
+ - new: sockserv#internal_sockets
+ - new support module Netplex_internal: register, lookup
+     ADD DOC HERE
+ - Netplex_util:
+     create_server_socket: `Internal is supported (call into Netplex_internal),
+         and accept_descr is returned
+     close_server_socket: only accept_descr is closed
+     client_connector: not supported
+     client_mode: new, supported
+ - Netplex_sockserv: 
+     internal sockets do not pop up in #sockets but in #internal_sockets
+     handle it in std_socket_service#shutdown
+ - Netplex_container:
+     extend enable_accepting
+     how to generalize processor#process? ********** CRUCIAL **********
+      - add to processor_hooks: process_internal : ...
+        default is to reject the connection
+      - use a registry in Netplex_internal: user has to register the
+        processor
+ - Netplex_config:
+     address="internal": creates an internal socket in the mt case, AND NO
+     SOCKET IN MP MODE
+
 IETF docs:
  - HTTP auth: https://tools.ietf.org/wg/httpauth/
  - OAUTH: https://tools.ietf.org/wg/oauth/

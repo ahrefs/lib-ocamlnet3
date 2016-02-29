@@ -121,3 +121,20 @@ val serialize : mutex -> ('a -> 'b) -> 'a -> 'b
       the result.
    *)
 
+val atomic_init : 'a option ref -> 'a -> 'a
+  (** [atomic_init var new_value]: If the variable [var] is [None], it is
+      set to [Some new_value], and [new_value] is returned. If it is
+      [Some old_value], then [old_value] is returned. The operation is
+      atomic.
+
+      This function works independently of the provider.
+   *)
+
+val compare_and_swap : 'a ref -> 'a -> 'a -> bool
+  (** [compare_and_swap var old_value new_value]: If the variable [var] is
+      physically identical to [old_value] it is atomically set to
+      [new_value], and [true] is returned. Otherwise, [var] is not assigned,
+      and [false] is returned.
+
+      This function works independently of the provider.
+   *)

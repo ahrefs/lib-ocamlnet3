@@ -159,6 +159,7 @@ object
            srv cnid details pass =
     (* Unpack cred_data: *)
     let cred_flavor, cred_data = details # credential in
+    let cred_data = Bytes.of_string cred_data in
     let xdr = Netxdr.unpack_xdr_value cred_data val_auth_params_type [] in
     match xdr with
 	XV_struct

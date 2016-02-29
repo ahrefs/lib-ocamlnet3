@@ -76,13 +76,17 @@ let with_tty f =
 
 let descr_input_line fd = (* unbuffered! *)
   let b = Buffer.create 80 in
-  let s = String.create 1 in
+  let s = Bytes.create 1 in
 
   let rec loop () =
     try
       let n = Unix.read fd s 0 1 in
-      if n > 0 && s.[0] <> '\n' then (
-	Buffer.add_string b s;
+      if n > 0 && Bytes.get s 0 <> '\n' then (
+        #ifdef HAVE_BYTES
+	  Buffer.add_bytes b s;
+        #else
+          Buffer.add_string b (Bytes.unsafe_to_string s);
+        #endif
 	raise(Unix.Unix_error(Unix.EINTR,"",""))
       )
     with
@@ -614,7 +618,7 @@ type not_event
 
 external nsys_create_event : bool -> not_event = "netsys_create_not_event"
 external set_nonblock_event : not_event -> unit = "netsys_set_nonblock_not_event"
-external get_event_fd : not_event -> Unix.file_descr = "netsys_get_not_event_fd"
+external get_event_fd_nodup : not_event -> Unix.file_descr = "netsys_get_not_event_fd_nodup"
 external set_event : not_event -> unit = "netsys_set_not_event"
 external wait_event : not_event -> unit = "netsys_wait_not_event"
 external consume_event : not_event -> unit = "netsys_consume_not_event"
@@ -641,6 +645,14 @@ let destroy_event e =
     )
     (nsys_return_all_event_fd e);
   nsys_destroy_event e
+
+
+let get_event_fd e =
+  let fd = get_event_fd_nodup e in
+  let fd = Unix.dup fd in
+  Unix.set_close_on_exec fd;
+  fd
+
 
 let report_signal_as_event ne signum =
   (* This is simpler to implement in Ocaml than in C:

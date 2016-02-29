@@ -21,6 +21,18 @@ module SHA1_PLUS = struct
   let announce_channel_binding = true
 end
 
+module SHA256 = struct
+  let hash_function = `SHA_256
+  let iteration_count_limit = 100000
+  let announce_channel_binding = false
+end
+
+module SHA256_PLUS = struct
+  let hash_function = `SHA_256
+  let iteration_count_limit = 100000
+  let announce_channel_binding = true
+end
+
 module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
 
   let profile =
@@ -73,7 +85,6 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
           (function
             | (n, _, _) -> 
                 n = "authPassword-" ^ basic_mname
-            | _ -> false
           )
           c in
       let info = List.assoc "info" params in
@@ -108,7 +119,7 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
   type server_session =
       { ss : Netmech_scram.server_session;
         ss_fallback_i : int;
-        mutable ss_cb : (string * string) list;
+        ss_cb : (string * string) list;
         mutable ss_cb_ok : bool option;
       }
 
@@ -184,18 +195,19 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
     }
 
   let server_configure_channel_binding ss cb_list =
-    ss.ss_cb <- cb_list
+    { ss with ss_cb = cb_list }
 
 
   let server_process_response ss msg =
-    Netmech_scram.server_recv_message ss.ss msg
+    { ss with ss = Netmech_scram.server_recv_message ss.ss msg }
 
   let server_process_response_restart ss msg set_stale =
     failwith "Netmech_scram_sasl.server_process_response_restart: \
               not available"
              
   let server_emit_challenge ss =
-    Netmech_scram.server_emit_message ss.ss
+    let s, msg = Netmech_scram.server_emit_message ss.ss in
+    { ss with ss = s }, msg
 
   let server_channel_binding ss =
     Netmech_scram.server_channel_binding ss.ss
@@ -240,22 +252,21 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       | None -> raise Not_found
       | Some name -> name
       
-  type client_session =
-      { mutable cs : Netmech_scram.client_session;
-        mutable cerror : string;
-      }
+  type client_session = Netmech_scram.client_session
 
   let client_state cs =
-    if Netmech_scram.client_emit_flag cs.cs then
+    if Netmech_scram.client_emit_flag cs then
       `Emit
-    else if Netmech_scram.client_recv_flag cs.cs then
+    else if Netmech_scram.client_recv_flag cs then
       `Wait
-    else if Netmech_scram.client_finish_flag cs.cs then
+    else if Netmech_scram.client_finish_flag cs then
       `OK
-    else if Netmech_scram.client_error_flag cs.cs then
-      `Auth_error cs.cerror
     else
-      assert false
+      match Netmech_scram.client_error_flag cs with
+        | Some error ->
+            `Auth_error (Netmech_scram.error_of_exn error)
+        | None ->
+            assert false
       
   let client_known_params = [ "nonce"; "mutual"; "secure" ]
 
@@ -270,74 +281,40 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       with Not_found ->
         failwith "Netmech_scram_sasl.create_client_session: no password \
                   found in credentials" in
-    let cs =
-      Netmech_scram.create_client_session2
-        ?nonce:(try Some(List.assoc "nonce" params) with Not_found -> None)
-        profile
-        user
-        authz
-        pw in
-    { cs; cerror = "no error" }
+    Netmech_scram.create_client_session2
+      ?nonce:(try Some(List.assoc "nonce" params) with Not_found -> None)
+      profile
+      user
+      authz
+      pw
 
   let client_configure_channel_binding cs cb =
-    Netmech_scram.client_configure_channel_binding cs.cs cb
+    Netmech_scram.client_configure_channel_binding cs cb
       
   let client_channel_binding cs =
-    Netmech_scram.client_channel_binding cs.cs
+    Netmech_scram.client_channel_binding cs
 
   let client_restart cs =
     if client_state cs <> `OK then
       failwith "Netmech_scram_sasl.client_restart: unfinished auth";
-    let user = Netmech_scram.client_user_name cs.cs in
-    let authz = Netmech_scram.client_authz_name cs.cs in
-    let pw = Netmech_scram.client_password cs.cs in
-    let new_cs =
-      Netmech_scram.create_client_session2
-        profile
-        user
-        authz
-        pw in
-    cs.cs <- new_cs
+    let user = Netmech_scram.client_user_name cs in
+    let authz = Netmech_scram.client_authz_name cs in
+    let pw = Netmech_scram.client_password cs in
+    Netmech_scram.create_client_session2
+      profile
+      user
+      authz
+      pw
 
-  let error_of_exn =
-    function
-    | Netmech_scram.Invalid_encoding(m,_) ->
-        "Invalid encoding: " ^ m
-    | Netmech_scram.Invalid_username_encoding(m,_) ->
-        "Invalid user name encoding: " ^ m
-    | Netmech_scram.Extensions_not_supported(m,_) ->
-        "Extensions not supported: " ^ m
-    | Netmech_scram.Protocol_error m ->
-        "Protocol error: " ^ m
-    | Netmech_scram.Invalid_server_signature ->
-        "Invalid server signature"
-    | Netmech_scram.Server_error code ->
-        let m = Netmech_scram.string_of_server_error code in
-        "Server error code: " ^ m
-    | _ ->
-        assert false
-      
   let client_process_challenge cs msg =
-    try
-      Netmech_scram.client_recv_message cs.cs msg
-    with
-      ( Netmech_scram.Invalid_encoding _
-      | Netmech_scram.Invalid_username_encoding _
-      | Netmech_scram.Extensions_not_supported _
-      | Netmech_scram.Protocol_error _
-      | Netmech_scram.Invalid_server_signature
-      | Netmech_scram.Server_error _
-      ) as exn ->
-          assert(Netmech_scram.client_error_flag cs.cs);
-          cs.cerror <- error_of_exn exn;
-          ()
+    Netmech_scram.client_recv_message cs msg
                                       
   let client_emit_response cs =
-    Netmech_scram.client_emit_message cs.cs
+    Netmech_scram.client_emit_message cs
                                       
   let client_stash_session cs =
     "client,t=SCRAM;" ^ 
-      Netmech_scram.client_export cs.cs
+      Netmech_scram.client_export cs
       
   let cs_re = Netstring_str.regexp "client,t=SCRAM;"
 
@@ -348,29 +325,29 @@ module SCRAM(P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM = struct
       | Some m ->
            let data_pos = Netstring_str.match_end m in
            let data = String.sub s data_pos (String.length s - data_pos) in
-           { cs = Netmech_scram.client_import data;
-             cerror = "unknown"; (* FIXME *)
-           }
+           Netmech_scram.client_import data
       
   let client_session_id cs =
     None
       
   let client_prop cs key =
-    Netmech_scram.client_prop cs.cs key
+    Netmech_scram.client_prop cs key
 
   let client_gssapi_props cs =
     raise Not_found
 
   let client_user_name cs =
-    Netmech_scram.client_user_name cs.cs
+    Netmech_scram.client_user_name cs
 
   let client_authz_name cs =
-    Netmech_scram.client_authz_name cs.cs
+    Netmech_scram.client_authz_name cs
 end
 
 
 module SCRAM_SHA1 = SCRAM(SHA1)
 module SCRAM_SHA1_PLUS = SCRAM(SHA1_PLUS)
+module SCRAM_SHA256 = SCRAM(SHA256)
+module SCRAM_SHA256_PLUS = SCRAM(SHA256_PLUS)
 
 
 (*

@@ -2,6 +2,8 @@
 
 (** Unified engines for stream I/O *)
 
+open Netsys_types
+
 type in_buffer
 type out_buffer
   (** Buffers that can be attached to a [device] to get buffered I/O *)
@@ -69,11 +71,8 @@ type io_device =
   (** Bidirectional devices *)
 
 
-type string_like =
-    [ `String of string
-    | `Memory of Netsys_mem.memory
-    ]
-  (** The user can pass data buffers that base either on strings or on
+type string_like = Netsys_types.tbuffer
+  (** The user can pass data buffers that base either on bytes or on
       bigarrays of char (memory). Note that [`Memory] is not supported
       for all devices or device configurations.
    *)
@@ -86,7 +85,7 @@ exception Line_too_long
 
 (** {2 Input} *)
 
-val input_e : [< in_device ] -> string_like -> int -> int -> 
+val input_e : [< in_device ] -> tbuffer -> int -> int -> 
                 int Uq_engines.engine
  (** [let e = input_e d s pos len]: Reads data from [d] and puts it into
      the string [s] starting at [pos] and with maximum length [len].
@@ -97,7 +96,7 @@ val input_e : [< in_device ] -> string_like -> int -> int ->
      transitions to [`Error End_of_file].
   *)
 
-val really_input_e : [< in_device ] -> string_like -> int -> int ->
+val really_input_e : [< in_device ] -> tbuffer -> int -> int ->
                         unit Uq_engines.engine
  (** [let e = input_e d s pos len]: Reads data from [d] and puts it into
      the string [s] starting at [pos] and with length [len].
@@ -159,7 +158,7 @@ val in_obj_channel : [< in_device ] -> float -> Netchannels.in_obj_channel
 
 (** {2 Output} *)
 
-val output_e : [< out_device ] -> string_like -> int -> int ->
+val output_e : [< out_device ] -> tbuffer -> int -> int ->
                  int Uq_engines.engine
   (** [let e = output_e d s pos len]: Outputs data to [d] and takes it
       from the string [s] starting at [pos] and with maximum length
@@ -167,7 +166,7 @@ val output_e : [< out_device ] -> string_like -> int -> int ->
       where [n] is the number of actually written bytes.
   *)
 
-val really_output_e : [< out_device ] -> string_like -> int -> int ->
+val really_output_e : [< out_device ] -> tbuffer -> int -> int ->
                         unit Uq_engines.engine
   (** [let e = really_output_e d s pos len]: Outputs data to [d] and takes it
       from the string [s] starting at [pos] and with length
@@ -177,6 +176,11 @@ val really_output_e : [< out_device ] -> string_like -> int -> int ->
 
 val output_string_e : [< out_device ] -> string -> unit Uq_engines.engine
   (** [let e = output_string_e d s]: Outputs the string [s] to [d],
+      and transitions to [`Done()] when done.
+   *)
+
+val output_bytes_e : [< out_device ] -> Bytes.t -> unit Uq_engines.engine
+  (** [let e = output_bytes_e d s]: Outputs the bytes [s] to [d],
       and transitions to [`Done()] when done.
    *)
 
@@ -288,7 +292,7 @@ val create_in_buffer : ?small_buffer:bool -> [< in_device ] -> in_buffer
 val in_buffer_length : in_buffer -> int
   (** The length *)
 
-val in_buffer_blit : in_buffer -> int -> string_like -> int -> int -> unit
+val in_buffer_blit : in_buffer -> int -> tbuffer -> int -> int -> unit
   (** Blit to a string or memory buffer *)
 
 val in_buffer_fill_e : in_buffer -> bool Uq_engines.engine

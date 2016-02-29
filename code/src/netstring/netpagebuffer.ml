@@ -1,5 +1,7 @@
 (* $Id$ *)
 
+open Netsys_types
+
 type t =
     { pgsize : int;
       mutable pages : Netsys_mem.memory array;
@@ -97,9 +99,9 @@ let fix_invariant buf =
   )
 
 
-let blit_to_string buf pos s s_pos len =
+let blit_to_bytes buf pos s s_pos len =
   let buf_len = length buf in
-  let s_len = String.length s in
+  let s_len = Bytes.length s in
   if pos < 0 || s_pos < 0 || len < 0 || len > buf_len - pos || 
      len > s_len - s_pos then
        invalid_arg "Netpagebuffer.blit_to_string";
@@ -120,7 +122,7 @@ let blit_to_string buf pos s s_pos len =
       min
 	(if !cur_pg = pg1 then buf.pgsize - idx1 else buf.pgsize)
 	!rem_len in
-    Netsys_mem.blit_memory_to_string
+    Netsys_mem.blit_memory_to_bytes
       buf.pages.( !cur_pg )
       (if !cur_pg = pg1 then idx1 else 0)
       s
@@ -131,6 +133,9 @@ let blit_to_string buf pos s s_pos len =
     incr cur_pg;
   done
   
+let blit_to_string = blit_to_bytes
+let blit = blit_to_bytes
+
 
 let blit_to_memory buf pos m m_pos len =
   let buf_len = length buf in
@@ -168,22 +173,57 @@ let blit_to_memory buf pos m m_pos len =
     rem_len := !rem_len - l;
     incr cur_pg;
   done
+
+
+let blit_to_tbuffer buf pos tbuf pos2 len =
+  match tbuf with
+    | `Bytes s
+    | `String s ->
+        blit_to_bytes buf pos s pos2 len
+    | `Memory m ->
+        blit_to_memory buf pos m pos2 len
   
 
-let sub buf pos len =
+let sub_bytes buf pos len =
   let buf_len = length buf in
   if pos < 0 || len < 0 || len > buf_len - pos then
     invalid_arg "Netpagebuffer.sub";
-  let s = String.create len in
-  blit_to_string buf pos s 0 len;
+  let s = Bytes.create len in
+  blit_to_bytes buf pos s 0 len;
   s
+
+let sub buf pos len =
+  Bytes.unsafe_to_string (sub_bytes buf pos len)
 
 
 let contents buf =
   sub buf 0 (length buf)
 
+let to_bytes buf =
+  sub_bytes buf 0 (length buf)
 
-let add_sub_string buf s pos len =
+let to_memory buf =
+  let buf_len = length buf in
+  let m = Bigarray.Array1.create Bigarray.char Bigarray.c_layout buf_len in
+  blit_to_memory buf 0 m 0 buf_len;
+  m
+
+let to_tstring_poly : type s . t -> s Netstring_tstring.tstring_kind -> s =
+  fun buf kind ->
+    match kind with
+      | Netstring_tstring.String_kind -> contents buf
+      | Netstring_tstring.Bytes_kind -> to_bytes buf
+      | Netstring_tstring.Memory_kind -> to_memory buf
+
+let to_tstring : type s . t -> s Netstring_tstring.tstring_kind -> tstring =
+  fun buf kind ->
+  match kind with
+    | Netstring_tstring.String_kind -> `String (contents buf)
+    | Netstring_tstring.Bytes_kind -> `Bytes(to_bytes buf)
+    | Netstring_tstring.Memory_kind -> `Memory(to_memory buf)
+                                        
+
+let add_substring buf s pos len =
   let s_len = String.length s in
   if pos < 0 || len < 0 || len > s_len - pos then
     invalid_arg "Netpagebuffer.add_sub_string";
@@ -225,13 +265,22 @@ let add_sub_string buf s pos len =
       if l = buf.pgsize then buf.stop_index <- 0
     )
   done
+
+let add_sub_string = add_substring
   
 
 let add_string buf s =
-  add_sub_string buf s 0 (String.length s)
+  add_substring buf s 0 (String.length s)
 
 
-let add_sub_memory buf m pos len =
+let add_subbytes buf s pos len =
+  add_substring buf (Bytes.unsafe_to_string s) pos len
+
+let add_bytes buf s =
+  add_subbytes buf s 0 (Bytes.length s)
+
+
+let add_submemory buf m pos len =
   (* very similar to add_sub_string. For performance reasons this is a
      copy of the above algorithm
    *)
@@ -272,6 +321,22 @@ let add_sub_memory buf m pos len =
       if l = buf.pgsize then buf.stop_index <- 0
     )
   done
+
+let add_sub_memory = add_submemory
+
+
+let add_tstring buf ts =
+  match ts with
+    | `String s -> add_string buf s
+    | `Bytes s -> add_bytes buf s
+    | `Memory s -> add_submemory buf s 0 (Bigarray.Array1.dim s)
+
+
+let add_subtstring buf ts pos len =
+  match ts with
+    | `String s -> add_substring buf s pos len
+    | `Bytes s -> add_subbytes buf s pos len
+    | `Memory s -> add_submemory buf s pos len
 
 
 let page_for_additions buf =

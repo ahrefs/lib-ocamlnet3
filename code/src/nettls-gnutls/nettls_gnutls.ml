@@ -3,6 +3,9 @@
 open Printf
 
 module StrMap = Map.Make(String)
+module StrSet = Set.Make(String)
+module OID = struct type t = Netoid.t let compare = Pervasives.compare end
+module OIDMap = Map.Make(OID)
 
 module type GNUTLS_PROVIDER =
   sig
@@ -27,6 +30,28 @@ module type SELF =
   sig
     val self : exn ref
   end
+
+
+let parse_pem ?(empty_ok=false) header_tags file f =
+  let spec = List.map (fun tag -> (tag, `Base64)) header_tags in
+  let blocks =
+    Netchannels.with_in_obj_channel
+      (new Netchannels.input_channel(open_in file))
+      (fun ch -> Netascii_armor.parse spec ch) in
+  if not empty_ok && blocks = [] then
+    failwith ("Cannot find PEM-encoded objects in file: " ^ file);
+  List.map
+    (function
+      | (tag, `Base64 body) -> f (tag,body#value)
+      | _ -> assert false
+    )
+    blocks
+    
+let create_pem header_tag data =
+  let b64 = Netencoding.Base64.encode ~linelength:80 data in
+  "-----BEGIN " ^ header_tag ^ "-----\n" ^ 
+    b64 ^
+      "-----END " ^ header_tag ^ "-----\n"
 
 
 module Make_TLS_1 
@@ -145,29 +170,7 @@ module Make_TLS_1
       with
         | G.Error code ->
             raise(Exc.TLS_error (G.gnutls_strerror_name code))
-
-
-    let parse_pem ?(empty_ok=false) header_tags file f =
-      let spec = List.map (fun tag -> (tag, `Base64)) header_tags in
-      let blocks =
-        Netchannels.with_in_obj_channel
-          (new Netchannels.input_channel(open_in file))
-          (fun ch -> Netascii_armor.parse spec ch) in
-      if not empty_ok && blocks = [] then
-        failwith ("Cannot find PEM-encoded objects in file: " ^ file);
-      List.map
-        (function
-          | (tag, `Base64 body) -> f (tag,body#value)
-          | _ -> assert false
-        )
-        blocks
-
-    let create_pem header_tag data =
-      let b64 = Netencoding.Base64.encode ~linelength:80 data in
-      "-----BEGIN " ^ header_tag ^ "-----\n" ^ 
-        b64 ^
-      "-----END " ^ header_tag ^ "-----\n"
-
+                                   
 
     let create_config ?(algorithms="NORMAL") ?dh_params 
                       ?(verify=fun _ cert_ok name_ok -> cert_ok && name_ok)
@@ -404,7 +407,8 @@ module Make_TLS_1
         if role = `Client then (
           match peer_name with
             | None -> ()
-            | Some n -> G.gnutls_server_name_set session `Dns n
+            | Some n ->
+                G.gnutls_server_name_set session `Dns (Bytes.of_string n)
         );
 
         if role = `Server && config.peer_auth <> `None then
@@ -458,7 +462,7 @@ module Make_TLS_1
       let f() =
         let flags = [ `Client ] in
         let session = G.gnutls_init flags in
-        G.gnutls_session_set_data session data;
+        G.gnutls_session_set_data session (Bytes.unsafe_of_string data);
         let ep =
           { role = `Client;
             recv;
@@ -740,14 +744,14 @@ module Make_TLS_1
     let get_session_id ep =
       trans_exn
         (fun () ->
-           G.gnutls_session_get_id ep.session
+           Bytes.to_string (G.gnutls_session_get_id ep.session)
         )
         ()
 
     let get_session_data ep =
       trans_exn
         (fun () ->
-           G.gnutls_session_get_data ep.session
+           Bytes.to_string (G.gnutls_session_get_data ep.session)
         )
         ()
 
@@ -791,7 +795,7 @@ module Make_TLS_1
           let n1, t = G.gnutls_server_name_get ep.session k in
           let n2 =
             match t with
-              | `Dns -> `Domain n1 in
+              | `Dns -> `Domain (Bytes.to_string n1) in
           n2 :: get(k+1)
         with
           | G.Error `Requested_data_not_available ->
@@ -967,7 +971,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
                invalid_arg (sprintf "encrypt: buffers must be multiples \
                                      of %d" dc);
              if !first then
-               net_nettle_set_encrypt_key nc ctx key;
+               net_nettle_set_encrypt_key nc ctx (Bytes.of_string key);
              first := false;
              net_nettle_encrypt nc ctx lbuf outbuf inbuf in
            let decrypt inbuf outbuf =
@@ -979,7 +983,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
                invalid_arg (sprintf "decrypt: buffers must be multiples \
                                      of %d" dc);
              if !first then
-               net_nettle_set_decrypt_key nc ctx key;
+               net_nettle_set_decrypt_key nc ctx (Bytes.of_string key);
              first := false;
              net_nettle_decrypt nc ctx lbuf outbuf inbuf;
              true in
@@ -1034,9 +1038,9 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
              match !ctx with
                | None ->
                     let c = net_nettle_gcm_aes_init() in
-                    nettle_gcm_aes_set_key c key;
-                    nettle_gcm_aes_set_iv c !iv;
-                    nettle_gcm_aes_update c !hdr;
+                    nettle_gcm_aes_set_key c (Bytes.of_string key);
+                    nettle_gcm_aes_set_iv c (Bytes.of_string !iv);
+                    nettle_gcm_aes_update c (Bytes.of_string !hdr);
                     ctx := Some c;
                     c
                | Some c ->
@@ -1064,9 +1068,9 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
              true in
            let mac() =
              let c = get_ctx() in
-             let s = String.make 16 'X' in
+             let s = Bytes.make 16 'X' in
              nettle_gcm_aes_digest c s;
-             s in
+             Bytes.to_string s in
            { set_iv;
              set_header;
              encrypt;
@@ -1137,7 +1141,7 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
                | None ->
                     let c = gnutls_cipher_init algo key !iv in
                     if mode = "GCM" then
-                      gnutls_cipher_add_auth c !hdr;
+                      gnutls_cipher_add_auth c (Bytes.of_string !hdr);
                     ctx := Some c;
                     c
                | Some c ->
@@ -1169,9 +1173,9 @@ module Basic_symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO = struct
              match mode with
                | "GCM" ->
                     let c = get_ctx() in
-                    let s = String.create 16 in
+                    let s = Bytes.create 16 in
                     gnutls_cipher_tag c s;
-                    s
+                    Bytes.to_string s
                | _ ->
                     no_mac() in
            { set_iv;
@@ -1253,9 +1257,9 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
            let add mem =
              net_nettle_hash_update h ctx mem in
            let finish() =
-             let s = String.make size 'X' in
+             let s = Bytes.make size 'X' in
              net_nettle_hash_digest h ctx s;
-             s in
+             Bytes.to_string s in
            { add; finish } in
          { name;
            size;
@@ -1279,6 +1283,253 @@ module Digests : Netsys_crypto_types.DIGESTS = struct
 end
 
 
+module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO = struct
+  module G = Nettls_gnutls_bindings
+  module X = Netx509_pubkey
+  type oid = Netoid.t
+  type public_key = Netx509_pubkey.pubkey * G.gnutls_pubkey_t
+  type private_key = string * G.gnutls_privkey_t
+  type hash = [ `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
+  type algorithm =
+    | Encrypt of oid
+    | Sign of oid * hash
+  type x509_private_key = string * string
+  type pin_callback = unit
+
+
+  let trans_exn f arg =
+    try
+      f arg
+    with
+      | G.Error code ->
+          failwith (G.gnutls_strerror_name code)
+
+  let supported_x509_encrypt =
+    (* Generally assume that we support RSA without checking it *)
+    if G.net_have_pubkey() then
+      List.map
+        (fun (X.Encrypt(oid,_)) -> oid)
+        [ X.Encryption.rsa
+        ]
+    else
+      []
+
+  let catalog_hashes =
+    (* maps our name to GnuTLS name *)
+    [ `SHA_1,   "SHA1";
+      `SHA_224, "SHA224";
+      `SHA_256, "SHA256";
+      `SHA_384, "SHA384";
+      `SHA_512, "SHA512"
+    ]
+
+  let hash_set =
+    (* hashes supported by GnuTLS *)
+    List.fold_right 
+      StrSet.add 
+      (List.map G.gnutls_mac_get_name (G.gnutls_mac_list()))
+      StrSet.empty
+
+  let catalog_x509_sign =
+    (* catalog (oid, our hash name, GnuTLS name) *)
+    List.map
+      (fun (X.Sign(oid,_), hash, gnutls_name) -> (oid, hash, gnutls_name))
+      [ X.Signing.rsa_with_sha1,     `SHA_1,   "RSA-SHA1";
+        X.Signing.rsa_with_sha224,   `SHA_224, "RSA-SHA224";
+        X.Signing.rsa_with_sha256,   `SHA_256, "RSA-SHA256";
+        X.Signing.rsa_with_sha384,   `SHA_384, "RSA-SHA384";
+        X.Signing.rsa_with_sha512,   `SHA_512, "RSA-SHA512";
+        X.Signing.dsa_with_sha1,     `SHA_1,   "DSA-SHA1";
+        X.Signing.dsa_with_sha224,   `SHA_224, "DSA-SHA224";
+        X.Signing.dsa_with_sha256,   `SHA_256, "DSA-SHA256";
+        X.Signing.ecdsa_with_sha1,   `SHA_1,   "ECDSA-SHA1";
+        X.Signing.ecdsa_with_sha224, `SHA_224, "ECDSA-SHA224";
+        X.Signing.ecdsa_with_sha256, `SHA_256, "ECDSA-SHA256";
+        X.Signing.ecdsa_with_sha384, `SHA_384, "ECDSA-SHA384";
+        X.Signing.ecdsa_with_sha512, `SHA_512, "ECDSA-SHA512";
+      ]
+
+  let sign_set =
+    (* sign algs supported by GnuTLS *)
+    List.fold_right
+      StrSet.add
+      (List.map G.gnutls_sign_get_name (G.gnutls_sign_list()))
+      StrSet.empty
+
+  let sign_name_of_oid =
+    (* map OID of sign alg to GnuTLS name *)
+    List.fold_right
+      (fun (oid,_,name) acc ->
+         if StrSet.mem name sign_set then
+           OIDMap.add oid name acc
+         else
+           acc
+      )
+      catalog_x509_sign
+      OIDMap.empty
+
+  let supported_x509_sign =
+    if G.net_have_pubkey() then
+      let slist =
+        List.filter
+          (fun (_,_,gnutls_name) ->
+           StrSet.mem gnutls_name sign_set
+          )
+          catalog_x509_sign in
+      List.map (fun (oid,hash,_) -> oid,hash) slist
+    else
+      []
+
+  let supported_x509 =
+    if G.net_have_pubkey() then
+      supported_x509_encrypt
+      @ List.map (fun (oid,_) -> oid) supported_x509_sign
+    else
+      []
+
+  let algorithm_x509 oid params =
+    if List.mem oid supported_x509_encrypt then
+      Encrypt oid
+    else
+      try
+        let h = List.assoc oid supported_x509_sign in
+        Sign(oid, h)
+      with
+        | Not_found ->
+            failwith "Nettls_gnutls.Pubkey_crypto.algorith_x509: no such alg"
+
+  let import_public_key_x509 s =
+    let netpub = Netx509_pubkey.decode_pubkey_from_der s in
+    let pub = G.gnutls_pubkey_init() in
+    trans_exn (G.gnutls_pubkey_import pub s) `Der;
+    (netpub,pub)
+
+  let import_public_key_uri s =
+    failwith "Nettls_gnutls.Pubkey_crypto.import_public_key_uri: \
+              not implemented"
+(*
+    let pub = G.gnutls_pubkey_init() in
+    G.gnutls_pubkey_import_url pub s 0;
+    pub
+ *)
+
+  let import_public_key_uri_with_pin cb s =
+    failwith "Nettls_gnutls.Pubkey_crypto.import_public_key_uri_with_pin: \
+              not implemented"
+
+  let import_private_key_uri s =
+    failwith "Nettls_gnutls.Pubkey_crypto.import_private_key_uri: \
+              not implemented"
+
+  let import_private_key_uri_with_pin cb s =
+    failwith "Nettls_gnutls.Pubkey_crypto.import_private_key_uri_with_pin: \
+              not implemented"
+             
+  let import_private_key_x509 (format, s) =
+    let pem = create_pem (format ^ " PRIVATE KEY") s in
+    let priv1 = G.gnutls_x509_privkey_init() in
+    trans_exn (G.gnutls_x509_privkey_import priv1 pem) `Pem;
+    let priv2 = G.gnutls_privkey_init() in
+    trans_exn (G.gnutls_privkey_import_x509 priv2 priv1) 0;
+    (format,priv2)
+        
+  let import_public_key_from_private priv =
+    assert false   (* TODO *)
+(*
+    let pub = G.gnutls_pubkey_init() in
+    G.gnutls_pubkey_import_privkey pub priv 0 0;
+    pub
+ *)
+
+  let simple_pin_callback _ = ()
+
+  let privkey_format_of_encalg oid =
+    X.Key.private_key_format_of_key
+      (X.Encryption.key_oid_of_encrypt_alg
+         (X.Encrypt(oid,None)))
+
+  let privkey_format_of_signalg oid =
+    X.Key.private_key_format_of_key
+      (X.Signing.key_oid_of_sign_alg
+         (X.Sign(oid,None)))
+
+
+  let encrypt alg (netpub,pub) data =
+    let X.Alg_id(puboid,_) = X.(netpub.pubkey_type) in
+    match alg with
+      | Encrypt oid ->
+          let expected_puboid = 
+            X.Encryption.key_oid_of_encrypt_alg (X.Encrypt(oid,None)) in
+          if expected_puboid <> puboid then
+            failwith "Nettls_gnutls.Pubkey_crypto.encrypt: algorithm cannot \
+                      be applied to key";
+          G.gnutls_pubkey_encrypt_data pub 0 data
+      | _ ->
+          failwith "Nettls_gnutls.Pubkey_crypto.encrypt: not an encryption \
+                    algorithm"
+
+  let decrypt alg (format,priv) data =
+    match alg with
+      | Encrypt oid ->
+          let expected_format = privkey_format_of_encalg oid in
+          if format <> expected_format then
+            failwith "Nettls_gnutls.Pubkey_crypto.decrypt: algorithm cannot \
+                      be applied to key";
+          G.gnutls_privkey_decrypt_data priv 0 data
+      | _ ->
+          failwith "Nettls_gnutls.Pubkey_crypto.decrypt: not an encryption \
+                    algorithm"
+
+  let verify alg (netpub,pub) plaintext signature =
+    let X.Alg_id(puboid,_) = X.(netpub.pubkey_type) in
+    match alg with
+      | Sign(oid,_) ->
+          let expected_puboid =
+            X.Signing.key_oid_of_sign_alg (X.Sign(oid,None)) in
+          if expected_puboid <> puboid then
+            failwith "Nettls_gnutls.Pubkey_crypto.verify: algorithm cannot \
+                      be applied to key";
+          let gnutls_name =
+            try OIDMap.find oid sign_name_of_oid
+            with Not_found ->
+              failwith "Nettls_gnutls.Pubkey_crypto.verify: algorithm \
+                        not supported" in
+          let gnutls_alg =
+            G.gnutls_sign_get_id gnutls_name in
+          ( try
+              G.gnutls_pubkey_verify_data2 pub gnutls_alg 0 plaintext signature;
+              true
+            with
+              | G.Error _ ->
+                  false
+          )
+      | _ ->
+          failwith "Nettls_gnutls.Pubkey_crypto.verify: not a signing \
+                    algorithm"
+
+  let sign alg (format,priv) data =
+    match alg with
+      | Sign(oid,hash) ->
+          let expected_format = privkey_format_of_signalg oid in
+          if format <> expected_format then
+            failwith "Nettls_gnutls.Pubkey_crypto.sign: algorithm cannot \
+                      be applied to key";
+          let gnutls_hash_name =
+            List.assoc hash catalog_hashes in
+          if not (StrSet.mem gnutls_hash_name hash_set) then
+            failwith "Nettls_gnutls.Pubkey_crypto.sign: algorithm not \
+                      supported";
+          let gnutls_hash =
+            G.gnutls_mac_get_id gnutls_hash_name in
+          G.gnutls_privkey_sign_data priv gnutls_hash 0 data
+      | _ ->
+          failwith "Nettls_gnutls.Pubkey_crypto.sign: not a signing \
+                    algorithm"
+
+
+end
+
+
 (* Initialization of GnuTLS: This is done when the first wrapper function
    is invoked via nettls_init(). Note that (since around GnuTLS-3.2) the
    file /dev/random is permanently kept open. If this is in the way,
@@ -1294,6 +1545,8 @@ let init() =
     (module Symmetric_crypto : Netsys_crypto_types.SYMMETRIC_CRYPTO);
   Netsys_crypto.set_current_digests
     (module Digests : Netsys_crypto_types.DIGESTS);
+  Netsys_crypto.set_current_pubkey_crypto
+    (module Pubkey_crypto : Netsys_crypto_types.PUBKEY_CRYPTO);
   Netsys_posix.register_post_fork_handler
     ( object
         method name = "nettls_deinit"

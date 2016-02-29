@@ -91,10 +91,10 @@ let max_packet_size = 8192 (* 8Kb *)
 
 let buffer_add_int b n =
   assert(0 <= n && n <= 0xFFFF);
-  let sn = String.create 2 in
-  sn.[0] <- Char.unsafe_chr(n lsr 8);
-  sn.[1] <- Char.unsafe_chr(n land 0xFF);
-  Netbuffer.add_string b sn
+  let sn = Bytes.create 2 in
+  Bytes.set sn 0 (Char.unsafe_chr(n lsr 8));
+  Bytes.set sn 1 (Char.unsafe_chr(n land 0xFF));
+  Netbuffer.add_bytes b sn
 
 let buffer_add_string b s =
   buffer_add_int b (String.length s);
@@ -213,17 +213,17 @@ object (self)
   method send_user_data s pos len =
     (* outputs user data as ajp packet *)
     if len > 0 then (
-      let h = String.create 7 in  (* packet header *)
+      let h = Bytes.create 7 in  (* packet header *)
       let chunk_len = min len (max_packet_size - 8) in
       let payload_len = chunk_len + 4 in
-      h.[0] <- 'A';
-      h.[1] <- 'B';
-      h.[2] <- Char.unsafe_chr(payload_len lsr 8);
-      h.[3] <- Char.unsafe_chr(payload_len land 0xFF);
-      h.[4] <- '\x03'; (* prefix_code *)
-      h.[5] <- Char.unsafe_chr(chunk_len lsr 8);
-      h.[6] <- Char.unsafe_chr(chunk_len land 0xFF);
-      self # output_string h;
+      Bytes.set h 0 'A';
+      Bytes.set h 1 'B';
+      Bytes.set h 2 (Char.unsafe_chr(payload_len lsr 8));
+      Bytes.set h 3 (Char.unsafe_chr(payload_len land 0xFF));
+      Bytes.set h 4 '\x03'; (* prefix_code *)
+      Bytes.set h 5 (Char.unsafe_chr(chunk_len lsr 8));
+      Bytes.set h 6 (Char.unsafe_chr(chunk_len land 0xFF));
+      self # output_bytes h;
       self # really_output s pos chunk_len;
       self # output_char '\000'; (* to terminate the chunk *)
       self # send_user_data s (pos+chunk_len) (len-chunk_len);
@@ -265,10 +265,10 @@ object (self)
     let buf = Netbuffer.unsafe_buffer b
     and len = Netbuffer.length b in
     let payload_len = len - 4 in
-    buf.[2] <- Char.unsafe_chr(payload_len lsr 8);
-    buf.[3] <- Char.unsafe_chr(payload_len land 0xFF);
-    buf.[pos] <- Char.unsafe_chr(num_headers lsr 8);
-    buf.[pos+1] <- Char.unsafe_chr(num_headers land 0xFF);
+    Bytes.set buf 2 (Char.unsafe_chr(payload_len lsr 8));
+    Bytes.set buf 3 (Char.unsafe_chr(payload_len land 0xFF));
+    Bytes.set buf pos (Char.unsafe_chr(num_headers lsr 8));
+    Bytes.set buf (pos+1) (Char.unsafe_chr(num_headers land 0xFF));
     self # really_output buf 0 len
 end
 
@@ -349,7 +349,7 @@ object(self)
        Note that input_line is slow (but not used here)
      *)
 
-  val buf = String.create max_packet_size
+  val buf = Bytes.create max_packet_size
   val mutable buf_len = 0
   val mutable scan_pos = 0   (* for packet scanner below *)
 
@@ -360,14 +360,14 @@ object(self)
      payload.  Thus the data is in [buf.[0 .. length-1]].
      @raise Invalid if the packet is larger than the buffer. *)
   method input_packet() =
-    let s = String.create 4 in
+    let s = Bytes.create 4 in
     self # really_input s 0 4;
-    if s.[0] <> '\x12' || s.[1] <> '\x34' then
+    if Bytes.get s 0 <> '\x12' || Bytes.get s 1 <> '\x34' then
       raise(Invalid "Packets must start with 0x1234");
-    let len = (Char.code(s.[2]) lsl 8) lor (Char.code(s.[3])) in
-    if len > String.length buf then
+    let len = (Char.code(Bytes.get s 2) lsl 8) lor (Char.code(Bytes.get s 3)) in
+    if len > Bytes.length buf then
       raise(Invalid(sprintf "Packet data length = %i bytes > allowed = %i."
-                      len (String.length buf)));
+                      len (Bytes.length buf)));
     self # really_input buf 0 len;
     buf_len <- len;
     scan_pos <- 0;
@@ -391,7 +391,8 @@ object(self)
     if payload_len < 2 then
       raise(Invalid "Data packet payload too small");
 
-    let data_len = (Char.code(buf.[0]) lsl 8) lor (Char.code(buf.[1])) in
+    let data_len = (Char.code(Bytes.get buf 0) lsl 8) lor
+                     (Char.code(Bytes.get buf 1)) in
     if data_len+2 > payload_len then
       raise(Invalid "Length exceeds payload length");
 
@@ -406,21 +407,21 @@ object(self)
     if p >= buf_len then
       raise(Invalid "Scanning beyond end of packet");
     scan_pos <- p+1;
-    buf.[p] <> '\000'
+    Bytes.get buf p <> '\000'
 
   method scan_byte() =
     let p = scan_pos in
     if p >= buf_len then
       raise(Invalid "Scanning beyond end of packet");
     scan_pos <- p+1;
-    Char.code buf.[p]
+    Char.code (Bytes.get buf p)
 
   method scan_int() =
     let p = scan_pos in
     if p+1 >= buf_len then
       raise(Invalid "Scanning beyond end of packet");
     scan_pos <- p+2;
-    (Char.code(buf.[p]) lsl 8) lor (Char.code(buf.[p+1]))
+    (Char.code(Bytes.get buf p) lsl 8) lor (Char.code(Bytes.get buf (p+1)))
 
   method scan_string() =
     let l = self # scan_int() in
@@ -436,7 +437,7 @@ object(self)
       if p + l >= buf_len then
 	raise(Invalid "Scanning beyond end of packet");
       scan_pos <- p+l+1;
-      String.sub buf p l
+      Bytes.sub_string buf p l
     )
 
 end
@@ -466,7 +467,7 @@ object(self)
       buf_len <- l
     );
     let l = min len buf_len in
-    String.blit (ajp_ch # packet_buffer) buf_pos s pos l;
+    Bytes.blit (ajp_ch # packet_buffer) buf_pos s pos l;
     buf_pos <- buf_pos + l;
     buf_len <- buf_len - l;
     pos_in <- pos_in + l;

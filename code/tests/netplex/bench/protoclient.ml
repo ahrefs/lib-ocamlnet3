@@ -166,6 +166,35 @@ let register_accept_seq_exit() =
 
 (**********************************************************************)
 
+let register_sharedvar_tests() =
+  register_rpc_test "sharedvar1" "socket2"
+    (fun client ->
+       C.setvar1 client "abcdef";
+       C.updvar1 client ();
+       C.getvar1 client() = Some "abcdef"
+    );
+  register_rpc_test "sharedvar2" "socket2"
+    (fun client ->
+       C.setvar1 client "abcdef";
+       C.setvar2 client "ghijkl";
+       C.updvar1 client ();
+       C.getvar1 client() = Some "ghijkl" &&
+         C.getvar2 client() = Some "ghijkl"
+    );
+  register_rpc_test "sharedvar3" "socket2"
+    (fun client ->
+       C.setvar1 client "abcdef";
+       C.setvar2 client "ghijkl";
+       C.updvar1 client ();
+       C.setvar1 client "mnopqr";
+       C.updvar2 client ();
+       C.getvar1 client() = Some "mnopqr" &&
+         C.getvar2 client() = Some "mnopqr"
+    )
+
+(**********************************************************************)
+
+
 let main() =
   (* Register tests: *)
 
@@ -174,6 +203,7 @@ let main() =
     register_accept_seq();
     register_accept_par();
     register_accept_seq_exit();
+    register_sharedvar_tests();
   in
 
   (* Parse command line: *)

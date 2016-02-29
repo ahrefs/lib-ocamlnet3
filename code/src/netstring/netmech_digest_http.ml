@@ -9,7 +9,7 @@ module type PROFILE =
     val hash_functions : Netsys_digests.iana_hash_fn list
   end
 
-module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
+module Make_digest(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM = struct
 
   let profile =
     { ptype = `HTTP;
@@ -64,6 +64,8 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
     if cb <> `None then
       failwith "Netmech_digest_http.client_configure_channel_binding: \
                 not supported"
+    else
+      cs
 
   let client_restart ~params cs =
     if cs.cstate <> `OK then
@@ -84,19 +86,19 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
       | None ->
           let (_, msg_params) = challenge in
           let msg_params = decode_params msg_params in
-          client_process_initial_challenge_kv cs msg_params;
+          let cs = client_process_initial_challenge_kv cs msg_params in
           ( match cs.cresp with
-              | None -> ()
+              | None -> cs
               | Some rp ->
                   let rp' = 
                     { rp with
                       r_digest_uri = uri;
                       r_method = method_name
                     } in
-                  cs.cresp <- Some rp'
+                  { cs with cresp = Some rp' }
           )
       | Some rp ->
-          (* There muse be an Authorization-Info header *)
+          (* There must be an Authorization-Info header *)
           ( try
               let info = hdr # field "authentication-info" in
               let info_params = Nethttp.Header.parse_quoted_parameters info in
@@ -107,20 +109,21 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
             with
               | Not_found
               | Failure _ ->
-                  cs.cstate <- `Auth_error "bad Authentication-info header"
+                  { cs with
+                    cstate = `Auth_error "bad Authentication-info header" }
           )
 
 
   let client_emit_response cs method_name uri hdr =
     if cs.cstate <> `Emit && cs.cstate <> `Stale then
       failwith "Netmech_digest_http.client_emit_response: bad state";
-    client_modify ~mod_method:method_name ~mod_uri:uri cs;
-    let l1 = client_emit_response_kv ~quote:true cs in
+    let cs = client_modify ~mod_method:method_name ~mod_uri:uri cs in
+    let cs, l1 = client_emit_response_kv ~quote:true cs in
     let l2 =
       List.map
         (fun (n,v) -> (n, `Q v))
         l1 in
-    (("Digest", l2), [])
+    (cs, ("Digest", l2), [])
     
   let client_user_name cs =
     cs.cuser
@@ -163,7 +166,8 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM = struct
         create_client_session
           ~user:"user" ~creds:["password","",[]] ~params () in
       let hdr = new Netmime.basic_mime_header [] in
-      client_process_challenge cs "DUMMY" "dummy" hdr (ch_name, ch_params);
+      let cs = 
+        client_process_challenge cs "DUMMY" "dummy" hdr (ch_name, ch_params) in
       if cs.cstate = `Emit then
         match cs.cresp with
           | Some rp ->
@@ -183,7 +187,7 @@ module Digest =
   Make_digest(
       struct 
         let mutual = false
-        let hash_functions = [ `MD5 ]
+        let hash_functions = [ `SHA_256; `MD5 ]
       end
     )
 
@@ -191,6 +195,6 @@ module Digest_mutual =
   Make_digest(
       struct 
         let mutual = true
-        let hash_functions = [ `MD5 ]
+        let hash_functions = [ `SHA_256; `MD5 ]
       end
     )

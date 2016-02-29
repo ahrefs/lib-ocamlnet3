@@ -386,7 +386,7 @@ let inet6_binding =
 let host_binding =
   Netstring_str.regexp "^\\(.*\\):\\([0-9]+\\)$" ;;
 
-let extract_address socket_dir service_name proto_name cf addraddr =
+let extract_address ptype socket_dir service_name proto_name cf addraddr =
   let typ =
     try
       cf # string_param
@@ -402,6 +402,13 @@ let extract_address socket_dir service_name proto_name cf addraddr =
     with
       | Not_found ->
 	  failwith ("Missing parameter: " ^ cf#print addraddr ^ ".path") in
+  let get_name() =
+    try
+      (cf # string_param
+	      (cf # resolve_parameter addraddr "name"))
+    with
+      | Not_found ->
+	  failwith ("Missing parameter: " ^ cf#print addraddr ^ ".name") in
   ( match typ with
       | "local" ->
 	  cf # restrict_subsections addraddr [];
@@ -437,6 +444,14 @@ let extract_address socket_dir service_name proto_name cf addraddr =
 	  cf # restrict_subsections addraddr [];
 	  cf # restrict_parameters addraddr [ "type" ];
 	  [ `Container(socket_dir,service_name,proto_name,`Any) ]
+      | "internal" ->
+	  cf # restrict_subsections addraddr [];
+	  cf # restrict_parameters addraddr [ "type"; "name" ];
+          let name = get_name() in
+          if ptype = `Multi_threading then (
+            [ `Internal name ]
+          )
+          else []
       | "internet" ->
 	  cf # restrict_subsections addraddr [];
 	  cf # restrict_parameters addraddr [ "type"; "bind" ];
@@ -687,7 +702,8 @@ let read_netplex_config_ ptype c_logger_cfg c_wrkmng_cfg c_proc_cfg cf =
 		let addresses =
 		  List.flatten
 		    (List.map
-		       (extract_address socket_dir service_name prot_name cf)
+		       (extract_address
+                          ptype socket_dir service_name prot_name cf)
 		       (cf # resolve_section protaddr "address")) in
 
 		( object

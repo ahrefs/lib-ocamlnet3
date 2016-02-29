@@ -2,15 +2,22 @@
 
 (** Digest authentication for HTTP *)
 
-module Digest :  Nethttp.HTTP_MECHANISM
+module Digest :  Nethttp.HTTP_CLIENT_MECHANISM
   (** This is the standard HTTP digest authentication mechanism
-      (see RFC 2069 and 2617). This version does not include mutual
+      (see RFCs 2069, 2617, 7616). The hash functions MD5 and SHA-256
+      are supported, in server preference.
+
+      This version does not include mutual
       authentication, i.e. it does not matter what the server responds
       in the Authentication-Info header.
 
       There is no support for the "auth-int" level of protection.
 
-      How to use with {!Nethttp_client}: You need the adapter
+      How to use with {!Nethttp_client}: The handlers
+      {!Nethttp_client.unified_auth_handler} and
+      {!Nethttp_client.digest_aith_handler} wrap this mechanism already.
+      Additionally, there is also the option of plugging in this module
+      directly. For this, you need the adapter
       {!Nethttp_client.generic_auth_handler}, e.g.
 
       {[
@@ -26,9 +33,9 @@ module Digest :  Nethttp.HTTP_MECHANISM
       authentication will fail if this is not possible).
    *)
 
-module Digest_mutual :  Nethttp.HTTP_MECHANISM
+module Digest_mutual :  Nethttp.HTTP_CLIENT_MECHANISM
   (** This is the standard HTTP digest authentication mechanism
-      (see RFC 2069 and 2617). This version also authenticates the server
+      (see RFCs 2069, 2617, 7616). This version also authenticates the server
       by checking the Authentication-Info header which must include the
       correct [rspauth] parameter. This parameter proves that the server
       actually knew the password.
@@ -40,7 +47,8 @@ module Digest_mutual :  Nethttp.HTTP_MECHANISM
       it is recommended to ensure that requests not carrying any sensitive
       data precede those requests that need protection.
 
-      See {!Netmech_digest_http.Digest} for tips how to use this mechanism.
+      You need to explicitly plug in this module into the HTTP client
+      in order to enable it. See {!Netmech_digest_http.Digest} for details.
    *)
 
 
@@ -60,5 +68,5 @@ module type PROFILE =
   end
 
 
-module Make_digest(P:PROFILE) : Nethttp.HTTP_MECHANISM
+module Make_digest(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM
   (** Create a custom version of the digest mechanism *)

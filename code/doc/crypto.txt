@@ -16,11 +16,13 @@ the provider of the crypto functions:
 
  - {!Netsys_crypto_types.SYMMETRIC_CRYPTO}: Defines symmetric ciphers
  - {!Netsys_crypto_types.DIGESTS}: Defines digests (hashes)
+ - {!Netsys_crypto_types.PUBKEY_CRYPTO}: Defines public-key ciphers
 
 There are default providers:
 
- - {!Netsys_crypto.default_symmetric_crypto}
- - {!Netsys_crypto.default_digests}
+ - {!Netsys_crypto.current_symmetric_crypto}
+ - {!Netsys_crypto.current_digests}
+ - {!Netsys_crypto.current_pubkey_crypto}
 
 If not initialized, these providers are empty, i.e. the lists of available
 ciphers and digests are empty. This can be changed by initializing a provider.
@@ -39,6 +41,8 @@ in the buffer management. Instead, use the following functionality:
    a message with symmetric ciphers
  - Also see the channels described here: {!Netchannels_crypto.symmetric}
  - {!Netsys_digests} is the main API for digesting messages.
+ - {!Netx509_pubkey} and {!Netx509_pubkey_crypto} is the API for using
+   public key cryptography according to X509.
 
 {2 Examples}
 
@@ -103,3 +107,18 @@ If using a recent version of GnuTLS/Nettls:
  - SHA3 with block sizes 224, 256, 384 and 512 bits
  - RIPEMD (160 bits)
  - GOSTHASH94 (256 bits)
+
+{2 Supported public key ciphers}
+
+You can normally use for encryption:
+
+ - RSA
+
+You can use for signing:
+
+ - RSA
+ - DSA
+ - ECDSA
+
+Currently, there isn't an interface for key agreement yet, so all
+Diffie-Hellman variants are out of reach at the moment.

@@ -139,7 +139,7 @@ let output_stream_adapter ~ci ~close_in ~skip =
 	      raise End_of_file;
 	  );
 	  let n = min len (Netpagebuffer.length stdout_buf) in
-	  Netpagebuffer.blit_to_string stdout_buf 0 s pos n;
+	  Netpagebuffer.blit_to_bytes stdout_buf 0 s pos n;
 	  Netpagebuffer.delete_hd stdout_buf n;
 	  n
 	method close_in() =
@@ -179,7 +179,7 @@ let input_stream_adapter ~ci ~close_out =
   let ch =
     ( object 
 	method output s pos len =
-	  Netpagebuffer.add_sub_string stdin_buf s pos len;
+	  Netpagebuffer.add_subbytes stdin_buf s pos len;
 	  if Netpagebuffer.length stdin_buf > 16 * page_size then
 	      ci#run();
 	  len

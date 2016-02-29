@@ -73,7 +73,7 @@ set_defaults () {
 ocamlc=`get_path ocamlc`
 set_defaults
 
-version="4.0.4"
+version="4.1.0test1"
 exec_suffix=""
 path_sep=":"
 
@@ -95,7 +95,7 @@ ehelp_nethttpd="Enable/disable nethttpd web server component (GPL!)"
 eoptions="pcre full_pcre gtk gtk2 tcl gnutls gssapi zip apache nethttpd"
 
 # Packages to include anyway:
-requires="unix"
+requires="bytes unix"
 
 # Directory where to install data files:
 net_db_dir="<library directory>"
@@ -409,6 +409,12 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 
+
+######################################################################
+# cleanup
+
+rm -f config.cppo
+
 ######################################################################
 # Check OS
 
@@ -568,6 +574,67 @@ else
     echo "not found"
     have_gprof=0
 fi
+
+######################################################################
+
+printf "Checking for attributes... "
+case `ocamlc -version` in
+  [123].*)
+        echo "no"
+        attrs=0 ;;
+  4.0[01].*)
+        echo "no"
+        attrs=0 ;;
+  *)
+        echo "yes"
+        attrs=1 ;;
+esac
+
+if [ $attrs -gt 0 ]; then
+    cat <<EOF >>config.cppo
+#define DEPRECATED(arg) [@@deprecated arg] \(** @deprecated arg *)
+EOF
+else
+    cat <<EOF >>config.cppo
+#define DEPRECATED(arg)
+EOF
+fi
+
+######################################################################
+
+printf "Checking for immutable strings... "
+if ocamlc -safe-string >/dev/null 2>/dev/null; then
+    istring=1
+    echo "yes"
+else
+    istring=0
+    echo "no"
+fi
+
+if [ $istring -gt 0 ]; then
+    string_opts="-safe-string"
+    pp_bytes="-D HAVE_BYTES"
+else
+    string_opts=""
+    pp_bytes="-U HAVE_BYTES"
+fi
+
+######################################################################
+
+printf "Checking for extensible variants... "
+cat <<EOF >tmp/extvariant.ml
+type t = ..
+type t += X
+EOF
+
+if ocamlc -c tmp/extvariant.ml >/dev/null 2>/dev/null; then
+    echo "yes"
+    echo "#define HAVE_EXTENSIBLE_VARIANTS" >> config.cppo
+else
+    echo "no"
+    echo "#undef HAVE_EXTENSIBLE_VARIANTS" >> config.cppo
+fi
+
 
 ######################################################################
 # Check that pcre is available:
@@ -1066,6 +1133,13 @@ ENDIANESS = $endianess
 # gprof:
 HAVE_GPROF = $have_gprof
 
+# definition of the DEPRECATED macro
+PP_DEPRECATED =
+
+# strings
+STRING_OPTS = $string_opts
+PP_BYTES = $pp_bytes
+
 # REGEXP support:
 REGEXP_DEFS = $regexp_defs
 HAVE_PCRE = $have_pcre
@@ -1099,7 +1173,7 @@ APXS = $apxs
 OCAMLRPCGEN_CPP = $cpp
 
 # cppo:
-CPPO = $cppo
+CPPO = $cppo -include \$(TOP_DIR)/config.cppo
 CPPO_VERSION = $cppo_version
 $export_path
 _EOF_

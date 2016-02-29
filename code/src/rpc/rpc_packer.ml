@@ -24,16 +24,21 @@ let auth_flavor_of_pos =
 ;;
 
 
-let rpc_ts_unvalidated =
-  [ "auth_flavor",         X_enum [ "AUTH_NONE",     int4_of_int 0;
-				       (* also known as AUTH_NULL *)
-				    "AUTH_SYS",      int4_of_int 1;
-				    "AUTH_SHORT",    int4_of_int 2;
-				    "AUTH_DH",       int4_of_int 3;
-				       (* also known as AUTH_DES *)
-				    "RPCSEC_GSS",    int4_of_int 6;
-				  ];
+let auth_flavor_enum =
+  [ "AUTH_NONE",  0; (* also known as AUTH_NULL *)
+    "AUTH_SYS",   1;
+    "AUTH_SHORT", 2;
+    "AUTH_DH",    3; (* also known as AUTH_DES *)
+    "RPCSEC_GSS", 6;
+  ]
 
+
+
+let x_enum l =
+  X_enum (List.map (fun (n,i) -> (n, int4_of_int i)) l)
+
+let rpc_ts_unvalidated =
+  [ "auth_flavor",         x_enum auth_flavor_enum;
     "opaque_auth",         X_struct [ "flavor", X_type "auth_flavor";
 				      "body",   X_opaque (uint4_of_int 400) ];
 
@@ -175,19 +180,27 @@ let valid_void = validate_xdr_type X_void
 (****)
 
 type packed_value =
-  | PV of string                       (* as simple string *)
+  | PV of Bytes.t                       (* as simple string *)
   | PV_ms of Netxdr_mstring.mstring list  (* as concatenation of mstrings *)
+  | PV_pseudo of Netxdr.xdr_value
 
 (****)
 
-let pack_call ?encoder prog xid proc flav_cred data_cred flav_verf data_verf
-              proc_parm =
-
+let pack_call_pseudo_1 prog xid proc flav_cred data_cred flav_verf data_verf
+                       proc_parm =
   let prog_nr = Rpc_program.program_number prog in
   let vers_nr = Rpc_program.version_number prog in
   let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
 
-  let message_t = rpc_msg in      (* type of generic message *)
+  let flav_cred_pos =
+    try List.assoc flav_cred auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_call: bad auth flavor" in
+
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_call: bad auth flavor" in
 
   let message_v =                            (* value of the message *)
     (XV_struct_fast
@@ -201,23 +214,39 @@ let pack_call ?encoder prog xid proc flav_cred data_cred flav_verf data_verf
 		 (* vers *)    XV_uint vers_nr;
 		 (* proc *)    XV_uint proc_nr;
 		 (* cred *)    XV_struct_fast
-			         [| (* flavor *) XV_enum flav_cred;
+			         [| (* flavor *) XV_enum_fast flav_cred_pos;
 				    (* Body *)   XV_opaque data_cred
 				 |];
                  (* verf *)    XV_struct_fast
-			         [| (* flavor *) XV_enum flav_verf;
+			         [| (* flavor *) XV_enum_fast flav_verf_pos;
 				    (* body *)   XV_opaque data_verf
 				 |];
 		 (* param *)   proc_parm
 	      |]
             )
        |]) in
+  message_v
 
+
+let pack_call_pseudo prog xid proc flav_cred data_cred flav_verf data_verf
+                     proc_parm =
+  let message_v =
+    pack_call_pseudo_1
+      prog xid proc flav_cred data_cred flav_verf data_verf proc_parm in
+  PV_pseudo message_v
+
+
+let pack_call ?encoder prog xid proc flav_cred data_cred flav_verf data_verf
+              proc_parm =
+  let message_t = rpc_msg in      (* type of generic message *)
+  let message_v =
+    pack_call_pseudo_1
+      prog xid proc flav_cred data_cred flav_verf data_verf proc_parm in
   let encode =
     match encoder with
       | None -> []
       | Some e -> [ "in", e ] in
-
+  let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
   PV_ms
     (pack_xdr_value_as_mstrings
        ~encode
@@ -236,6 +265,11 @@ let pack_call_gssapi_header prog xid proc flav_cred data_cred =
 
   let message_t = rpc_msg_call_frame_up_to_cred in
 
+  let flav_cred_pos =
+    try List.assoc flav_cred auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_call_gssapi_header: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -248,7 +282,7 @@ let pack_call_gssapi_header prog xid proc flav_cred data_cred =
 		 (* vers *)    XV_uint vers_nr;
 		 (* proc *)    XV_uint proc_nr;
 		 (* cred *)    XV_struct_fast
-			         [| (* flavor *) XV_enum flav_cred;
+			         [| (* flavor *) XV_enum_fast flav_cred_pos;
 				    (* Body *)   XV_opaque data_cred
 				 |];
 	      |]
@@ -271,44 +305,58 @@ let unpack_call_frame_l  pv =
 
   let message_v, len =
     match pv with
-	PV octets ->
+      | PV octets ->
 	  unpack_xdr_value_l
 	    ~fast:true ~prefix:true octets message_t []
       | PV_ms mstrings ->
 	  (* FIXME: There is no faster method than this right now: *)
-	  let octets = Netxdr_mstring.concat_mstrings mstrings in
+	  let octets = Netxdr_mstring.concat_mstrings_bytes mstrings in
 	  unpack_xdr_value_l
 	    ~fast:true ~prefix:true octets message_t []
-  in
+      | PV_pseudo m ->
+          m, 0 in
 
   match message_v with
-    XV_struct_fast
-      [| (* xid *)  XV_uint xid;
-	 (* body *) XV_union_over_enum_fast
-	  ( (* CALL *)
-	    0,
-	    XV_struct_fast
-	      [| (* rpcvers *) XV_uint rpc_version;
-		 (* prog *)    XV_uint prog_nr;
-	         (* vers *)    XV_uint vers_nr;
-	         (* proc *)    XV_uint proc_nr;
-	         (* cred *)    XV_struct_fast
-		                 [| (* flavor *) XV_enum_fast flav_cred_pos;
-				    (* body *)   XV_opaque data_cred
-				 |];
-	         (* verf *)    XV_struct_fast
-				 [| (* flavor *) XV_enum_fast flav_verf_pos;
-			            (* body *)   XV_opaque data_verf
-				 |]
-	     |])
-      |] ->
-	if rpc_version = uint4_of_int 2 then
-	  xid, prog_nr, vers_nr, proc_nr,
-	  auth_flavor_of_pos flav_cred_pos, data_cred,
-	  auth_flavor_of_pos flav_verf_pos, data_verf,
-	  len
-        else
-	    raise (Rpc_cannot_unpack "RPC version not supported")
+    | XV_struct_fast
+        [| (* xid *)  XV_uint xid;
+	   (* body *) XV_union_over_enum_fast
+	    ( (* CALL *)
+	      0,
+	      XV_struct_fast body
+            )
+        |] ->
+          let l_body = Array.length body in
+          if l_body < 6 then 
+            raise (Rpc_cannot_unpack "strange message");
+          let body' =
+            if l_body = 6 then
+              body
+            else
+              Array.sub body 0 6 in
+          ( match body' with
+	      | [| (* rpcvers *) XV_uint rpc_version;
+		   (* prog *)    XV_uint prog_nr;
+                   (* vers *)    XV_uint vers_nr;
+                   (* proc *)    XV_uint proc_nr;
+                   (* cred *)    XV_struct_fast
+                                   [| (* flavor *) XV_enum_fast flav_cred_pos;
+                                      (* body *)   XV_opaque data_cred
+                                   |];
+                   (* verf *)    XV_struct_fast
+                                   [| (* flavor *) XV_enum_fast flav_verf_pos;
+                                      (* body *)   XV_opaque data_verf
+                                   |]
+                 |] ->
+                if rpc_version = uint4_of_int 2 then
+                  xid, prog_nr, vers_nr, proc_nr,
+                  auth_flavor_of_pos flav_cred_pos, data_cred,
+                  auth_flavor_of_pos flav_verf_pos, data_verf,
+                  len
+                else
+                  raise (Rpc_cannot_unpack "RPC version not supported")
+              | _ ->
+                  raise (Rpc_cannot_unpack "strange message")
+          )
   | _ ->
       raise (Rpc_cannot_unpack "strange message")
 
@@ -323,61 +371,118 @@ let unpack_call_frame octets =
    flav_cred, data_cred,
    flav_verf, data_verf)
 
+
+(****)
+
+let length_of_packed_value pv =
+  match pv with
+      PV octets -> Bytes.length octets
+    | PV_ms mstrings -> Netxdr_mstring.length_mstrings mstrings
+    | PV_pseudo _ ->
+        failwith "Rpc_packer.length_of_packed_value: unimplemented for \
+                  pseudo message"
+;;
+
+let string_of_packed_value pv =
+  match pv with
+      PV octets -> Bytes.to_string octets
+    | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
+    | PV_pseudo _ ->
+        failwith "Rpc_packer.string_of_packed_value: unimplemented for \
+                  pseudo message"
+;;
+
+let bytes_of_packed_value pv =
+  match pv with
+      PV octets -> octets
+    | PV_ms mstrings -> Netxdr_mstring.concat_mstrings_bytes mstrings
+    | PV_pseudo _ ->
+        failwith "Rpc_packer.bytes_of_packed_value: unimplemented for \
+                  pseudo message"
+;;
+
+let mstrings_of_packed_value pv =
+  match pv with
+    | PV octets -> 
+	[ Netxdr_mstring.bytes_based_mstrings # create_from_bytes
+	    octets 0 (Bytes.length octets) false ]
+    | PV_ms mstrings -> 
+	mstrings
+    | PV_pseudo _ ->
+        failwith "Rpc_packer.mstrings_of_packed_value: unimplemented for \
+                  pseudo message"
+;;
+
+let prefix_of_packed_value pv n =
+  match pv with
+    | PV octets ->
+	Bytes.sub_string octets 0 n
+    | PV_ms ms ->
+	Netxdr_mstring.prefix_mstrings ms n
+    | PV_pseudo _ ->
+        failwith "Rpc_packer.prefix_of_packed_value: unimplemented for \
+                  pseudo message"
+
+
 (****)
 
 let unpack_call_body ?mstring_factories ?decoder prog proc pv pos =
   let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
-
-  let message_t = rpc_msg_call_body in
-
-  let octets =
-    match pv with
-	PV octets -> octets
-      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
-  in
-
-  let decode =
-    match decoder with
-      | None -> []
-      | Some d -> [ "in", d ] in
-
-  let message_v =                            (* unpack the value *)
-    unpack_xdr_value
-      ~pos
-      ~fast:true
-      ?mstring_factories
-      ~decode
-      octets                                 (* XDR encoded value *)
-      message_t                              (* generic type *)
-      [ "in", in_t ]                         (* instance for "in" *)
-  in
-
-  message_v
+  match pv with
+    | PV_pseudo m ->
+        ( match m with
+            | XV_struct_fast
+              [| (* xid *)  _;
+                 (* body *) XV_union_over_enum_fast
+	                    ( (* CALL *)
+	                      0,
+	                      XV_struct_fast body
+                            )
+              |] ->
+                let l_body = Array.length body in
+                if l_body < 7 then 
+                  raise (Rpc_cannot_unpack "strange message");
+                body.(6)
+        )
+    | _ ->
+        let message_t = rpc_msg_call_body in
+        let octets = bytes_of_packed_value pv in
+        let decode =
+          match decoder with
+            | None -> []
+            | Some d -> [ "in", d ] in
+        let message_v =                            (* unpack the value *)
+          unpack_xdr_value
+            ~pos
+            ~fast:true
+            ?mstring_factories
+            ~decode
+            octets                                 (* XDR encoded value *)
+            message_t                              (* generic type *)
+            [ "in", in_t ]                         (* instance for "in" *)
+        in
+        message_v
 ;;
 
 
 let unpack_call_body_raw pv pos =
-  let octets =
-    match pv with
-	PV octets -> octets
-      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
-  in
+  let octets = bytes_of_packed_value pv in
+  Bytes.sub_string octets pos (Bytes.length octets - pos)
 
-  String.sub octets pos (String.length octets - pos)
+
+let unpack_call_body_raw_bytes pv pos =
+  let octets = bytes_of_packed_value pv in
+  Bytes.sub octets pos (Bytes.length octets - pos)
 
 
 (****)
 
 let extract_call_gssapi_header pv =
-  let octets = 
-    match pv with
-      | PV s -> s
-      | PV_ms mstrings -> (* FIXME *)
-	  Netxdr_mstring.concat_mstrings mstrings in
+  let octets = bytes_of_packed_value pv in
   (* The first 7 words have constant length. The 8th word contains the
      length of the rest (the data part of cred)
    *)
-  if String.length octets < 32 then
+  if Bytes.length octets < 32 then
     failwith "Rpc_packer.extract_call_gssapi_header: too short";
   let n =
     Netnumber.int_of_uint4 (Netnumber.BE.read_uint4 octets 28) in
@@ -402,12 +507,12 @@ let unpack_call ?mstring_factories ?decoder prog proc pv =
 
 (****)
 
-let pack_successful_reply ?encoder
+let pack_successful_reply_1
        prog proc xid flav_verf data_verf return_value =
-
-  let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
-
-  let message_t = rpc_msg in      (* type of generic message *)
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_successful_reply: bad auth flavor" in
 
   let message_v =                            (* value of the message *)
     (XV_struct_fast
@@ -420,19 +525,34 @@ let pack_successful_reply ?encoder
 		0,
 		XV_struct_fast
 		  [| (* verf *)
-		       XV_struct_fast [| (* flavor *) XV_enum flav_verf;
-	 		                 (* body *)   XV_opaque data_verf |];
+		     XV_struct_fast [| (* flavor *) XV_enum_fast flav_verf_pos;
+	 	                       (* body *)   XV_opaque data_verf |];
 		     (* reply_data *)
-		       XV_union_over_enum_fast
+		     XV_union_over_enum_fast
 			 ( (* SUCCESS *) 0, return_value)
 		  |] ))
        |] ) in
+  message_v
 
+let pack_successful_reply_pseudo 
+       prog proc xid flav_verf data_verf return_value =
+  let m = 
+    pack_successful_reply_1
+      prog proc xid flav_verf data_verf return_value in
+  PV_pseudo m
+
+
+let pack_successful_reply ?encoder
+       prog proc xid flav_verf data_verf return_value =
+  let message_t = rpc_msg in      (* type of generic message *)
+  let message_v =
+     pack_successful_reply_1
+       prog proc xid flav_verf data_verf return_value in
   let encode =
     match encoder with
       | None -> []
       | Some e -> [ "out", e ] in
-
+  let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
   PV_ms
     (pack_xdr_value_as_mstrings
        ~encode
@@ -441,6 +561,8 @@ let pack_successful_reply ?encoder
        [ "in", in_t;        (* ...instantiated with input type...*)
 	 "out", out_t ]     (* ...and output type *)
     )
+
+
 
 (****)
 
@@ -451,6 +573,11 @@ let pack_successful_reply_raw
 
   let message_t = rpc_msg in      (* type of generic message *)
 
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_successful_reply_raw: bad auth flavor" in
+
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -462,10 +589,10 @@ let pack_successful_reply_raw
 		0,
 		XV_struct_fast
 		  [| (* verf *)
-		       XV_struct_fast [| (* flavor *) XV_enum flav_verf;
-	 		                 (* body *)   XV_opaque data_verf |];
+		     XV_struct_fast [| (* flavor *) XV_enum_fast flav_verf_pos;
+	 		               (* body *)   XV_opaque data_verf |];
 		     (* reply_data *)
-		       XV_union_over_enum_fast
+		     XV_union_over_enum_fast
 			 ( (* SUCCESS *) 0, XV_void)
 		  |] ))
        |] ) in
@@ -481,8 +608,7 @@ let pack_successful_reply_raw
 
 (****)
 
-let pack_accepting_reply xid flav_verf data_verf condition =
-
+let pack_accepting_reply_1 xid flav_verf data_verf condition =
   let case, explanation =
     match condition with
       Unavailable_program       -> (* PROG_UNAVAIL *) 1, XV_void
@@ -495,7 +621,10 @@ let pack_accepting_reply xid flav_verf data_verf condition =
     | _                         -> failwith "pack_accepting_reply"
   in
 
-  let message_t = rpc_msg in      (* type of generic message *)
+  let flav_verf_pos =
+    try List.assoc flav_verf auth_flavor_enum
+    with Not_found ->
+      failwith "Rpc_packer.pack_accepting_reply: bad auth flavor" in
 
   let message_v =                            (* value of the message *)
     (XV_struct_fast
@@ -508,13 +637,23 @@ let pack_accepting_reply xid flav_verf data_verf condition =
 		 0,
 		 XV_struct_fast
 		   [| (* verf *) XV_struct_fast
-			           [| (* flavor *) XV_enum flav_verf;
+			           [| (* flavor *) XV_enum_fast flav_verf_pos;
 				      (* body *)   XV_opaque data_verf |];
 		      (* reply_data *) XV_union_over_enum_fast
 		                         (case, explanation)
 		   |] ))
        |] ) in
+  message_v
 
+
+let pack_accepting_reply_pseudo xid flav_verf data_verf condition =
+  let m = pack_accepting_reply_1 xid flav_verf data_verf condition in
+  PV_pseudo m
+
+
+let pack_accepting_reply xid flav_verf data_verf condition =
+  let message_t = rpc_msg in      (* type of generic message *)
+  let message_v = pack_accepting_reply_1 xid flav_verf data_verf condition in
   PV_ms
     (pack_xdr_value_as_mstrings
        message_v            (* the value to pack *)
@@ -525,8 +664,7 @@ let pack_accepting_reply xid flav_verf data_verf condition =
 
 (****)
 
-let pack_rejecting_reply xid condition =
-
+let pack_rejecting_reply_1 xid condition =
   let case, explanation =
     match condition with
       Rpc_mismatch (l,h) -> (* RPC_MISMATCH *) 0,
@@ -549,13 +687,6 @@ let pack_rejecting_reply xid condition =
     | RPCSEC_GSS_credproblem ->  1, XV_enum_fast 13
     | RPCSEC_GSS_ctxproblem ->   1, XV_enum_fast 14
   in
-
-(*
-  let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
-*)
-
-  let message_t = rpc_msg in      (* type of generic message *)
-
   let message_v =                            (* value of the message *)
     (XV_struct_fast
        [| (* xid *)  XV_uint xid;
@@ -566,7 +697,16 @@ let pack_rejecting_reply xid condition =
 	      ( (* MSG_DENIED *)
 		1,
 		XV_union_over_enum_fast (case, explanation)))|]) in
+  message_v
 
+let pack_rejecting_reply_pseudo xid condition =
+  let m = pack_rejecting_reply_1 xid condition in
+  PV_pseudo m
+
+
+let pack_rejecting_reply xid condition =
+  let message_t = rpc_msg in      (* type of generic message *)
+  let message_v = pack_rejecting_reply_1 xid condition in
   PV_ms
     (pack_xdr_value_as_mstrings
        message_v            (* the value to pack *)
@@ -578,31 +718,25 @@ let pack_rejecting_reply xid condition =
 (****)
 
 let unpack_reply ?mstring_factories ?decoder prog proc pv =
-
   let proc_nr, in_t, out_t = Rpc_program.signature prog proc in
-
-  let message_t = rpc_msg in      (* type of generic message *)
-
-  let octets =
-    match pv with
-	PV octets -> octets
-      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
-  in
-
-  let decode =
-    match decoder with
-      | None -> []
-      | Some d -> [ "out", d ] in
-
   let message_v =                            (* unpack the value *)
-    unpack_xdr_value
-      ~fast:true
-      ?mstring_factories
-      ~decode
-      octets                                 (* XDR encoded value *)
-      message_t                              (* generic type *)
-      [ "in", in_t;                          (* instance for "in" *)
-	"out", out_t ]                       (* instance for "out" type *)
+    match pv with
+      | PV_pseudo m -> m
+      | _ ->
+          let message_t = rpc_msg in      (* type of generic message *)
+          let octets = bytes_of_packed_value pv in
+          let decode =
+            match decoder with
+              | None -> []
+              | Some d -> [ "out", d ] in
+          unpack_xdr_value
+            ~fast:true
+            ?mstring_factories
+            ~decode
+            octets                                 (* XDR encoded value *)
+            message_t                              (* generic type *)
+            [ "in", in_t;                          (* instance for "in" *)
+	      "out", out_t ]                       (* instance for "out" type *)
   in
 
   try
@@ -688,25 +822,19 @@ let unpack_reply ?mstring_factories ?decoder prog proc pv =
 (****)
 
 let unpack_reply_verifier prog proc pv =
-
-  (* let proc_nr, in_t, out_t = Rpc_program.signature prog proc in *)
-
-  let message_t = rpc_msg in      (* type of generic message *)
-
-  let octets =
-    match pv with
-	PV octets -> octets
-      | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
-  in
-
   let message_v =                            (* unpack the value *)
-    unpack_xdr_value
-      ~fast:true
-      ~prefix:true
-      octets                                 (* XDR encoded value *)
-      message_t                              (* generic type *)
-      [ "in", valid_void;                    (* instance for "in" *)
-	"out", valid_void ]                  (* instance for "out" type *)
+    match pv with
+      | PV_pseudo m -> m
+      | _ ->
+          let message_t = rpc_msg in      (* type of generic message *)
+          let octets = bytes_of_packed_value pv in
+          unpack_xdr_value
+            ~fast:true
+            ~prefix:true
+            octets                                 (* XDR encoded value *)
+            message_t                              (* generic type *)
+            [ "in", valid_void;                    (* instance for "in" *)
+	      "out", valid_void ]                  (* instance for "out" type *)
   in
 
   try
@@ -741,13 +869,12 @@ let unpack_reply_verifier prog proc pv =
 (*****)
 
 let peek_xid pv =
-
   match pv with
-      PV octets ->
-	if String.length octets < 4 then
+    | PV octets ->
+	if Bytes.length octets < 4 then
 	  failwith "peek_xid: message too short [1]";
 
-	Netnumber.mk_uint4 (octets.[0], octets.[1], octets.[2], octets.[3])
+        Netnumber.BE.read_uint4 octets 0
 
     | PV_ms mstrings ->
 	if Netxdr_mstring.length_mstrings mstrings < 4 then
@@ -758,71 +885,100 @@ let peek_xid pv =
 
 	Netnumber.mk_uint4 (s.[0], s.[1], s.[2], s.[3])
 
+    | PV_pseudo m ->
+        ( match m with
+      	    | XV_struct_fast [| XV_uint n; _ |] -> n
+            | _ ->
+	        raise (Rpc_cannot_unpack "strange message")
+        )
+
 (*****)
 
 let peek_auth_error pv =
-  let len =
-    match pv with
-	PV octets -> String.length octets
-      | PV_ms mstrings -> Netxdr_mstring.length_mstrings mstrings in
-
-  if len <> 20 then
-    None
-  else (
-    let octets =
-      match pv with
-	  PV octets -> octets
-	| PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings in  
-
-    if String.sub octets 4 12 <> 
-          "\000\000\000\001\000\000\000\001\000\000\000\001"
-    then
-      None
-    else
-      match String.sub octets 16 4 with
-	  "\000\000\000\001" -> Some Auth_bad_cred
-	| "\000\000\000\002" -> Some Auth_rejected_cred
-	| "\000\000\000\003" -> Some Auth_bad_verf
-	| "\000\000\000\004" -> Some Auth_rejected_verf
-	| "\000\000\000\005" -> Some Auth_too_weak
-	| "\000\000\000\006" -> Some Auth_invalid_resp
-	| "\000\000\000\007" -> Some Auth_failed
-	| "\000\000\000\013" -> Some RPCSEC_GSS_credproblem
-	| "\000\000\000\014" -> Some RPCSEC_GSS_ctxproblem
-	| _                  -> None
-  )
+  match pv with
+    | PV_pseudo m ->
+        ( match m with
+            | XV_struct_fast
+              [| (* xid *)  XV_uint xid;
+                 (* body *) XV_union_over_enum_fast
+  	                ( (* REPLY *) 1, XV_union_over_enum_fast
+		                           ( reply_stat_pos, reply_part1_v )
+                        )
+              |] ->
+                if reply_stat_pos = 1 then
+                  ( match reply_part1_v with
+                      | XV_union_over_enum_fast
+	                    ( reject_stat_pos, reply_part2_v ) ->
+                          if reject_stat_pos = 1 then
+                            match reply_part2_v with
+			       | XV_enum_fast 0 ->
+			           Some Auth_bad_cred
+		               | XV_enum_fast 1 ->
+			           Some Auth_rejected_cred
+		               | XV_enum_fast 2 ->
+			           Some Auth_bad_verf
+		               | XV_enum_fast 3 ->
+			           Some Auth_rejected_verf
+		               | XV_enum_fast 4 ->
+			           Some Auth_too_weak
+		               | XV_enum_fast 5 ->
+                                   Some Auth_invalid_resp
+		               | XV_enum_fast 6 ->
+                                   Some Auth_failed
+		               | XV_enum_fast 13 ->
+                                   Some RPCSEC_GSS_credproblem
+		               | XV_enum_fast 14 ->
+			           Some RPCSEC_GSS_ctxproblem
+                               | _ ->
+                                   None
+                          else
+                            None
+                      | _ ->
+                          None
+                  )
+                else
+                  None
+            | _ ->
+                None
+        )
+    | _ ->
+        let len = length_of_packed_value pv in
+        if len <> 20 then
+          None
+        else (
+          let octets = bytes_of_packed_value pv in
+          if Bytes.sub_string octets 4 12 <> 
+                "\000\000\000\001\000\000\000\001\000\000\000\001"
+          then
+            None
+          else
+            match Bytes.sub_string octets 16 4 with
+                "\000\000\000\001" -> Some Auth_bad_cred
+              | "\000\000\000\002" -> Some Auth_rejected_cred
+              | "\000\000\000\003" -> Some Auth_bad_verf
+              | "\000\000\000\004" -> Some Auth_rejected_verf
+              | "\000\000\000\005" -> Some Auth_too_weak
+              | "\000\000\000\006" -> Some Auth_invalid_resp
+              | "\000\000\000\007" -> Some Auth_failed
+              | "\000\000\000\013" -> Some RPCSEC_GSS_credproblem
+              | "\000\000\000\014" -> Some RPCSEC_GSS_ctxproblem
+              | _                  -> None
+        )
 ;;
 
 (*****)
 
-let length_of_packed_value pv =
-  match pv with
-      PV octets -> String.length octets
-    | PV_ms mstrings -> Netxdr_mstring.length_mstrings mstrings
-;;
+let packed_value_of_string s = PV (Bytes.of_string s);;
 
-let string_of_packed_value pv =
-  match pv with
-      PV octets -> octets
-    | PV_ms mstrings -> Netxdr_mstring.concat_mstrings mstrings
-;;
-
-let packed_value_of_string s = PV s;;
+let packed_value_of_bytes s = PV s;;
 
 let packed_value_of_mstrings mstrings = PV_ms mstrings
 
-let mstrings_of_packed_value pv =
-  match pv with
-    | PV octets -> 
-	[ Netxdr_mstring.string_based_mstrings # create_from_string
-	    octets 0 (String.length octets) false ]
-    | PV_ms mstrings -> 
-	mstrings
-;;
+let xdr_of_pseudo_value =
+  function
+  | PV_pseudo m -> m
+  | _ ->
+      failwith "Rpc_packer.xdr_of_pseudo_value"
 
-let prefix_of_packed_value pv n =
-  match pv with
-    | PV octets ->
-	String.sub octets 0 n
-    | PV_ms ms ->
-	Netxdr_mstring.prefix_mstrings ms n
+let pseudo_value_of_xdr xdr =
+  PV_pseudo xdr

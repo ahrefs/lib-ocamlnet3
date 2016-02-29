@@ -541,6 +541,25 @@ let ip_url_syntax =
 ;;
 
 
+let ldap_url_syntax =
+  { url_enable_scheme    = Url_part_required;
+    url_enable_user      = Url_part_not_recognized;
+    url_enable_user_param= Url_part_not_recognized;
+    url_enable_password  = Url_part_not_recognized;
+    url_enable_host      = Url_part_allowed;
+    url_enable_port      = Url_part_allowed;
+    url_enable_path      = Url_part_allowed;
+    url_enable_param     = Url_part_not_recognized;
+    url_enable_query     = Url_part_allowed;
+    url_enable_fragment  = Url_part_not_recognized;
+    url_enable_other     = Url_part_not_recognized;
+    url_accepts_8bits    = false;
+    url_is_valid         = (fun _ -> true);
+    url_enable_relative  = true;
+  }
+;;
+
+
 let common_url_syntax =
   let h = Hashtbl.create 10 in
   Hashtbl.add h "file"   file_url_syntax;
@@ -560,6 +579,8 @@ let common_url_syntax =
   Hashtbl.add h "data"   data_url_syntax;
   Hashtbl.add h "ipp"    ipp_url_syntax;
   Hashtbl.add h "ipps"   ipp_url_syntax;
+  Hashtbl.add h "ldap"   ldap_url_syntax;
+  Hashtbl.add h "ldaps"  ldap_url_syntax;
   h
 ;;
 
@@ -744,7 +765,13 @@ let modify_url
   );
   let path_cats  = path_cats_from_syntax  new_syntax [] in
   let other_cats = other_cats_from_syntax new_syntax in
-  check_string url'.url_query    path_cats;
+  let query_cats =
+    let syn = { new_syntax with
+                url_enable_param = Url_part_not_recognized;
+                url_enable_query = Url_part_not_recognized
+              } in
+    path_cats_from_syntax syn [] in
+  check_string url'.url_query    query_cats;
   check_string url'.url_fragment path_cats;
   check_string url'.url_other    other_cats;
   (* Check the lists: *)
@@ -1324,8 +1351,12 @@ let url_of_string url_syntax s =
     if recognized url_syntax.url_enable_query  &&
        k5 < l  &&  s.[k5]='?'
     then begin
-      let cats  = path_cats_from_syntax url_syntax [] in
-      let seps  = separators_from_syntax url_syntax in
+      let syn = { url_syntax with
+                  url_enable_param = Url_part_not_recognized;
+                  url_enable_query = Url_part_not_recognized
+                } in
+      let cats  = path_cats_from_syntax syn [] in
+      let seps  = separators_from_syntax syn in
       
       (* Note: '>' is not allowed within URLs; because of this we can use
        * it as end-of-string character.

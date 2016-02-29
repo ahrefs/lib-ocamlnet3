@@ -75,11 +75,11 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       failwith "Netmech_digestmd5_sasl.server_emit_challenge: bad state";
     match ss.sresponse with
       | None ->
-          let l = server_emit_initial_challenge_kv ~quote:true ss in
-          format_kv l
+          let ss, l = server_emit_initial_challenge_kv ~quote:true ss in
+          (ss, format_kv l)
       | Some _ ->
-          let l = server_emit_final_challenge_kv ~quote:true ss in
-          format_kv l
+          let ss, l = server_emit_final_challenge_kv ~quote:true ss in
+          (ss, format_kv l)
 
 
   let server_process_response ss msg =
@@ -88,7 +88,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       server_process_response_kv ss msg_params "AUTHENTICATE"
     with
       | Failure _ ->  (* from parse_message *)
-           ss.sstate <- `Auth_error "parse error"
+           { ss with sstate = `Auth_error "parse error" }
 
   let server_process_response_restart ss msg set_stale =
     if ss.sstate <> `OK then
@@ -99,8 +99,9 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
       server_process_response_restart_kv ss msg_params set_stale "AUTHENTICATE"
     with
       | Failure _  -> (* from parse_message *)
-           ss.sstate <- `Auth_error "parse error";
-           raise Not_found
+           ( { ss with sstate = `Auth_error "parse error" },
+             false
+           )
 
              
   let server_channel_binding ss =
@@ -166,6 +167,8 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     if cb <> `None then
       failwith "Netmech_digestmd5_sasl.client_configure_channel_binding: \
                 not supported"
+    else
+      cs
 
   let client_state cs = cs.cstate
 
@@ -189,14 +192,14 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
         client_process_initial_challenge_kv cs msg_params
     with
       | Failure _ ->  (* from parse_message *)
-          cs.cstate <- `Auth_error "parse error"
+          { cs with cstate = `Auth_error "parse error" }
 
 
   let client_emit_response cs =
     if cs.cstate <> `Emit && cs.cstate <> `Stale then
       failwith "Netmech_digestmd5_sasl.client_emit_response: bad state";
-    let l = client_emit_response_kv ~quote:true cs in
-    format_kv l
+    let cs, l = client_emit_response_kv ~quote:true cs in
+    (cs, format_kv l)
 
   let client_stash_session cs =
     client_stash_session_i cs
@@ -224,55 +227,57 @@ end
 (*
 #use "topfind";;
 #require "netstring";;       
-open Netmech_digestmd5_sasl.DIGEST_MD5;;
+open Netmech_digest_sasl.DIGEST_MD5;;
 let creds = init_credentials ["password", "secret", []];;
 let lookup _ _ = Some creds;;
 let s = create_server_session ~lookup ~params:["realm", "elwood.innosoft.com", false; "nonce", "OA6MG9tEQGm2hh",false] ();;
-let s1 = server_emit_challenge s;;
+let s, s1 = server_emit_challenge s;;
 let c = create_client_session ~user:"chris" ~authz:"" ~creds ~params:["digest-uri", "imap/elwood.innosoft.com", false; "cnonce", "OA6MHXh6VqTrRk", false ] ();;
-client_process_challenge c s1;;
-let c1 = client_emit_response c;;
+let c = client_process_challenge c s1;;
+let c, c1 = client_emit_response c;;
 (* response=d388dad90d4bbd760a152321f2143af7 *)
-server_process_response s c1;;
-let s2 = server_emit_challenge s;;
+let s = server_process_response s c1;;
+let s, s2 = server_emit_challenge s;;
 assert(server_state s = `OK);;
-assert(s2 = "rspauth=ea40f60335c427b5527b84dbabcdfffd");;
-client_process_challenge c s2;;
+assert(s2 = "rspauth=\"ea40f60335c427b5527b84dbabcdfffd\"");;
+let c = client_process_challenge c s2;;
 assert(client_state c = `OK);;
 
+let crestart = c;;
+
 (* Reauth, short path: *)
-client_restart c;;
-let c2 = client_emit_response c;;
+let c = client_restart crestart;;
+let c, c2 = client_emit_response c;;
 (* nc=2 *)
 let stoo = create_server_session ~lookup ~params:["realm", "elwood.innosoft.com", false; ] ();;
-server_process_response stoo c2;;
+let stoo = server_process_response stoo c2;;
 assert(server_state stoo = `Restart "OA6MG9tEQGm2hh");;
 (* Now the server looks into the cache, and finds s under this ID *)
-server_process_response_restart s c2 false;;
+let s, _ = server_process_response_restart s c2 false;;
 assert(server_state s = `Emit);;
-let s3 = server_emit_challenge s;;
-assert(s3 = "rspauth=73dd7feae8e84a22b0ad1f92666954d0");;
+let s, s3 = server_emit_challenge s;;
+assert(s3 = "rspauth=\"73dd7feae8e84a22b0ad1f92666954d0\"");;
 assert(server_state s = `OK);;
-client_process_challenge c s3;;
+let c = client_process_challenge c s3;;
 assert(client_state c = `OK);;
 
 (* Reauth, long path: *)
-client_restart c;;
-let c2 = client_emit_response c;;
+let c = client_restart crestart;;
+let c, c2 = client_emit_response c;;
 (* nc=2 *)
 let stoo = create_server_session ~lookup ~params:["realm", "elwood.innosoft.com", false; ] ();;
-server_process_response stoo c2;;
+let stoo = server_process_response stoo c2;;
 assert(server_state stoo = `Restart "OA6MG9tEQGm2hh");;
-server_process_response_restart s c2 true;;   (* stale *)
-let s4 = server_emit_challenge s;;
+let s, _ = server_process_response_restart s c2 true;;   (* stale *)
+let s, s4 = server_emit_challenge s;;
 (* s4: new nonce, stale=true *)
-client_process_challenge c s4;;
+let c = client_process_challenge c s4;;
 assert(client_state c = `Stale);;
-let c3 = client_emit_response c;;
+let c, c3 = client_emit_response c;;
 (* c3: new cnonce *)
-server_process_response s c3;;
-let s5 = server_emit_challenge s;;
+let s = server_process_response s c3;;
+let s, s5 = server_emit_challenge s;;
 assert(server_state s = `OK);;
-client_process_challenge c s5;;
+let c = client_process_challenge c s5;;
 assert(client_state c = `OK);;
  *)

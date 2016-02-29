@@ -91,6 +91,9 @@ let client_connector addr =
 		  path_of_container_socket socket_dir sname pname id in
 		any_file_client_connector path
 	)
+    | `Internal _ ->
+        failwith "Netplex_sockserv.client_connector: internal services \
+                  not supported"
 
 	
 let try_mkdir f =
@@ -208,6 +211,8 @@ let create_server_socket srvname proto addr =
 	open_w32_pipe_file proto f
     | `Container _ ->
 	failwith "Netplex_sockserv.open_socket_for: found `Container address"
+    | `Internal _ ->
+	failwith "Netplex_sockserv.open_socket_for: found `Internal address"
 
 
 let close_server_socket_1 ?(release=false) fd =

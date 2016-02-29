@@ -12,9 +12,9 @@
     On Win32, an RNG is obtained using [CryptAcquireContext].
  *)
 
-val set_rng : (string -> unit) -> unit
+val set_rng : (Bytes.t -> unit) -> unit
   (** Sets the globally used RNG *)
 
-val fill_random : string -> unit
+val fill_random : Bytes.t -> unit
   (** Fills this string with random bytes *)
 

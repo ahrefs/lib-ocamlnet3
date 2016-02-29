@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = rpc
 
@@ -7,6 +9,8 @@ GENERATE = rpc_portmapper_aux.ml rpc_portmapper_clnt.ml META \
            rpc_auth_gssapi_aux.ml
 
 RPCGEN = ../rpc-generator/ocamlrpcgen
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules
 

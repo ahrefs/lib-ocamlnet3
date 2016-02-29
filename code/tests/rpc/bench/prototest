@@ -23,4 +23,6 @@ unix_path=/dummy
 trap "kill -2 $pid" EXIT
 
 # Start the test client:
-./protoclient $ssl -tcp_port $tcp_port -udp_port $udp_port -unix_path $unix_path "$@"
+./protoclient $ssl -tcp_port $tcp_port -udp_port $udp_port -unix_path $unix_path "$@" || exit
+
+./protointernal

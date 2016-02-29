@@ -1,12 +1,16 @@
 (* $Id$ *)
 
+open Netsys_types
+
 type iana_hash_fn =
   [ `MD2 | `MD5 | `SHA_1 | `SHA_224 | `SHA_256 | `SHA_384 | `SHA_512 ]
 
 class type digest_ctx =
 object
   method add_memory : Netsys_types.memory -> unit
+  method add_subbytes : Bytes.t -> int -> int -> unit
   method add_substring : string -> int -> int -> unit
+  method add_tstring : tstring -> int -> int -> unit
   method finish : unit -> string
 end
 
@@ -63,22 +67,32 @@ let name_rev_alist =
 
 module Digest(Impl : Netsys_crypto_types.DIGESTS) = struct
 
-  let digest_ctx (dg : Impl.digest) (ctx : Impl.digest_ctx) =
-    ( object
+  let digest_ctx (dg : Impl.digest) (ctx : Impl.digest_ctx) : digest_ctx =
+    ( object(self)
         method add_memory mem =
           Impl.add ctx mem
-        method add_substring s pos len =
+        method add_subbytes s pos len =
           let mem, free = Netsys_mem.pool_alloc_memory2 Netsys_mem.small_pool in
           let n = ref len in
           let p = ref pos in
           while !n > 0 do
             let r = min !n (Bigarray.Array1.dim mem) in
-            Netsys_mem.blit_string_to_memory s !p mem 0 r;
+            Netsys_mem.blit_bytes_to_memory s !p mem 0 r;
             Impl.add ctx (Bigarray.Array1.sub mem 0 r);
             n := !n - r;
             p := !p + r;
           done;
           free()
+        method add_substring s pos len =
+          self # add_subbytes (Bytes.unsafe_of_string s) pos len
+        method add_tstring s pos len =
+          match s with
+            | `Bytes u ->
+                self # add_subbytes u pos len
+            | `Memory u ->
+                self # add_memory (Bigarray.Array1.sub u pos len)
+            | `String u ->
+                self # add_substring u pos len
         method finish() =
           Impl.finish ctx
       end
@@ -130,10 +144,20 @@ let iana_find ?impl iana_name =
   find ?impl name
 
 
-let digest_string dg s =
+let digest_something adder length (dg : digest) s =
   let ctx = dg # create() in
-  ctx # add_substring s 0 (String.length s);
+  adder ctx s 0 (length s);
   ctx # finish()
+
+let digest_bytes dg s =
+  digest_something (fun ctx -> ctx#add_subbytes) Bytes.length dg s
+
+let digest_string dg s =
+  digest_something (fun ctx -> ctx#add_substring) String.length dg s
+
+let digest_tstring dg s =
+  digest_something (fun ctx -> ctx#add_tstring)
+                   Netsys_impl_util.tstring_length dg s
 
 
 let digest_mstrings (hash:digest) ms_list =
@@ -145,9 +169,9 @@ let digest_mstrings (hash:digest) ms_list =
       | ms :: in_list' ->
 	  let ms_len = ms#length in
 	  ( match ms#preferred with
-	      | `String ->
-		  let (s,start) = ms#as_string in
-		  ctx#add_substring s start ms_len;
+	      | `Bytes ->
+		  let (s,start) = ms#as_bytes in
+		  ctx#add_subbytes s start ms_len;
 		  loop in_list'
 	      | `Memory ->
 		  let (m,start) = ms#as_memory in
@@ -163,11 +187,11 @@ let xor_s s u =
   let s_len = String.length s in
   let u_len = String.length u in
   assert(s_len = u_len);
-  let x = String.create s_len in
+  let x = Bytes.create s_len in
   for k = 0 to s_len-1 do
-    x.[k] <- Char.chr ((Char.code s.[k]) lxor (Char.code u.[k]))
+    Bytes.set x k (Char.chr ((Char.code s.[k]) lxor (Char.code u.[k])))
   done;
-  x
+  Bytes.to_string x
 
 let hmac_ctx dg key =
   let b = dg # block_length in
@@ -185,8 +209,12 @@ let hmac_ctx dg key =
   ( object
       method add_memory m =
         ictx # add_memory m
+      method add_subbytes s pos len =
+        ictx # add_subbytes s pos len
       method add_substring s pos len =
         ictx # add_substring s pos len
+      method add_tstring s pos len =
+        ictx # add_tstring s pos len
       method finish() =
         let ires = ictx # finish() in
         digest_string dg ((xor_s k_padded opad) ^ ires)

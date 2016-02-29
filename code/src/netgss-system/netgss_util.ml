@@ -123,9 +123,9 @@ let _gss_buffer_t_of_message (ml : Netxdr_mstring.mstring list) =
                   let (mem1, pos) = m#as_memory in
                   let mem2 = Bigarray.Array1.sub mem1 pos m#length in
                   buffer_of_memory mem2
-             | `String ->
-                  let (str, pos) = m#as_string in
-                  buffer_of_string str pos m#length
+             | `Bytes ->
+                  let (str, pos) = m#as_bytes in
+                  buffer_of_bytes str pos m#length
          )
     | _ ->
          let len = Netxdr_mstring.length_mstrings ml in
@@ -144,10 +144,10 @@ let _message_of_gss_buffer_t pref_type buf =
             Also, memory_of_buffer ensures that buf cannot be collected before
             mem (with a tricky finalizer).
           *)
-    | `String ->
-         let str = string_of_buffer buf in
+    | `Bytes ->
+         let str = bytes_of_buffer buf in
          release_buffer buf;
-         [ Netxdr_mstring.string_to_mstring str ]
+         [ Netxdr_mstring.bytes_to_mstring str ]
 
 
 let cb_typed_string =

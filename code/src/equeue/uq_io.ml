@@ -1,24 +1,22 @@
 (* $Id$ *)
 
+open Netsys_types
 open Uq_engines.Operators
 open Printf
 
-type string_like =
-    [ `String of string
-    | `Memory of Netsys_mem.memory
-    ]
+type string_like = Netsys_types.tbuffer
 
 
 class type obj_buffer =
 object
   method length : int
-  method blit_out : int -> string_like -> int -> int -> unit
+  method blit_out : int -> tbuffer -> int -> int -> unit
   method delete_hd : int -> unit
   method index_from : int -> char -> int
-  method add : string_like -> int -> int -> unit
+  method add : tbuffer -> int -> int -> unit
   method advance : int -> unit
-  method page_for_additions : string_like * int * int
-  method page_for_consumption : string_like * int * int
+  method page_for_additions : tbuffer * int * int
+  method page_for_consumption : tbuffer * int * int
   method clear : unit -> unit
 end
 
@@ -108,9 +106,10 @@ let device_esys d =
   device_esys0 (d :> inout_device)
 
 
-let is_string =
+let is_bytes =
   function
     | `String _ -> true
+    | `Bytes _ -> true
     | `Memory _ -> false
 
 let rec device_supports_memory0 =
@@ -137,28 +136,6 @@ let rec device_supports_memory0 =
 
 let device_supports_memory d =
   device_supports_memory0 (d :> inout_device)
-
-
-let mem_gread style fd m pos len =
-  match style with
-    | `Read_write ->
-	Netsys_mem.mem_read fd m pos len
-    | `Recv_send _ | `Recv_send_implied ->
-	Netsys_mem.mem_recv fd m pos len []
-    | _ ->
-	failwith ("Uq_io: This fd style does not support `Memory: " ^ 
-		    Netsys.string_of_fd_style style)
-
-
-let mem_gwrite style fd m pos len =
-  match style with
-    | `Read_write ->
-	Netsys_mem.mem_write fd m pos len
-    | `Recv_send _ | `Recv_send_implied ->
-	Netsys_mem.mem_send fd m pos len []
-    | _ ->
-	failwith ("Uq_io: This fd style does not support `Memory: " ^ 
-		    Netsys.string_of_fd_style style)
 
 
 let ach_input_e ch esys s pos len =
@@ -199,7 +176,7 @@ let rec buf_input_e b ms pos len =
   else (
     (* Optimization: if len is quite large, bypass the buffer *)
     let d = b#udevice in
-    if len >= 4096 && (device_supports_memory d || is_string ms) then
+    if len >= 4096 && (device_supports_memory d || is_bytes ms) then
       dev_input_e d ms pos len
       >> (function
 	    | `Error End_of_file -> 
@@ -217,13 +194,8 @@ let rec buf_input_e b ms pos len =
 
 and gread_e style fd ms pos len =
   try
-    match ms with
-      | `String s ->
-	  let n = Netsys.gread style fd s pos len in
-	  (n, n=0)
-      | `Memory m ->
-	  let n = mem_gread style fd m pos len in
-	  (n, n=0)
+    let n = Netsys.gread_tbuf style fd ms pos len in
+    (n, n=0)
   with
     | Unix.Unix_error((Unix.EAGAIN|Unix.EWOULDBLOCK),_,_) ->
 	(0, false)
@@ -244,7 +216,8 @@ and dev_input_e (d : in_device) ms pos len =
 	let cancel() =
 	  if mplex#reading then mplex # cancel_reading() in
 	( match ms with
-	    | `String s ->
+	    | `String s
+            | `Bytes s ->
 		mplex # start_reading
 		  ~when_done:(fun xopt n ->
 				match xopt with
@@ -281,7 +254,8 @@ and dev_input_e (d : in_device) ms pos len =
 
     | `Async_in (ch,esys) ->
 	( match ms with
-	    | `String s ->
+	    | `String s
+            | `Bytes s ->
 		ach_input_e ch esys s pos len
 	    | `Memory m ->
 		eps_e
@@ -312,13 +286,13 @@ let rec really_input_e d ms pos len =
       (fun n -> really_input_e d ms (pos+n) (len-n))
 
 
-let input_line_e ?(max_len = Sys.max_string_length) (`Buffer_in b) =
+let input_line_e ?(max_len = Sys.max_string_length) (`Buffer_in b : in_bdevice) =
   let consume k1 k2 =
     if k2 > max_len then raise Line_too_long;
-    let s = String.create k1 in
-    b#buffer#blit_out 0 (`String s) 0 k1;
+    let s = Bytes.create k1 in
+    b#buffer#blit_out 0 (`Bytes s) 0 k1;
     b#buffer#delete_hd k2;
-    s in
+    Bytes.unsafe_to_string s in
   let rec look_ahead eof =
     try
       let k = b#buffer#index_from 0 '\n' in
@@ -356,9 +330,9 @@ exception Cont of (unit -> string list Uq_engines.engine)
 
 let input_lines_e ?(max_len = Sys.max_string_length) (`Buffer_in b) =
   let copy_string i l =
-    let s = String.create l in
+    let s = Bytes.create l in
     b#buffer#blit_out i (`String s) 0 l;
-    s in
+    Bytes.unsafe_to_string s in
   let consume k =
     b#buffer#delete_hd k in
   let rec look_ahead i acc eof =
@@ -440,7 +414,7 @@ let rec buf_output_e b ms pos len =
     (* Optimization: if len is large, try to bypass the buffer *)
     match b#udevice with
       | Some d when (
-	  bl=0 && len >= 4096 && (device_supports_memory d || is_string ms)
+	  bl=0 && len >= 4096 && (device_supports_memory d || is_bytes ms)
 	) ->
 	  dev_output_e d ms pos len
       | _ ->
@@ -467,11 +441,7 @@ and dev_output_e (d : out_device) ms pos len =
     | `Polldescr(style, fd, esys) ->
 	new Uq_engines.output_engine
 	  (fun fd -> 
-	     match ms with
-	       | `String s ->
-		   Netsys.gwrite style fd s pos len
-	       | `Memory m ->
-		   mem_gwrite style fd m pos len
+             Netsys.gwrite_tbuf style fd ms pos len
 	  )
 	  fd (-1.0) esys
 
@@ -480,7 +450,8 @@ and dev_output_e (d : out_device) ms pos len =
 	let cancel() =
 	  if mplex#writing then mplex # cancel_writing() in
 	( match ms with
-	    | `String s ->
+	    | `String s
+            | `Bytes s ->
 		mplex # start_writing
 		  ~when_done:(fun xopt n ->
 				match xopt with
@@ -514,7 +485,8 @@ and dev_output_e (d : out_device) ms pos len =
 
     | `Async_out (ch,esys) ->
 	( match ms with
-	    | `String s ->
+	    | `String s
+            | `Bytes s ->
 		ach_output_e ch esys s pos len
 	    | `Memory m ->
 		eps_e
@@ -544,8 +516,11 @@ let rec really_output_e d ms pos len =
     output_e d ms pos len ++ 
       (fun n -> really_output_e d ms (pos+n) (len-n))
 
+let output_bytes_e d s =
+  really_output_e d (`Bytes s) 0 (Bytes.length s)
+
 let output_string_e d s =
-  really_output_e d (`String s) 0 (String.length s)
+  output_bytes_e d (Bytes.unsafe_of_string s)
 
 let output_memory_e d m =
   really_output_e d (`Memory m) 0 (Bigarray.Array1.dim m)
@@ -778,17 +753,14 @@ let mem_obj_buffer small_buffer =
   ( object
       method length = Netpagebuffer.length buf
       method blit_out bpos ms pos len =
-	match ms with
-	  | `String s -> Netpagebuffer.blit_to_string buf bpos s pos len
-	  | `Memory m -> Netpagebuffer.blit_to_memory buf bpos m pos len
+        Netpagebuffer.blit_to_tbuffer buf bpos ms pos len
       method delete_hd n =
 	Netpagebuffer.delete_hd buf n
       method index_from pos c =
 	Netpagebuffer.index_from buf pos c
       method add ms pos len =
-	match ms with
-	  | `String s -> Netpagebuffer.add_sub_string buf s pos len
-	  | `Memory m -> Netpagebuffer.add_sub_memory buf m pos len
+        let ts = Netstring_tstring.tstring_of_tbuffer ms in
+        Netpagebuffer.add_subtstring buf ts pos len
       method advance n =
 	Netpagebuffer.advance buf n
       method page_for_additions =
@@ -810,25 +782,22 @@ let str_obj_buffer small_buffer =
   ( object
       method length = Netbuffer.length buf
       method blit_out bpos ms pos len =
-	match ms with
-	  | `String s -> Netbuffer.blit_to_string buf bpos s pos len
-	  | `Memory m -> Netbuffer.blit_to_memory buf bpos m pos len
+        Netbuffer.blit_to_tbuffer buf bpos ms pos len
       method delete_hd n =
 	Netbuffer.delete buf 0 n
       method index_from pos c =
 	Netbuffer.index_from buf pos c
       method add ms pos len =
-	match ms with
-	  | `String s -> Netbuffer.add_sub_string buf s pos len
-	  | `Memory m -> Netbuffer.add_sub_memory buf m pos len
+        let ts = Netstring_tstring.tstring_of_tbuffer ms in
+        Netbuffer.add_subtstring buf ts pos len
       method advance n =
 	Netbuffer.advance buf n
       method page_for_additions =
 	let (s,pos,len) = Netbuffer.area_for_additions buf in
-	(`String s, pos, len)
+	(`Bytes s, pos, len)
       method page_for_consumption =
 	let s = Netbuffer.unsafe_buffer buf in
-	(`String s, 0, Netbuffer.length buf)
+	(`Bytes s, 0, Netbuffer.length buf)
       method clear() =
 	Netbuffer.clear buf
     end
@@ -983,8 +952,8 @@ let copy_e ?(small_buffer=false) ?len ?len64 d_in d_out =
       (`Memory m, Bigarray.Array1.dim m, f)
     )
     else (
-      let s = String.create (if small_buffer then 4096 else 65536) in
-      (`String s, String.length s, (fun () -> ()))
+      let s = Bytes.create (if small_buffer then 4096 else 65536) in
+      (`Bytes s, Bytes.length s, (fun () -> ()))
     ) in
   (* Note that calling free_ms only accelerates that ms is recognized
      as free after the copy is done. It is not necessary to call it.
@@ -1069,7 +1038,7 @@ let filter_out_buffer ~max (p : Netchannels.io_obj_channel) d0 : out_buffer =
       let (ms,pos,len) = buf # page_for_consumption in
       let s =
 	match ms with
-	  | `String s -> s 
+	  | `String s | `Bytes s -> s 
 	  | `Memory _ -> assert false in
       q := 1;
       let n = p # output s pos len in

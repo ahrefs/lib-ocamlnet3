@@ -1,5 +1,7 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = netgss-system
 GENERATE = META netgss_bindings.ml netgss_bindings.mli \

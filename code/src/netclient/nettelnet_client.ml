@@ -219,7 +219,7 @@ class telnet_session =
 
     val mutable output_buffer = Netbuffer.create 8192
     val mutable input_buffer = Netbuffer.create 8192
-    val mutable primary_buffer = String.create 8192 
+    val mutable primary_buffer = Bytes.create 8192 
     val mutable send_eof = false
     val mutable sending_urgent_data = false
 
@@ -872,7 +872,7 @@ class telnet_session =
 	       let n =
 		 Netsys.gread 
 		   socket_style socket 
-                   primary_buffer 0 (String.length primary_buffer) in
+                   primary_buffer 0 (Bytes.length primary_buffer) in
 	       (n, n=0)
 	     with
 	       | Unix.Unix_error(Unix.EAGAIN,_,_)
@@ -885,7 +885,7 @@ class telnet_session =
                    (0, false)
 	  ) in
 
-      Netbuffer.add_sub_string input_buffer primary_buffer 0 n;
+      Netbuffer.add_subbytes input_buffer primary_buffer 0 n;
 
       (* Interpret the octet stream in 'input_buffer' as sequence of
        * commands
@@ -930,11 +930,11 @@ class telnet_session =
 	if pos >= length then
 	  finish length
 	else
-	  match buffer.[pos] with
+	  match Bytes.get buffer pos with
 	      '\255' -> 
 		(* IAC character *)
 		if pos+1 < length then begin
-		  match buffer.[pos+1] with
+		  match Bytes.get buffer (pos+1) with
 		    | '\240' -> Queue.add Telnet_se input_queue;
 			        interpret(pos+2);
 		    | '\241' -> Queue.add Telnet_nop input_queue;
@@ -962,8 +962,8 @@ class telnet_session =
 			        interpret(pos+2)
 		    | ('\250'..'\254') ->
 			if pos+2 < length then begin
-			  let option = buffer.[pos+2] in
-			  match buffer.[pos+1] with
+			  let option = Bytes.get buffer (pos+2) in
+			  match Bytes.get buffer (pos+1) with
 			    | '\250' -> Queue.add (Telnet_sb option) 
 				                  input_queue;
 				        interpret(pos+3);
@@ -982,7 +982,7 @@ class telnet_session =
 			    | _ -> assert false
 			end
 			else finish pos
-		    | _ -> Queue.add (Telnet_unknown(buffer.[pos+1]))
+		    | _ -> Queue.add (Telnet_unknown(Bytes.get buffer (pos+1)))
 			             input_queue;
 			   interpret(pos+2);
 		end
@@ -1071,7 +1071,7 @@ class telnet_session =
 		Netbuffer.add_string output_buffer s
 	      else
 		let l = String.length s in
-		Netbuffer.add_sub_string output_buffer s pos (l-pos)
+		Netbuffer.add_substring output_buffer s pos (l-pos)
       in
 
       let q = 

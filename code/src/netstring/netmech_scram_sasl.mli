@@ -40,6 +40,16 @@ module SHA1_PLUS : PROFILE
       "SCRAM-SHA-1-PLUS"
    *)
 
+module SHA256 : PROFILE
+  (** Uses SHA-256 as hash function. The iteration count is limited to 100000.
+      The mechanism name is "SCRAM-SHA-256".
+   *)
+
+module SHA256_PLUS : PROFILE
+  (** Same as {!Netmech_scam_sasl.SHA256}, only that the mechanism name is
+      "SCRAM-SHA-256-PLUS"
+   *)
+
 module SCRAM (P:PROFILE) : Netsys_sasl_types.SASL_MECHANISM
   (** Create a new SCRAM SASL mechanism for this profile.
 
@@ -92,3 +102,9 @@ module SCRAM_SHA1 : Netsys_sasl_types.SASL_MECHANISM
 
 module SCRAM_SHA1_PLUS : Netsys_sasl_types.SASL_MECHANISM
   (** SCRAM with SHA1_PLUS profile *)
+
+module SCRAM_SHA256 : Netsys_sasl_types.SASL_MECHANISM
+  (** SCRAM with SHA256 profile *)
+
+module SCRAM_SHA256_PLUS : Netsys_sasl_types.SASL_MECHANISM
+  (** SCRAM with SHA256_PLUS profile *)

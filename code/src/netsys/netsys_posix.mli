@@ -627,7 +627,7 @@ external set_nonblock_event : not_event -> unit
   = "netsys_set_nonblock_not_event"
   (** Sets the event fd to non-blocking mode *)
 
-external get_event_fd : not_event -> Unix.file_descr = "netsys_get_not_event_fd"
+val get_event_fd : not_event -> Unix.file_descr
   (** Returns a duplicate of the underlying file descriptor. This should only 
       be used for one thing: checking whether the desciptor becomes readable.
       As this is a duplicate, the caller has to close the descriptor.
@@ -1431,3 +1431,8 @@ module Debug : sig
     (** Enables {!Netlog}-style debugging *)
 
 end
+
+
+(**/**)
+
+external get_event_fd_nodup : not_event -> Unix.file_descr = "netsys_get_not_event_fd_nodup"

@@ -27,17 +27,17 @@ end
 module Client = struct
   module type SESSION =
     sig
-      include Netsys_sasl_types.SASL_MECHANISM
-      val s : client_session
+      module M : Netsys_sasl_types.SASL_MECHANISM
+      val s : M.client_session
     end
 
   class type session =
     object
       method state : Netsys_sasl_types.client_state
-      method configure_channel_binding : Netsys_sasl_types.cb -> unit
-      method restart : unit -> unit
-      method process_challenge : string -> unit
-      method emit_response : unit -> string
+      method configure_channel_binding : Netsys_sasl_types.cb -> session
+      method restart : unit -> session
+      method process_challenge : string -> session
+      method emit_response : unit -> session * string
       method channel_binding : Netsys_sasl_types.cb
       method user_name : string
       method authz_name : string
@@ -47,33 +47,37 @@ module Client = struct
       method gssapi_props : Netsys_gssapi.client_props
     end
 
-  let session packed_session : session =
+  let rec session packed_session : session =
     let module S = (val packed_session : SESSION) in
+    let pack s =
+      let module S' = struct module M = S.M let s = s end in
+      session (module S') in
     object
       method state =
-        S.client_state S.s
+        S.M.client_state S.s
       method configure_channel_binding cb =
-        S.client_configure_channel_binding S.s cb
+        pack (S.M.client_configure_channel_binding S.s cb)
       method restart() =
-        S.client_restart S.s
+        pack (S.M.client_restart S.s)
       method process_challenge msg =
-        S.client_process_challenge S.s msg
+        pack (S.M.client_process_challenge S.s msg)
       method emit_response() =
-        S.client_emit_response S.s
+        let (s', resp) = S.M.client_emit_response S.s in
+        (pack s', resp)
       method channel_binding =
-        S.client_channel_binding S.s
+        S.M.client_channel_binding S.s
       method user_name =
-        S.client_user_name S.s
+        S.M.client_user_name S.s
       method authz_name =
-        S.client_authz_name S.s
+        S.M.client_authz_name S.s
       method stash_session() =
-        S.client_stash_session S.s
+        S.M.client_stash_session S.s
       method session_id =
-        S.client_session_id S.s
+        S.M.client_session_id S.s
       method prop key =
-        S.client_prop S.s key
+        S.M.client_prop S.s key
       method gssapi_props =
-        S.client_gssapi_props S.s
+        S.M.client_gssapi_props S.s
     end
 
   let create_session ~mech ~user ~authz ~creds ~params () =
@@ -82,7 +86,7 @@ module Client = struct
     let s = M.create_client_session ~user ~authz ~creds:c ~params() in
     let module S =
       struct
-        include M
+        module M = M
         let s = s
       end in
     session (module S)
@@ -92,7 +96,7 @@ module Client = struct
     let s = M.client_resume_session data in
     let module S =
       struct
-        include M
+        module M = M
         let s = s
       end in
     session (module S)
@@ -115,16 +119,16 @@ end
 module Server = struct
   module type SESSION =
     sig
-      include Netsys_sasl_types.SASL_MECHANISM
-      val s : server_session
+      module M : Netsys_sasl_types.SASL_MECHANISM
+      val s : M.server_session
     end
 
   class type session =
     object
       method state : Netsys_sasl_types.server_state
-      method process_response : string -> unit
-      method process_response_restart : string -> bool -> bool
-      method emit_challenge : unit -> string
+      method process_response : string -> session
+      method process_response_restart : string -> bool -> session * bool
+      method emit_challenge : unit -> session * string
       method stash_session : unit -> string
       method session_id : string option
       method prop : string -> string
@@ -137,31 +141,36 @@ module Server = struct
   type 'credentials init_credentials =
       (string * string * (string * string) list) list -> 'credentials
 
-  let session packed_session : session =
+  let rec session packed_session : session =
     let module S = (val packed_session : SESSION) in
+    let pack s =
+      let module S' = struct module M = S.M let s = s end in
+      session (module S') in
     object
       method state =
-        S.server_state S.s
+        S.M.server_state S.s
       method process_response msg =
-        S.server_process_response S.s msg
+        pack (S.M.server_process_response S.s msg)
       method process_response_restart msg stale =
-        S.server_process_response_restart S.s msg stale
+        let s', success = S.M.server_process_response_restart S.s msg stale in
+        (pack s', success)
       method emit_challenge() =
-        S.server_emit_challenge S.s
+        let s', chall = S.M.server_emit_challenge S.s in
+        (pack s', chall)
       method stash_session() =
-        S.server_stash_session S.s
+        S.M.server_stash_session S.s
       method session_id =
-        S.server_session_id S.s
+        S.M.server_session_id S.s
       method prop key =
-        S.server_prop S.s key
+        S.M.server_prop S.s key
       method channel_binding =
-        S.server_channel_binding S.s
+        S.M.server_channel_binding S.s
       method user_name =
-        S.server_user_name S.s
+        S.M.server_user_name S.s
       method authz_name =
-        S.server_authz_name S.s
+        S.M.server_authz_name S.s
       method gssapi_props =
-        S.server_gssapi_props S.s
+        S.M.server_gssapi_props S.s
     end
 
   type lookup =
@@ -179,7 +188,7 @@ module Server = struct
       M.create_server_session ~lookup:server_lookup ~params () in
     let module S =
       struct
-        include M
+        module M = M
         let s = s
       end in
     session (module S)
@@ -194,7 +203,7 @@ module Server = struct
       M.server_resume_session ~lookup:server_lookup data in
     let module S =
       struct
-        include M
+        module M = M
         let s = s
       end in
     session (module S)

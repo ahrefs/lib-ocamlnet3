@@ -6,14 +6,15 @@
 module S = Netstring_str;;
 
 
-let rec skip_line_ends s pos len =
+let rec skip_line_ends_poly ops s pos len =
+  let open Netstring_tstring in
   if len > 0 then
-    match s.[pos] with
+    match ops.get s pos with
       | '\010' -> 
-	  skip_line_ends s (pos+1) (len-1)
+	  skip_line_ends_poly ops s (pos+1) (len-1)
       | '\013' ->
-	  if len > 1 && s.[pos+1] = '\010' then
-	    skip_line_ends s (pos+2) (len-2)
+	  if len > 1 && ops.get s (pos+1) = '\010' then
+	    skip_line_ends_poly ops s (pos+2) (len-2)
 	  else
 	    pos
       | _ ->
@@ -22,95 +23,127 @@ let rec skip_line_ends s pos len =
     pos
 
 
-let rec find_line_start s pos len =
+let skip_line_ends =
+  skip_line_ends_poly Netstring_tstring.string_ops
+
+let rec find_line_end_poly ops s pos len =
+  let open Netstring_tstring in
   if len > 0 then
-    match s.[pos] with
+    let k = ops.index_from3 s pos len '\010' '\013' '\013' in
+    match ops.get s k with
       | '\010' ->
-	  pos+1
+          k
       | '\013' ->
-	  if len > 1 && s.[pos+1] = '\010' then
-	    pos+2
-	  else
-	    find_line_start s (pos+1) (len-1)
+          if (k+1) < pos+len && ops.get s (k+1) = '\010' then
+            k
+          else
+            find_line_end_poly ops s (k+1) (len-(k+1-pos))
       | _ ->
-	  find_line_start s (pos+1) (len-1)
+          assert false
   else
     raise Not_found
 
 
-let rec find_line_end s pos len =
-  if len > 0 then
-    match s.[pos] with
-      | '\010' ->
-	  pos
-      | '\013' ->
-	  if len > 1 && s.[pos+1] = '\010' then
-	    pos
-	  else
-	    find_line_end s (pos+1) (len-1)
-      | _ ->
-	  find_line_end s (pos+1) (len-1)
-  else
-    raise Not_found
+let find_line_end =
+  find_line_end_poly Netstring_tstring.string_ops
+
+let find_line_start_poly ops s pos len =
+  let open Netstring_tstring in
+  let k = find_line_end_poly ops s pos len in
+  match ops.get s k with
+    | '\010' ->
+        k+1
+    | '\013' ->
+        k+2
+    | _ ->
+        assert false
+
+let find_line_start =
+  find_line_start_poly Netstring_tstring.string_ops
 
 
-let rec find_double_line_start s pos len =
-  let pos' = find_line_start s pos len in
+let rec find_double_line_start_poly ops s pos len =
+  let open Netstring_tstring in
+  let pos' = find_line_start_poly ops s pos len in
   let len' = len - (pos' - pos) in
   if len' > 0 then
-    match s.[pos'] with
+    match ops.get s pos' with
       | '\010' ->
 	  pos'+1
       | '\013' ->
-	  if len' > 1 && s.[pos'+1] = '\010' then
+	  if len' > 1 && ops.get s (pos'+1) = '\010' then
 	    pos'+2
 	  else
-	    find_double_line_start s pos' len'
+	    find_double_line_start_poly ops s pos' len'
       | _ ->
-	  find_double_line_start s pos' len'
+	  find_double_line_start_poly ops s pos' len'
   else
     raise Not_found
 
 
-let fold_lines_p f acc0 s pos len =
-  let e = pos+len in
-  let rec loop acc p =
-    if p < e then (
-      let p1 = 
-	try find_line_end s p (e-p)
-	with Not_found -> e in
-      let p2 =
-	try find_line_start s p1 (e-p1)
-	with Not_found -> e in
-      let is_last =
-	p2 = e in
-      let acc' =
-	f acc p p1 p2 is_last in
-      loop acc' p2
-    )
-    else acc in
-  loop acc0 pos
+let find_double_line_start =
+  find_double_line_start_poly Netstring_tstring.string_ops
 
 
-let fold_lines f acc0 s pos len =
-  fold_lines_p
-    (fun acc p0 p1 p2 is_last ->
-       f acc (String.sub s p0 p1)
-    )
-    acc0 s pos len
+let fold_lines_p_poly : type s a . s Netstring_tstring.tstring_ops ->
+                        (a -> int -> int -> int -> bool -> a) -> 
+                        a -> s -> int -> int -> a =
+  fun ops f acc0 s pos len ->
+    let e = pos+len in
+    let rec loop acc p =
+      if p < e then (
+        let p1 = 
+          try find_line_end_poly ops s p (e-p)
+          with Not_found -> e in
+        let p2 =
+          try find_line_start_poly ops s p1 (e-p1)
+          with Not_found -> e in
+        let is_last =
+          p2 = e in
+        let acc' =
+          f acc p p1 p2 is_last in
+        loop acc' p2
+      )
+      else acc in
+    loop acc0 pos
 
 
-let iter_lines f s pos len =
-  fold_lines
+let fold_lines_p f =
+  fold_lines_p_poly Netstring_tstring.string_ops f
+
+
+let fold_lines_poly : type s a . s Netstring_tstring.tstring_ops ->
+                      (a -> s -> a) -> a -> s -> int -> int -> a =
+  fun ops f acc0 s pos len ->
+    let open Netstring_tstring in
+    fold_lines_p_poly
+      ops
+      (fun acc p0 p1 p2 is_last ->
+         f acc (ops.sub s p0 (p1-p0))
+      )
+      acc0 s pos len
+
+
+let fold_lines f =
+  fold_lines_poly Netstring_tstring.string_ops f
+
+
+let iter_lines_poly ops f s pos len =
+  fold_lines_poly
+    ops
     (fun _ line -> let () = f line in ())
     () s pos len
 
+let iter_lines f =
+  iter_lines_poly Netstring_tstring.string_ops f
 
-let skip_whitespace_left s pos len =
+
+let skip_whitespace_left_poly ops s pos len =
+  let open Netstring_tstring in
   let e = pos+len in  
   let rec skip_whitespace p =
     if p < e then (
-      let c = s.[p] in
+      let c = ops.get s p in
       match c with
 	| ' ' | '\t' | '\r' | '\n' -> skip_whitespace(p+1)
 	| _ -> p
@@ -118,6 +151,9 @@ let skip_whitespace_left s pos len =
     else 
       raise Not_found in
   skip_whitespace pos
+
+let skip_whitespace_left =
+  skip_whitespace_left_poly Netstring_tstring.string_ops
 
 
 let skip_whitespace_right s pos len =
@@ -139,18 +175,19 @@ type header_line =
   | Header_end                        (* empty line = header end *)
 
 
-let rec find_colon s p e =
+let rec find_colon_poly ops s p e =
+  let open Netstring_tstring in
   if p < e then (
-    let c = s.[p] in
+    let c = ops.get s p in
     match c with
       | ' ' | '\t' | '\r' | '\n' -> raise Not_found
       | ':' -> p
-      | _ -> find_colon s (p+1) e
+      | _ -> find_colon_poly ops s (p+1) e
   )
   else raise Not_found
 
 
-let parse_header_line include_eol skip_ws s p0 p1 p2 is_last =
+let parse_header_line ops include_eol skip_ws s p0 p1 p2 is_last =
   (* p0: start of line
      p1: position of line terminator
      p2: position after line terminator
@@ -160,40 +197,42 @@ let parse_header_line include_eol skip_ws s p0 p1 p2 is_last =
 
      Raises Not_found if not parsable.
    *)
+  let open Netstring_tstring in
   if p0 = p1 then (
     if not is_last then raise Not_found;
     Header_end
   ) else (
-    let c0 = s.[p0] in
+    let c0 = ops.get s p0 in
     let is_cont = (c0 = ' ' || c0 = '\t' || c0 = '\r') in
     if is_cont then (
       let out =
 	if include_eol then
-	  String.sub s p0 (p2-p0)
+	  ops.substring s p0 (p2-p0)
 	else
-	  String.sub s p0 (p1-p0) in
+	  ops.substring s p0 (p1-p0) in
       Header_cont out
     )
     else (
-      let q = find_colon s p0 p1 in
+      let q = find_colon_poly ops s p0 p1 in
       let r =
 	if skip_ws then
-	  try skip_whitespace_left s (q+1) (p1-q-1) with Not_found -> p1
+	  try skip_whitespace_left_poly ops s (q+1) (p1-q-1)
+          with Not_found -> p1
 	else
 	  q+1 in
-      let out_name = String.sub s p0 (q-p0) in
+      let out_name = ops.substring s p0 (q-p0) in
       let out_value =
 	if include_eol then
-	  String.sub s r (p2-r)
+	  ops.substring s r (p2-r)
 	else
-	  String.sub s r (p1-r) in
+	  ops.substring s r (p1-r) in
       Header_start(out_name,out_value)
     )
   )
   
 
-let fold_header ?(downcase=false) ?(unfold=false) ?(strip=false) 
-                f acc0 s pos len =
+let fold_header_poly ?(downcase=false) ?(unfold=false) ?(strip=false) 
+                     ops f acc0 s pos len =
   let err k =
     failwith ("Netmime_string.fold_header [" ^ string_of_int k ^ "]") in
   let postprocess cur =
@@ -217,13 +256,14 @@ let fold_header ?(downcase=false) ?(unfold=false) ?(strip=false)
 	    if downcase then String.lowercase n else n in
 	  Some(n', cat_values2) in
   let (user, cur, at_end) =
-    fold_lines_p
+    fold_lines_p_poly
+      ops
       (fun (acc_user, acc_cur, acc_end) p0 p1 p2 is_last ->
 	 if acc_end then err 1;
 	 let hd = 
 	   try
 	     parse_header_line 
-	       (not unfold) strip s p0 p1 p2 is_last
+	       ops (not unfold) strip s p0 p1 p2 is_last
 	   with Not_found -> err 2 in
 	 match hd with
 	   | Header_start(n,v) ->
@@ -256,36 +296,55 @@ let fold_header ?(downcase=false) ?(unfold=false) ?(strip=false)
   user
 
 
-let list_header ?downcase ?unfold ?strip s pos len =
+let fold_header ?downcase ?unfold ?strip
+                f acc0 s pos len =
+  let ops = Netstring_tstring.string_ops in
+  fold_header_poly ?downcase ?unfold ?strip ops f acc0 s pos len
+
+
+let list_header_poly ?downcase ?unfold ?strip ops s pos len =
   List.rev
-    (fold_header
+    (fold_header_poly
        ?downcase ?unfold ?strip
+       ops
        (fun acc n v -> (n,v) :: acc)
        [] s pos len
     )
 
 
-let find_end_of_header s pos len =
+let list_header ?downcase ?unfold ?strip s pos len =
+  let ops = Netstring_tstring.string_ops in
+  list_header_poly ?downcase ?unfold ?strip ops s pos len
+
+
+let find_end_of_header_poly ops s pos len =
   (* Returns the position after the header, or raises Not_found *)
-  if len > 0 && s.[pos]='\n' then
+  let open Netstring_tstring in
+  if len > 0 && ops.get s pos='\n' then
     pos+1
   else 
-    if len > 1 && s.[pos]='\r' && s.[pos+1]='\n' then
+    if len > 1 && ops.get s pos='\r' && ops.get s (pos+1)='\n' then
       pos+2
     else
-      find_double_line_start s pos len
+      find_double_line_start_poly ops s pos len
 
 
-let scan_header ?(downcase=true) 
-                ?(unfold=true) 
-		?(strip=false)
-		parstr ~start_pos ~end_pos =
+let find_end_of_header =
+  find_end_of_header_poly Netstring_tstring.string_ops
+
+
+let scan_header_poly ?(downcase=true) 
+                     ?(unfold=true) 
+		     ?(strip=false)
+		     ops s ~start_pos ~end_pos =
+  let open Netstring_tstring in
   try
     let real_end_pos =
-      find_end_of_header parstr start_pos (end_pos-start_pos) in
+      find_end_of_header_poly ops s start_pos (end_pos-start_pos) in
+    let s = ops.string s in
     let values =
       list_header
-	~downcase ~unfold ~strip:(unfold || strip) parstr 
+	~downcase ~unfold ~strip:(unfold || strip) s
 	start_pos (real_end_pos - start_pos) in
     (values, real_end_pos)
   with
@@ -293,12 +352,27 @@ let scan_header ?(downcase=true)
 	failwith "Netmime_string.scan_header"
 
 
+let scan_header ?downcase ?unfold ?strip s ~start_pos ~end_pos =
+  let ops = Netstring_tstring.string_ops in
+  scan_header_poly ?downcase ?unfold ?strip ops s ~start_pos ~end_pos
+              
+
+let scan_header_tstring ?downcase ?unfold ?strip ts ~start_pos ~end_pos =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           scan_header_poly ?downcase ?unfold ?strip ops s ~start_pos ~end_pos
+        )
+    }
+    ts
+
 let read_header ?(downcase=true) ?(unfold=true) ?(strip=false)
                 (s : Netstream.in_obj_stream) =
+  let ops = Netstring_tstring.bytes_ops in
   let rec search() =
     try
       let b = Netbuffer.unsafe_buffer s#window in
-      find_end_of_header b 0 s#window_length  (* or Not_found *)
+      find_end_of_header_poly ops b 0 s#window_length  (* or Not_found *)
     with
       | Not_found ->
 	  if s#window_at_eof then (
@@ -309,7 +383,8 @@ let read_header ?(downcase=true) ?(unfold=true) ?(strip=false)
   let end_pos = search() in
   let b = Netbuffer.unsafe_buffer s#window in
   let l = 
-    list_header ~downcase ~unfold ~strip:(unfold || strip) b 0 end_pos in
+    list_header_poly
+      ~downcase ~unfold ~strip:(unfold || strip) ops b 0 end_pos in
   s # skip end_pos;
   l
 ;;
@@ -446,7 +521,6 @@ let get_decoded_word et =
 		Netencoding.Q.decode content
 	    | ("B"|"b") -> 
 		Netencoding.Base64.decode 
-		  ~url_variant:false
 		  ~accept_spaces:false
 		  content
 	    | _ -> failwith "get_decoded_word"
@@ -723,7 +797,7 @@ let scan_next_token (spec,target) =
 
   and copy_qstring i0 i1 n =
     (* Used for quoted strings and for domain literals *)
-    let r = String.create n in
+    let r = Bytes.create n in
     let k = ref 0 in
     let line = ref target.scanner_line in
     let linepos = ref target.scanner_linepos in
@@ -736,16 +810,16 @@ let scan_next_token (spec,target) =
 	| '\n' ->
 	    line := !line + 1;
 	    linepos := i+1;
-	    r.[ !k ] <- c; 
+	    Bytes.set r !k c; 
 	    incr k;
 	    esc := false
 	| _ -> 
-	    r.[ !k ] <- c; 
+	    Bytes.set r !k c; 
 	    incr k;
 	    esc := false
     done;
     assert (!k = n);
-    r, !line, !linepos
+    Bytes.unsafe_to_string r, !line, !linepos
 
   and scan_dliteral i0 i n =
     if i < l then
@@ -1381,7 +1455,7 @@ let write_value ?maxlen1 ?maxlen ?hardmaxlen1 ?hardmaxlen
     if do_folding then
       Buffer.add_substring break_buffer s pos len
     else
-      ch # really_output s pos len
+      ch # really_output_string s pos len
   in
 
   let flush() =
@@ -1664,22 +1738,22 @@ let rec param_tokens ?(maxlen=max_int) pl =
     (* Perform %-encoding *)
     let l = String.length s in
     let l' = enclen s 0 in
-    let s' = String.create l' in
+    let s' = Bytes.create l' in
     let k = ref 0 in
     for i = 0 to l-1 do
       if enclen_char s.[i] = 1 then begin
-	s'.[ !k ] <- s.[i];
+	Bytes.set s' !k s.[i];
 	incr k
       end 
       else begin
 	let code = Char.code s.[i] in
-	s'.[ !k ] <- '%';
-	s'.[ !k+1 ] <- hex.( code asr 4 );
-	s'.[ !k+2 ] <- hex.( code land 15 );
+	Bytes.set s' !k '%';
+	Bytes.set s' (!k+1) hex.( code asr 4 );
+	Bytes.set s' (!k+2) hex.( code land 15 );
 	k := !k + 3
       end
     done;
-    s'
+    Bytes.unsafe_to_string s'
   in
 
   let rec continued_enc_param cs lang n s pos k =
@@ -1744,7 +1818,8 @@ let read_multipart_body f boundary s =
 
   let rec search_window re start =
     try
-      let i,r = S.search_forward re (Netbuffer.unsafe_buffer s#window) start in
+      let i,r =
+        S.search_forward_bytes re (Netbuffer.unsafe_buffer s#window) start in
       (* If match_end <= window_length, the search was successful.
        * Otherwise, we searched in the uninitialized region of the
        * buffer.
@@ -1781,7 +1856,7 @@ let read_multipart_body f boundary s =
     let ldel = String.length del in
     s # want ldel;
     let buf = Netbuffer.unsafe_buffer s#window in
-    (s # window_length >= ldel) && (String.sub buf 0 ldel = del)
+    (s # window_length >= ldel) && (Bytes.sub_string buf 0 ldel = del)
   in
 
   let rec go_to_eof stream =
@@ -1810,8 +1885,8 @@ let read_multipart_body f boundary s =
     let buf = Netbuffer.unsafe_buffer s#window in
     let last_part = 
       (s#window_length >= (l_delimiter+2)) &&
-      (buf.[l_delimiter] = '-') && 
-      (buf.[l_delimiter+1] = '-') 
+      (Bytes.get buf l_delimiter = '-') && 
+      (Bytes.get buf (l_delimiter+1) = '-') 
     in
     if last_part then begin
       go_to_eof s;
@@ -1828,7 +1903,8 @@ let read_multipart_body f boundary s =
   if check_beginning_is_boundary() then begin
     (* Move to the beginning of the next line: *)
     let k_eol = search_end_of_line 0 in
-    let uses_crlf = (Netbuffer.unsafe_buffer s#window).[k_eol-2] = '\r' in
+    let winbuf = Netbuffer.unsafe_buffer s#window in
+    let uses_crlf = Bytes.get winbuf (k_eol-2) = '\r' in
     s # skip k_eol;
     (* Begin with first part: *)
     parse_parts uses_crlf
@@ -1840,7 +1916,8 @@ let read_multipart_body f boundary s =
       (* Printf.printf "k_eob=%d\n" k_eob; *)
       (* Move to the beginning of the next line: *)
       let k_eol = search_end_of_line k_eob in
-      let uses_crlf = (Netbuffer.unsafe_buffer s#window).[k_eol-2] = '\r' in
+      let winbuf = Netbuffer.unsafe_buffer s#window in
+      let uses_crlf = Bytes.get winbuf (k_eol-2) = '\r' in
       (* Printf.printf "k_eol=%d\n" k_eol; *)
       s # skip k_eol;
       (* Begin with first part: *)
@@ -1895,7 +1972,7 @@ let scan_multipart_body_and_decode s ~start_pos:i0 ~end_pos:i1 ~boundary =
 	     ("7bit"|"8bit"|"binary") -> value
 	   | "base64" ->
 	       Netencoding.Base64.decode 
-	         ~url_variant:false ~accept_spaces:true value
+	         ~accept_spaces:true value
 	   | "quoted-printable" ->
 	       Netencoding.QuotedPrintable.decode
 		 value 

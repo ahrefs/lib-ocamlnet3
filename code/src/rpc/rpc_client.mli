@@ -144,6 +144,7 @@ object
     *   calls are deferred until the connection is established.
     *)
   method multiplexing :
+    dbg_name:string ref ->
     close_inactive_descr:bool ->
     peer_name:string option ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
@@ -175,10 +176,19 @@ class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
                           socket_config
   (** TLS configuration as class *)
 
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyclient
+
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr 
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
   (** Determines the type of the client for [create2]:
     *
@@ -196,6 +206,16 @@ type mode2 =
     *   datagram sockets. [config] specifies configuration details.
     *   {b In particular, use this option to enable TLS for the socket:
     *   Get a [tls_socket_config] and pass this as [config] here.}
+    *
+    * - [`Internal_endpoint(rd,wr)]: Creates a client that exchanges
+    *   data over the pair of polypipes [(rd,wr)] (see {!Netsys_polypipe}).
+    *   The polypipes will be closed when the client terminates.
+    *
+    * - [`Internal_socket psock]: Creates a client that exchanges
+    *   data over the polysocket client [psock] (see {!Netsys_polysocket}).
+    *   The client must already be connected to the server (i.e.
+    *   [Netsys_polysocket.connect] has already been called).
+    *   The polysocket will be closed when the client terminates.
    *)
 
 val create2 :
@@ -420,6 +440,13 @@ val abandon_call : t -> Netnumber.uint4 -> unit
 val is_up : t -> bool
   (** Return whether the client is up *)
 
+val get_stats : t -> int * int * int
+  (** Get stats [(n_delayed, n_waiting, n_pending)]:
+       - [n_delayed]: Calls that wait for authentication
+       - [n_waiting]: Calls that wait for being sent
+       - [n_pending]: Calls that wait for the response
+   *)
+
 val unbound_sync_call : 
       t -> Rpc_program.t -> string -> xdr_value -> xdr_value
   (** [unbound_sync_call client pgm proc arg]: Invoke the remote procedure
@@ -503,6 +530,12 @@ val trigger_shutdown : t -> (unit -> unit) -> unit
     * The function is not only called when the client has to be taken
     * down, but also if the client is already down.
    *)
+
+val set_debug_name : t -> string -> unit
+  (** Set a name printed with debug messages *)
+
+val get_debug_name : t -> string
+  (** Get the debug name *)
 
 
 type reject_code =
@@ -685,7 +718,15 @@ module type USE_CLIENT = sig
         client will call [emit (fun () -> raise e)] back.
      *)
 
+  val xdr_ctx : t -> Netxdr.ctx
+  (** Returns the recommended XDR context *)
+
 end
+
+val xdr_ctx : t -> Netxdr.ctx
+  (** Returns the recommended XDR context *)
+
+
 
 
 (** {2 Deprecated Interfaces} *)
@@ -801,7 +842,6 @@ val verbose : bool -> unit
   (** set whether you want debug messages or not (same as setting
       {!Rpc_client.Debug.enable})
    *)
-
 
 (** {2 Debugging} *)
 

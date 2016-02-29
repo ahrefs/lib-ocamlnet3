@@ -88,14 +88,14 @@ type connector =
 
 type binding_sync =
     { sync_name : string;                  (** procedure name *)
-      sync_proc : xdr_value -> xdr_value   (** the function that implements the
-					    * procedure
-					    *)
+      sync_proc : t -> xdr_value -> xdr_value  (** the function that implements
+					         * the procedure
+					         *)
     }
 
 type binding_async =
     { async_name : string;                 (** procedure name *)
-      async_invoke : session -> xdr_value -> unit
+      async_invoke : t -> session -> xdr_value -> unit
 	  (** A function that is called when the procedure is called *)
     }
 
@@ -173,6 +173,7 @@ class type socket_config =
 object
   method listen_options : Uq_engines.listen_options
   method multiplexing : 
+    dbg_name:string ref ->
     close_inactive_descr:bool ->
     protocol -> Unix.file_descr -> Unixqueue.event_system ->
       Rpc_transport.rpc_multiplex_controller Uq_engines.engine
@@ -191,11 +192,20 @@ class tls_socket_config : (module Netsys_crypto_types.TLS_CONFIG) ->
                           socket_config
   (** TLS configuration as class *)
 
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+type internal_socket =
+  Netxdr.xdr_value Netsys_polysocket.polyserver
+
+
 type mode2 =
     [ `Socket_endpoint of protocol * Unix.file_descr
     | `Multiplexer_endpoint of Rpc_transport.rpc_multiplex_controller
     | `Socket of protocol * connector * socket_config
     | `Dummy of protocol
+    | `Internal_endpoint of internal_pipe * internal_pipe
+    | `Internal_socket of internal_socket
     ]
   (** Determines the type of the server for [create2]:
     *
@@ -210,6 +220,14 @@ type mode2 =
     *   according to [conn]. [proto] determines the 
     *   encapsulation; should be [Tcp] for stream sockets and [Udp] for
     *   datagram sockets. [config] specifies configuration details.
+    *
+    * - [`Internal_endpoint(rd,wr)]: Creates a server that exchanges
+    *   data over the pair of polypipes [(rd,wr)] (see {!Netsys_polypipe}).
+    *   The polypipes will be closed when the connection is terminated.
+    *
+    * - [`Internal_socket psock]: Creates a server that accepts connections
+    *   from the polysocket server [psock] (see {!Netsys_polysocket}).
+    *   The polysocket will be closed when the server is stopped.
     *
     * Despite their names, [`Socket_endpoint] and [`Socket] also support
     * Win32 named pipes.
@@ -557,6 +575,9 @@ val get_user : session -> string
 val get_auth_method : session -> auth_method
   (** Returns the method that was used to authenticate the user. *)
 
+val xdr_ctx : t -> Netxdr.ctx
+  (** Get the recommended XDR context *)
+
 val verbose : bool -> unit
   (** {b Deprecated.}
       Set whether you want debug messages to stderr or not
@@ -568,6 +589,12 @@ val detach : t -> unit
       RPC servers inherited by a Netplex child process return memory.
       The RPC server is unusable after this.
    *)
+
+val set_debug_name : t -> string -> unit
+  (** Set a name printed with debug messages *)
+
+val get_debug_name : t -> string
+  (** Get the debug name *)
 
 module Debug : sig
   val enable : bool ref

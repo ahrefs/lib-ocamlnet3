@@ -121,7 +121,7 @@ let logged_error_response fd_addr peer_addr req_meth_uri_opt
   match resp_opt with
     | None -> ()
     | Some resp ->
-	let body = config # config_error_response info in
+	let body = Bytes.of_string(config # config_error_response info) in
 	let eff_header = 
 	  match hdr_opt with
 	    | None ->
@@ -135,7 +135,7 @@ let logged_error_response fd_addr peer_addr req_meth_uri_opt
 	    ~response_status_code:code
 	    ~request_body_rejected:req_rej
 	    ~output_header:eff_header
-	    ~output_body_size:(Int64.of_int (String.length body))
+	    ~output_body_size:(Int64.of_int (Bytes.length body))
 	    (info:>request_info) in
 	config # config_log_access full
 
@@ -456,7 +456,7 @@ object(self)
       | Some(u,upos,ulen) ->
 	  (* We have [ulen] data, copy that to [s] *)
 	  let len = min slen ulen in
-	  String.blit u upos s spos len;
+	  Bytes.blit u upos s spos len;
 	  let ulen' = ulen - len in
 	  if ulen' = 0 then
 	    current_chunk <- None
@@ -504,8 +504,8 @@ object
     if locked then failwith "Nethttpd_reactor: channel is locked";
     if !out_state <> `Sending then 
       failwith "output channel: Cannot output now";
-    let u = String.sub s spos slen in
-    resp # send (`Resp_body(u, 0, String.length u));
+    let u = Bytes.sub s spos slen in
+    resp # send (`Resp_body(u, 0, Bytes.length u));
     ( match config#config_reactor_synch with
 	| `Write ->
 	    synch()

@@ -89,6 +89,7 @@ module Debug = struct
 end
 
 let dlog = Netlog.Debug.mk_dlog "Rpc_transport" Debug.enable
+let dlogf fmt = ksprintf dlog fmt
 let dlogr = Netlog.Debug.mk_dlogr "Rpc_transport" Debug.enable
 
 let () =
@@ -125,7 +126,7 @@ let get_user_name tls_props name =
 
 
 class datagram_rpc_multiplex_controller
-        role
+        role dbg_name
         sockname peername_opt peername_dns_opt peer_user_name_opt file_descr_opt
         (mplex : Uq_engines.datagram_multiplex_controller) esys
       : rpc_multiplex_controller =
@@ -147,7 +148,7 @@ class datagram_rpc_multiplex_controller
       (r, free)
     )
     else (
-      let r = ref(`String(String.create fallback_size)) in
+      let r = ref(`Bytes(Bytes.create fallback_size)) in
       (r, (fun () -> ()))
     ) in
     (* Max. size of an Internet datagram is 64 K. See RFC 760. However,
@@ -187,11 +188,11 @@ object(self)
 
   method private rd_buffer_contents n =  (* first n bytes *)
     match !rd_buffer with
-      | `String s ->
-	  String.sub s 0 n
+      | `Bytes s ->
+	  Bytes.sub s 0 n
       | `Mem m ->
-	  let s = String.create n in
-	  Netsys_mem.blit_memory_to_string m 0 s 0 n;
+	  let s = Bytes.create n in
+	  Netsys_mem.blit_memory_to_bytes m 0 s 0 n;
 	  s
       | `None ->
 	  failwith "Rpc_transport: read/write not possible"
@@ -216,15 +217,15 @@ object(self)
 		  | `Drop -> `Drop
 		  | `Reject -> 
 		      let pv = 
-			packed_value_of_string (self # rd_buffer_contents n) in
+			packed_value_of_bytes (self # rd_buffer_contents n) in
 		      `Reject pv
 		  | `Reject_with (code : Rpc.server_error) -> 
 		      let pv = 
-			packed_value_of_string (self # rd_buffer_contents n) in
+			packed_value_of_bytes (self # rd_buffer_contents n) in
 		      `Reject_with(pv,code)
 		  | `Accept -> 
 		      let pv = 
-			packed_value_of_string (self # rd_buffer_contents n) in
+			packed_value_of_bytes (self # rd_buffer_contents n) in
 		      `Accept pv in
  	      when_done (`Ok(r, peer))
 	    )
@@ -236,9 +237,9 @@ object(self)
 	    when_done (`Error error)
     in
     ( match !rd_buffer with
-	| `String s ->
+	| `Bytes s ->
 	    mplex # start_reading ?peek ~when_done:mplex_when_done 
-	      s 0 (String.length s)
+	      s 0 (Bytes.length s)
 	| `Mem m ->
 	    mplex # start_mem_reading ?peek ~when_done:mplex_when_done 
 	      m 0 (Bigarray.Array1.dim m)
@@ -283,7 +284,7 @@ object(self)
 	~when_done:(mplex_when_done len) m 0 len
     )
     else
-      let s = Netxdr_mstring.concat_mstrings mstrings in
+      let s = Netxdr_mstring.concat_mstrings_bytes mstrings in
       mplex # start_writing
 	~when_done:(mplex_when_done len) s 0 len;
     self # timer_event `Start `W
@@ -371,7 +372,8 @@ end
 
 
 
-let datagram_rpc_multiplex_controller ?(close_inactive_descr=true)
+let datagram_rpc_multiplex_controller ?(dbg_name = ref "")
+                                      ?(close_inactive_descr=true)
                                       ?(preclose=fun() -> ()) 
                                       ~role fd esys =
   let sockname, peername_opt = 
@@ -397,13 +399,13 @@ let datagram_rpc_multiplex_controller ?(close_inactive_descr=true)
       ~close_inactive_descr ~preclose
       fd esys in
   new datagram_rpc_multiplex_controller 
-    role sockname peername_opt None None (Some fd) mplex 
+    role dbg_name sockname peername_opt None None (Some fd) mplex 
     esys
 ;;
 
 
 class stream_rpc_multiplex_controller 
-        role
+        role dbg_name
         sockname peername peername_dns_opt peer_user_name_opt file_descr_opt
         (mplex0 : Uq_engines.multiplex_controller) esys
         tls_config_opt
@@ -436,9 +438,9 @@ class stream_rpc_multiplex_controller
 object(self)
   val mutable rd_buffer = Netpagebuffer.create mem_size
   val mutable rd_buffer_nomem = 
-    if mplex#mem_supported then "" else String.create fallback_size
+    if mplex#mem_supported then Bytes.create 0 else Bytes.create fallback_size
 
-  val mutable rm_buffer = String.create 4
+  val mutable rm_buffer = Bytes.create 4
   val mutable rm_buffer_len = 0
 
   val mutable rd_mode = `RM
@@ -510,17 +512,17 @@ object(self)
 	  ~when_done:(fun exn_opt n ->
 			dlogr (fun () ->
 				 sprintf "Reading [str]: %s%s"
-				   (Rpc_util.hex_dump_s 
+				   (Rpc_util.hex_dump_b
 				      rd_buffer_nomem 0 (min n 200))
 				   (if n > 200 then "..." else "")
 			      );
-			Netpagebuffer.add_sub_string 
+			Netpagebuffer.add_subbytes
 			  rd_buffer rd_buffer_nomem 0 n;
 			mplex_when_done exn_opt n
 		     )
 	  rd_buffer_nomem
 	  0
-	  (String.length rd_buffer_nomem)
+	  (Bytes.length rd_buffer_nomem)
       );
       self # timer_event `Start `R
 
@@ -533,20 +535,24 @@ object(self)
 (* prerr_endline "RM"; *)
 	      (* Read the record marker *)
 	      let m = min (4 - rm_buffer_len) len in
-	      Netpagebuffer.blit_to_string
+	      Netpagebuffer.blit_to_bytes
 		rd_buffer rd_pos rm_buffer rm_buffer_len m;
 	      rm_buffer_len <- rm_buffer_len + m;
 	      if rm_buffer_len = 4 then (
 		rd_pos <- rd_pos + 4;
 		rm_buffer_len <- 0;
-		let rm_last = (Char.code rm_buffer.[0]) >= 128 in
-		let rm_0 = (Char.chr ((Char.code rm_buffer.[0]) land 0x7f)) in
+                let rm_00 = Char.code (Bytes.get rm_buffer 0) in
+		let rm_last = rm_00 >= 128 in
+		let rm_0 = (Char.chr (rm_00 land 0x7f)) in
 		let rm_opt =
 		  try
 		    let rm =
 		      Netnumber.int_of_uint4
 			(Netnumber.mk_uint4 
-			   (rm_0,rm_buffer.[1],rm_buffer.[2],rm_buffer.[3])) in
+			   (rm_0,
+                            Bytes.get rm_buffer 1,
+                            Bytes.get rm_buffer 2,
+                            Bytes.get rm_buffer 3)) in
 		    if rm > Sys.max_string_length then
 		      raise(Netnumber.Cannot_represent "");
 		    if rd_queue_len > Sys.max_string_length - rm then
@@ -596,11 +602,11 @@ object(self)
 		    match in_rule with
 		      | (`Accept | `Reject | (`Reject_with _) as ar) ->
 (* eprintf "creating string n=%d\n%!" rd_queue_len; *)
-			  let msg = String.create rd_queue_len in
+			  let msg = Bytes.create rd_queue_len in
 			  let q = ref 0 in
 			  Queue.iter
 			    (fun (p,l) ->
-			       Netpagebuffer.blit_to_string
+			       Netpagebuffer.blit_to_bytes
 				 rd_buffer
 				 p
 				 msg
@@ -609,7 +615,7 @@ object(self)
 			       q := !q + l
 			    )
 			    rd_queue;
-			  let pv = packed_value_of_string msg in
+			  let pv = packed_value_of_bytes msg in
 			  ( match ar with
 			      | `Accept -> `Accept pv
 			      | `Reject -> `Reject pv
@@ -669,7 +675,7 @@ object(self)
 
     assert(not mplex#writing);
 
-    (* - `String(s,p,l): We have still to write s[p] to s[p+l-1]
+    (* - `Bytes(s,p,l): We have still to write s[p] to s[p+l-1]
        - `Memory(m,p,l): We have still to write
           m[p] to m[p+l-1]
      *)
@@ -734,25 +740,25 @@ object(self)
     and create_item_string acc acc_len =
       match acc with
 	| [ms] ->
-	    let (s,pos) = ms#as_string in
-	    `String(s, pos, acc_len)
+	    let (s,pos) = ms#as_bytes in
+	    `Bytes(s, pos, acc_len)
 	| _ ->
-	    let s_all = String.create acc_len in
+	    let s_all = Bytes.create acc_len in
 	    let k = ref 0 in
 	    List.iter
 	      (fun ms ->
 		 let l = ms#length in
-		 ms#blit_to_string 0 s_all !k l;
+		 ms#blit_to_bytes 0 s_all !k l;
 		 k := !k + l
 	      )
 	      acc;
 	    assert(!k = acc_len);
-	    `String(s_all, 0, acc_len)
+	    `Bytes(s_all, 0, acc_len)
     in
 
     let item_is_empty =
       function
-	| `String(_,_,l) -> l=0
+	| `Bytes(_,_,l) -> l=0
 	| `Memory(_,_,l) -> l=0 in
 
     let rec est_writing item items =
@@ -769,10 +775,10 @@ object(self)
 			est_writing (`Memory(m,p+n,l')) items
 		      else
 			est_writing_next items
-		  | `String(s,p,l) ->
+		  | `Bytes(s,p,l) ->
 		      let l' = l-n in
 		      if l' > 0 then
-			est_writing (`String(s,p+n,l')) items
+			est_writing (`Bytes(s,p+n,l')) items
 		      else 
 			est_writing_next items
 	      )
@@ -792,10 +798,10 @@ object(self)
 		    );
 	      mplex # start_mem_writing
 		~when_done:mplex_when_done m p l
-	  | `String(s,p,l) ->
+	  | `Bytes(s,p,l) ->
 	      dlogr (fun () ->
 		       sprintf "Writing [str]: %s%s" 
-			 (Rpc_util.hex_dump_s s p (min l 200))
+			 (Rpc_util.hex_dump_b s p (min l 200))
 			 (if l > 200 then "..." else "")
 		    );
 	      mplex # start_writing
@@ -825,12 +831,12 @@ object(self)
     let mstrings0 = mstrings_of_packed_value pv in
     let payload_len = Netxdr_mstring.length_mstrings mstrings0 in
     (* Prepend record marker *)
-    let s = String.create 4 in
+    let s = Bytes.create 4 in
     let rm = Netnumber.uint4_of_int payload_len in
     Netnumber.BE.write_uint4 s 0 rm;
-    s.[0] <- Char.chr (Char.code s.[0] lor 0x80);
+    Bytes.set s 0 (Char.chr (Char.code (Bytes.get s 0) lor 0x80));
     let ms = 
-      Netxdr_mstring.string_based_mstrings # create_from_string 
+      Netxdr_mstring.bytes_based_mstrings # create_from_bytes
 	s 0 4 false in
     let mstrings = ms :: mstrings0 in
     let items = items_of_mstrings [] [] 0 mstrings in
@@ -922,7 +928,8 @@ end
 
 
 
-let stream_rpc_multiplex_controller ?(close_inactive_descr=true)
+let stream_rpc_multiplex_controller ?(dbg_name = ref "")
+                                    ?(close_inactive_descr=true)
                                     ?(preclose=fun()->()) 
                                     ?tls
                                     ~role fd esys =
@@ -945,6 +952,278 @@ let stream_rpc_multiplex_controller ?(close_inactive_descr=true)
       ~close_inactive_descr ~preclose
       fd esys in
   new stream_rpc_multiplex_controller 
-    role sockname peername peername_dns_opt None (Some fd) mplex esys 
+    role dbg_name sockname peername peername_dns_opt None (Some fd) mplex esys 
     tls_config_opt
 ;;
+
+
+type internal_pipe =
+  Netxdr.xdr_value Netsys_polypipe.polypipe
+
+let internal_rpc_multiplex_controller
+        ?(dbg_name = ref "")
+        ?(close_inactive_descr=false)
+        ?(preclose=fun() -> ())
+        rd_pipe wr_pipe esys
+      : rpc_multiplex_controller =
+  let sockaddr = `Implied in
+object(self)
+  val mutable alive = true
+  val mutable rd_engine = None
+  val mutable rd_eof = false
+
+  val mutable wr_engine = None
+
+  val mutable timeout = (-1.0)
+  val mutable tmo_notify = (fun () -> ())
+
+  method alive = alive
+  method event_system = esys
+  method getsockname = sockaddr
+  method getpeername = `Implied
+  method tls_session_props = None
+  method protocol = Tcp
+  method peer_user_name = None
+  method file_descr = None
+  method reading = rd_engine <> None
+  method read_eof = rd_eof
+  method writing = wr_engine <> None
+
+  method private notify_on_timeout e =
+    Uq_engines.when_state
+      ~is_error:(fun err ->
+                   if err = Uq_engines.Timeout then (
+                     dlogf "notify_on_timeout dbgname=%s" !dbg_name;
+                     tmo_notify()
+                   )
+                )
+      e
+
+  method start_reading ?(peek = fun () -> ())
+                       ?(before_record = fun _ _ -> `Accept)
+                       ~when_done () =
+    if rd_engine <> None then
+      failwith "start_reading: already reading";
+    dlogf "start_reading: entry dbgname=%s" !dbg_name;
+    let attempt() =
+      rd_engine <- None;
+      try
+        peek();
+        let n = Netsys_polypipe.length rd_pipe in
+        dlogf "start_reading dbgname=%s length=%d" !dbg_name n;
+        match Netsys_polypipe.read ~nonblock:true rd_pipe with
+          | Some msg ->
+              let code = before_record 0 sockaddr in
+              let rmsg =
+                match code with
+                  | `Deny -> `Deny
+                  | `Drop -> `Drop
+                  | `Reject_with err ->
+                      `Reject_with(Rpc_packer.pseudo_value_of_xdr msg, err)
+                  | `Reject -> 
+                      `Reject (Rpc_packer.pseudo_value_of_xdr msg)
+                  | `Accept -> 
+                      `Accept (Rpc_packer.pseudo_value_of_xdr msg) in
+              dlog "start_reading: done (regular case)";
+              Some (`Ok(rmsg, sockaddr))
+          | None ->
+              rd_eof <- true;
+              dlog "start_reading: done (eof case)";
+              Some `End_of_file
+      with
+        | Unix.Unix_error(Unix.EAGAIN,_,_) ->
+            None
+        | Unix.Unix_error(Unix.EINTR,_,_) ->
+            None
+        | error ->
+            dlog "start_reading: done (error case)";
+            Some (`Error error) in
+    let rec wait() =
+      let e1 = new Uq_engines.signal_engine esys in
+      let tid = (!Netsys_oothr.provider)#self#id in
+      Netsys_polypipe.set_read_notify
+        rd_pipe
+        (fun () ->
+           dlogf "start_reading: Signalling thread %d dbgname=%s"
+                 tid !dbg_name;
+           Netsys_polypipe.set_read_notify rd_pipe (fun () -> ());
+           e1 # signal (`Done())
+        );
+      let e1 = (e1 :> _ Uq_engines.engine) in
+      Uq_engines.when_state
+        ~is_done:(fun _ -> 
+                    dlogf "start_reading: repeat dbgname=%s" !dbg_name;
+                    wait()
+                 )
+        ~is_aborted:(fun _ ->
+                       dlogf "aborted dbgname=%s" !dbg_name
+                    )
+        e1;
+      rd_engine <- Some e1;
+      let res_opt = attempt() in
+      match res_opt with
+        | Some res ->
+            dlogf "start_reading: done dbgname=%s" !dbg_name;
+            Netsys_polypipe.set_read_notify rd_pipe (fun () -> ());
+            e1 # abort();
+            rd_engine <- None;
+            when_done res
+        | None ->
+            let e2 = Uq_engines.timeout_engine timeout Uq_engines.Timeout e1 in
+            rd_engine <- Some e2;
+            self # notify_on_timeout e2;
+            dlogf "start_reading: waiting dbgname=%s" !dbg_name in
+    wait()
+
+  method start_writing ~when_done pv addr =
+    ( match addr with
+	| `Implied -> ()
+	| `Sockaddr a ->
+	    failwith "Rpc_transport.internal_rpc_multiplex_controller: \
+                      Cannot send message to explicit address"
+    );
+    if wr_engine <> None then
+      failwith "start_writing: already writing";
+    dlogf "start_writing: entry dbgname=%s" !dbg_name;
+    let m = Rpc_packer.xdr_of_pseudo_value pv in
+    let attempt() =
+      wr_engine <- None;
+      try
+        let n = Netsys_polypipe.length wr_pipe in
+        dlogf "start_writing length=%d dbgname=%s" n !dbg_name;
+        Netsys_polypipe.write ~nonblock:true wr_pipe (Some m);
+        dlog "start_writing: done (regular case)";
+        Some (`Ok())
+      with
+        | Unix.Unix_error(Unix.EAGAIN,_,_) ->
+            None
+        | Unix.Unix_error(Unix.EINTR,_,_) ->
+            None
+        | error ->
+            dlog "start_writing: done (error case)";
+            Some (`Error error) in
+    let rec wait() =
+      let e1 = new Uq_engines.signal_engine esys in
+      let tid = (!Netsys_oothr.provider)#self#id in
+      Netsys_polypipe.set_write_notify
+        wr_pipe
+        (fun () ->
+           dlogf "start_writing: Signalling thread %d dbgname=%s" tid !dbg_name;
+           Netsys_polypipe.set_write_notify wr_pipe (fun () -> ());
+           e1 # signal (`Done())
+        );
+      let e1 = (e1 :> _ Uq_engines.engine) in
+      Uq_engines.when_state
+        ~is_done:(fun _ -> 
+                    dlogf "start_writing: repeat dbgname=%s" !dbg_name;
+                    wait()
+                 )
+        e1;
+      wr_engine <- Some e1;
+      let res_opt = attempt() in
+      match res_opt with
+        | Some res ->
+            dlogf "start_writing: done dbgname=%s" !dbg_name;
+            Netsys_polypipe.set_write_notify wr_pipe (fun () -> ());
+            e1 # abort();
+            wr_engine <- None;
+            when_done res
+        | None ->
+            let e2 = Uq_engines.timeout_engine timeout Uq_engines.Timeout e1 in
+            wr_engine <- Some e2;
+            self # notify_on_timeout e2;
+            dlogf "start_writing: waiting dbgname=%s" !dbg_name in
+    wait()
+
+  method start_shutting_down ~when_done () =
+    if wr_engine <> None then
+      failwith "start_shutting_down: already writing";
+    dlogf "start_shutting_down: entry dbgname=%s" !dbg_name;
+    let attempt() =
+      wr_engine <- None;
+      try
+        let n = Netsys_polypipe.length wr_pipe in
+        dlogf "start_shutting_down: length=%d dbgname=%s" n !dbg_name;
+        Netsys_polypipe.write ~nonblock:true wr_pipe None;
+        dlog "start_shutting_down: done (regular case)";
+        Some (`Ok())
+      with
+        | Unix.Unix_error(Unix.EAGAIN,_,_) ->
+            None
+        | Unix.Unix_error(Unix.EINTR,_,_) ->
+            None
+        | Netsys_polypipe.Closed ->
+            dlog "start_shutting_down: done (already closed)";
+            Some (`Ok())
+        | error ->
+            dlog "start_shutting_down: done (error case)";
+            Some (`Error error) in
+    let rec wait() =
+      let e1 = new Uq_engines.signal_engine esys in
+      let tid = (!Netsys_oothr.provider)#self#id in
+      Netsys_polypipe.set_write_notify
+        wr_pipe
+        (fun () ->
+           dlogf "start_shutting_down: Signalling thread %d dbgname=%s"
+                 tid !dbg_name;
+           Netsys_polypipe.set_write_notify wr_pipe (fun () -> ());
+           e1 # signal (`Done())
+        );
+      let e1 = (e1 :> _ Uq_engines.engine) in
+      Uq_engines.when_state
+        ~is_done:(fun _ ->
+                    dlogf "start_writing: repeat dbgname=%s" !dbg_name;
+                    wait()
+                 )
+        e1;
+      wr_engine <- Some e1;
+      let res_opt = attempt() in
+      match res_opt with
+        | Some res ->
+            dlogf "start_shutting_down: done dbgname=%s" !dbg_name;
+            Netsys_polypipe.set_write_notify wr_pipe (fun () -> ());
+            e1 # abort();
+            wr_engine <- None;
+            when_done res
+        | None ->
+            let e2 = Uq_engines.timeout_engine timeout Uq_engines.Timeout e1 in
+            wr_engine <- Some e2;
+            self # notify_on_timeout e2;
+            dlogf "start_shutting_down: waiting dbgname=%s" !dbg_name in
+    wait()
+
+  method cancel_rd_polling () =
+    dlog "cancel_rd_polling";
+    match rd_engine with
+      | None -> ()
+      | Some e ->
+          rd_engine <- None;
+          e#abort()
+
+  method private cancel_wr_polling () =
+    dlogf "cancel_wr_polling dbgname=%s" !dbg_name;
+    match wr_engine with
+      | None -> ()
+      | Some e ->
+          wr_engine <- None;
+          e#abort()
+
+  method cancel_shutting_down =
+    self#cancel_wr_polling
+
+  method abort_rw () =
+    self # cancel_rd_polling();
+    self # cancel_wr_polling();
+
+  method inactivate () =
+    dlogf "inactivate dbgname=%s" !dbg_name;
+    alive <- false;
+    self#abort_rw();
+    if close_inactive_descr then (
+      preclose()
+    )
+
+  method set_timeout ~notify tmo =
+    timeout <- tmo;
+    tmo_notify <- notify
+end

@@ -1,12 +1,16 @@
 # -*- makefile-mode -*-
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = rpc-generator
 GENERATE = parser.ml META configure
 PACKLIST = rpcgen-packlist
 INSTALL_EXTRA = rpcgen-packlist
 INSTOTHER = install-rpcgen
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules
 

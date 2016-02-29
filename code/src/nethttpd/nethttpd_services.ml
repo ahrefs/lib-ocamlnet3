@@ -531,6 +531,9 @@ object(self)
   method really_output s p len =
     if !enabled then
       out_ch # really_output s p len
+  method really_output_string s p len =
+    if !enabled then
+      out_ch # really_output_string s p len
   method output_char c =
     if !enabled then
       out_ch # output_char c
@@ -540,6 +543,9 @@ object(self)
   method output_byte b =
     if !enabled then
       out_ch # output_byte b
+  method output_bytes b =
+    if !enabled then
+      out_ch # output_bytes b
   method output_buffer b =
     if !enabled then
       out_ch # output_buffer b
@@ -1115,7 +1121,6 @@ object(self)
 		    let st_gzip = Unix.LargeFile.stat fn in
 		    h # update_field "Content-Encoding" encoding;
 		    `File(`Ok, Some h, fn, 0L, st_gzip.Unix.LargeFile.st_size)
-		| _ -> assert false
 	    )
     )
 

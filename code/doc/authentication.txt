@@ -90,7 +90,7 @@ later.
 Module types:
 
  - SASL: {!Netsys_sasl_types.SASL_MECHANISM}
- - HTTP: {!Nethttp.HTTP_MECHANISM}
+ - HTTP: {!Nethttp.HTTP_CLIENT_MECHANISM}
  - GSSAPI: {!Netsys_gssapi.GSSAPI}
  - TLS: {!Netsys_crypto_types.TLS_PROVIDER}
 
@@ -99,7 +99,8 @@ Mechanisms:
  - PLAIN: {!Netmech_plain_sasl}
  - CRAM-MD5: {!Netmech_crammd5_sasl}
  - DIGEST: {!Netmech_digest_sasl}, {!Netmech_digest_http}
- - SCRAM: {!Netmech_scram_sasl}, {!Netmech_scram_gssapi}, HTTP: TBD
+ - SCRAM: {!Netmech_scram_sasl}, {!Netmech_scram_gssapi},
+   {!Netmech_scram_http}
  - GSSAPI system authentication: {!Netgss.System}
  - TLS: TLS mechanisms are defined by the provider of TLS. At present,
    there is {!Nettls_gnutls} covering all TLS 1.2 mechanisms.

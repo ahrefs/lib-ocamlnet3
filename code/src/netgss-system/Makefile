@@ -17,6 +17,13 @@ CC_OPTIONS_FOR_netgss_bindings_stubs.c = -ccopt -Wno-unused-function \
 
 INCLUDES = $(INC_NETSYS) $(INC_NETSTRING)
 
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
+
+DOC_IGNORABLE = true
+
 include $(TOP_DIR)/Makefile.rules
 
 .PHONY: cobjects

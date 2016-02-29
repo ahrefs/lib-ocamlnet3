@@ -6,7 +6,7 @@ open Printf
 type 'h t =
     { bsize : int;
 
-      mutable blocks : string array;
+      mutable blocks : Bytes.t array;
       (* Allocated strings have length [bsize]. Unused strings are just "" *)
 
       mutable null_index : int;
@@ -39,7 +39,7 @@ let create pool bsize h =
       pool
       (bsize + 4096) 
       { bsize = bsize;
-	blocks = [| "" |];
+	blocks = [| Bytes.create 0 |];
 	null_index = 0;
 	start_index = 0;
 	length = 0;
@@ -127,18 +127,20 @@ let blit_to sb sb_pos_opt get_n f =
        )
     )
 
-let blit_to_string sb sb_pos str str_pos n =
+let blit_to_bytes sb sb_pos str str_pos n =
   if n < 0 then
     invalid_arg "Netmcore_buffer: bad length";
-  let str_len = String.length str in
+  let str_len = Bytes.length str in
   if str_pos < 0 || str_pos > str_len - n then
     invalid_arg "Netmcore_buffer: bad index";
   let q = ref str_pos in
   blit_to sb (Some sb_pos) (fun _ -> n)
     (fun block block_pos num ->
-       String.blit block block_pos str !q num;
+       Bytes.blit block block_pos str !q num;
        q := !q + num
     )
+
+let blit_to_string = blit_to_bytes
 
 let blit_to_memory sb sb_pos mem mem_pos n =
   if n < 0 then
@@ -149,7 +151,7 @@ let blit_to_memory sb sb_pos mem mem_pos n =
   let q = ref mem_pos in
   blit_to sb (Some sb_pos) (fun _ -> n)
     (fun block block_pos num ->
-       Netsys_mem.blit_string_to_memory block block_pos mem !q num;
+       Netsys_mem.blit_bytes_to_memory block block_pos mem !q num;
        q := !q + num
     )
 
@@ -157,30 +159,30 @@ let sub sb sb_pos n =
   if n < 0 then
     invalid_arg "Netmcore_buffer: bad length";
   let q = ref 0 in
-  let s = ref "" in
+  let s = ref (Bytes.create 0) in
   let s_alloc = ref false in
   blit_to sb (Some sb_pos)
     (fun _ -> n)
     (fun block block_pos num ->
-       if not !s_alloc then ( s := String.create n; s_alloc := true );
-       String.blit block block_pos !s !q num;
+       if not !s_alloc then ( s := Bytes.create n; s_alloc := true );
+       Bytes.blit block block_pos !s !q num;
        q := !q + num
     );
-  !s
+  Bytes.unsafe_to_string !s
 
 let contents sb =
   let q = ref 0 in
-  let s = ref "" in
+  let s = ref (Bytes.create 0) in
   let s_alloc = ref false in
   let n = ref 0 in
   blit_to sb None
     (fun length -> n := length; length)
     (fun block block_pos num ->
-       if not !s_alloc then ( s := String.create !n; s_alloc := true );
-       String.blit block block_pos !s !q num;
+       if not !s_alloc then ( s := Bytes.create !n; s_alloc := true );
+       Bytes.blit block block_pos !s !q num;
        q := !q + num
     );
-  !s
+  Bytes.unsafe_to_string !s
   
 let access sb sb_pos f =
   let bsize = (root sb).bsize in
@@ -255,7 +257,7 @@ let add_to sb n f =
            assert(n_blocks_3 > 0);
            assert(n_blocks_3 >= n_blocks_1);
            debug := 2;
-	   let blocks = add_uniform_array mut n_blocks_3 "" in
+	   let blocks = add_uniform_array mut n_blocks_3 (Bytes.create 0) in
            debug := 3;
 	   Array.blit b.blocks n_drop blocks 0 n_keep;
            debug := 4;
@@ -263,12 +265,12 @@ let add_to sb n f =
            debug := 5;
 
 	   let orig =
-	     if b.blocks.(0) <> "" then b.blocks.(0) else
-	       String.create b.bsize in
+	     if Bytes.length b.blocks.(0) > 0 then b.blocks.(0) else
+	       Bytes.create b.bsize in
            debug := 6;
 
 	   for k = 0 to n_blocks_1 - 1 do
-	     if String.length blocks.(k) = 0 then
+	     if Bytes.length blocks.(k) = 0 then
 	       blocks.(k) <- add mut orig
 	   done;
            debug := 7;
@@ -284,12 +286,12 @@ let add_to sb n f =
            assert(n_blocks >= n_blocks_1);
 
 	   let orig =
-	     if b.blocks.(0) <> "" then b.blocks.(0) else
-	       String.create b.bsize in
+	     if Bytes.length b.blocks.(0) > 0 then b.blocks.(0) else
+	       Bytes.create b.bsize in
 
            debug := 9;
 	   for k = 0 to n_blocks_1 - 1 do
-	     if String.length b.blocks.(k) = 0 then
+	     if Bytes.length b.blocks.(k) = 0 then
 	       b.blocks.(k) <- add mut orig
 	   done;
            debug := 10;
@@ -350,7 +352,7 @@ let add_to sb n f =
 
 
 
-let add_sub_string sb str str_pos n =
+let add_substring sb str str_pos n =
   if n < 0 then
     invalid_arg "Netmcore_buffer: bad length";
   let str_len = String.length str in
@@ -362,6 +364,8 @@ let add_sub_string sb str str_pos n =
        String.blit str !q s p n;
        q := !q + n
     )
+
+let add_sub_string = add_substring
 
 
 let add_string sb str =
@@ -377,9 +381,12 @@ let add_sub_memory sb mem mem_pos n =
   let q = ref mem_pos in
   add_to sb n
     (fun s p n ->
-       Netsys_mem.blit_memory_to_string mem !q s p n;
+       Netsys_mem.blit_memory_to_bytes mem !q s p n;
        q := !q + n
     )
+
+let add_submemory =
+  add_sub_memory
 
 
 let clear sb =
@@ -388,7 +395,7 @@ let clear sb =
     modify sb
       (fun mut ->
 	 let b = root sb in
-	 b.blocks <- add mut [| "" |];
+	 b.blocks <- add mut [| Bytes.create 0 |];
 	 b.null_index <- 0;
 	 b.start_index <- 0;
 	 b.length <- 0;

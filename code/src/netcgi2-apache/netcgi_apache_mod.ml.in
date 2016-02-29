@@ -163,7 +163,7 @@ struct
       = "netcgi2_apache_request_should_client_block"
     external get_client_block : t -> string
       = "netcgi2_apache_request_get_client_block"
-    external get_client_block_buffer : t -> string -> int -> int -> int
+    external get_client_block_buffer : t -> Bytes.t -> int -> int -> int
       = "netcgi2_apache_request_get_client_block_buffered"
     external discard_request_body : t -> int
       = "netcgi2_apache_request_discard_request_body"
@@ -194,15 +194,16 @@ struct
     external print_char : t -> char -> unit
       = "netcgi2_apache_request_print_char"
 
-    external unsafe_output : t -> string -> int -> int -> int
+    external unsafe_output : t -> Bytes.t -> int -> int -> int
       = "netcgi2_apache_request_output"
     let output r s ofs len =
-      if ofs < 0 || len < 0 || ofs + len > String.length s then
+      if ofs < 0 || len < 0 || ofs + len > Bytes.length s then
         invalid_arg "Netcgi_apache.Apache.Request.output";
       unsafe_output r s ofs len
 
     let print_string r s =
-      let n = String.length s in
+      let s = Bytes.unsafe_of_string s in
+      let n = Bytes.length s in
       let i = ref 0 in
       while !i < n do
         let w = unsafe_output r s !i (n - !i) in

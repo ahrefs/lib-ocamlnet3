@@ -182,7 +182,7 @@ object(self)
 	     0    (* buffer underrun *)
        | Some (u,upos,ulen) ->
 	   let len = min slen ulen in
-	   String.blit u upos s spos len;
+	   Bytes.blit u upos s spos len;
 	   if len = ulen then
 	     front <- None
 	   else
@@ -300,8 +300,8 @@ object(self)
     let len = min slen 8192 in
     if len > 0 then (
       let old_can_output = self # can_output in    
-      let u = String.sub s spos len in
-      resp # send (`Resp_body(u,0,String.length u));
+      let u = Bytes.sub s spos len in
+      resp # send (`Resp_body(u,0,Bytes.length u));
       cond_output_filled # signal();
       pos_out <- pos_out + len;
       if old_can_output <> self # can_output then self # notify();
@@ -1051,7 +1051,7 @@ object
 	try
 	  let (s,sp,sl) = self # next_token in
 	  let n = min ul sl in
-	  String.blit s sp u up n;
+	  Bytes.blit s sp u up n;
 	  token <- if n = sl then None else Some(s,sp+n,sl-n);
 	  pos_in <- pos_in + n;
 	  n
@@ -1073,12 +1073,12 @@ object
 
     end in
 
-    let s = String.create 8192 in
+    let s = Bytes.create 8192 in
     let on_data() =
       try
 	while ch # can_input do
 	  let n = ch # input s 0 8192 in
-	  Queue.push (String.sub s 0 n, 0, n) queue
+	  Queue.push (Bytes.sub s 0 n, 0, n) queue
 	done;
 	true  (* notify again *)
       with

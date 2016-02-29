@@ -17,12 +17,63 @@ let proc_fail() =
 let proc_exit() =
   exit 3
 
+
+let vv1 = ref None
+let vv2 = ref None
+
+let estvar vv =
+  match !vv with
+    | None ->
+        ignore(Netplex_sharedvar.create_var "the_variable");
+        let new_vv = Netplex_sharedvar.vv_access "the_variable" in
+        vv := Some new_vv;
+        new_vv
+    | Some vv_to_use ->
+        vv_to_use
+
+let setvar vv s =
+  let vv_to_use = estvar vv in
+  ignore(Netplex_sharedvar.vv_set vv_to_use s)
+  
+let proc_setvar1 s =
+  setvar vv1 s
+
+let proc_setvar2 s =
+  setvar vv2 s
+
+let getvar vv =
+  let vv_to_use = estvar vv in
+  Netplex_sharedvar.vv_get vv_to_use
+
+let proc_getvar1 () =
+  getvar vv1
+
+let proc_getvar2 () =
+  getvar vv2
+
+let updvar vv =
+  let vv_to_use = estvar vv in
+  ignore(Netplex_sharedvar.vv_update vv_to_use)
+
+let proc_updvar1 () =
+  updvar vv1
+
+let proc_updvar2 () =
+  updvar vv2
+
+
 let setup rpc () =
   Proto_srv.P.V1.bind
     ~proc_ping:(fun () -> ())
     ~proc_hard_work
     ~proc_fail
     ~proc_exit
+    ~proc_setvar1
+    ~proc_setvar2
+    ~proc_getvar1
+    ~proc_getvar2
+    ~proc_updvar1
+    ~proc_updvar2
     rpc
 ;;
 
@@ -31,6 +82,9 @@ let proto_factory (non_responsive,cont_fail) =
   let hooks _ =
     ( object
 	inherit Netplex_kit.empty_processor_hooks ()
+
+        method post_add_hook _ ctrl =
+          ctrl # add_plugin Netplex_sharedvar.plugin
 
 	method post_start_hook _ =
 	  if non_responsive then

@@ -181,36 +181,53 @@ module type ENCDEC = sig
       - {!Netnumber.LE} implements little endian
    *)
 
-  val read_int4 : string -> int -> int4
-  val read_int8 : string -> int -> int8
-  val read_uint4 : string -> int -> uint4
-  val read_uint8 : string -> int -> uint8
+  val read_int4 : Bytes.t -> int -> int4
+  val read_int8 : Bytes.t -> int -> int8
+  val read_uint4 : Bytes.t -> int -> uint4
+  val read_uint8 : Bytes.t -> int -> uint8
     (** [read_]<t> create integer values from the characters found at a
 	certain position in the string. Raises [Out_of_range] if the position
 	is bad
      *)
 
-  val read_int4_unsafe : string -> int -> int4
-  val read_int8_unsafe : string -> int -> int8
-  val read_uint4_unsafe : string -> int -> uint4
-  val read_uint8_unsafe : string -> int -> uint8
+  val read_int4_unsafe : Bytes.t -> int -> int4
+  val read_int8_unsafe : Bytes.t -> int -> int8
+  val read_uint4_unsafe : Bytes.t -> int -> uint4
+  val read_uint8_unsafe : Bytes.t -> int -> uint8
     (** Same, but no index check *)
 
-  val write_int4 : string -> int -> int4 -> unit
-  val write_int8 : string -> int -> int8 -> unit
-  val write_uint4 : string -> int -> uint4 -> unit
-  val write_uint8 : string -> int -> uint8 -> unit
+  val read_string_int4 : string -> int -> int4
+  val read_string_int8 : string -> int -> int8
+  val read_string_uint4 : string -> int -> uint4
+  val read_string_uint8 : string -> int -> uint8
+  val read_string_int4_unsafe : string -> int -> int4
+  val read_string_int8_unsafe : string -> int -> int8
+  val read_string_uint4_unsafe : string -> int -> uint4
+  val read_string_uint8_unsafe : string -> int -> uint8
+    (** For immutable strings *)
+
+  val write_int4 : Bytes.t -> int -> int4 -> unit
+  val write_int8 : Bytes.t -> int -> int8 -> unit
+  val write_uint4 : Bytes.t -> int -> uint4 -> unit
+  val write_uint8 : Bytes.t -> int -> uint8 -> unit
     (** [write_]<t> copies the characters corresponding to the integer values 
 	into the string at the given positions. Raises [Out_of_range] if the
 	position is bad. 
      *)
 
-  val write_int4_unsafe : string -> int -> int4 -> unit
-  val write_int8_unsafe : string -> int -> int8 -> unit
-  val write_uint4_unsafe : string -> int -> uint4 -> unit
-  val write_uint8_unsafe : string -> int -> uint8 -> unit
+  val write_int4_unsafe : Bytes.t -> int -> int4 -> unit
+  val write_int8_unsafe : Bytes.t -> int -> int8 -> unit
+  val write_uint4_unsafe : Bytes.t -> int -> uint4 -> unit
+  val write_uint8_unsafe : Bytes.t -> int -> uint8 -> unit
     (** [write_]<t>[_unsafe]: Same, but no index check. *)
 
+
+  val int4_as_bytes : int4 -> Bytes.t
+  val int8_as_bytes : int8 -> Bytes.t
+  val uint4_as_bytes : uint4 -> Bytes.t
+  val uint8_as_bytes : uint8 -> Bytes.t
+    (** <t>[_as_bytes]: Returns the corresponding bytes for an integer value
+     *)
 
   val int4_as_string : int4 -> string
   val int8_as_string : int8 -> string
@@ -219,14 +236,19 @@ module type ENCDEC = sig
     (** <t>[_as_string]: Returns the corresponding string for an integer value
      *)
 
-  val write_fp4 : string -> int -> fp4 -> unit
-  val write_fp8 : string -> int -> fp8 -> unit
+  val write_fp4 : Bytes.t -> int -> fp4 -> unit
+  val write_fp8 : Bytes.t -> int -> fp8 -> unit
 
   val fp4_as_string : fp4 -> string
   val fp8_as_string : fp8 -> string
+
+  val fp4_as_bytes : fp4 -> Bytes.t
+  val fp8_as_bytes : fp8 -> Bytes.t
     
-  val read_fp4 : string -> int -> fp4
-  val read_fp8 : string -> int -> fp8
+  val read_fp4 : Bytes.t -> int -> fp4
+  val read_fp8 : Bytes.t -> int -> fp8
+  val read_string_fp4 : string -> int -> fp4
+  val read_string_fp8 : string -> int -> fp8
     
 end
 

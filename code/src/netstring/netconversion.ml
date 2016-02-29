@@ -2,6 +2,7 @@
  * ----------------------------------------------------------------------
  *)
 
+open Netsys_types
 open Netaux.ArrayAux
 
 exception Malformed_code
@@ -742,26 +743,57 @@ Callback.register_exception "Netconversion.Malformed_code_read"
  * and string accesses.
  *)
 
+type poly_reader =
+    { read : 's . 's Netstring_tstring.tstring_ops -> 
+                     int array -> int array -> 's -> int -> int -> 
+                     (int * int * encoding)
+    }
 
-let read_iso88591 maxcode enc slice_char slice_blen s_in p_in l_in =
+
+let read_iso88591 maxcode enc =
   (* UNSAFE_OPT *)
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
-  let m = min l_in (Array.length slice_char) in
-  for k = 0 to m-1 do
-    (* let ch = Char.code s_in.[ p_in + k ] in *)
-    let ch = Char.code (String.unsafe_get s_in (p_in + k)) in
-    if ch > maxcode then (
-      slice_char.(k) <- (-1);
-      raise(Malformed_code_read(k,k,enc))
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
+    let m = min l_in (Array.length slice_char) in
+    let m3 = m/3 in
+    for k3 = 0 to m3-1 do
+      let k = 3*k3 in
+      (* let ch = Char.code s_in.[ p_in + k ] in *)
+      let chars = ops.unsafe_get3 s_in (p_in + k) in
+      let c0 = chars lsr 16 in
+      let c1 = (chars lsr 8) land 0xff in
+      let c2 = chars land 0xff in
+      if c0 > maxcode then (
+        slice_char.(k) <- (-1);
+        raise(Malformed_code_read(k,k,enc))
+      );
+      Array.unsafe_set slice_char k c0;
+      if c1 > maxcode then (
+        slice_char.(k+1) <- (-1);
+        raise(Malformed_code_read(k+1,k+1,enc))
+      );
+      Array.unsafe_set slice_char (k+1) c1;
+      if c2 > maxcode then (
+        slice_char.(k+2) <- (-1);
+        raise(Malformed_code_read(k+2,k+2,enc))
+      );
+      Array.unsafe_set slice_char (k+2) c2;
+    done;
+    for k = 3*m3 to m-1 do
+      let c0 = Char.code (ops.unsafe_get s_in (p_in + k)) in
+      if c0 > maxcode then (
+        slice_char.(k) <- (-1);
+        raise(Malformed_code_read(k,k,enc))
+      );
+      Array.unsafe_set slice_char k c0;
+    done;
+    if m < Array.length slice_char then (
+      slice_char.(m) <- (-1);
     );
-    (* slice_char.(k) <- ch *)
-    Array.unsafe_set slice_char k ch;
-  done;
-  if m < Array.length slice_char then (
-    slice_char.(m) <- (-1);
-  );
-  (m,m,enc)
+    (m,m,enc) in
+  { read }
 ;;
 
 
@@ -783,299 +815,335 @@ let read_8bit enc =
   let m_to_unicode = get_8bit_to_unicode_map enc in
   (* the 256-byte array mapping the character set to unicode *)
 
-  fun slice_char slice_blen s_in p_in l_in ->
+  let read ops slice_char slice_blen s_in p_in l_in =
     (* UNSAFE_OPT *)
+    let open Netstring_tstring in
     assert(Array.length slice_char = Array.length slice_blen);
-    assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
     let m = min l_in (Array.length slice_char) in
-    for k = 0 to m-1 do
-      (* let ch_local = Char.code s_in.[ p_in + k ] in *)
-      let ch_local = Char.code (String.unsafe_get s_in (p_in + k)) in
-      let ch_uni = Array.unsafe_get m_to_unicode ch_local in  (* ok *)
-      if ch_uni < 0 then (
+    let m3 = m/3 in
+    for k3 = 0 to m3-1 do
+      let k = 3*k3 in
+      let chars = ops.unsafe_get3 s_in k in
+      let c0 = chars lsr 16 in
+      let c1 = (chars lsr 8) land 0xff in
+      let c2 = chars land 0xff in
+      let c0_uni = Array.unsafe_get m_to_unicode c0 in
+      if c0_uni < 0 then (
 	slice_char.(k) <- (-1);
 	raise(Malformed_code_read(k,k,enc));
       );
-      (* slice_char.(k) <- ch_uni *)
-      Array.unsafe_set slice_char k ch_uni;
+      Array.unsafe_set slice_char k c0_uni;
+      let c1_uni = Array.unsafe_get m_to_unicode c1 in
+      if c1_uni < 0 then (
+	slice_char.(k+1) <- (-1);
+	raise(Malformed_code_read(k+1,k+1,enc));
+      );
+      Array.unsafe_set slice_char (k+1) c1_uni;
+      let c2_uni = Array.unsafe_get m_to_unicode c2 in
+      if c2_uni < 0 then (
+	slice_char.(k+2) <- (-1);
+	raise(Malformed_code_read(k+2,k+2,enc));
+      );
+      Array.unsafe_set slice_char (k+2) c2_uni;
+    done;
+    for k = 3*m3 to m-1 do
+      let c0 = Char.code (ops.get s_in k) in
+      let c0_uni = Array.unsafe_get m_to_unicode c0 in
+      if c0_uni < 0 then (
+	slice_char.(k) <- (-1);
+	raise(Malformed_code_read(k,k,enc));
+      );
+      Array.unsafe_set slice_char k c0_uni;
     done;
     if m < Array.length slice_char then (
       slice_char.(m) <- (-1);
     );
-    (m,m,enc)
+    (m,m,enc) in
+  { read }
 ;;
 
 
-let read_utf8 is_java slice_char slice_blen s_in p_in l_in =
+let read_utf8 is_java =
   (* UNSAFE_OPT *)
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
 
-  (* k: counts the bytes
-   * n: counts the characters
-   *)
-
-  let p = ref p_in in
-  let p_max = p_in + l_in in
-  let n = ref 0 in
-  let n_ret = ref (-1) in
-
-  let malformed_code() =
-    slice_char.( !n ) <- (-1);
-    raise(Malformed_code_read(!n, !p - p_in, `Enc_utf8));
-  in
-
-  let slice_length = Array.length slice_char in
-
-  while !p < p_max && !n < slice_length do
-    let k_inc =
-      (* length of the character in bytes; 0 means: stop *)
-
-      (* We know:
-       * (1) p_in >= 0 ==> !p >= 0
-       * (2) !p < p_max = p_in + l_in <= String.length s_in
-       * ==> unsafe get ok
-       *)
-      (* match s_in.[k_in + k] with *)
-      match String.unsafe_get s_in !p with
-	  '\000' ->
-	    if is_java then malformed_code();
-	    (* slice_char.(n) <- 0; *)
-	    Array.unsafe_set slice_char !n 0;     (* ok *)
-	    1
-	| ('\001'..'\127' as x) ->
-	    (* slice_char.(n) <- Char.code x; *)
-	    Array.unsafe_set slice_char !n (Char.code x);     (* ok *)
-	    1
-	| ('\128'..'\223' as x) ->
-	    if !p+1 >= p_max then
-	      0
-	    else begin
-	      (* ==> !p+1 < p_max = p_in + l_in <= String.length s_in
-	       * ==> unsafe get ok
-	       *)
-	      let n1 = Char.code x in
-	      let n2 = (* Char.code (s_in.[!p + 1]) *)
-		Char.code(String.unsafe_get s_in (!p + 1)) in
-	      if is_java && (n1 = 0x80 && n2 = 0xc0) then begin
-		(* slice_char.(n) <- 0; *)
-		Array.unsafe_set slice_char !n 0;     (* ok *)
-		2
-	      end
-	      else begin
-		if n2 < 128 || n2 > 191 then malformed_code();
-		let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
-		if p < 128 then malformed_code();
-		(* slice_char.(n) <- p; *)
-		Array.unsafe_set slice_char !n p;     (* ok *)
-		2
-	      end
-	    end
-	| ('\224'..'\239' as x) ->
-	    if !p + 2 >= p_max then
-	      0
-	    else begin
-	      (* ==> !p+2 < p_max = p_in + l_in <= String.length s_in
-	       * ==> unsafe get ok
-	       *)
-	      let n1 = Char.code x in
-	      let n2 = (* Char.code (s_in.[!p + 1]) *)
-		Char.code(String.unsafe_get s_in (!p + 1)) in
-	      let n3 = (* Char.code (s_in.[!p + 2]) *)
-		Char.code(String.unsafe_get s_in (!p + 2)) in
-	      if n2 < 128 || n2 > 191 then malformed_code();
-	      if n3 < 128 || n3 > 191 then malformed_code();
-	      let p =
-		((n1 land 0b1111) lsl 12) lor
-		((n2 land 0b111111) lsl 6) lor
-		(n3 land 0b111111)
-	      in
-	      if p < 0x800 then malformed_code();
-	      if (p >= 0xd800 && p < 0xe000) then
-		(* Surrogate pairs are not supported in UTF-8 *)
-		malformed_code();
-	      if (p >= 0xfffe && p <= 0xffff) then
-		malformed_code();
-	      (* slice_char.(n) <- p; *)
-	      Array.unsafe_set slice_char !n p;     (* ok *)
-	      3
-	    end
-	| ('\240'..'\247' as x) ->
-	    if !p + 3 >= p_max then
-	      0
-	    else begin
-	      (* ==> !p+3 < p_max = p_in + l_in <= String.length s_in
-	       * ==> unsafe get ok
-	       *)
-	      let n1 = Char.code x in
-	      let n2 = (* Char.code (s_in.[!p + 1]) *)
-		Char.code(String.unsafe_get s_in (!p + 1)) in
-	      let n3 = (* Char.code (s_in.[!p + 2]) *)
-		Char.code(String.unsafe_get s_in (!p + 2)) in
-	      let n4 = (* Char.code (s_in.[!p + 3]) *)
-		Char.code(String.unsafe_get s_in (!p + 3)) in
-	      if n2 < 128 || n2 > 191 then malformed_code();
-	      if n3 < 128 || n3 > 191 then malformed_code();
-	      if n4 < 128 || n4 > 191 then malformed_code();
-	      let p = ((n1 land 0b111) lsl 18) lor
-		      ((n2 land 0b111111) lsl 12) lor
-		      ((n3 land 0b111111) lsl 6) lor
-		      (n4 land 0b111111)
-	      in
-	      if p < 0x10000 then malformed_code();
-	      if p >= 0x110000 then
-		(* These code points are not supported. *)
-		malformed_code();
-	      (* slice_char.(n) <- p; *)
-	      Array.unsafe_set slice_char !n p;     (* ok *)
-	      4
-	    end
-	| _ ->
-	    (* Outside the valid range of XML characters *)
-	    malformed_code();
-    in
-    (* If k_inc = 0, the character was partially outside the processed
-     * range of the string, and could not be decoded.
+    (* k: counts the bytes
+     * n: counts the characters
      *)
 
-    if k_inc > 0 then begin
-      (* We know:
-       * (1) n >= 0, because n starts with 0 and is only increased
-       * (2) n < Array.length slice_char = Array.length slice_blen
-       * ==> unsafe set ok
-       *)
-      (* slice_blen.(n) <- k_inc; *)
-      Array.unsafe_set slice_blen !n k_inc;
-      (* next iteration: *)
-      p := !p + k_inc;
-      incr n;
-    end
-    else begin
-      (* Stop loop: *)
-      n_ret := !n;
-      n := slice_length;
-    end
-  done; 
+    let p = ref p_in in
+    let p_max = p_in + l_in in
+    let n = ref 0 in
+    let n_ret = ref (-1) in
 
-  if (!n_ret = (-1)) then n_ret := !n;
-  if !n_ret < slice_length then (
-    (* EOF marker *)
-    slice_char.(!n_ret) <- (-1);  
-  );
-  (!n_ret,!p-p_in,`Enc_utf8)
+    let malformed_code() =
+      slice_char.( !n ) <- (-1);
+      raise(Malformed_code_read(!n, !p - p_in, `Enc_utf8));
+    in
+
+    let slice_length = Array.length slice_char in
+
+    while !p < p_max && !n < slice_length do
+      let k_inc =
+        (* length of the character in bytes; 0 means: stop *)
+
+        (* We know:
+         * (1) p_in >= 0 ==> !p >= 0
+         * (2) !p < p_max = p_in + l_in <= String.length s_in
+         * ==> unsafe get ok
+         *)
+        (* match s_in.[k_in + k] with *)
+        match ops.unsafe_get s_in !p with
+            '\000' ->
+              if is_java then malformed_code();
+              (* slice_char.(n) <- 0; *)
+              Array.unsafe_set slice_char !n 0;     (* ok *)
+              1
+          | ('\001'..'\127' as x) ->
+              (* slice_char.(n) <- Char.code x; *)
+              Array.unsafe_set slice_char !n (Char.code x);     (* ok *)
+              1
+          | ('\128'..'\223' as x) ->
+              if !p+1 >= p_max then
+                0
+              else begin
+                (* ==> !p+1 < p_max = p_in + l_in <= String.length s_in
+                 * ==> unsafe get ok
+                 *)
+                let n1 = Char.code x in
+                let n2 = (* Char.code (s_in.[!p + 1]) *)
+                  Char.code(ops.unsafe_get s_in (!p + 1)) in
+                if is_java && (n1 = 0x80 && n2 = 0xc0) then begin
+                  (* slice_char.(n) <- 0; *)
+                  Array.unsafe_set slice_char !n 0;     (* ok *)
+                  2
+                end
+                else begin
+                  if n2 < 128 || n2 > 191 then malformed_code();
+                  let p = ((n1 land 0b11111) lsl 6) lor (n2 land 0b111111) in
+                  if p < 128 then malformed_code();
+                  (* slice_char.(n) <- p; *)
+                  Array.unsafe_set slice_char !n p;     (* ok *)
+                  2
+                end
+              end
+          | ('\224'..'\239' as x) ->
+              if !p + 2 >= p_max then
+                0
+              else begin
+                (* ==> !p+2 < p_max = p_in + l_in <= String.length s_in
+                 * ==> unsafe get ok
+                 *)
+                let n1 = Char.code x in
+                let n2 = (* Char.code (s_in.[!p + 1]) *)
+                  Char.code(ops.unsafe_get s_in (!p + 1)) in
+                let n3 = (* Char.code (s_in.[!p + 2]) *)
+                  Char.code(ops.unsafe_get s_in (!p + 2)) in
+                if n2 < 128 || n2 > 191 then malformed_code();
+                if n3 < 128 || n3 > 191 then malformed_code();
+                let p =
+                  ((n1 land 0b1111) lsl 12) lor
+                  ((n2 land 0b111111) lsl 6) lor
+                  (n3 land 0b111111)
+                in
+                if p < 0x800 then malformed_code();
+                if (p >= 0xd800 && p < 0xe000) then
+                  (* Surrogate pairs are not supported in UTF-8 *)
+                  malformed_code();
+                if (p >= 0xfffe && p <= 0xffff) then
+                  malformed_code();
+                (* slice_char.(n) <- p; *)
+                Array.unsafe_set slice_char !n p;     (* ok *)
+                3
+              end
+          | ('\240'..'\247' as x) ->
+              if !p + 3 >= p_max then
+                0
+              else begin
+                (* ==> !p+3 < p_max = p_in + l_in <= String.length s_in
+                 * ==> unsafe get ok
+                 *)
+                let n1 = Char.code x in
+                let chars = ops.unsafe_get3 s_in (!p + 1) in
+                let n2 = chars lsr 16 in
+                let n3 = (chars lsr 8) land 0xff in
+                let n4 = chars land 0xff in
+                if n2 < 128 || n2 > 191 then malformed_code();
+                if n3 < 128 || n3 > 191 then malformed_code();
+                if n4 < 128 || n4 > 191 then malformed_code();
+                let p = ((n1 land 0b111) lsl 18) lor
+                        ((n2 land 0b111111) lsl 12) lor
+                        ((n3 land 0b111111) lsl 6) lor
+                        (n4 land 0b111111)
+                in
+                if p < 0x10000 then malformed_code();
+                if p >= 0x110000 then
+                  (* These code points are not supported. *)
+                  malformed_code();
+                (* slice_char.(n) <- p; *)
+                Array.unsafe_set slice_char !n p;     (* ok *)
+                4
+              end
+          | _ ->
+              (* Outside the valid range of XML characters *)
+              malformed_code();
+      in
+      (* If k_inc = 0, the character was partially outside the processed
+       * range of the string, and could not be decoded.
+       *)
+
+      if k_inc > 0 then begin
+        (* We know:
+         * (1) n >= 0, because n starts with 0 and is only increased
+         * (2) n < Array.length slice_char = Array.length slice_blen
+         * ==> unsafe set ok
+         *)
+        (* slice_blen.(n) <- k_inc; *)
+        Array.unsafe_set slice_blen !n k_inc;
+        (* next iteration: *)
+        p := !p + k_inc;
+        incr n;
+      end
+      else begin
+        (* Stop loop: *)
+        n_ret := !n;
+        n := slice_length;
+      end
+    done; 
+
+    if (!n_ret = (-1)) then n_ret := !n;
+    if !n_ret < slice_length then (
+      (* EOF marker *)
+      slice_char.(!n_ret) <- (-1);  
+    );
+    (!n_ret,!p-p_in,`Enc_utf8) in
+  { read }
 ;;
 
 
 let read_utf8_ref = ref read_utf8;;
 
 
-let have_utf8_bom s p =
-  let c0 = s.[p + 0] in
-  let c1 = s.[p + 1] in
-  let c2 = s.[p + 2] in
+let have_utf8_bom ops s p =
+  let open Netstring_tstring in
+  let c0 = ops.get s (p + 0) in
+  let c1 = ops.get s (p + 1) in
+  let c2 = ops.get s (p + 2) in
   c0 = '\xEF' && c1 = '\xBB' && c2 = '\xBF'
 
 
-let read_utf8_opt_bom expose_bom slice_char slice_blen s_in p_in l_in =
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
-  (* Expect a BOM at the beginning of the text *)
-  if l_in >= 3 then (
-    if have_utf8_bom s_in p_in then (
-      let p_in1, l_in1 = 
-        if expose_bom then p_in, l_in else p_in+3, l_in-3 in
-      let (n_ret, p_ret, enc) = 
-        !read_utf8_ref false slice_char slice_blen s_in p_in1 l_in1 in
-      let p_ret1 =
-        if expose_bom then p_ret else p_ret+3 in
-      if expose_bom && n_ret >= 1 then
-        slice_char.(0) <- (-3); 
-      (n_ret, p_ret1, enc)
-    )
-    else
-      !read_utf8_ref false slice_char slice_blen s_in p_in l_in 
-  ) else (
-    let bom_possible =
-      l_in=0 || 
-        (l_in=1 && s_in.[0] = '\xEF') ||
-          (l_in=2 && s_in.[0] = '\xEF' && s_in.[1] = '\xBB') in
-    if bom_possible then
-      (0, 0, `Enc_utf8_opt_bom)
-    else
-      !read_utf8_ref false slice_char slice_blen s_in p_in l_in 
-  )
+let read_utf8_opt_bom expose_bom =
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
+    (* Expect a BOM at the beginning of the text *)
+    if l_in >= 3 then (
+      if have_utf8_bom ops s_in p_in then (
+        let p_in1, l_in1 = 
+          if expose_bom then p_in, l_in else p_in+3, l_in-3 in
+        let (n_ret, p_ret, enc) = 
+          (!read_utf8_ref false).read
+            ops slice_char slice_blen s_in p_in1 l_in1 in
+        let p_ret1 =
+          if expose_bom then p_ret else p_ret+3 in
+        if expose_bom && n_ret >= 1 then
+          slice_char.(0) <- (-3); 
+        (n_ret, p_ret1, enc)
+      )
+      else
+        (!read_utf8_ref false).read ops slice_char slice_blen s_in p_in l_in 
+    ) else (
+      let bom_possible =
+        l_in=0 || 
+          (l_in=1 && ops.get s_in 0 = '\xEF') ||
+            (l_in=2 && ops.get s_in 0 = '\xEF' && ops.get s_in 1 = '\xBB') in
+      if bom_possible then
+        (0, 0, `Enc_utf8_opt_bom)
+      else
+        (!read_utf8_ref false).read ops slice_char slice_blen s_in p_in l_in 
+    ) in
+  { read }
 ;;
 
 
 let surrogate_offset = 0x10000 - (0xD800 lsl 10) - 0xDC00;;
 
-let read_utf16_lebe lo hi n_start enc slice_char slice_blen s_in p_in l_in =
+let read_utf16_lebe lo hi n_start enc =
   (* lo=0, hi=1: little endian
    * lo=1, hi=0: big endian
    * n_start: First cell in slice to use
    *)
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
 
-  let malformed_code k n =
-    slice_char.(n) <- (-1);
-    raise(Malformed_code_read(n,k,enc))
-  in
+    let malformed_code k n =
+      slice_char.(n) <- (-1);
+      raise(Malformed_code_read(n,k,enc))
+    in
 
-  (* k: counts the bytes
-   * n: counts the characters
-   *)
-  let rec put_loop k n =
-    if k+1 < l_in && n < Array.length slice_char then begin
-      let p = (Char.code s_in.[p_in + k + lo]) lor 
-	      ((Char.code s_in.[p_in + k + hi]) lsl 8) in
+    (* k: counts the bytes
+     * n: counts the characters
+     *)
+    let rec put_loop k n =
+      if k+1 < l_in && n < Array.length slice_char then begin
+        let p = (Char.code (ops.get s_in (p_in + k + lo))) lor 
+                ((Char.code (ops.get s_in (p_in + k + hi))) lsl 8) in
 
-      if p >= 0xd800 & p < 0xe000 then begin
-	(* This is a surrogate pair. *)
-	if k+3 < l_in then begin
-	  if p <= 0xdbff then begin
-	    let q = (Char.code s_in.[p_in + k + 2 + lo ]) lor
-		    ((Char.code s_in.[p_in + k + 2 + hi]) lsl 8) in
-	    if q < 0xdc00 || q > 0xdfff then malformed_code k n;
-	    let eff_p = (p lsl 10) + q + surrogate_offset in
-	    slice_char.(n) <- eff_p;
-	    slice_blen.(n) <- 4;
-	    put_loop (k+4) (n+1)
-	  end
-	  else
-	    (* Malformed pair: *)
-	    malformed_code k n;
-	end
-	else 
-	  (n,k)
+        if p >= 0xd800 && p < 0xe000 then begin
+          (* This is a surrogate pair. *)
+          if k+3 < l_in then begin
+            if p <= 0xdbff then begin
+              let q = (Char.code (ops.get s_in (p_in + k + 2 + lo))) lor
+                      ((Char.code (ops.get s_in (p_in + k + 2 + hi))) lsl 8) in
+              if q < 0xdc00 || q > 0xdfff then malformed_code k n;
+              let eff_p = (p lsl 10) + q + surrogate_offset in
+              slice_char.(n) <- eff_p;
+              slice_blen.(n) <- 4;
+              put_loop (k+4) (n+1)
+            end
+            else
+              (* Malformed pair: *)
+              malformed_code k n;
+          end
+          else 
+            (n,k)
+        end
+        else
+          (* Normal 2-byte character *)
+          if p = 0xfffe then 
+            (* Wrong byte order mark: It is illegal here *)
+            malformed_code k n
+          else begin
+            (* A regular code point *)
+            slice_char.(n) <- p;
+            slice_blen.(n) <- 2;
+            put_loop (k+2) (n+1)
+          end
       end
       else
-	(* Normal 2-byte character *)
-	if p = 0xfffe then 
-	  (* Wrong byte order mark: It is illegal here *)
-	  malformed_code k n
-	else begin
-	  (* A regular code point *)
-	  slice_char.(n) <- p;
-	  slice_blen.(n) <- 2;
-	  put_loop (k+2) (n+1)
-	end
-    end
-    else
-      (n,k)
-  in
-  let (n,k) = put_loop 0 n_start in
-  if n < Array.length slice_char then (
-    (* EOF marker *)
-    slice_char.(n) <- (-1);
-  );
-  (n,k,enc)
+        (n,k)
+    in
+    let (n,k) = put_loop 0 n_start in
+    if n < Array.length slice_char then (
+      (* EOF marker *)
+      slice_char.(n) <- (-1);
+    );
+    (n,k,enc) in
+  { read }
 ;;
 
 
-let get_endianess s_in p_in =
-  let c0 = s_in.[p_in + 0] in
-  let c1 = s_in.[p_in + 1] in
+let get_endianess ops s_in p_in =
+  let open Netstring_tstring in
+  let c0 = ops.get s_in (p_in + 0) in
+  let c1 = ops.get s_in (p_in + 1) in
   if c0 = '\254' && c1 = '\255' then
     `Big_endian
   else
@@ -1090,96 +1158,101 @@ let get_endianess s_in p_in =
  * put as value (-3) into slice_char
  *)
 
-let read_utf16 expose_bom slice_char slice_blen s_in p_in l_in =
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
-  (* Expect a BOM at the beginning of the text *)
-  if l_in >= 2 then begin
-    if expose_bom then (
-      slice_char.(0) <- (-3); 
-      slice_blen.(0) <- 0;  (* Later corrected *)
-    );
-    match get_endianess s_in p_in with
-	`Big_endian ->
-	  let n_start = if expose_bom then 1 else 0 in
-	  let (n, k, enc') = 
-	    read_utf16_lebe
-	      1 0 n_start `Enc_utf16_be 
-	      slice_char slice_blen s_in (p_in+2) (l_in-2) in
-	  if n > 0 then slice_blen.(0) <- slice_blen.(0) + 2;
-	  (n, k+2, enc')
-      | `Little_endian ->
-	  let n_start = if expose_bom then 1 else 0 in
-	  let (n, k, enc') = 
-	    read_utf16_lebe 
-	      0 1 n_start `Enc_utf16_le 
-	      slice_char slice_blen s_in (p_in+2) (l_in-2) in
-	  if n > 0 then slice_blen.(0) <- slice_blen.(0) + 2;
-	  (n, k+2, enc')
-      | `No_BOM ->
-	  (* byte order mark missing *)
-	  slice_char.(0) <- (-1);
-	  raise(Malformed_code_read(0,0,`Enc_utf16))
-  end
-  else (
-    slice_char.(0) <- (-1);
-    (0, 0, `Enc_utf16)
-  )
+let read_utf16 expose_bom =
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
+    (* Expect a BOM at the beginning of the text *)
+    if l_in >= 2 then begin
+      if expose_bom then (
+        slice_char.(0) <- (-3); 
+        slice_blen.(0) <- 0;  (* Later corrected *)
+      );
+      match get_endianess ops s_in p_in with
+          `Big_endian ->
+            let n_start = if expose_bom then 1 else 0 in
+            let (n, k, enc') = 
+              (read_utf16_lebe 1 0 n_start `Enc_utf16_be).read
+                ops slice_char slice_blen s_in (p_in+2) (l_in-2) in
+            if n > 0 then slice_blen.(0) <- slice_blen.(0) + 2;
+            (n, k+2, enc')
+        | `Little_endian ->
+            let n_start = if expose_bom then 1 else 0 in
+            let (n, k, enc') = 
+              (read_utf16_lebe 0 1 n_start `Enc_utf16_le).read
+                ops slice_char slice_blen s_in (p_in+2) (l_in-2) in
+            if n > 0 then slice_blen.(0) <- slice_blen.(0) + 2;
+            (n, k+2, enc')
+        | `No_BOM ->
+            (* byte order mark missing *)
+            slice_char.(0) <- (-1);
+            raise(Malformed_code_read(0,0,`Enc_utf16))
+    end
+    else (
+      slice_char.(0) <- (-1);
+      (0, 0, `Enc_utf16)
+    ) in
+  { read }
 ;;
 
 
-let read_utf32_lebe little n_start enc slice_char slice_blen s_in p_in l_in =
+let read_utf32_lebe little n_start enc =
   (* little: whether little endian
    * n_start: First cell in slice to use
    *)
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
 
-  let malformed_code k n =
-    slice_char.(n) <- (-1);
-    raise(Malformed_code_read(n,k,enc))
-  in
+    let malformed_code k n =
+      slice_char.(n) <- (-1);
+      raise(Malformed_code_read(n,k,enc))
+    in
 
-  let b0 = if little then 0 else 3 in
-  let b1 = if little then 1 else 2 in
-  let b2 = if little then 2 else 1 in
-  let b3 = if little then 3 else 0 in
+    let b0 = if little then 0 else 3 in
+    let b1 = if little then 1 else 2 in
+    let b2 = if little then 2 else 1 in
+    let b3 = if little then 3 else 0 in
 
-  (* k: counts the bytes
-   * n: counts the characters
-   *)
-  let rec put_loop k n =
-    if k+3 < l_in && n < Array.length slice_char then begin
-      let p3 = Char.code s_in.[p_in + k + b3] in
-      if p3 <> 0 then malformed_code k n;
-      let p = (Char.code s_in.[p_in + k + b0]) lor 
-	      ((Char.code s_in.[p_in + k + b1]) lsl 8) lor
-              ((Char.code s_in.[p_in + k + b2]) lsl 16) in
-      if (p >= 0xD800 && p <= 0xDFFF) || p >= 0x10FFFF then malformed_code k n;
-      if p = 0xfffe then 
-	(* Wrong byte order mark: It is illegal here *)
-	malformed_code k n;
-      slice_char.(n) <- p;
-      slice_blen.(n) <- 4;
-      put_loop (k+4) (n+1)
-    end
-    else
-      (n,k)
-  in
-  let (n,k) = put_loop 0 n_start in
-  if n < Array.length slice_char then (
-    (* EOF marker *)
-    slice_char.(n) <- (-1);
-  );
-  (n,k,enc)
+    (* k: counts the bytes
+     * n: counts the characters
+     *)
+    let rec put_loop k n =
+      if k+3 < l_in && n < Array.length slice_char then begin
+        let p3 = Char.code (ops.get s_in (p_in + k + b3)) in
+        if p3 <> 0 then malformed_code k n;
+        let p = (Char.code (ops.get s_in (p_in + k + b0))) lor 
+                ((Char.code (ops.get s_in (p_in + k + b1))) lsl 8) lor
+                ((Char.code (ops.get s_in (p_in + k + b2))) lsl 16) in
+        if (p >= 0xD800 && p <= 0xDFFF) || p >= 0x10FFFF then malformed_code k n;
+        if p = 0xfffe then 
+          (* Wrong byte order mark: It is illegal here *)
+          malformed_code k n;
+        slice_char.(n) <- p;
+        slice_blen.(n) <- 4;
+        put_loop (k+4) (n+1)
+      end
+      else
+        (n,k)
+    in
+    let (n,k) = put_loop 0 n_start in
+    if n < Array.length slice_char then (
+      (* EOF marker *)
+      slice_char.(n) <- (-1);
+    );
+    (n,k,enc) in
+  { read }
 ;;
 
 
-let get_endianess32 s_in p_in =
-  let c0 = s_in.[p_in + 0] in
-  let c1 = s_in.[p_in + 1] in
-  let c2 = s_in.[p_in + 2] in
-  let c3 = s_in.[p_in + 3] in
+let get_endianess32 ops s_in p_in =
+  let open Netstring_tstring in
+  let c0 = ops.get s_in (p_in + 0) in
+  let c1 = ops.get s_in (p_in + 1) in
+  let c2 = ops.get s_in (p_in + 2) in
+  let c3 = ops.get s_in (p_in + 3) in
   if c0 = '\000' && c1 = '\000' && c2 = '\254' && c3 = '\255' then
     `Big_endian
   else
@@ -1190,41 +1263,42 @@ let get_endianess32 s_in p_in =
 ;;
 
 
-let read_utf32 expose_bom slice_char slice_blen s_in p_in l_in =
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
-  (* Expect a BOM at the beginning of the text *)
-  if l_in >= 4 then begin
-    if expose_bom then (
-      slice_char.(0) <- (-3); 
-      slice_blen.(0) <- 0;  (* Later corrected *)
-    );
-    match get_endianess32 s_in p_in with
-	`Big_endian ->
-	  let n_start = if expose_bom then 1 else 0 in
-	  let (n, k, enc') = 
-	    read_utf32_lebe
-	      false n_start `Enc_utf32_be 
-	      slice_char slice_blen s_in (p_in+4) (l_in-4) in
-	  if n > 0 then slice_blen.(0) <- slice_blen.(0) + 4;
-	  (n, k+4, enc')
-      | `Little_endian ->
-	  let n_start = if expose_bom then 1 else 0 in
-	  let (n, k, enc') = 
-	    read_utf32_lebe 
-	      true n_start `Enc_utf32_le 
-	      slice_char slice_blen s_in (p_in+4) (l_in-4) in
-	  if n > 0 then slice_blen.(0) <- slice_blen.(0) + 4;
-	  (n, k+4, enc')
-      | `No_BOM ->
-	  (* byte order mark missing *)
-	  slice_char.(0) <- (-1);
-	  raise(Malformed_code_read(0,0,`Enc_utf32))
-  end
-  else (
-    slice_char.(0) <- (-1);
-    (0, 0, `Enc_utf32)
-  )
+let read_utf32 expose_bom =
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
+    (* Expect a BOM at the beginning of the text *)
+    if l_in >= 4 then begin
+      if expose_bom then (
+        slice_char.(0) <- (-3); 
+        slice_blen.(0) <- 0;  (* Later corrected *)
+      );
+      match get_endianess32 ops s_in p_in with
+          `Big_endian ->
+            let n_start = if expose_bom then 1 else 0 in
+            let (n, k, enc') = 
+              (read_utf32_lebe false n_start `Enc_utf32_be).read
+                ops slice_char slice_blen s_in (p_in+4) (l_in-4) in
+            if n > 0 then slice_blen.(0) <- slice_blen.(0) + 4;
+            (n, k+4, enc')
+        | `Little_endian ->
+            let n_start = if expose_bom then 1 else 0 in
+            let (n, k, enc') = 
+              (read_utf32_lebe true n_start `Enc_utf32_le).read
+                ops slice_char slice_blen s_in (p_in+4) (l_in-4) in
+            if n > 0 then slice_blen.(0) <- slice_blen.(0) + 4;
+            (n, k+4, enc')
+        | `No_BOM ->
+            (* byte order mark missing *)
+            slice_char.(0) <- (-1);
+            raise(Malformed_code_read(0,0,`Enc_utf32))
+    end
+    else (
+      slice_char.(0) <- (-1);
+      (0, 0, `Enc_utf32)
+    ) in
+  { read }
 ;;
 
 
@@ -1235,13 +1309,14 @@ let read_euc len1 len2 len3 map1 map2 map3 enc =
    *)
   (* UNSAFE_OPT *)
 
+  let open Netstring_tstring in
   assert(len1 >= 0 && len1 <= 2);
   assert(len2 >= 0 && len2 <= 2);
   assert(len3 >= 0 && len3 <= 2);
 
-  fun slice_char slice_blen s_in p_in l_in ->
+  let read ops slice_char slice_blen s_in p_in l_in =
     assert(Array.length slice_char = Array.length slice_blen);
-    assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
 
     (* k: counts the bytes
      * n: counts the characters
@@ -1269,7 +1344,7 @@ let read_euc len1 len2 len3 map1 map2 map3 enc =
 	 * ==> unsafe get ok
 	 *)
 	(* match s_in.[k_in + k] with *)
-	match String.unsafe_get s_in !p with
+	match ops.unsafe_get s_in !p with
 	    '\000'..'\127' as x ->
 	      (* US-ASCII *)
 	      Array.unsafe_set slice_char !n (Char.code x);     (* ok *)
@@ -1280,8 +1355,9 @@ let read_euc len1 len2 len3 map1 map2 map3 enc =
 	      if !p+len2 >= p_max then
 		0
 	      else begin
-		let x1 = Char.code (s_in.[!p + 1]) in
-		let x2 = if len2=1 then 256 else Char.code (s_in.[!p + 2]) in
+		let x1 = Char.code (ops.get s_in (!p + 1)) in
+		let x2 = if len2=1 then 256 else
+                           Char.code (ops.get s_in (!p + 2)) in
 		if x1 < 160 || x2 < 160 then malformed_code();
 		let uni = map2 x1 x2 in
 		Array.unsafe_set slice_char !n uni;     (* ok *)
@@ -1293,8 +1369,9 @@ let read_euc len1 len2 len3 map1 map2 map3 enc =
 	      if !p+len3 >= p_max then
 		0
 	      else begin
-		let x1 = Char.code (s_in.[!p + 1]) in
-		let x2 = if len3=1 then 256 else Char.code (s_in.[!p + 2]) in
+		let x1 = Char.code (ops.get s_in (!p + 1)) in
+		let x2 = if len3=1 then 256 else
+                           Char.code (ops.get s_in (!p + 2)) in
 		if x1 < 160 || x2 < 160 then malformed_code();
 		let uni = map3 x1 x2 in
 		Array.unsafe_set slice_char !n uni;     (* ok *)
@@ -1306,7 +1383,8 @@ let read_euc len1 len2 len3 map1 map2 map3 enc =
 		0
 	      else begin
 		let x1 = Char.code x1_code in
-		let x2 = if len1=1 then 256 else Char.code (s_in.[!p + 1]) in
+		let x2 = if len1=1 then 256 else
+                           Char.code (ops.get s_in (!p + 1)) in
 		if x2 < 160 then malformed_code();
 		let uni = map1 x1 x2 in
 		Array.unsafe_set slice_char !n uni;     (* ok *)
@@ -1344,7 +1422,8 @@ let read_euc len1 len2 len3 map1 map2 map3 enc =
       (* EOF marker *)
       slice_char.(!n_ret) <- (-1);  
     );
-    (!n_ret,!p-p_in,enc)
+    (!n_ret,!p-p_in,enc) in
+  { read }
 ;;
       
 
@@ -1370,34 +1449,37 @@ let read_euckr () =
 ;;
 
 
-let read_subset inner_read def slice_char slice_blen s_in p_in l_in =
-  assert(Array.length slice_char = Array.length slice_blen);
-  assert(p_in >= 0 && p_in + l_in <= String.length s_in && l_in >= 0);
+let read_subset inner_read def =
+  let read ops slice_char slice_blen s_in p_in l_in =
+    let open Netstring_tstring in
+    assert(Array.length slice_char = Array.length slice_blen);
+    assert(p_in >= 0 && p_in + l_in <= ops.length s_in && l_in >= 0);
 
-  let (n,k,enc') = inner_read slice_char slice_blen s_in p_in l_in in
+    let (n,k,enc') = inner_read.read ops slice_char slice_blen s_in p_in l_in in
 
-  (* check codepoints: *)
-  for j = 0 to n-1 do
-    if not(def(slice_char.(j))) then (
-      (* raise Malformed_code_read... *)
-      (* to get enc'' read again: *)
-      let slice_char' = Array.make j (-1) in
-      let slice_blen' = Array.make j 1 in
-      let (n', k', enc'') = 
-	try
-	  inner_read slice_char' slice_blen' s_in p_in l_in 
-	with
-	    Malformed_code_read(_,_,_) -> assert false
-      in
-      assert(n' = j);
-      int_blit slice_char' 0 slice_char 0 j;
-      int_blit slice_blen' 0 slice_blen 0 j;
-      slice_char.(j) <- (-1);
-      raise (Malformed_code_read(j, k', enc''))
-    );
-  done;
+    (* check codepoints: *)
+    for j = 0 to n-1 do
+      if not(def(slice_char.(j))) then (
+        (* raise Malformed_code_read... *)
+        (* to get enc'' read again: *)
+        let slice_char' = Array.make j (-1) in
+        let slice_blen' = Array.make j 1 in
+        let (n', k', enc'') = 
+          try
+            inner_read.read ops slice_char' slice_blen' s_in p_in l_in 
+          with
+              Malformed_code_read(_,_,_) -> assert false
+        in
+        assert(n' = j);
+        int_blit slice_char' 0 slice_char 0 j;
+        int_blit slice_blen' 0 slice_blen 0 j;
+        slice_char.(j) <- (-1);
+        raise (Malformed_code_read(j, k', enc''))
+      );
+    done;
 
-  (n,k,enc')
+    (n,k,enc') in
+  { read }
 ;;
 
 (*
@@ -1411,7 +1493,7 @@ let write_iso88591 maxcode slice_char slice_pos slice_length
   (* Use maxcode=255 for ISO-8859-1, and maxcode=127 for US-ASCII,
    * and maxcode=(-1) for `Enc_empty.
    *)
-  assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+  assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
   assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
   assert(maxcode <= 255);
 
@@ -1436,7 +1518,7 @@ let write_iso88591 maxcode slice_char slice_pos slice_length
        * ==> unsafe set ok
        *)
       (* s_out.[ !p ] <- Char.chr ch; *)
-      String.unsafe_set s_out !p (Char.unsafe_chr ch);
+      Bytes.unsafe_set s_out !p (Char.unsafe_chr ch);
       incr n;
       incr p;
     end
@@ -1448,7 +1530,7 @@ let write_iso88591 maxcode slice_char slice_pos slice_length
 	failwith "Netconversion.write_iso88591: Substitution string too long";
       if !p + l_repl <= p_max then begin
 	(* Enough space to store 'replacement': *)
-	String.blit replacement 0 s_out !p l_repl;
+	Bytes.blit_string replacement 0 s_out !p l_repl;
 	p := !p + l_repl;
 	incr n
       end
@@ -1482,7 +1564,7 @@ let write_8bit enc =
   let m_mask = Array.length m_from_unicode - 1 in
 
   fun slice_char slice_pos slice_length s_out p_out l_out subst ->
-    assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+    assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
     assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
 
     let n = ref slice_pos in     (* index of slice *)
@@ -1531,7 +1613,7 @@ let write_8bit enc =
 	
 	  if !k + l_repl <= l_out then begin
 	    (* Enough space to store 'replacement': *)
-	    String.blit replacement 0 s_out (p_out + !k) l_repl;
+	    Bytes.blit_string replacement 0 s_out (p_out + !k) l_repl;
 	    k := !k + l_repl;
 	    incr n
 	  end
@@ -1549,7 +1631,7 @@ let write_8bit enc =
 	 * ==> unsafe set ok
 	 *)
 	(* s_out.[ p_out + !k ] <- Char.chr p'; *)
-	String.unsafe_set s_out (p_out + !k) (Char.unsafe_chr(p' land 0xff));
+	Bytes.unsafe_set s_out (p_out + !k) (Char.unsafe_chr(p' land 0xff));
 	incr n;
 	incr k
       end;
@@ -1562,7 +1644,7 @@ let write_8bit enc =
 let write_utf8 is_java
                slice_char slice_pos slice_length s_out p_out l_out subst =
   (* UNSAFE_OPT *)
-  assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+  assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
   assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
 
   let n = ref slice_pos in     (* index of slice *)
@@ -1595,7 +1677,7 @@ let write_utf8 is_java
 	   * 0 <= p <= 127 ==> unsafe_chr ok
 	   *)
 	  (* s_out.[index] <- Char.chr p; *)
-	  String.unsafe_set s_out index (Char.unsafe_chr p);
+	  Bytes.unsafe_set s_out index (Char.unsafe_chr p);
 	  1
 	end
 	else (-1)
@@ -1614,9 +1696,9 @@ let write_utf8 is_java
 	   *)
 	  (* s_out.[index]     <- Char.chr (0xc0 lor (p lsr 6)); *)
 	  (* s_out.[index + 1] <- Char.chr (0x80 lor (p land 0x3f)); *)
-	  String.unsafe_set s_out index 
+	  Bytes.unsafe_set s_out index 
 	    (Char.unsafe_chr (0xc0 lor (p lsr 6)));
-	  String.unsafe_set s_out (index+1)
+	  Bytes.unsafe_set s_out (index+1)
 	    (Char.unsafe_chr (0x80 lor (p land 0x3f)));
 	  2
 	end
@@ -1637,11 +1719,11 @@ let write_utf8 is_java
 	  (* s_out.[index]     <- Char.chr (0xe0 lor (p lsr 12)); *)
 	  (* s_out.[index + 1] <- Char.chr (0x80 lor ((p lsr 6) land 0x3f)); *)
 	  (* s_out.[index + 2] <- Char.chr (0x80 lor (p land 0x3f)); *)
-	  String.unsafe_set s_out index
+	  Bytes.unsafe_set s_out index
 	    (Char.unsafe_chr (0xe0 lor (p lsr 12)));
-	  String.unsafe_set s_out (index+1)
+	  Bytes.unsafe_set s_out (index+1)
 	    (Char.unsafe_chr (0x80 lor ((p lsr 6) land 0x3f)));
-	  String.unsafe_set s_out (index+2)
+	  Bytes.unsafe_set s_out (index+2)
 	    (Char.unsafe_chr (0x80 lor (p land 0x3f)));
 	  3
 	end
@@ -1650,10 +1732,10 @@ let write_utf8 is_java
       else if p <= 0x10ffff then begin
 	if !k + 3 < l_out then begin
 	  (* No such characters are defined... *)
-	  s_out.[index]     <- Char.chr (0xf0 lor (p lsr 18));
-	  s_out.[index + 1] <- Char.chr (0x80 lor ((p lsr 12) land 0x3f));
-	  s_out.[index + 2] <- Char.chr (0x80 lor ((p lsr 6)  land 0x3f));
-	  s_out.[index + 3] <- Char.chr (0x80 lor (p land 0x3f));
+	  Bytes.set s_out index (Char.chr (0xf0 lor (p lsr 18)));
+	  Bytes.set s_out (index + 1) (Char.chr (0x80 lor ((p lsr 12) land 0x3f)));
+	  Bytes.set s_out (index + 2) (Char.chr (0x80 lor ((p lsr 6)  land 0x3f)));
+	  Bytes.set s_out (index + 3) (Char.chr (0x80 lor (p land 0x3f)));
 	  4
 	end
 	else (-1)
@@ -1666,7 +1748,7 @@ let write_utf8 is_java
 	  failwith "Netconversion.write_utf8: Substitution string too long";
 	if !k + l_repl <= l_out then begin
 	  (* Enough space to store 'replacement': *)
-	  String.blit replacement 0 s_out (p_out + !k) l_repl;
+	  Bytes.blit_string replacement 0 s_out (p_out + !k) l_repl;
 	  l_repl  (* may be 0! *)
 	end
 	else 
@@ -1693,7 +1775,7 @@ let write_utf16_lebe lo hi
   (* lo=0, hi=1: little endian
    * lo=1, hi=0: big endian
    *)
-  assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+  assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
   assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
 
   let n = ref slice_pos in     (* index of slice *)
@@ -1715,10 +1797,10 @@ let write_utf16_lebe lo hi
 	  if !k + 3 < l_out then begin
 	    let high = ((p - 0x10000) lsr 10) + 0xd800 in
 	    let low  = (p land 0x3ff) + 0xdc00 in
-	    s_out.[index + lo ] <- Char.chr (high land 0xff);
-	    s_out.[index + hi ] <- Char.chr (high lsr 8);
-	    s_out.[index + 2 + lo ] <- Char.chr (low land 0xff);
-	    s_out.[index + 2 + hi ] <- Char.chr (low lsr 8);
+	    Bytes.set s_out (index + lo) (Char.chr (high land 0xff));
+	    Bytes.set s_out (index + hi) (Char.chr (high lsr 8));
+	    Bytes.set s_out (index + 2 + lo) (Char.chr (low land 0xff));
+	    Bytes.set s_out (index + 2 + hi) (Char.chr (low lsr 8));
 	    4
 	  end
 	  else (-1)
@@ -1731,7 +1813,7 @@ let write_utf16_lebe lo hi
 	    failwith "Netconversion.write_utf16_le: Substitution string too long";
 	  if !k + l_repl <= l_out then begin
 	    (* Enough space to store 'replacement': *)
-	    String.blit replacement 0 s_out (p_out + !k) l_repl;
+	    Bytes.blit_string replacement 0 s_out (p_out + !k) l_repl;
 	    l_repl  (* may be 0! *)
 	  end
 	  else 
@@ -1741,8 +1823,8 @@ let write_utf16_lebe lo hi
       else begin
 	(* 2-byte character *)
 	if !k + 1 < l_out then begin
-	  s_out.[index + lo ] <- Char.unsafe_chr (p land 0xff);
-	  s_out.[index + hi ] <- Char.unsafe_chr ((p lsr 8) land 0xff);
+	  Bytes.set s_out (index + lo) (Char.unsafe_chr (p land 0xff));
+	  Bytes.set s_out (index + hi) (Char.unsafe_chr ((p lsr 8) land 0xff));
 	  2
 	end
 	else (-1)
@@ -1764,7 +1846,7 @@ let write_utf16_lebe lo hi
 
 let write_utf32_lebe little 
                      slice_char slice_pos slice_length s_out p_out l_out subst =
-  assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+  assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
   assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
 
   let n = ref slice_pos in     (* index of slice *)
@@ -1786,10 +1868,10 @@ let write_utf32_lebe little
     let k_inc =
       if p <= 0x10ffff then (
 	if !k + 3 < l_out then (
-	  s_out.[index + b0 ] <- Char.unsafe_chr (p land 0xff);
-	  s_out.[index + b1 ] <- Char.unsafe_chr ((p lsr 8) land 0xff);
-	  s_out.[index + b2 ] <- Char.unsafe_chr ((p lsr 16) land 0xff);
-	  s_out.[index + b3 ] <- Char.unsafe_chr 0;
+	  Bytes.set s_out (index + b0) (Char.unsafe_chr (p land 0xff));
+	  Bytes.set s_out (index + b1) (Char.unsafe_chr ((p lsr 8) land 0xff));
+	  Bytes.set s_out (index + b2) (Char.unsafe_chr ((p lsr 16) land 0xff));
+	  Bytes.set s_out (index + b3) (Char.unsafe_chr 0);
 	  4
 	)
 	else (-1)
@@ -1801,7 +1883,7 @@ let write_utf32_lebe little
 	    failwith "Netconversion.write_utf32: Substitution string too long";
 	  if !k + l_repl <= l_out then begin
 	    (* Enough space to store 'replacement': *)
-	    String.blit replacement 0 s_out (p_out + !k) l_repl;
+	    Bytes.blit_string replacement 0 s_out (p_out + !k) l_repl;
 	    l_repl  (* may be 0! *)
 	  end
 	  else 
@@ -1831,7 +1913,7 @@ let write_euc map enc =
   (* UNSAFE_OPT *)
 
   fun slice_char slice_pos slice_length s_out p_out l_out subst ->
-    assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+    assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
     assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
 
     let n = ref slice_pos in     (* index of slice *)
@@ -1861,7 +1943,7 @@ let write_euc map enc =
 	    0 ->
 	      if !k < l_out then begin
 		(* s_out.[index] <- Char.chr p; *)
-		String.unsafe_set s_out index (Char.unsafe_chr (b1 land 127));
+		Bytes.unsafe_set s_out index (Char.unsafe_chr (b1 land 127));
 		1
 	      end
 	      else (-1)
@@ -1869,8 +1951,8 @@ let write_euc map enc =
 	      let bl = if b2 = 256 then 1 else 2 in
 	      if !k + bl < l_out then begin
 		assert(b1 >= 160 && b1 <= 255 && b2 >= 160 && b2 <= 256);
-		s_out.[index] <- Char.chr b1;
-		if b2 <> 256 then s_out.[index+1] <- Char.chr b2;
+		Bytes.set s_out (index) (Char.chr b1);
+		if b2 <> 256 then Bytes.set s_out (index+1) (Char.chr b2);
 		bl
 	      end
 	      else (-1)
@@ -1878,9 +1960,9 @@ let write_euc map enc =
 	      let bl = if b2 = 256 then 2 else 3 in
 	      if !k + bl < l_out then begin
 		assert(b1 >= 160 && b1 <= 255 && b2 >= 160 && b2 <= 256);
-		s_out.[index] <- '\142';
-		s_out.[index+1] <- Char.chr b1;
-		if b2 <> 256 then s_out.[index+2] <- Char.chr b2;
+		Bytes.set s_out index '\142';
+		Bytes.set s_out (index+1) (Char.chr b1);
+		if b2 <> 256 then Bytes.set s_out (index+2) (Char.chr b2);
 		bl
 	      end
 	      else (-1)
@@ -1888,9 +1970,9 @@ let write_euc map enc =
 	      let bl = if b2 = 256 then 2 else 3 in
 	      if !k + bl < l_out then begin
 		assert(b1 >= 160 && b1 <= 255 && b2 >= 160 && b2 <= 256);
-		s_out.[index] <- '\143';
-		s_out.[index+1] <- Char.chr b1;
-		if b2 <> 256 then s_out.[index+2] <- Char.chr b2;
+		Bytes.set s_out index '\143';
+		Bytes.set s_out (index+1) (Char.chr b1);
+		if b2 <> 256 then Bytes.set s_out (index+2) (Char.chr b2);
 		bl
 	      end
 	      else (-1)
@@ -1901,7 +1983,7 @@ let write_euc map enc =
 		failwith "Netconversion.write_euc: Substitution string too long";
 	      if !k + l_repl <= l_out then begin
 		(* Enough space to store 'replacement': *)
-		String.blit replacement 0 s_out (p_out + !k) l_repl;
+		Bytes.blit_string replacement 0 s_out (p_out + !k) l_repl;
 		l_repl
 	      end
 	      else 
@@ -2017,7 +2099,7 @@ let special_cpoint = 0x110000;;
 
 let write_subset inner_writer def 
                  slice_char slice_pos slice_length s_out p_out l_out subst =
-  assert(p_out >= 0 && p_out + l_out <= String.length s_out && l_out >= 0);
+  assert(p_out >= 0 && p_out + l_out <= Bytes.length s_out && l_out >= 0);
   assert(slice_pos >= 0 && slice_pos+slice_length <= Array.length slice_char);
 
   (* Force that the subst' function is called for all undefined code
@@ -2042,38 +2124,40 @@ let write_subset inner_writer def
 ;;
 
 
-let back_8bit s_in range_in p_in n_char =
+let back_8bit ops s_in range_in p_in n_char =
   let p_rel = p_in - range_in in
   let n = min p_rel n_char in
   (n,n)
 ;;
 
 
-let back_utf8 s_in range_in p_in n_char =
+let back_utf8 ops s_in range_in p_in n_char =
+  let open Netstring_tstring in
   let n = ref 0 in
   let k = ref 0 in
   let k_out = ref 0 in
   while p_in - !k > range_in && !n < n_char do
     incr k;
-    let ch = Char.code s_in.[ p_in - !k ] in
+    let ch = Char.code (ops.get s_in (p_in - !k)) in
     if ch < 0x80 || ( ch >= 0xc0 && ch <=0xfd) then ( incr n; k_out := !k )
   done;
   ( !n, !k_out )
 ;;
 
 
-let back_utf16_lebe lo hi s_in range_in p_in n_char =
+let back_utf16_lebe lo hi ops s_in range_in p_in n_char =
   (* lo=0, hi=1: little endian
    * lo=1, hi=0: big endian
    *)
+  let open Netstring_tstring in
   let n = ref 0 in
   let k = ref 0 in
   let k_out = ref 0 in
   while p_in - !k > range_in + 1 && !n < n_char do
     incr k;
     incr k;
-    let ch = (Char.code s_in.[p_in - !k + lo]) lor 
-	     ((Char.code s_in.[p_in - !k + hi]) lsl 8) in
+    let ch = (Char.code (ops.get s_in (p_in - !k + lo))) lor 
+	     ((Char.code (ops.get s_in (p_in - !k + hi))) lsl 8) in
     if ch < 0xdc00 || ch >= 0xe000 then ( incr n; k_out := !k );
     (* else: ch is the second half of a surrogate pair *)
   done;
@@ -2081,7 +2165,8 @@ let back_utf16_lebe lo hi s_in range_in p_in n_char =
 ;;
 
 
-let back_utf32 s_in range_in p_in n_char =
+let back_utf32 ops s_in range_in p_in n_char =
+  let open Netstring_tstring in
   let p_rel = p_in - range_in in
   let n = min p_rel (n_char lsl 2) in
   (n asr 2,n)
@@ -2089,20 +2174,21 @@ let back_utf32 s_in range_in p_in n_char =
 
 
 
-let back_euc s_in range_in p_in n_char =
+let back_euc ops s_in range_in p_in n_char =
   (* Works for 1-byte and 2-byte encodings *)
+  let open Netstring_tstring in
   let n = ref 0 in
   let k = ref 0 in
   let k_out = ref 0 in
   while p_in - !k > range_in && !n < n_char do 
     incr k;
-    let ch1 = Char.code s_in.[ p_in - !k ] in
+    let ch1 = Char.code (ops.get s_in (p_in - !k)) in
     if ch1 < 0x80 then (
       incr n; k_out := !k
     ) 
     else if p_in - !k > range_in then (
       incr k;
-      let ch2 = Char.code s_in.[ p_in - !k ] in
+      let ch2 = Char.code (ops.get s_in (p_in - !k)) in
       (* ch2 < 0x80: wrong, but we do not report errors here *)
       if ch2 < 0x80 then (
 	incr n; k_out := !k
@@ -2111,7 +2197,7 @@ let back_euc s_in range_in p_in n_char =
 	incr n; k_out := !k
       )
       else if p_in - !k > range_in then (
-	let ch3 = Char.code s_in.[ p_in - !k - 1 ] in
+	let ch3 = Char.code (ops.get s_in (p_in - !k - 1)) in
 	if ch3 = 142 || ch3 = 143 then (
 	  incr k; incr n; k_out := !k
 	)
@@ -2280,7 +2366,9 @@ let rec get_back_fn enc =
 ;;
 
 
-let recode ~in_enc
+let recode_poly
+           ~in_ops
+           ~in_enc
            ~in_buf
 	   ~in_pos
 	   ~in_len
@@ -2290,8 +2378,9 @@ let recode ~in_enc
 	   ~out_len
 	   ~max_chars
 	   ~subst =
-  if (in_pos < 0  || in_len < 0  || in_pos  + in_len  > String.length in_buf ||
-      out_pos < 0 || out_len < 0 || out_pos + out_len > String.length out_buf)
+  let open Netstring_tstring in
+  if (in_pos < 0  || in_len < 0  || in_pos  + in_len  > in_ops.length in_buf ||
+      out_pos < 0 || out_len < 0 || out_pos + out_len > Bytes.length out_buf)
   then
     invalid_arg "Netconversion.recode";
 
@@ -2315,7 +2404,8 @@ let recode ~in_enc
   while not !in_eof && not !out_eof do
     let in_n_inc, in_k_inc, rd_enc' =
       try
-	!reader slice_char slice_blen in_buf (in_pos + !in_k) (in_len - !in_k) 
+	!reader.read in_ops slice_char slice_blen in_buf
+                     (in_pos + !in_k) (in_len - !in_k) 
       with
 	  Malformed_code_read(in_n_inc, in_k_inc, rd_enc') ->
 	    if in_n_inc = 0 then raise Malformed_code;
@@ -2382,12 +2472,29 @@ let recode ~in_enc
 ;;
 
 
+let recode = recode_poly ~in_ops:Netstring_tstring.string_ops
+
+let recode_bytes = recode_poly ~in_ops:Netstring_tstring.bytes_ops
+
+let recode_tstring ~in_enc ~in_buf ~in_pos ~in_len ~out_enc
+                   ~out_buf ~out_pos ~out_len ~max_chars ~subst =
+  let f =
+    { Netstring_tstring.with_fun =
+        (fun in_ops in_buf ->
+           recode_poly
+             ~in_ops ~in_enc ~in_buf ~in_pos ~in_len ~out_enc
+             ~out_buf ~out_pos ~out_len ~max_chars ~subst
+        )
+    } in
+  Netstring_tstring.with_tstring f in_buf
+
+
 let rec ustring_of_uchar enc =
   let multi_byte writer n p =
-    let s = String.create n in
+    let s = Bytes.create n in
     let _,n_act = writer [|p|] 0 1 s 0 n 
 		    (fun _ -> raise (Cannot_represent p)) in
-    String.sub s 0 n_act
+    Bytes.sub_string s 0 n_act
   in
   match enc with
       `Enc_iso88591 -> 
@@ -2432,64 +2539,108 @@ let makechar enc =
  * processed in a cycle, and the algorithm would hang.
  *)
 
-let convert ?(subst = (fun p -> raise (Cannot_represent p))) 
-            ~in_enc ~out_enc ?(range_pos=0) ?range_len s =
+let convert_poly :
+      type s t . in_ops:s Netstring_tstring.tstring_ops ->
+                 out_kind:t Netstring_tstring.tstring_kind ->
+                 ?subst:(int -> string) ->
+                 in_enc:encoding ->
+                 out_enc:encoding ->
+                 ?range_pos:int ->
+                 ?range_len:int ->
+                 s ->
+                   t =
+  fun ~in_ops ~out_kind
+      ?(subst = (fun p -> raise (Cannot_represent p))) 
+      ~in_enc ~out_enc ?(range_pos=0) ?range_len s ->
+    let open Netstring_tstring in
 
-  let range_len = 
-    match range_len with
-	Some l -> l
-      | None -> String.length s - range_pos in
+    let range_len = 
+      match range_len with
+          Some l -> l
+        | None -> in_ops.length s - range_pos in
 
-  if range_pos < 0 || range_len < 0 || range_pos+range_len > String.length s
-  then invalid_arg "Netconversion.convert";
+    if range_pos < 0 || range_len < 0 || range_pos+range_len > in_ops.length s
+    then invalid_arg "Netconversion.convert";
 
-  (* Estimate the size of the output string: 
-   * length * 2 is just guessed. It is assumed that this number is usually
-   * too large, and to avoid that too much memory is wasted, the buffer is
-   * limited by 10000.
-   *)
-  let size = ref (max multibyte_limit (min 10000 (range_len * 2))) in
-  let out_buf = ref (String.create !size) in
-
-  let k_in = ref 0 in
-  let k_out = ref 0 in
-
-  while !k_in < range_len do
-    let in_len = range_len - !k_in in
-    let out_len = !size - !k_out in
-    assert (out_len >= multibyte_limit);  (* space for at least one char *)
-    let k_in_inc, k_out_inc, in_enc' =
-      recode ~in_enc   ~in_buf:s           ~in_pos:(range_pos + !k_in) ~in_len
-             ~out_enc  ~out_buf:(!out_buf) ~out_pos:(!k_out)           ~out_len
-             ~max_chars:max_int            ~subst in
-    if k_in_inc = 0 then raise Malformed_code;
-    (* Reasons for k_in_inc = 0:
-     * (1) There is not enough space in out_buf to add a single character
-     * (2) in_buf ends with a prefix of a multi-byte character
-     * Because there is always space for at least one character
-     * ( = multibyte_limit ), reason (1) can be excluded. So it must
-     * be (2), and we can raise Malformed_code.
+    (* Estimate the size of the output string: 
+     * length * 2 is just guessed. It is assumed that this number is usually
+     * too large, and to avoid that too much memory is wasted, the buffer is
+     * limited by 10000.
      *)
-    k_in  := !k_in  + k_in_inc;
-    k_out := !k_out + k_out_inc;
-    (* double the size of out_buf: *)
-    let size' = min Sys.max_string_length (!size + !size) in
-    if size' < !size + multibyte_limit then 
-      failwith "Netconversion.convert: string too long";
-    let out_buf' = String.create size' in
-    String.blit !out_buf 0 out_buf' 0 !k_out;
-    out_buf := out_buf';
-    size := size';
-  done;
+    let size = ref (max multibyte_limit (min 10000 (range_len * 2))) in
+    let out_buf = ref (Bytes.create !size) in
 
-  String.sub !out_buf 0 !k_out
+    let k_in = ref 0 in
+    let k_out = ref 0 in
+
+    while !k_in < range_len do
+      let in_len = range_len - !k_in in
+      let out_len = !size - !k_out in
+      assert (out_len >= multibyte_limit);  (* space for at least one char *)
+      let k_in_inc, k_out_inc, in_enc' =
+        recode_poly
+               ~in_ops
+               ~in_enc  ~in_buf:s           ~in_pos:(range_pos + !k_in) ~in_len
+               ~out_enc ~out_buf:(!out_buf) ~out_pos:(!k_out)           ~out_len
+               ~max_chars:max_int           ~subst in
+      if k_in_inc = 0 then raise Malformed_code;
+      (* Reasons for k_in_inc = 0:
+       * (1) There is not enough space in out_buf to add a single character
+       * (2) in_buf ends with a prefix of a multi-byte character
+       * Because there is always space for at least one character
+       * ( = multibyte_limit ), reason (1) can be excluded. So it must
+       * be (2), and we can raise Malformed_code.
+       *)
+      k_in  := !k_in  + k_in_inc;
+      k_out := !k_out + k_out_inc;
+      (* double the size of out_buf: *)
+      let size' = min Sys.max_string_length (!size + !size) in
+      if size' < !size + multibyte_limit then 
+        failwith "Netconversion.convert: string too long";
+      let out_buf' = Bytes.create size' in
+      Bytes.blit !out_buf 0 out_buf' 0 !k_out;
+      out_buf := out_buf';
+      size := size';
+    done;
+
+    match out_kind with
+      | Netstring_tstring.String_kind ->
+          Bytes.sub_string !out_buf 0 !k_out
+      | Netstring_tstring.Bytes_kind ->
+          Bytes.sub !out_buf 0 !k_out
+      | Netstring_tstring.Memory_kind ->
+          let m =
+            Bigarray.Array1.create Bigarray.char Bigarray.c_layout !k_out in
+          Netsys_mem.blit_bytes_to_memory !out_buf 0 m 0 !k_out;
+          m
 ;;
 
 
-let recode_string ~in_enc ~out_enc
-                  ?(subst = (fun p -> raise Not_found)) s =
-  convert ~subst ~in_enc ~out_enc s
-;;
+let convert ?subst ~in_enc ~out_enc ?range_pos ?range_len s =
+  convert_poly
+    ?subst
+    ~in_ops:Netstring_tstring.string_ops
+    ~out_kind:Netstring_tstring.String_kind
+    ~in_enc ~out_enc ?range_pos ?range_len s
+
+let convert_bytes ?subst ~in_enc ~out_enc ?range_pos ?range_len s =
+  convert_poly
+    ?subst
+    ~in_ops:Netstring_tstring.bytes_ops
+    ~out_kind:Netstring_tstring.Bytes_kind
+    ~in_enc ~out_enc ?range_pos ?range_len s
+
+let convert_tstring ?subst ~in_enc ~out_enc ~out_kind ?range_pos ?range_len ts =
+  let f =
+    { Netstring_tstring.with_fun =
+        (fun in_ops s ->
+           convert_poly
+             ?subst
+             ~in_ops ~out_kind
+             ~in_enc ~out_enc ?range_pos ?range_len s
+        )
+    } in
+  Netstring_tstring.with_tstring f ts
 
 
 class conversion_pipe ?(subst = (fun p -> raise (Cannot_represent p))) 
@@ -2498,10 +2649,10 @@ class conversion_pipe ?(subst = (fun p -> raise (Cannot_represent p)))
   let conv in_netbuf at_eof out_netbuf =
     if at_eof then
       (* TODO: avoid the extra allocations *)
-      let s = recode_string 
+      let s = convert_bytes
 	        ~subst ~in_enc:!current_in_enc ~out_enc
-	        (Netbuffer.contents in_netbuf) in
-      Netbuffer.add_string out_netbuf s
+	        (Netbuffer.unsafe_buffer in_netbuf) in
+      Netbuffer.add_bytes out_netbuf s
     else
       let in_buf = Netbuffer.unsafe_buffer in_netbuf in
       let in_pos = 0 in
@@ -2511,7 +2662,7 @@ class conversion_pipe ?(subst = (fun p -> raise (Cannot_represent p)))
 	  out_netbuf
 	  (fun out_buf out_pos out_len ->
 	     let (in_n,out_n,in_enc') =
-	       recode
+	       recode_bytes
 	         ~in_enc:!current_in_enc ~in_buf ~in_pos ~in_len
 	         ~out_enc ~out_buf ~out_pos ~out_len
 	         ~max_chars:out_len
@@ -2534,12 +2685,6 @@ class conversion_pipe ?(subst = (fun p -> raise (Cannot_represent p)))
       ()
   in
   Netchannels.pipe ~conv ()
-;;
-
-
-class recoding_pipe ?(subst = (fun p -> raise Not_found)) 
-                    ~in_enc ~out_enc () =
-  conversion_pipe ~subst ~in_enc ~out_enc ()
 ;;
 
 
@@ -2571,9 +2716,10 @@ exception Partial_character;;
 exception Byte_order_mark;;
 
 
-type cursor =
+type 's poly_cursor =
     { (* configuration: *)
-      mutable cursor_target : string;
+      cursor_ops : 's Netstring_tstring.tstring_ops;
+      mutable cursor_target : 's;
       mutable cursor_range_pos : int;
       mutable cursor_range_len : int;
       mutable cursor_offset : int;
@@ -2645,6 +2791,8 @@ type cursor =
     }
 ;;
 
+
+type cursor = string poly_cursor
 
 let cursor_target cs = cs.cursor_target;;
 
@@ -2807,9 +2955,11 @@ let move ?(num = 1) cs =
 
 
 let init_load_slice cs enc =
+  let open Netstring_tstring in
 
-  let reader0 = get_reader enc in
-  let back0   = lazy(get_back_fn enc) in
+  let ops = cs.cursor_ops in
+  let reader0 = (get_reader enc).read ops in
+  let back0   = lazy(get_back_fn enc ops) in
   (* For most encodings, [reader] and [back] never change.
    * For UTF-16, there may be refinements, however.
    *)
@@ -2822,9 +2972,11 @@ let init_load_slice cs enc =
 	   *)
 	  (fun slice_char slice_blen s bp bl ->
 	     if bp = cs.cursor_range_pos then
-	       get_reader1 `Enc_utf16_bom slice_char slice_blen s bp bl
+	       (get_reader1 `Enc_utf16_bom).read
+                  ops slice_char slice_blen s bp bl
 	     else
-	       get_reader cs.cursor_enc slice_char slice_blen s bp bl
+	       (get_reader cs.cursor_enc).read
+                  ops slice_char slice_blen s bp bl
 	  )
       | ( `Enc_utf32 | `Enc_utf32_le | `Enc_utf32_be ) when cs.cursor_has_bom ->
 	  (* Ensure we use `Enc_utf32_bom when we read the beginning
@@ -2832,16 +2984,20 @@ let init_load_slice cs enc =
 	   *)
 	  (fun slice_char slice_blen s bp bl ->
 	     if bp = cs.cursor_range_pos then
-	       get_reader1 `Enc_utf32_bom slice_char slice_blen s bp bl
+	       (get_reader1 `Enc_utf32_bom).read
+                  ops slice_char slice_blen s bp bl
 	     else
-	       get_reader cs.cursor_enc slice_char slice_blen s bp bl
+	       (get_reader cs.cursor_enc).read
+                  ops slice_char slice_blen s bp bl
 	  )
       | ( `Enc_utf8 | `Enc_utf8_opt_bom ) when cs.cursor_has_bom ->
 	  (fun slice_char slice_blen s bp bl ->
 	     if bp = cs.cursor_range_pos then
-	       get_reader1 `Enc_utf8_bom slice_char slice_blen s bp bl
+	       (get_reader1 `Enc_utf8_bom).read
+                  ops slice_char slice_blen s bp bl
 	     else
-	       get_reader cs.cursor_enc slice_char slice_blen s bp bl
+	       (get_reader cs.cursor_enc).read
+                  ops slice_char slice_blen s bp bl
 	  )
       | _ ->
 	  reader0
@@ -2850,11 +3006,11 @@ let init_load_slice cs enc =
   let back() =
     match cs.cursor_enc with
       ( `Enc_utf16 | `Enc_utf16_le | `Enc_utf16_be ) when cs.cursor_has_bom ->
-	  get_back_fn cs.cursor_enc
+	  get_back_fn cs.cursor_enc ops
       | ( `Enc_utf32 | `Enc_utf32_le | `Enc_utf32_be ) when cs.cursor_has_bom ->
-	  get_back_fn cs.cursor_enc
+	  get_back_fn cs.cursor_enc ops
       | ( `Enc_utf8 | `Enc_utf8_opt_bom ) when cs.cursor_has_bom ->
-	  get_back_fn cs.cursor_enc
+	  get_back_fn cs.cursor_enc ops
       | _ ->
 	  Lazy.force back0
   in
@@ -3082,15 +3238,17 @@ let init_load_slice cs enc =
 ;;
 
 
-let create_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) enc s =
-  if range_pos < 0 || range_pos > String.length s then
+let create_poly_cursor
+      ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) enc ops s =
+  let open Netstring_tstring in
+  if range_pos < 0 || range_pos > ops.length s then
     invalid_arg "Netconversion.create_cursor";
   
   let range_len =
     match range_len with
 	Some l -> l
-      | None   -> String.length s - range_pos in
-  if range_len < 0 || range_pos + range_len > String.length s then
+      | None   -> ops.length s - range_pos in
+  if range_len < 0 || range_pos + range_len > ops.length s then
     invalid_arg "Netconversion.create_cursor";
 
   if initial_rel_pos < 0 || initial_rel_pos > range_len then
@@ -3103,7 +3261,8 @@ let create_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) enc s =
     failwith "Netconversion.create_cursor: The encoding `Enc_utf32 only supported when initial_rel_pos=0";
 
   let cs =
-    { cursor_target = s;
+    { cursor_ops = ops;
+      cursor_target = s;
       cursor_range_pos = range_pos;
       cursor_range_len = range_len;
       cursor_offset = initial_rel_pos;
@@ -3135,15 +3294,41 @@ let create_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) enc s =
 ;;
 
 
+let create_cursor ?range_pos ?range_len ?initial_rel_pos enc s =
+  let ops = Netstring_tstring.string_ops in
+  create_poly_cursor ?range_pos ?range_len ?initial_rel_pos enc ops s
+
+
+type 'a with_cursor_fun =
+    { with_cursor_fun : 's . 's Netstring_tstring.tstring_ops ->
+                             's poly_cursor ->
+                             'a
+    }
+
+let with_tstring_cursor ?range_pos ?range_len ?initial_rel_pos enc ts f =
+  let f =
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           f.with_cursor_fun
+             ops
+             (create_poly_cursor
+                ?range_pos ?range_len ?initial_rel_pos enc ops s)
+        )
+    } in
+  Netstring_tstring.with_tstring f ts
+
+
 let reinit_cursor ?(range_pos = 0) ?range_len ?(initial_rel_pos = 0) ?enc s cs =
-  if range_pos < 0 || range_pos > String.length s then
+  let open Netstring_tstring in
+  let ops = cs.cursor_ops in
+  if range_pos < 0 || range_pos > ops.length s then
     invalid_arg "Netconversion.reinit_cursor";
   
   let range_len =
     match range_len with
 	Some l -> l
-      | None   -> String.length s - range_pos in
-  if range_len < 0 || range_pos + range_len > String.length s then
+      | None   -> ops.length s - range_pos in
+  if range_len < 0 || range_pos + range_len > ops.length s then
     invalid_arg "Netconversion.reinit_cursor";
 
   if initial_rel_pos < 0 || initial_rel_pos > range_len then
@@ -3285,14 +3470,15 @@ let cursor_blit_positions cs ua pos len =
  *)
 
 
-let ustring_length enc =
+let ustring_length_poly ops enc =
+  let open Netstring_tstring in
   if is_single_byte enc then
     fun ?(range_pos=0) ?range_len s ->
       let range_len = 
 	match range_len with
-	    None -> String.length s - range_pos
+	    None -> ops.length s - range_pos
 	  | Some l -> l in
-      if range_pos < 0 || range_len < 0 || range_pos+range_len > String.length s
+      if range_pos < 0 || range_len < 0 || range_pos+range_len > ops.length s
       then invalid_arg "Netconversion.ustring_length";
       range_len
   else
@@ -3300,7 +3486,7 @@ let ustring_length enc =
       (* Assumption: There is no string that has more than max_int
        * characters
        *)
-      let cs = create_cursor ?range_pos ?range_len enc s in
+      let cs = create_poly_cursor ?range_pos ?range_len enc ops s in
       ( try move ~num:max_int cs with Cursor_out_of_range -> ());
       let n = cursor_char_count cs in
       (* Check that the last char is not an imbchar *)
@@ -3314,12 +3500,24 @@ let ustring_length enc =
       n
 ;;
 
+let ustring_length enc =
+  ustring_length_poly Netstring_tstring.string_ops enc
+
+let ustring_length_ts enc ?range_pos ?range_len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           ustring_length_poly ops enc ?range_pos ?range_len s
+        )
+    }
+    ts
+
 
 exception Malformed_code_at of int;;
 
-let verify enc ?range_pos ?range_len s =
+let verify_poly ops enc ?range_pos ?range_len s =
   let cs = 
-    try create_cursor ?range_pos ?range_len enc s with
+    try create_poly_cursor ?range_pos ?range_len enc ops s with
 	Malformed_code ->
 	  raise (Malformed_code_at 0)
       | _ ->
@@ -3354,11 +3552,24 @@ let verify enc ?range_pos ?range_len s =
   );
   ()
 ;;
+
+let verify enc =
+  verify_poly Netstring_tstring.string_ops enc
+
+let verify_ts enc ?range_pos ?range_len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           verify_poly ops enc ?range_pos ?range_len s
+        )
+    }
+    ts
+
   
   
 
-let ustring_iter enc f ?range_pos ?range_len s =
-  let cs = create_cursor ?range_pos ?range_len enc s in
+let ustring_iter_poly ops enc f ?range_pos ?range_len s =
+  let cs = create_poly_cursor ?range_pos ?range_len enc ops s in
   try
     while true do
       let ch = uchar_at cs in   (* or End_of_string *)
@@ -3373,8 +3584,21 @@ let ustring_iter enc f ?range_pos ?range_len s =
 	raise Malformed_code
 ;;
 
+let ustring_iter enc =
+  ustring_iter_poly Netstring_tstring.string_ops enc
 
-let ustring_map enc f ?range_pos ?range_len s =
+let ustring_iter_ts enc f ?range_pos ?range_len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           ustring_iter_poly ops enc f ?range_pos ?range_len s
+        )
+    }
+    ts
+
+
+
+let ustring_map_poly ops out_kind enc f ?range_pos ?range_len s =
   (* The following algorithm works only if the mapped lists are short:
      let mkch = ustring_of_uchar enc in
      let subst p =
@@ -3383,40 +3607,93 @@ let ustring_map enc f ?range_pos ?range_len s =
      in
      convert ~subst ~in_enc:enc ~out_enc:`Enc_empty ?range_pos ?range_len s
   *)
-  let buf = Buffer.create 250 in
-  ustring_iter
-    enc
+  let buf = Netbuffer.create 250 in
+  ustring_iter_poly
+    ops enc
     (fun p ->
        let l = f p in
-       Buffer.add_string 
+       Netbuffer.add_string 
 	 buf (String.concat "" (List.map (ustring_of_uchar enc) l))
     )
     ?range_pos
     ?range_len
     s;
-  Buffer.contents buf
+  Netbuffer.to_tstring_poly buf out_kind
 ;;
+
+
+let ustring_map enc =
+  ustring_map_poly 
+    Netstring_tstring.string_ops
+    Netstring_tstring.String_kind
+    enc
+
+let ustring_map_ts enc f ?range_pos ?range_len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           match ts with
+             | `String _ ->
+                 let kind = Netstring_tstring.String_kind in
+                 `String(
+                    ustring_map_poly ops kind enc f ?range_pos ?range_len s)
+             | `Bytes _ ->
+                 let kind = Netstring_tstring.Bytes_kind in
+                 `Bytes(
+                    ustring_map_poly ops kind enc f ?range_pos ?range_len s)
+             | `Memory _ ->
+                 let kind = Netstring_tstring.Memory_kind in
+                 `Memory(
+                    ustring_map_poly ops kind enc f ?range_pos ?range_len s)
+        )
+    }
+    ts
 
 
 let ustring_to_lower enc ?range_pos ?range_len s =
   let f x = [ Netunichar.to_lower x ] in
   ustring_map enc f ?range_pos ?range_len s ;;
 
+let ustring_to_lower_ts enc ?range_pos ?range_len ts =
+  let f x = [ Netunichar.to_lower x ] in
+  ustring_map_ts enc f ?range_pos ?range_len ts ;;
+
+let ustring_to_lower_poly ops kind enc ?range_pos ?range_len ts =
+  let f x = [ Netunichar.to_lower x ] in
+  ustring_map_poly ops kind enc f ?range_pos ?range_len ts ;;
+
 
 let ustring_to_upper enc ?range_pos ?range_len s =
   let f x = [ Netunichar.to_upper x ] in
   ustring_map enc f ?range_pos ?range_len s ;;
+
+let ustring_to_upper_ts enc ?range_pos ?range_len ts =
+  let f x = [ Netunichar.to_upper x ] in
+  ustring_map_ts enc f ?range_pos ?range_len ts ;;
+
+let ustring_to_upper_poly ops kind enc ?range_pos ?range_len ts =
+  let f x = [ Netunichar.to_upper x ] in
+  ustring_map_poly ops kind enc f ?range_pos ?range_len ts ;;
 
 
 let ustring_to_title enc ?range_pos ?range_len s =
   let f x = [ Netunichar.to_title x ] in
   ustring_map enc f ?range_pos ?range_len s ;;
 
+let ustring_to_title_ts enc ?range_pos ?range_len ts =
+  let f x = [ Netunichar.to_title x ] in
+  ustring_map_ts enc f ?range_pos ?range_len ts ;;
 
-let ustring_sub enc pos len ?range_pos ?range_len s =
+let ustring_to_title_poly ops kind enc ?range_pos ?range_len s =
+  let f x = [ Netunichar.to_title x ] in
+  ustring_map_poly ops kind enc f ?range_pos ?range_len s ;;
+
+
+let ustring_sub_poly ops out_kind enc pos len ?range_pos ?range_len s =
+  let open Netstring_tstring in
   try
     if pos < 0 || len < 0 then raise Cursor_out_of_range;
-    let cs = create_cursor ?range_pos ?range_len enc s in
+    let cs = create_poly_cursor ?range_pos ?range_len enc ops s in
     move ~num:pos cs;
     let byte_pos_0 = cursor_pos cs in
     move ~num:len cs;
@@ -3426,17 +3703,48 @@ let ustring_sub enc pos len ?range_pos ?range_len s =
       move ~num:(-1) cs;
       let _ = uchar_at cs in ();  (* or Partial_character *)
     );
-    String.sub s byte_pos_0 (byte_pos_1 - byte_pos_0)
+    ops.subpoly out_kind s byte_pos_0 (byte_pos_1 - byte_pos_0)
   with
       Cursor_out_of_range -> invalid_arg "Netconversion.ustring_sub"
     | Partial_character -> raise Malformed_code
 ;;
 
+let ustring_sub enc =
+  ustring_sub_poly 
+    Netstring_tstring.string_ops
+    Netstring_tstring.String_kind
+    enc
 
-let ustring_compare enc f ?range_pos:rp1 ?range_len:rl1 s1 
-                          ?range_pos:rp2 ?range_len:rl2 s2 =
-  let cs1 = create_cursor ?range_pos:rp1 ?range_len:rl1 enc s1 in
-  let cs2 = create_cursor ?range_pos:rp2 ?range_len:rl2 enc s2 in
+let ustring_sub_ts enc pos len ?range_pos ?range_len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           match ts with
+             | `String _ ->
+                 let kind = Netstring_tstring.String_kind in
+                 `String(
+                    ustring_sub_poly
+                      ops kind enc pos len ?range_pos ?range_len s)
+             | `Bytes _ ->
+                 let kind = Netstring_tstring.Bytes_kind in
+                 `Bytes(
+                    ustring_sub_poly
+                      ops kind enc pos len ?range_pos ?range_len s)
+             | `Memory _ ->
+                 let kind = Netstring_tstring.Memory_kind in
+                 `Memory(
+                    ustring_sub_poly
+                      ops kind enc pos len ?range_pos ?range_len s)
+        )
+    }
+    ts
+
+
+let ustring_compare_poly ops1 ops2
+                         enc f ?range_pos:rp1 ?range_len:rl1 s1 
+                               ?range_pos:rp2 ?range_len:rl2 s2 =
+  let cs1 = create_poly_cursor ?range_pos:rp1 ?range_len:rl1 enc ops1 s1 in
+  let cs2 = create_poly_cursor ?range_pos:rp2 ?range_len:rl2 enc ops2 s2 in
   let r = ref 0 in
   try
     while !r = 0 do
@@ -3457,13 +3765,41 @@ let ustring_compare enc f ?range_pos:rp1 ?range_len:rl1 s1
 ;;
 
 
-let uarray_of_ustring enc ?(range_pos=0) ?range_len s =
+let ustring_compare enc =
+  ustring_compare_poly 
+    Netstring_tstring.string_ops
+    Netstring_tstring.string_ops
+    enc
+
+
+let ustring_compare_ts enc f ?range_pos:rp1 ?range_len:rl1 ts1
+                             ?range_pos:rp2 ?range_len:rl2 ts2 =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops1 s1 ->
+           Netstring_tstring.with_tstring
+             { Netstring_tstring.with_fun =
+                 (fun ops2 s2 ->
+                    ustring_compare_poly
+                      ops1 ops2 enc f
+                      ?range_pos:rp1 ?range_len:rl1 s1
+                      ?range_pos:rp2 ?range_len:rl2 s2
+                 )
+             }
+             ts2
+        )
+    }
+    ts1
+
+
+let uarray_of_ustring_poly ops enc ?(range_pos=0) ?range_len s =
+  let open Netstring_tstring in
   let range_len =
     match range_len with
 	Some l -> l
-      | None   -> String.length s - range_pos in
+      | None   -> ops.length s - range_pos in
 
-  if range_pos < 0 || range_len < 0 || range_pos+range_len > String.length s 
+  if range_pos < 0 || range_len < 0 || range_pos+range_len > ops.length s 
   then invalid_arg "Netconversion.uarray_of_ustring";
 
   let slice_length = big_slice  in
@@ -3478,7 +3814,8 @@ let uarray_of_ustring enc ?(range_pos=0) ?range_len s =
   while !k < range_len do
     let (n_inc, k_inc, enc') = 
       try
-	!reader slice_char slice_blen s (range_pos + !k) (range_len - !k)
+	(!reader).read
+          ops slice_char slice_blen s (range_pos + !k) (range_len - !k)
       with
 	  Malformed_code_read(_,_,_) -> raise Malformed_code
     in
@@ -3505,7 +3842,23 @@ let uarray_of_ustring enc ?(range_pos=0) ?range_len s =
 ;;
 
 
-let ustring_of_uarray ?(subst = fun code -> raise (Cannot_represent code)) 
+let uarray_of_ustring enc =
+  uarray_of_ustring_poly Netstring_tstring.string_ops enc
+
+let uarray_of_ustring_ts enc ?range_pos ?range_len ts =
+  Netstring_tstring.with_tstring
+    { Netstring_tstring.with_fun =
+        (fun ops s ->
+           uarray_of_ustring_poly ops enc ?range_pos ?range_len s
+        )
+    }
+    ts
+
+
+
+let ustring_of_uarray_poly
+                      out_kind
+                      ?(subst = fun code -> raise (Cannot_represent code)) 
                       enc ?(pos=0) ?len ua =
   let len =
     match len with
@@ -3521,7 +3874,7 @@ let ustring_of_uarray ?(subst = fun code -> raise (Cannot_represent code))
    * limited by 10000.
    *)
   let size = ref (max multibyte_limit (min 10000 (len * 2))) in
-  let out_buf = ref (String.create !size) in
+  let out_buf = ref (Bytes.create !size) in
 
   let writer = get_writer enc in
 
@@ -3540,14 +3893,30 @@ let ustring_of_uarray ?(subst = fun code -> raise (Cannot_represent code))
     let size' = min Sys.max_string_length (!size + !size) in
     if size' < !size + multibyte_limit then 
       failwith "Netconversion.ustring_of_uarray: string too long";
-    let out_buf' = String.create size' in
-    String.blit !out_buf 0 out_buf' 0 !k_out;
+    let out_buf' = Bytes.create size' in
+    Bytes.blit !out_buf 0 out_buf' 0 !k_out;
     out_buf := out_buf';
     size := size';
   done;
 
-  String.sub !out_buf 0 !k_out
+  Netstring_tstring.bytes_subpoly out_kind !out_buf 0 !k_out
 ;;
+
+let ustring_of_uarray ?subst =
+  ustring_of_uarray_poly
+    Netstring_tstring.String_kind
+    ?subst
+
+let ustring_of_uarray_ts : type t . t Netstring_tstring.tstring_kind ->
+                                    ?subst:(int->string) ->
+                                    encoding -> ?pos:int -> ?len:int ->
+                                    int array -> tstring =
+  fun out_kind ?subst enc ?pos ?len ua ->
+    let s = ustring_of_uarray_poly out_kind ?subst enc ?pos ?len ua in
+    match out_kind with
+      | Netstring_tstring.String_kind -> `String s
+      | Netstring_tstring.Bytes_kind -> `Bytes s
+      | Netstring_tstring.Memory_kind -> `Memory s
 
 
 let code_cmp x1 x2 = x1-x2

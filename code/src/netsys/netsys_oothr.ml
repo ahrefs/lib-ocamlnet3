@@ -96,3 +96,12 @@ let serialize  mutex f arg =
     mutex # unlock();
     r
   )
+
+let atomic_init var new_val =
+  let new_val_opt = Some new_val in
+  match !var with
+    | None -> var := new_val_opt; new_val
+    | Some x -> x
+
+let compare_and_swap var old_value new_value =
+  !var == old_value && (var := new_value; true)

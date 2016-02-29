@@ -33,6 +33,9 @@ object
     Unixqueue.standard_event_system()
   method container_run esys =
     esys#run()
+  method config_internal = []
+  method process_internal ~when_done _ (Polyserver_box(_,srv)) _ =
+    Netsys_polysocket.refuse ~nonblock:false srv
 end
 
 
@@ -66,6 +69,10 @@ object(self)
     hooks # container_event_system()
   method container_run esys =
     hooks # container_run esys
+  method config_internal =
+    hooks # config_internal
+  method process_internal ~when_done cont srvbox proto =
+    hooks # process_internal ~when_done cont srvbox proto
 end
 
 
@@ -122,6 +129,16 @@ object(self)
 	  failwith("Netplex_kit.protocol_switch: Unknown protocol: " ^
 		     proto_name)
 
+  method process_internal ~when_done container srvbox proto_name =
+    let p_opt =
+      try Some(List.assoc proto_name merge_list) with Not_found -> None in
+    match p_opt with
+      | Some p ->
+	  p # process_internal ~when_done container srvbox proto_name
+      | None ->
+	  failwith("Netplex_kit.protocol_switch: Unknown protocol: " ^
+		     proto_name)
+
   method supported_ptypes =
     supported_ptypes
 
@@ -162,7 +179,9 @@ object(self)
     (snd(List.hd merge_list)) # container_event_system()
   method container_run esys =
     (snd(List.hd merge_list)) # container_run esys
-
+  method config_internal =
+    List.flatten
+      (List.map (fun (_,hooks) -> hooks # config_internal) merge_list)
 end
 
 

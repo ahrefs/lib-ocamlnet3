@@ -5,11 +5,12 @@ REQUIRES = rpc,unix,netplex
 OBJ = operation_aux.cmo operation_clnt.cmo operation_srv.cmo
 XOBJ = $(OBJ:.cmo=.cmx)
 
-OCAMLC_OPTIONS = -custom
+OCAMLC_OPTIONS = -custom -g
+OCAMLOPT_OPTIONS = -g
 
-all: testlib.cma test_client helper_container helloworld lever
+all: testlib.cma test_client helper_container helloworld lever internal_service
 
-opt: testlib.cmxa test_client.opt helper_container.opt helloworld.opt lever.opt
+opt: testlib.cmxa test_client.opt helper_container.opt helloworld.opt lever.opt internal_service.opt
 
 helper_container: testlib.cma helper_container.ml
 	$(OCAMLC) -o helper_container testlib.cma helper_container.ml -linkpkg -thread
@@ -22,6 +23,12 @@ helloworld: testlib.cma helloworld.ml
 
 helloworld.opt: testlib.cmxa helloworld.ml
 	$(OCAMLOPT) -o helloworld.opt testlib.cmxa helloworld.ml -linkpkg -thread
+
+internal_service: testlib.cma internal_service.ml
+	$(OCAMLC) -o internal_service testlib.cma internal_service.ml -linkpkg -thread
+
+internal_service.opt: testlib.cmxa internal_service.ml
+	$(OCAMLOPT) -o internal_service.opt testlib.cmxa internal_service.ml -linkpkg -thread
 
 lever: testlib.cma lever.ml
 	$(OCAMLC) -o lever testlib.cma lever.ml -linkpkg -thread

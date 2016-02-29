@@ -89,11 +89,11 @@ let test_iso_and_utf8 enc  =
   let name = name_of_encoding enc in
   print_string ("Recode: " ^ name ^ " and UTF-8... "); flush stdout;
   let s = make_iso enc in
-  let s1' = Netconversion.recode_string (enc :> Netconversion.encoding) 
-                                        `Enc_utf8 s in
+  let s1' = Netconversion.convert (enc :> Netconversion.encoding) 
+                                  `Enc_utf8 s in
   let s2' = iconv_recode_string         enc `Enc_utf8 s in
   assert(s1' = s2');
-  let s1  = Netconversion.recode_string `Enc_utf8 
+  let s1  = Netconversion.convert `Enc_utf8 
 	                                (enc :> Netconversion.encoding) s1' in
   let s2  = iconv_recode_string         `Enc_utf8 enc s1' in
   assert(s1 = s2 && s1 = s);
@@ -104,11 +104,11 @@ let test_utf16_and_utf8_0000_d7ff () =
   print_string "Recode: UTF-16-BE and UTF-8, #0000-#D7FF... "; 
   flush stdout;
   let s = make_ucs2 0 0xd800 in
-  let s1' = Netconversion.recode_string `Enc_utf16_be `Enc_utf8 s in
-  let s2' = iconv_recode_string        `Enc_utf16    `Enc_utf8 s in
+  let s1' = Netconversion.convert `Enc_utf16_be `Enc_utf8 s in
+  let s2' = iconv_recode_string   `Enc_utf16    `Enc_utf8 s in
   assert(s1' = s2');
-  let s1  = Netconversion.recode_string `Enc_utf8 `Enc_utf16_be s1' in
-  let s2  = iconv_recode_string        `Enc_utf8 `Enc_utf16 s1' in
+  let s1  = Netconversion.convert `Enc_utf8 `Enc_utf16_be s1' in
+  let s2  = iconv_recode_string   `Enc_utf8 `Enc_utf16 s1' in
   assert(s1 = s2 && s1 = s);
   print_endline "OK"; flush stdout
 ;;
@@ -117,11 +117,11 @@ let test_utf16_and_utf8_e000_fffd () =
   print_string "Recode: UTF-16-BE and UTF-8, #E000-#FFFD... "; 
   flush stdout;
   let s = make_ucs2 0xe000 0xfffe in
-  let s1' = Netconversion.recode_string `Enc_utf16_be `Enc_utf8 s in
-  let s2' = iconv_recode_string        `Enc_utf16    `Enc_utf8 s in
+  let s1' = Netconversion.convert `Enc_utf16_be `Enc_utf8 s in
+  let s2' = iconv_recode_string   `Enc_utf16    `Enc_utf8 s in
   assert(s1' = s2');
-  let s1  = Netconversion.recode_string `Enc_utf8 `Enc_utf16_be s1' in
-  let s2  = iconv_recode_string        `Enc_utf8 `Enc_utf16 s1' in
+  let s1  = Netconversion.convert `Enc_utf8 `Enc_utf16_be s1' in
+  let s2  = iconv_recode_string   `Enc_utf8 `Enc_utf16 s1' in
   assert(s1 = s2 && s1 = s);
   print_endline "OK"; flush stdout
 ;;
@@ -132,11 +132,11 @@ let test_utf16_and_utf8_10000_10FFFF () =
   for i = 1 to 16 do
     let s0  = make_ucs4 (i * 0x10000) (i * 0x10000 + 0x10000) in
     let s   = iconv_recode_string        `Enc_ucs4     `Enc_utf16 s0 in
-    let s1' = Netconversion.recode_string `Enc_utf16_be `Enc_utf8 s in
-    let s2' = iconv_recode_string        `Enc_utf16    `Enc_utf8 s in
+    let s1' = Netconversion.convert `Enc_utf16_be `Enc_utf8 s in
+    let s2' = iconv_recode_string   `Enc_utf16    `Enc_utf8 s in
     assert(s1' = s2');
-    let s1  = Netconversion.recode_string `Enc_utf8 `Enc_utf16_be s1' in
-    let s2  = iconv_recode_string        `Enc_utf8 `Enc_utf16 s1' in
+    let s1  = Netconversion.convert `Enc_utf8 `Enc_utf16_be s1' in
+    let s2  = iconv_recode_string   `Enc_utf8 `Enc_utf16 s1' in
     assert(s1 = s2 && s1 = s);
     print_string "+"; flush stdout;
   done;

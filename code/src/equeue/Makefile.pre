@@ -1,10 +1,14 @@
 TOP_DIR=../..
 
+include $(TOP_DIR)/Makefile.conf
+
 PRE = 1
 PKGNAME = equeue
 GENERATE = META
 
 INSTALL_EXTRA = unixqueue_mt.cmo unixqueue_mt.cmx unixqueue_mt.p.cmx \
 		unixqueue_mt.o unixqueue_mt.p.o
+
+PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules

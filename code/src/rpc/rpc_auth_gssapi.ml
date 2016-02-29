@@ -35,7 +35,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
   module M = Netgssapi_auth.Manage(G)
 
   type window =
-      { window : string;
+      { window : Bytes.t;
         mutable window_length : int64;
         mutable window_offset : int;
         mutable window_last : int64;
@@ -64,7 +64,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       failwith "Rpc_auth_gssapi.split_rpc_gss_data_t";
     let seq_s = Netxdr_mstring.prefix_mstrings ms 4 in
     let rest_s = Netxdr_mstring.shared_sub_mstrings ms 4 (ms_len - 4) in
-    let seq = Netnumber.BE.read_uint4 seq_s 0 in
+    let seq = Netnumber.BE.read_string_uint4 seq_s 0 in
     (seq, rest_s)
       
 
@@ -134,7 +134,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
   let ms_factories = Hashtbl.create 3
 
   let () =
-    Hashtbl.add ms_factories "*" Netxdr_mstring.string_based_mstrings
+    Hashtbl.add ms_factories "*" Netxdr_mstring.bytes_based_mstrings
 
 
   let integrity_decoder (gss_api : G.gss_api)
@@ -173,7 +173,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       if seq <> cred1.seq_num then
         raise(Netxdr.Xdr_format "Rpc_auth_gssapi: bad sequence number");
       dlog "integrity_decoder returns normally";
-      (Netxdr_mstring.concat_mstrings args, xdr_len)
+      (Netxdr_mstring.concat_mstrings_bytes args, xdr_len)
         (* This "concat" is hard to avoid. We are still decoding strings,
            not mstrings.
          *)
@@ -196,7 +196,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       ~conf_req:true
       ~qop_req:0l
       ~input_message:data
-      ~output_message_preferred_type:`String
+      ~output_message_preferred_type:`Bytes
       ~out:(fun ~conf_state ~output_message ~minor_status ~major_status () ->
               try
                 let (c_err, r_err, flags) = major_status in
@@ -257,7 +257,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       gss_api # unwrap
         ~context:ctx
         ~input_message:[data]
-        ~output_message_preferred_type:`String
+        ~output_message_preferred_type:`Bytes
         ~out:(fun ~output_message ~conf_state ~qop_state ~minor_status 
                 ~major_status
                 () ->
@@ -280,7 +280,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
                   if seq <> cred1.seq_num then
                     raise(Netxdr.Xdr_format "Rpc_auth_gssapi: bad sequence number");
                   dlog "privacy_decoder returns normally";
-                  (Netxdr_mstring.concat_mstrings args, xdr_len)
+                  (Netxdr_mstring.concat_mstrings_bytes args, xdr_len)
              )
         ()
     with
@@ -293,7 +293,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
   let init_window n =
     let n' = ((n-1) / 8) + 1 in
-    { window = String.make n' '\000';
+    { window = Bytes.make n' '\000';
       window_length = 0L;
       window_offset = 0;
       window_last = 0L;
@@ -310,7 +310,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
        returns true if the seq num is ok
      *)
-    let l = String.length w.window * 8 in
+    let l = Bytes.length w.window * 8 in
     let lL = Int64.of_int l in
     let seq_numL = Netnumber.int64_of_uint4 seq_num in
     if w.window_length = 0L then (
@@ -324,9 +324,9 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
       let n2 = Int64.to_int w.window_length - 1 in
       let k = n2 lsr 3 in
       let j = n2 land 7 in
-      let c = Char.code w.window.[k] in
+      let c = Char.code (Bytes.get w.window k) in
       let c' =  c lor (1 lsl j) in
-      w.window.[k] <- Char.chr c';
+      Bytes.set w.window k (Char.chr c');
       true
     )
     else
@@ -342,13 +342,13 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             (w.window_offset + Int64.to_int w.window_length - 1) mod l in
           let k = n2 lsr 3 in
           let j = n2 land 7 in
-          let c = Char.code w.window.[k] in
+          let c = Char.code (Bytes.get w.window k) in
           let c' = 
             if seq_numL = next then
               c lor (1 lsl j) 
           else
             c land (lnot (1 lsl j)) in
-          w.window.[k] <- Char.chr c';
+          Bytes.set w.window k (Char.chr c');
           w.window_last <- next
         done;
         true
@@ -360,11 +360,11 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           let n2 = (w.window_offset + n1) mod l in
           let k = n2 lsr 3 in
           let j = n2 land 7 in
-          let c = Char.code w.window.[k] in
+          let c = Char.code (Bytes.get w.window k) in
           let ok = (c land (1 lsl j)) = 0 in
           if ok then (
             let c' = c lor (1 lsl j) in
-            w.window.[k] <- Char.chr c';
+            Bytes.set w.window k (Char.chr c');
           );
           ok
         )
@@ -418,9 +418,9 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
     let new_handle() =
       let n = !handle_nr in
       incr handle_nr;
-      let random = String.make 16 '\000' in
+      let random = Bytes.make 16 '\000' in
       Netsys_rng.fill_random random;
-      sprintf "%6d_%s" n (Digest.to_hex random) in
+      sprintf "%6d_%s" n (Digest.to_hex (Bytes.to_string random)) in
 
     ( object(self)
         method name = "RPCSEC_GSS"
@@ -435,6 +435,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
           (* First decode the rpc_gss_cred_t structure in the header: *)
           try
             let (_, cred_data) = details # credential in
+            let cred_data = Bytes.of_string cred_data in
             let xdr_val =
               try
                 Netxdr.unpack_xdr_value
@@ -513,7 +514,7 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
 
         method private get_token details =
           let body_data =
-            Rpc_packer.unpack_call_body_raw
+            Rpc_packer.unpack_call_body_raw_bytes
               details#message details#frame_len in
           let xdr_val =
             Netxdr.unpack_xdr_value
@@ -849,13 +850,13 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
             | Rpc_server.Auth_positive(_, flav, mic, enc_opt, dec_opt, _) ->
                 (* Check that the input args are empty: *)
                 let raw_body =
-                  Rpc_packer.unpack_call_body_raw 
+                  Rpc_packer.unpack_call_body_raw_bytes
                     details#message details#frame_len in
                 let body_length =
                   match dec_opt with
-                    | None -> String.length raw_body
+                    | None -> Bytes.length raw_body
                     | Some dec -> 
-                        let (b,n) = dec raw_body 0 (String.length raw_body) in
+                        let (b,n) = dec raw_body 0 (Bytes.length raw_body) in
                         n in
                 if body_length <> 0 then
                   failwith "Rpc_auth_gssapi: invalid destroy request";
@@ -1069,13 +1070,15 @@ module Make(G : Netsys_gssapi.GSSAPI) = struct
         match !init_service with Some s -> s | None -> assert false in
       let get_prog() =
         match !init_prog with Some p -> p | None -> assert false in
+(*
       let get_props() =
         match !init_props with Some p -> p | None -> assert false in
+ *)
 
       (* CHECK: what happens with exceptions thrown here? *)
 
       let init_sec_context_step() =
-        let prog = get_prog() in
+        (* let prog = get_prog() in *)
         let req_flags = A.get_client_flags cconf in
         let (output_ctx, output_tok, ret_flags, props_opt) =
           A.init_sec_context

@@ -13,7 +13,7 @@
 
 open Printf
 
-type ptype = [ `GSSAPI | `SASL | `HTTP ]
+type ptype = [ `GSSAPI | `SASL ]
 
 type profile =
     { ptype : ptype;
@@ -88,38 +88,41 @@ type specific_keys =
 
 type client_session =
     { cs_profile : profile;
-      mutable cs_state :
-                 [ `Start | `C1 | `S1 | `CF | `SF | `Connected | `Error ];
-      mutable cs_c1 : client_first option;
-      mutable cs_s1 : server_first option;
-      mutable cs_s1_raw : string;
-      mutable cs_cf : client_final option;
-      mutable cs_sf : server_final option;
-      mutable cs_salted_pw : string;
-      mutable cs_auth_message : string;
-      mutable cs_proto_key : string option;
+      cs_state : [ `Start | `C1 | `S1 | `CF | `SF | 
+                   `Restart of int | `CR of int | `SR of int |
+                   `Connected | `Error of exn
+                 ];
+      cs_c1 : client_first option;
+      cs_s1 : server_first option;
+      cs_s1_raw : string;
+      cs_cf : client_final option;
+      cs_sf : server_final option;
+      cs_salted_pw : string;
+      cs_auth_message : string;
+      cs_client_key : string option;
+      cs_proto_key : string option;
       cs_username : string;
       cs_authzname : string;
       cs_password : string;
       cs_nonce : string option;
-      mutable cs_cb : cb;
+      cs_cb : cb;
     }
 
 
 type server_session =
     { ss_profile : profile;
-      mutable ss_state :
-                 [ `Start | `C1 | `S1 | `CF | `SF | `Connected | `Error ];
-      mutable ss_c1 : client_first option;
-      mutable ss_c1_raw : string;
-      mutable ss_s1 : server_first option;
-      mutable ss_s1_raw : string;
-      mutable ss_cf : client_final option;
-      mutable ss_cf_raw : string;
-      mutable ss_sf : server_final option;
-      mutable ss_creds: (string * string) option;
-      mutable ss_err : server_error option;
-      mutable ss_proto_key : string option;
+      ss_state : [ `Start | `C1 | `S1 | `CF | `SF | `Connected | `Error ];
+      ss_c1 : client_first option;
+      ss_c1_raw : string;
+      ss_s1 : server_first option;
+      ss_s1_raw : string;
+      ss_cf : client_final option;
+      ss_cf_raw : string;
+      ss_sf : server_final option;
+      ss_creds: (string * string) option;
+      ss_err : server_error option;
+      ss_client_key : string option;
+      ss_proto_key : string option;
       ss_nonce : string option;
       ss_authenticate_opt : (string -> string -> credentials) option
     }
@@ -160,6 +163,59 @@ let mechanism_name p =
   let iana_name = List.assoc p.hash_function Netsys_digests.iana_rev_alist in
   let uc = String.uppercase iana_name in
   "SCRAM-" ^ uc
+
+
+let string_of_server_error =
+  function
+    | `Invalid_encoding -> "invalid-encoding"
+    | `Extensions_not_supported -> "extensions-not-supported"
+    | `Invalid_proof -> "invalid-proof"
+    | `Channel_bindings_dont_match -> "channel-bindings-dont-match"
+    | `Server_does_support_channel_binding -> 
+	"server-does-support-channel-binding"
+    | `Channel_binding_not_supported -> "channel-binding-not-supported"
+    | `Unsupported_channel_binding_type -> "unsupported-channel-binding-type"
+    | `Unknown_user -> "unknown-user"
+    | `Invalid_username_encoding -> "invalid-username-encoding"
+    | `No_resources -> "no-resources"
+    | `Other_error -> "other-error"
+    | `Extension s -> s
+
+let server_error_of_string =
+  function
+    | "invalid-encoding" -> `Invalid_encoding
+    | "extensions-not-supported" -> `Extensions_not_supported
+    | "invalid-proof" -> `Invalid_proof
+    | "channel-bindings-dont-match" -> `Channel_bindings_dont_match
+    | "server-does-support-channel-binding" ->
+	`Server_does_support_channel_binding
+    | "channel-binding-not-supported" -> `Channel_binding_not_supported
+    | "unsupported-channel-binding-type" -> `Unsupported_channel_binding_type
+    | "unknown-user" -> `Unknown_user
+    | "invalid-username-encoding" -> `Invalid_username_encoding
+    | "no-resources" -> `No_resources
+    | "other-error" -> `Other_error
+    | s -> `Extension s
+
+
+let error_of_exn =
+  function
+  | Invalid_encoding(m,_) ->
+      "Invalid encoding: " ^ m
+  | Invalid_username_encoding(m,_) ->
+      "Invalid user name encoding: " ^ m
+  | Extensions_not_supported(m,_) ->
+      "Extensions not supported: " ^ m
+  | Protocol_error m ->
+      "Protocol error: " ^ m
+  | Invalid_server_signature ->
+      "Invalid server signature"
+  | Server_error code ->
+      let m = string_of_server_error code in
+      "Server error code: " ^ m
+  | _ ->
+      assert false
+             
 
 
 let saslprep s = 
@@ -266,14 +322,12 @@ let encode_gs2_http gs2 =
 let encode_gs2 ptype gs2 =
   match ptype with
     | `SASL -> encode_gs2_sasl gs2
-    | `HTTP -> "g=" ^ encode_gs2_http gs2
     | `GSSAPI -> assert false
 
 
 let encode_cbind_input ptype gs2 =
   ( match ptype with
       | `SASL -> encode_gs2_sasl gs2
-      | `HTTP -> encode_gs2_http gs2
       | `GSSAPI -> ""
   ) ^ 
     ( match gs2.gs2_cb with
@@ -291,7 +345,6 @@ let decode_gs2 ?(cb_includes_data=false) ptype s =
   let re, has_authz =
     match ptype with
       | `SASL -> gs2_sasl_re, true
-      | `HTTP -> gs2_http_re, false
       | `GSSAPI -> assert false in
   match Netstring_str.string_match re s 0 with
     | Some m ->
@@ -341,18 +394,12 @@ let remove_gs2 ptype s =
   match ptype with
     | `GSSAPI -> s
     | `SASL -> snd(decode_gs2 ptype s)
-    | `HTTP ->
-        if String.length s < 2 || s.[0] <> 'g' || s.[1] <> '=' then
-          raise(Invalid_encoding("decode_c1_message",s));
-        let s1 = String.sub s 2 (String.length s - 2) in
-        snd(decode_gs2 ptype s1)
 
 
 let encode_c1_message ptype c1 =
   let gs2_header =
     match ptype with
       | `SASL -> Some(encode_gs2 ptype c1.c1_gs2)
-      | `HTTP -> let g = encode_gs2 ptype c1.c1_gs2 in Some("g=" ^ g)
       | `GSSAPI -> None in
   (gs2_header,
    [ "n", encode_saslname(username_saslprep c1.c1_username);
@@ -401,14 +448,6 @@ let decode_c1_message ptype s =
          decode_c1_message_after_gs2 s l2 gs2 
     | `SASL ->
          let (gs2, rest) = decode_gs2 ptype s in
-         let l1 = comma_split rest in
-         let l2 = List.map n_value_split l1 in
-         decode_c1_message_after_gs2 s l2 gs2
-    | `HTTP ->
-         if String.length s < 2 || s.[0] <> 'g' || s.[1] <> '=' then
-           raise(Invalid_encoding("decode_c1_message",s));
-         let s1 = String.sub s 2 (String.length s - 2) in
-         let (gs2, rest) = decode_gs2 ptype s1 in
          let l1 = comma_split rest in
          let l2 = List.map n_value_split l1 in
          decode_c1_message_after_gs2 s l2 gs2
@@ -523,39 +562,6 @@ let strip_cf_proof s =
 	assert false
 
 
-let string_of_server_error =
-  function
-    | `Invalid_encoding -> "invalid-encoding"
-    | `Extensions_not_supported -> "extensions-not-supported"
-    | `Invalid_proof -> "invalid-proof"
-    | `Channel_bindings_dont_match -> "channel-bindings-dont-match"
-    | `Server_does_support_channel_binding -> 
-	"server-does-support-channel-binding"
-    | `Channel_binding_not_supported -> "channel-binding-not-supported"
-    | `Unsupported_channel_binding_type -> "unsupported-channel-binding-type"
-    | `Unknown_user -> "unknown-user"
-    | `Invalid_username_encoding -> "invalid-username-encoding"
-    | `No_resources -> "no-resources"
-    | `Other_error -> "other-error"
-    | `Extension s -> s
-
-let server_error_of_string =
-  function
-    | "invalid-encoding" -> `Invalid_encoding
-    | "extensions-not-supported" -> `Extensions_not_supported
-    | "invalid-proof" -> `Invalid_proof
-    | "channel-bindings-dont-match" -> `Channel_bindings_dont_match
-    | "server-does-support-channel-binding" ->
-	`Server_does_support_channel_binding
-    | "channel-binding-not-supported" -> `Channel_binding_not_supported
-    | "unsupported-channel-binding-type" -> `Unsupported_channel_binding_type
-    | "unknown-user" -> `Unknown_user
-    | "invalid-username-encoding" -> `Invalid_username_encoding
-    | "no-resources" -> `No_resources
-    | "other-error" -> `Other_error
-    | s -> `Extension s
-
-
 let () =
   Netexn.register_printer
     (Server_error `Invalid_encoding)
@@ -623,12 +629,12 @@ let hmac_mstrings h key ms_list =
   Netsys_digests.digest_mstrings dg ms_list
 
 let int_s i =
-  let s = String.make 4 '\000' in
-  s.[0] <- Char.chr ((i lsr 24) land 0xff);
-  s.[1] <- Char.chr ((i lsr 16) land 0xff);
-  s.[2] <- Char.chr ((i lsr 8) land 0xff);
-  s.[3] <- Char.chr (i land 0xff);
-  s
+  let s = Bytes.make 4 '\000' in
+  Bytes.set s 0 (Char.chr ((i lsr 24) land 0xff));
+  Bytes.set s 1 (Char.chr ((i lsr 16) land 0xff));
+  Bytes.set s 2 (Char.chr ((i lsr 8) land 0xff));
+  Bytes.set s 3 (Char.chr (i land 0xff));
+  Bytes.unsafe_to_string s
 
 let hi h str salt i =
   let rec uk k =
@@ -654,9 +660,9 @@ let lsb128 s =
 
 
 let create_random() =
-  let s = String.make 16 ' ' in
+  let s = Bytes.make 16 ' ' in
   Netsys_rng.fill_random s;
-  Digest.to_hex s
+  Digest.to_hex (Bytes.to_string s)
 
 
 let create_nonce() =
@@ -682,6 +688,7 @@ let create_client_session2 ?nonce profile username authzname password =
     cs_username = username;
     cs_authzname = authzname;
     cs_password = password;
+    cs_client_key = None;
     cs_proto_key = None;
     cs_cb = `None;
     cs_nonce = nonce;
@@ -694,33 +701,43 @@ let create_client_session ?nonce profile username password =
 
 let client_emit_flag cs =
   match cs.cs_state with
-    | `Start | `S1 -> true
+    | `Start | `S1 | `Restart _ -> true
     | _ -> false
 
 
 let client_recv_flag cs =
   match cs.cs_state with
-    | `C1 | `CF -> true
+    | `C1 | `CF | `CR _ -> true
     | _ -> false
 
 
 let client_finish_flag cs =
-  cs.cs_state = `Connected
+  match cs.cs_state with
+    | `Connected
+    | `SR _ -> true
+    | _ -> false
+
+let client_semifinish_flag cs =
+  match cs.cs_state with
+    | `CF
+    | `CR _
+    | `Connected
+    | `SR _ -> true
+    | _ -> false
 
 
 let client_error_flag cs =
-  cs.cs_state = `Error
+  match cs.cs_state with `Error e -> Some e | _ -> None
 
 
-let catch_error cs f arg =
+let catch_error cs onerror f arg =
   try
     f arg
   with
     | error ->
 	dlog (sprintf "Client caught error: %s"
 		(Netexn.to_string error));
-	cs.cs_state <- `Error;
-	raise error
+        onerror { cs with cs_state = `Error error }
 
 
 let client_protocol_key cs =
@@ -743,10 +760,10 @@ let client_configure_channel_binding cs cb =
   ( match cs.cs_profile.ptype, cb with
       | _, `None -> ()
       | `GSSAPI, `GSSAPI _ -> ()
-      | (`SASL | `HTTP), (`SASL_none_but_advertise | `SASL_require _) -> ()
+      | `SASL, (`SASL_none_but_advertise | `SASL_require _) -> ()
       | _ -> failwith "Netmech_scram.client_configure_channel_binding"
   );
-  cs.cs_cb <- cb
+  { cs with cs_cb = cb }
 
 let client_channel_binding cs =
   cs.cs_cb
@@ -779,10 +796,20 @@ let client_prop cs key =
             | None -> raise Not_found
             | Some s1 -> string_of_int s1.s1_iteration_count
         )
+    | "client_key" ->
+        ( match cs.cs_client_key with
+            | None -> raise Not_found
+            | Some key -> key
+        )
     | "protocol_key" ->
         ( match client_protocol_key cs with
             | None -> raise Not_found
             | Some key -> key
+        )
+    | "error" ->
+        ( match cs.cs_state with
+            | `Error e -> Netexn.to_string e
+            | _ -> raise Not_found
         )
     | _ -> raise Not_found
 
@@ -800,6 +827,48 @@ let stored_key h password salt iteration_count =
   let server_key = hmac_string h salted_pw "Server Key" in
   (stored_key, server_key)
 
+let client_restart cs sr =
+  match cs.cs_state with
+    | `SF ->
+        ( match cs.cs_c1, cs.cs_s1 with
+            | Some c1, Some s1 ->
+                let c1_nlen = String.length c1.c1_nonce in
+                let s1_sr =
+                  String.sub
+                    s1.s1_nonce c1_nlen (String.length s1.s1_nonce - c1_nlen) in
+                if sr = s1_sr then
+                  { cs with cs_state = `Restart s1.s1_iteration_count }
+                else
+                  let e = Protocol_error ("bad sr attribute") in
+                  { cs with cs_state = `Error e }
+            | _ ->
+                assert false
+        )
+    | `SR n ->
+        { cs with cs_state = `Restart (n+1) }
+    | _ ->
+        let e = Failure "Netmech_scram.client_restart" in
+        { cs with cs_state = `Error e }
+
+let client_restart_stale cs sr =
+  match cs.cs_state with
+    | `CR ncount ->
+        ( match cs.cs_c1, cs.cs_s1 with
+            | Some c1, Some s1 ->
+                let s1' =
+                  { s1 with s1_nonce = c1.c1_nonce ^ sr } in
+                { cs with
+                  cs_s1 = Some s1';
+                  cs_state = `Restart ncount
+                    (* not successful, so use same nonce-count again *)
+                }
+            | _ ->
+                assert false
+        )
+    | _ ->
+        let e = Failure "Netmech_scram.client_restart" in
+        { cs with cs_state = `Error e }
+
 
 let client_emit_message_kv cs =
   let p = cs.cs_profile in
@@ -808,7 +877,9 @@ let client_emit_message_kv cs =
     { gs2_authzname = Some cs.cs_authzname;
       gs2_cb = cs.cs_cb
     } in
-  catch_error cs
+  catch_error
+    cs
+    (fun cs -> (cs,None,["m","invalid_message"]))
     (fun () ->
        match cs.cs_state with
 	 | `Start ->
@@ -822,15 +893,14 @@ let client_emit_message_kv cs =
                    );
 		 c1_extensions = []
 	       } in
-	     cs.cs_c1 <- Some c1;
-	     cs.cs_state <- `C1;
+             let cs' = { cs with cs_c1 = Some c1; cs_state = `C1 } in
 	     let (gs2_opt,m) = encode_c1_message p.ptype c1 in
 	     dlogr
                (fun () ->
                   let ms = format_client_msg (gs2_opt,m) in
                   sprintf "Client state `Start emitting message: %s" ms
                );
-	     (gs2_opt,m)
+	     (cs',gs2_opt,m)
 	       
 	 | `S1 ->
 	     let c1 =
@@ -865,23 +935,88 @@ let client_emit_message_kv cs =
 		 cf_extensions = [];
 		 cf_proof = Some proof;
 	       } in
-	     cs.cs_cf <- Some cf;
-	     cs.cs_state <- `CF;
-	     cs.cs_auth_message <- auth_message;
-	     cs.cs_salted_pw <- salted_pw;
-	     cs.cs_proto_key <- Some ( lsb128
+             let cs' =
+               { cs with
+	         cs_cf = Some cf;
+	         cs_state = `CF;
+	         cs_auth_message = auth_message;
+	         cs_salted_pw = salted_pw;
+                 cs_client_key = Some client_key;
+	         cs_proto_key = Some ( lsb128
 					 (hmac_string
                                             h
 					    stored_key
 					    ("GSS-API session key" ^ 
 					       client_key ^ auth_message)));
+               } in
 	     let m = encode_cf_message p.ptype cf in
 	     dlogr
                (fun () ->
                   let ms = format_msg m in
 	          sprintf "Client state `S1 emitting message: %s" ms
                );
-	     (None,m)
+	     (cs',None,m)
+
+         | `Restart ncount ->
+	     let c1 =
+	       match cs.cs_c1 with None -> assert false | Some c1 -> c1 in
+	     let s1 =
+	       match cs.cs_s1 with None -> assert false | Some s1 -> s1 in
+	     let client_key = hmac_string h cs.cs_salted_pw "Client Key" in
+	     let stored_key = hash_string h client_key in
+             let c1_nlen = String.length c1.c1_nonce in
+             let sr =
+               String.sub
+                 s1.s1_nonce c1_nlen (String.length s1.s1_nonce - c1_nlen) in
+             let cf_nonce = c1.c1_nonce ^ string_of_int ncount ^ sr in
+	     let cf_no_proof =
+               format_msg
+	         (encode_cf_message
+                    p.ptype
+                    { cf_gs2 = gs2;
+		      cf_nonce;
+		      cf_extensions = [];
+		      cf_proof = None
+		    } 
+                 ) in
+             let c1_str =
+               format_client_msg (None, snd (encode_c1_message p.ptype c1)) in
+             let s1_str =
+               (* "When constructing AuthMessage ... server-first-message [is]
+                  reconstructed ..." - note that sr may have changed.
+                *)
+               format_msg (encode_s1_message s1) in
+	     let auth_message =
+	       c1_str ^ "," ^ s1_str ^ "," ^ cf_no_proof in
+             dlogr (fun () -> "Client auth_message: " ^ auth_message);
+	     let client_signature = hmac_string h stored_key auth_message in
+	     let proof = Netauth.xor_s client_key client_signature in
+	     let cf =
+	       { cf_gs2 = gs2;
+		 cf_nonce;
+		 cf_extensions = [];
+		 cf_proof = Some proof;
+	       } in
+             let cs' =
+               { cs with
+	         cs_cf = Some cf;
+	         cs_state = `CR ncount;
+	         cs_auth_message = auth_message;
+                 cs_client_key = Some client_key;
+	         cs_proto_key = Some ( lsb128
+					 (hmac_string
+                                            h
+					    stored_key
+					    ("GSS-API session key" ^ 
+					       client_key ^ auth_message)));
+               } in
+	     let m = encode_cf_message p.ptype cf in
+	     dlogr
+               (fun () ->
+                  let ms = format_msg m in
+	          sprintf "Client state `S1 emitting message: %s" ms
+               );
+	     (cs',None,m)
 	       
 	 | _ ->
 	     failwith "Netmech_scram.client_emit_message"
@@ -890,14 +1025,16 @@ let client_emit_message_kv cs =
 
 
 let client_emit_message cs =
-  let (gs2_opt,m) = client_emit_message_kv cs in
-  format_client_msg (gs2_opt,m)
+  let (cs',gs2_opt,m) = client_emit_message_kv cs in
+  (cs',format_client_msg (gs2_opt,m))
 
 
 let client_recv_message cs message =
   let p = cs.cs_profile in
   let h = p.hash_function in
-  catch_error cs
+  catch_error
+    cs
+    (fun cs -> cs)
     (fun () ->
        match cs.cs_state with
 	 | `C1 ->
@@ -915,12 +1052,40 @@ let client_recv_message cs message =
 	     if s1.s1_iteration_count > cs.cs_profile.iteration_count_limit then
 	       raise (Protocol_error
 			"client_recv_message: iteration count too high");
-	     cs.cs_state <- `S1;
-	     cs.cs_s1 <- Some s1;
-	     cs.cs_s1_raw <- message
+             dlog (sprintf "s-nonce=%S salt=%S i=%d" s1.s1_nonce s1.s1_salt
+                  s1.s1_iteration_count);
+	     { cs with
+               cs_state = `S1;
+	       cs_s1 = Some s1;
+	       cs_s1_raw = message
+             }
 	       
 	 | `CF ->
 	     dlog (sprintf "Client state `CF receiving message: %s" message);
+	     let sf = decode_sf_message message in
+	     ( match sf.sf_error_or_verifier with
+		 | `Verifier v ->
+                     dlog (sprintf "CF got verifier=%S" v);
+		     let salted_pw = cs.cs_salted_pw in
+                     dlog (sprintf "CF salted_pw=%S" salted_pw);
+		     let server_key =
+		       hmac_string h salted_pw "Server Key" in
+                     dlog (sprintf "CF server_key=%S" server_key);
+		     let server_signature =
+		       hmac_string h server_key cs.cs_auth_message in
+                     dlog (sprintf "CF expected signature=%S" server_signature);
+		     if v <> server_signature then
+		       raise Invalid_server_signature;
+		     dlog "Client is authenticated";
+                     { cs with cs_state = `Connected }
+		 | `Error e ->
+		     dlog (sprintf "Client got error token from server: %s"
+			     (string_of_server_error e));
+		     raise(Server_error e)
+	     )
+
+         | `CR ncount ->
+	     dlog (sprintf "Client state `CR receiving message: %s" message);
 	     let sf = decode_sf_message message in
 	     ( match sf.sf_error_or_verifier with
 		 | `Verifier v ->
@@ -931,10 +1096,9 @@ let client_recv_message cs message =
 		       hmac_string h server_key cs.cs_auth_message in
 		     if v <> server_signature then
 		       raise Invalid_server_signature;
-		     cs.cs_state <- `Connected;
-		     dlog "Client is authenticated"
+		     dlog "Client is authenticated";
+                     { cs with cs_state = `SR ncount }
 		 | `Error e ->
-		     cs.cs_state <- `Error;
 		     dlog (sprintf "Client got error token from server: %s"
 			     (string_of_server_error e));
 		     raise(Server_error e)
@@ -961,6 +1125,7 @@ let create_server_session2 ?nonce profile auth =
     ss_creds = None;
     ss_err = None;
     ss_nonce = nonce;
+    ss_client_key = None;
     ss_proto_key = None;
   }
 
@@ -1019,20 +1184,32 @@ let catch_condition ss f arg =
      *)
     | Invalid_encoding(_,_) as e ->
 	debug e;
-	if ss.ss_err = None then
-	  ss.ss_err <- Some `Invalid_encoding
+        (if ss.ss_err = None then
+	   { ss with ss_err = Some `Invalid_encoding }
+         else
+           ss
+        )
     | Invalid_username_encoding _ as e ->
 	debug e;
-	if ss.ss_err = None then
-	  ss.ss_err <- Some `Invalid_username_encoding
+        (if ss.ss_err = None then
+	   { ss with ss_err = Some `Invalid_username_encoding }
+         else
+           ss
+        )
     | Extensions_not_supported(_,_) as e ->
 	debug e;
-	if ss.ss_err = None then
-	  ss.ss_err <- Some `Extensions_not_supported
+        (if ss.ss_err = None then
+	   { ss with ss_err = Some `Extensions_not_supported }
+         else
+           ss
+        )
     | Invalid_proof _ as e ->
 	debug e;
-	if ss.ss_err = None then
-	  ss.ss_err <- Some `Invalid_proof
+        (if ss.ss_err = None then
+	   { ss with ss_err = Some `Invalid_proof }
+         else
+           ss
+        )
 	
 
 exception Skip_proto
@@ -1043,7 +1220,7 @@ let server_emit_message_kv ss =
   let h = p.hash_function in
   match ss.ss_state with
     | `C1 ->
-	let m =
+	let (ss',m) =
 	  try
 	    let c1 = 
 	      match ss.ss_c1 with
@@ -1079,12 +1256,15 @@ let server_emit_message_kv ss =
 		s1_iteration_count = i;
 		s1_extensions = []
 	      } in
-	    ss.ss_state <- `S1;
-	    ss.ss_s1 <- Some s1;
-	    ss.ss_creds <- Some(stkey,srvkey);
-	    let s1 = encode_s1_message s1 in
-	    ss.ss_s1_raw <- format_msg s1;
-	    s1
+	    let s1_enc = encode_s1_message s1 in
+            let ss' =
+              { ss with
+	        ss_state = `S1;
+	        ss_s1 = Some s1;
+	        ss_creds = Some(stkey,srvkey);
+	        ss_s1_raw = format_msg s1_enc;
+              } in
+	    (ss',s1_enc)
 	  with Not_found | Skip_proto ->
 	    (* continue with a dummy auth *)
 	    dlog "Server does not know this user";
@@ -1097,23 +1277,28 @@ let server_emit_message_kv ss =
 		s1_iteration_count = 4096;
 		s1_extensions = []
 	      } in
-	    ss.ss_state <- `S1;
-	    ss.ss_s1 <- Some s1;
-	    if ss.ss_err = None then
-	      ss.ss_err <- Some (if ss.ss_profile.return_unknown_user then
+	    let s1_enc = encode_s1_message s1 in
+            let ss' =
+              { ss with
+	        ss_state = `S1;
+	        ss_s1 = Some s1;
+                ss_err = (if ss.ss_err = None then
+	                    Some (if ss.ss_profile.return_unknown_user then
 				   `Unknown_user
 				 else
-				   `Invalid_proof);
-	    (* This will keep the client off being successful *)
-	    let s1 = encode_s1_message s1 in
-	    ss.ss_s1_raw <- format_msg s1;
-	    s1
+				   `Invalid_proof)
+                          else
+                            ss.ss_err
+                         );
+	        ss_s1_raw = format_msg s1_enc;
+              } in
+	    (ss',s1_enc)
 	in
 	dlogr
           (fun () ->
              sprintf "Server state `C1 emitting message: %s" (format_msg m)
           );
-	m
+	(ss',m)
 	  
     | `CF ->
 	( match ss.ss_err with
@@ -1122,41 +1307,50 @@ let server_emit_message_kv ss =
 		  { sf_error_or_verifier = `Error err;
 		    sf_extensions = []
 		  } in
-		ss.ss_sf <- Some sf;
-		ss.ss_state <- `Error;
 		let m = encode_sf_message sf in
 		dlogr
                   (fun () ->
                     let ms = format_msg m in
                     sprintf "Server state `CF[Err] emitting message: %s" ms
                   );
-		m
+                let ss' =
+                  { ss with
+                    ss_sf = Some sf;
+                    ss_state = `Error;
+                  } in
+		(ss',m)
 		  
 	    | None ->
 		let server_key =
 		  match ss.ss_creds with
 		    | None -> assert false | Some(_,srvkey) -> srvkey in
+                dlog (sprintf "CF server_key=%S" server_key);
 		let cf_no_proof = strip_cf_proof ss.ss_cf_raw in
                 let c1_bare = remove_gs2 p.ptype ss.ss_c1_raw in
 		let auth_message =
 		  c1_bare ^ "," ^ 
 		    ss.ss_s1_raw ^ "," ^ 
 		    cf_no_proof in
+                dlog (sprintf "CF auth_message=%S" auth_message);
 		let server_signature =
 		  hmac_string h server_key auth_message in
+                dlog (sprintf "CF signature=%S" server_signature);
 		let sf =
 		  { sf_error_or_verifier = `Verifier server_signature;
 		    sf_extensions = []
 		  } in
-		ss.ss_sf <- Some sf;
-		ss.ss_state <- `Connected;
+		let ss' =
+                  { ss with 
+                    ss_sf = Some sf;
+		    ss_state = `Connected;
+                  } in
 		let m = encode_sf_message sf in
 		dlogr
                   (fun () ->
                      sprintf "Server state `CF emitting message: %s" 
                              (format_msg m)
                   );
-		m
+		(ss',m)
 	)
 	  
     | _ ->
@@ -1164,7 +1358,8 @@ let server_emit_message_kv ss =
 
 
 let server_emit_message ss =
-  format_msg (server_emit_message_kv ss)
+  let ss', m = server_emit_message_kv ss in
+  (ss', format_msg m)
 
 
 let gs2_compatibility c1_gs2 cf_gs2 =
@@ -1186,18 +1381,28 @@ let server_recv_message ss message =
     | `Start ->
 	dlog (sprintf "Server state `Start receiving message: %s" message);
 
-	catch_condition ss
+	catch_condition
+          ss
 	  (fun () ->
 	     let c1 = decode_c1_message p.ptype message in
-	     ss.ss_c1 <- Some c1;
-	  ) ();
-	ss.ss_c1_raw <- message;
-	ss.ss_state <- `C1
-	  (* Username is checked later *)
+	     { ss with
+               ss_c1_raw = message;
+	       ss_state = `C1;
+               ss_c1 = Some c1;
+             }
+	  ) ()
+        (* Username is checked later *)
     | `S1 ->
 	dlog (sprintf "Server state `S1 receiving message: %s" message);
 
-	catch_condition ss
+        let ss =
+          { ss with
+            ss_cf_raw = message;
+            ss_state = `CF
+          } in
+
+	catch_condition
+          ss
 	  (fun () ->
 	     try
                let c1 =
@@ -1231,19 +1436,20 @@ let server_recv_message ss message =
 		 raise (Invalid_proof "bad client signature");
                if not(gs2_compatibility c1.c1_gs2 cf.cf_gs2) then
                  raise (Invalid_proof "invalid gs2 header");
-	       ss.ss_cf <- Some cf;
-	       ss.ss_proto_key <- Some ( lsb128
-					   (hmac_string
-                                              h
-					      stored_key
-					      ("GSS-API session key" ^ 
-						 decoded_client_key ^ 
-                                                   auth_message)));
+               { ss with
+	         ss_cf = Some cf;
+                 ss_client_key = Some decoded_client_key;
+	         ss_proto_key = Some ( lsb128
+					 (hmac_string
+                                            h
+					    stored_key
+					    ("GSS-API session key" ^ 
+					       decoded_client_key ^ 
+                                                 auth_message)));
+               }
 	     with
-	       | Skip_proto -> ()
-	  ) ();
-	ss.ss_cf_raw <- message;
-	ss.ss_state <- `CF
+	       | Skip_proto -> ss
+	  ) ()
     | _ ->
 	failwith "Netmech_scram.server_recv_message"
 
@@ -1287,6 +1493,11 @@ let server_prop ss key =
         ( match ss.ss_s1 with
             | None -> raise Not_found
             | Some s1 -> string_of_int s1.s1_iteration_count
+        )
+    | "client_key" ->
+        ( match ss.ss_client_key with
+            | None -> raise Not_found
+            | Some key -> key
         )
     | "protocol_key" ->
         ( match server_protocol_key ss with
@@ -1533,8 +1744,9 @@ module Cryptosystem = struct
 
   let encrypt_and_sign s_keys message =
     let c_bytes = C.c/8 in
-    let conf = String.make c_bytes '\000' in
-    Netsys_rng.fill_random conf;
+    let confbuf = Bytes.make c_bytes '\000' in
+    Netsys_rng.fill_random confbuf;
+    let conf = Bytes.to_string confbuf in
     let l = String.length message in
     let p = (l + c_bytes) mod (identity C.m) in
       (* Due to a bug in the ARM code generator, avoid "... mod 1" *)
@@ -1547,8 +1759,9 @@ module Cryptosystem = struct
 
   let encrypt_and_sign_mstrings s_keys message =
     let c_bytes = C.c/8 in
-    let conf = String.make c_bytes '\000' in
-    Netsys_rng.fill_random conf;
+    let confbuf = Bytes.make c_bytes '\000' in
+    Netsys_rng.fill_random confbuf;
+    let conf = Bytes.to_string confbuf in
     let l = Netxdr_mstring.length_mstrings message in
     let p = (l + c_bytes) mod C.m in
     let pad = 
@@ -1638,36 +1851,5 @@ assert(s1 = "r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,s=QSXCR+Q6sek8bf92,i=4
 server_recv_message ss "c=biws,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=v0X8v3Bz2T0CJGbJQyF0X+HI4Ts=";;
 let s2 = server_emit_message ss;;
 assert(s2 = "v=rmF9pqV8S7suAoZWja4dJRkFsKQ=");;
-assert(server_finish_flag ss);;
- *)
-
-(* HTTP *)
-(*
-#use "topfind";;
-#require "netstring,nettls-gnutls";;
-open Netmech_scram;;
-Debug.enable := true;;
-let p = { ptype = `HTTP; hash_function = `SHA_1; return_unknown_user=false;
-         iteration_count_limit = 100000 };;
-
-test_nonce := Some "fyko+d2lbbFgONRv9qkxdawL";;
-let cs = create_client_session p "user" "pencil";;
-let c1 = client_emit_message cs;;
-assert(c1 = "g=n,n=user,r=fyko+d2lbbFgONRv9qkxdawL");;
-client_recv_message cs "r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,s=QSXCR+Q6sek8bf92,i=4096";;
-let c2 = client_emit_message cs;;
-assert(c2 = "c=biw=,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=z0TYz4fr26P2eJYbU4IPQL2HBXA=");;
-client_recv_message cs "v=AE3w3+i1bvD1L/NrfGjiOwMRJQA=";;
-assert(client_finish_flag cs);;
-
-test_nonce := Some "3rfcNHYJY1ZVvWVs7j";;
-let salt = Netencoding.Base64.decode "QSXCR+Q6sek8bf92";;
-let ss = create_server_session p (fun _ -> salt_password `SHA_1 "pencil" salt 4096, salt, 4096);;
-server_recv_message ss "g=n,n=user,r=fyko+d2lbbFgONRv9qkxdawL";;
-let s1 = server_emit_message ss;;
-assert(s1 = "r=fyko+d2lbbFgONRv9qkxdawLfyko+d2lbbFgONRv9qkxdawL,s=QSXCR+Q6sek8bf92,i=4096");;
-server_recv_message ss "c=biw=,r=fyko+d2lbbFgONRv9qkxdawL3rfcNHYJY1ZVvWVs7j,p=z0TYz4fr26P2eJYbU4IPQL2HBXA=";;
-let s2 = server_emit_message ss;;
-assert(s2 = "v=AE3w3+i1bvD1L/NrfGjiOwMRJQA=");;
 assert(server_finish_flag ss);;
  *)

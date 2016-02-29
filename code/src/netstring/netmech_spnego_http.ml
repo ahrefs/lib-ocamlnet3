@@ -81,7 +81,7 @@ module Default : PROFILE =
   end
 
 
-module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM = 
+module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_CLIENT_MECHANISM = 
   struct
     module M = Netgssapi_auth.Manage(G)
     module C = struct
@@ -135,24 +135,30 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
 
     type client_session =
         { mutable ccontext : G.context option;
-          mutable cstate : Netsys_sasl_types.client_state;
-          mutable csubstate : client_sub_state;
-          mutable ctoken : string;
-          mutable cconn : int;
+          cstate : Netsys_sasl_types.client_state;
+          csubstate : client_sub_state;
+          ctoken : string;
+          cconn : int;
           cconf : Netsys_gssapi.client_config;
           ctarget_name : G.name;
           ccred : G.credential;
-          mutable cprops : Netsys_gssapi.client_props option;
+          cprops : Netsys_gssapi.client_props option;
         }
 
     let client_state cs = cs.cstate
 
     let client_del_ctx cs =
       match cs.ccontext with
-        | None -> ()
+        | None -> cs
         | Some ctx ->
             M.delete_context cs.ccontext ();
-            cs.ccontext <- None
+            { cs with ccontext = None }
+
+    let cvalidity cs0 =
+      let cs1 = {cs0 with ccontext = cs0.ccontext} in
+      cs0.ccontext <- None;
+      cs1
+                 
 
     let check_gssapi_status fn_name 
                             ((calling_error,routine_error,_) as major_status)
@@ -168,7 +174,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
         check_gssapi_status fn_name major_status minor_status
       with
         | error ->
-            client_del_ctx cs;
+            ignore(client_del_ctx cs);
             raise error
            
 
@@ -182,19 +188,26 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
           ~chan_bindings:None
           ~input_token
           cs.cconf in
-      cs.ccontext <- Some out_context;
-      cs.ctoken <- out_token;
-      cs.cprops <- props_opt;
+      let cs =
+        { cs with
+          ccontext = Some out_context;
+          ctoken = out_token;
+          cprops = props_opt;
+        } in
       let auth_done = (props_opt <> None) in
       if auth_done then (
-        cs.cstate <- if out_token = "" then `OK else `Emit;
-        cs.csubstate <- `Established;
+        let cs =
+          { cs with
+            cstate = if out_token = "" then `OK else `Emit;
+            csubstate = `Established;
+          } in
         client_del_ctx cs;  (* no longer needed *)
       )
-      else (
-        cs.cstate <- `Emit;
-        cs.csubstate <- `Init_context
-      )
+      else
+        { cs with
+          cstate = `Emit;
+          csubstate = `Init_context
+        }
 
     let create_client_session ~user ~creds ~params () =
       let params = 
@@ -247,6 +260,8 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       if cb <> `None then
         failwith "Netmech_spnego_http.client_configure_channel_binding: \
                   not supported"
+      else
+        cs
                  
     let client_state cs = cs.cstate
     let client_channel_binding cs = `None
@@ -257,6 +272,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
        *)
       if cs.cstate <> `OK then
         failwith "Netmech_spnego_http.client_restart: unfinished auth";
+      let cs = cvalidity cs in
       let params = 
         Netsys_sasl_util.preprocess_params
           "Netmech_krb5_sasl.create_client_session:"
@@ -265,11 +281,14 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       let conn_id =
         try int_of_string (List.assoc "conn_id" params)
         with Not_found -> failwith "missing parameter: conn_id" in
-      cs.ccontext <- None;
-      cs.cstate <- `Emit;
-      cs.ctoken <- "";
-      cs.csubstate <- `Pre_init_context;
-      cs.cconn <- conn_id;
+      let cs =
+        { cs with
+          ccontext = None;
+          cstate = `Emit;
+          ctoken = "";
+          csubstate = `Pre_init_context;
+          cconn = conn_id;
+        } in
       call_init_sec_context cs None
         
 
@@ -280,6 +299,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
 
 
     let client_process_challenge cs meth uri hdr challenge =
+      let cs = cvalidity cs in
       try
         if cs.cstate <> `Wait then
           failwith "protocol error";
@@ -313,29 +333,31 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
                   handle it like `Pre_init_context, and re-run the protocol.
                 *)
                if ch_params = [] then (
-                 cs.cstate <- `OK;
-                 cs.csubstate <- `Established
+                 { cs with
+                   cstate = `OK;
+                   csubstate = `Established
+                 }
                ) else
                  call_init_sec_context cs None  (* sets cs.cstate to `Emit *)
           | `Established ->
                failwith "unexpected token"
       with
         | Failure msg ->
-             client_del_ctx cs;
-             cs.cstate <- `Auth_error msg
+             let cs = client_del_ctx cs in
+             { cs with cstate = `Auth_error msg }
 
     let client_emit_response cs meth uri hdr =
       if cs.cstate <> `Emit then
         failwith "Netmech_spnego_http.client_emit_response: bad state";
-      ( match cs.csubstate with
+      let cs =
+        match cs.csubstate with
           | `Pre_init_context ->
                assert false
           | `Established ->
-              client_del_ctx cs;
-              cs.cstate <- `OK
+              let cs = client_del_ctx cs in
+              { cs with cstate = `OK }
           | _ ->
-              cs.cstate <- `Wait
-      );
+              { cs with cstate = `Wait } in
       let b64 = Netencoding.Base64.encode cs.ctoken in
       let creds =
         ( "Negotiate", 
@@ -343,7 +365,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_MECHANISM =
       (* NB. The case creds=(something,[]) is special-cased in the http client,
          so that no auth header is added at all
        *)
-      (creds, [])
+      (cs, creds, [])
 
     let client_session_id cs =
       None
@@ -416,7 +438,7 @@ open Nethttp_client;;
 Debug.enable := true;;
 let keys = new key_ring ~no_invalidation:true ();;
 keys # add_key (key ~user:"krb" ~password:"" ~realm:"SPNEGO" ~domain:[]);;
-let a = new generic_auth_handler keys [ (module A : Nethttp.HTTP_MECHANISM) ];;
+let a = new generic_auth_handler keys [ (module A : Nethttp.HTTP_CLIENT_MECHANISM) ];;
 let p = new pipeline;;
 p # add_auth_handler a;;
 let c1 = new get "https://gps.dynxs.de/krb/";;

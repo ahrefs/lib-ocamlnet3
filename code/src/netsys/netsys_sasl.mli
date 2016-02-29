@@ -65,23 +65,23 @@ module Client : sig
   val state : session -> Netsys_sasl_types.client_state
     (** report the state (whether expecting challenges or responding) *)
 
-  val configure_channel_binding : session -> Netsys_sasl_types.cb -> unit
+  val configure_channel_binding : session -> Netsys_sasl_types.cb -> session
     (** Configure GS2-style channel binding *)
 
-  val restart : session -> unit
+  val restart : session -> session
       (** Restart the session for another authentication round. The session
           must be in state [`OK].
        *)
 
   val process_challenge :
-        session -> string -> unit
+        session -> string -> session
     (** Process the challenge from the server. The state must be [`Wait].
         As an exception, this function can also be called for the initial
         challenge from the server, even if the state is [`Emit].
      *)
 
   val emit_response :
-        session -> string
+        session -> session * string
     (** Emit a new response. The state must be [`Emit]. *)
 
   val channel_binding : session -> Netsys_sasl_types.cb
@@ -182,7 +182,7 @@ module Server : sig
        *)
 
   val process_response :
-        session -> string -> unit
+        session -> string -> session
     (** Process the response from the client. This function must generally
         only be called when the session state is [`Wait]. As an exception,
         however, this function may also be invoked with the initial client
@@ -191,7 +191,7 @@ module Server : sig
      *)
 
   val process_response_restart :
-        session -> string -> bool -> bool
+        session -> string -> bool -> session * bool
     (** Process the response from the client when another session can be
         continued. The string argument is the initial client response.
         This function must only be called when the state reaches
@@ -246,7 +246,7 @@ process_response session msg;
      *)
 
   val emit_challenge :
-        session -> string
+        session -> session * string
     (** Emit a server challenge. This function must only be called when the
         session state is [`Emit].
      *)

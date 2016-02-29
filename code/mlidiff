@@ -1,0 +1,12 @@
+#! /bin/sh
+
+old_rev="2266"
+new_rev=HEAD
+find src -name "*.mli" | sort | {
+  while read name; do
+     if [ ! -L "$name" ]; then
+         echo "processing $name" >&2
+         svn diff -r $old_rev:$new_rev $name
+     fi
+  done
+}

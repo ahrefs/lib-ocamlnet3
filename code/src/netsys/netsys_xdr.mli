@@ -2,7 +2,7 @@
 
 (** Some helpers for en/decoding XDR faster *)
 
-external s_read_int4_64_unsafe : string -> int -> int
+external s_read_int4_64_unsafe : Bytes.t -> int -> int
   = "netsys_s_read_int4_64" "noalloc"
   (** For 64 bit platforms only: Decodes 4 bytes at this string position
       as a signed 32 bit int in network byte order
@@ -10,7 +10,7 @@ external s_read_int4_64_unsafe : string -> int -> int
       There is no index bounds check!
    *)
 
-external s_write_int4_64_unsafe : string -> int -> int -> unit
+external s_write_int4_64_unsafe : Bytes.t -> int -> int -> unit
   = "netsys_s_write_int4_64" "noalloc"
   (** For 64 bit platforms only: Encodes 4 bytes at this string position
       as a signed 32 bit int in network byte order
@@ -19,7 +19,7 @@ external s_write_int4_64_unsafe : string -> int -> int -> unit
    *)
 
 external s_read_string_array_unsafe : 
-  string -> int -> int -> int32 -> string array -> int
+  Bytes.t -> int -> int -> int32 -> string array -> int
   = "netsys_s_read_string_array"
   (** [let pos' = s_read_string_array s pos len max a]: 
       Decodes the XDR repr of an array of strings {b without} length field.

@@ -8,10 +8,16 @@ type memory =
 external buffer_of_string : string -> int -> int -> gss_buffer_t
   = "netgss_buffer_of_string"
 
+external buffer_of_bytes : Bytes.t -> int -> int -> gss_buffer_t
+  = "netgss_buffer_of_string"
+
 external buffer_of_memory : memory -> gss_buffer_t
   = "netgss_buffer_of_memory"
 
 external string_of_buffer : gss_buffer_t -> string
+  = "netgss_string_of_buffer"
+
+external bytes_of_buffer : gss_buffer_t -> Bytes.t
   = "netgss_string_of_buffer"
 
 external netgss_memory_of_buffer : gss_buffer_t -> memory

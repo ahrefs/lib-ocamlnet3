@@ -13,9 +13,9 @@ OBJECTS  = netsys_conf.cmo netsys_types.cmo \
 	   netsys_pollset.cmo netsys_pollset_posix.cmo \
 	   netsys_pollset_win32.cmo netsys_pollset_generic.cmo \
 	   netsys_xdr.cmo netsys_tmp.cmo \
-	   netsys_sem.cmo netsys_pmanage.cmo \
+	   netsys_sem.cmo netsys_pmanage.cmo netsys_global.cmo \
 	   netsys_gssapi.cmo netsys_sasl_types.cmo netsys_sasl_util.cmo \
-	   netsys_sasl.cmo
+	   netsys_sasl.cmo netsys_polypipe.cmo netsys_polysocket.cmo
 COBJECTS = netsys_c.o netsys_c_poll.o netsys_c_fadvise.o \
 	   netsys_c_fallocate.o netsys_c_ioprio.o netsys_c_locale.o \
            netsys_c_multicast.o netsys_c_sem.o netsys_c_shm.o \
@@ -31,7 +31,8 @@ DOBJECTS = netsys.mli netsys_posix.mli netsys_pollset.mli netlog.mli \
 	   netsys_types.mli netsys_mem.mli netsys_tmp.mli \
 	   netsys_sem.mli netsys_pmanage.mli netsys_crypto.mli netsys_tls.mli \
 	   netsys_ciphers.mli netsys_digests.mli netsys_crypto_modes.mli \
-	   netsys_gssapi.mli netsys_sasl_types.mli netsys_sasl.mli
+	   netsys_gssapi.mli netsys_sasl_types.mli netsys_sasl.mli \
+	   netsys_polypipe.mli netsys_polysocket.mli netsys_global.mli
 LINK_OPTIONS = $(NETSYS_LINK_OPTIONS)
 
 ALL_EXTRA = netsys_oothr.cma $(OOH_OBJECT)
@@ -52,12 +53,10 @@ OCAMLOPT_OPTIONS_FOR_netsys_oothr_mt.ml = $(THREAD)
 OCAMLOPT_OPTIONS_FOR_netsys_oothr_mt_init.ml = $(THREAD)
 OCAMLC_OPTIONS_FOR_netsys_c_xdr.c = -ccopt -O
 
-pp = -pp "$(CPPO) $(DEF_O_SHARE_DELETE) $(DEF_O_CLOEXEC)"
+OCAMLC_OPTIONS += $(STRING_OPTS)
+OCAMLOPT_OPTIONS += $(STRING_OPTS)
 
-OCAMLC_OPTIONS_FOR_netsys_posix.ml = $(pp)
-OCAMLOPT_OPTIONS_FOR_netsys_posix.ml = $(pp)
-
-OCAMLDEP_OPTIONS = $(pp)
+PP_OPTIONS = -pp "$(CPPO) $(DEF_O_SHARE_DELETE) $(DEF_O_CLOEXEC) $(PP_BYTES) $(PP_DEPRECATED)"
 
 INSTALL_EXTRA += netsys_c_event.h $(OOH_OBJECT)
 

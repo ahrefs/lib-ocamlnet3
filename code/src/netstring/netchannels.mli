@@ -21,6 +21,8 @@
  * The tutorial has been moved to {!Netchannels_tut}.
  *)
 
+open Netsys_types
+
 (** {1:types Types} *)
 
 (* ***************************** Types ******************************** *)
@@ -92,7 +94,7 @@ class type rec_in_channel = object
    * as collaborative effort of several library creators.
    *)
 
-  method input : string -> int -> int -> int
+  method input : Bytes.t -> int -> int -> int
     (** Reads octets from the channel and puts them into the string. The
      * first [int] argument is the position of the substring, and the second
      * [int] argument is the length of the substring where the data are
@@ -148,7 +150,7 @@ class type rec_out_channel = object
    * as collaborative effort of several library creators.
    *)
 
-  method output : string -> int -> int -> int
+  method output : Bytes.t -> int -> int -> int
     (** Takes octets from the string and writes them into the channel. The
      * first [int] argument is the position of the substring, and the second
      * [int] argument is the length of the substring where the data can
@@ -264,7 +266,7 @@ end
  *)
 class type compl_in_channel = object
 
-  method really_input : string -> int -> int -> unit
+  method really_input : Bytes.t -> int -> int -> unit
     (** Reads exactly as many octets from the channel as the second [int]
      * argument specifies. The octets are placed at the position denoted
      * by the first [int] argument into the string.
@@ -272,6 +274,12 @@ class type compl_in_channel = object
      * When the end of the channel is reached before the passed number of
      * octets are read, the exception [End_of_file] is raised.
      *)
+
+  method really_input_string : int -> string
+    (** [really_input_string ic len] reads [len] characters from channel [ic]
+        and returns them in a new string.
+        Raise [End_of_file] if the end of file is reached before [len]
+        characters have been read. *)
 
   method input_char : unit -> char
     (** Reads exactly one character from the channel, or raises [End_of_file]
@@ -303,13 +311,17 @@ end
  * detect the channel is non-blocking.
  *)
 class type compl_out_channel = object
-  method really_output : string -> int -> int -> unit
+  method really_output : Bytes.t -> int -> int -> unit
     (** Writes exactly as many octets to the channel as the second [int]
      * argument specifies. The octets are taken from the string position 
      * denoted by the first [int] argument.
      *)
+  method really_output_string : string -> int -> int -> unit
+    (** Same for strings *)
   method output_char : char -> unit
     (** Writes exactly one character *)
+  method output_bytes : Bytes.t -> unit
+    (** Writes exactly the passed string *)
   method output_string : string -> unit
     (** Writes exactly the passed string *)
   method output_byte : int -> unit
@@ -385,6 +397,11 @@ class input_channel :
    * The function [onclose] is called after the [in_channel] has been closed.
    *)
 
+val input_channel :
+  ?onclose:(unit -> unit) ->
+  in_channel ->
+    in_obj_channel
+  (** Same as function *)
 
 class input_command : 
   string ->
@@ -399,6 +416,10 @@ class input_command :
    * the exception [Command_failure] is raised.
    *)
 
+val input_command : 
+  string ->
+    in_obj_channel
+  (** Same as function *)
 
 class input_string :
   ?pos:int -> ?len:int -> string ->
@@ -415,6 +436,35 @@ class input_string :
    *   Default: until the end of the string
    *)
 
+val input_string :
+  ?pos:int -> ?len:int -> string ->
+    in_obj_channel
+  (** Same as function *)
+
+class input_bytes :
+  ?pos:int -> ?len:int -> Bytes.t ->
+    in_obj_channel
+  (** Same for constant bytes *)
+
+val input_bytes :
+  ?pos:int -> ?len:int -> Bytes.t ->
+    in_obj_channel
+  (** Same as function *)
+
+class input_memory :
+  ?pos:int -> ?len:int -> memory ->
+    in_obj_channel
+  (** Same for constant memory *)
+
+val input_memory :
+  ?pos:int -> ?len:int -> memory ->
+    in_obj_channel
+  (** Same as function *)
+
+val input_tstring :
+  ?pos:int -> ?len:int -> tstring ->
+    in_obj_channel
+  (** Same for tagged strings (only as function) *)
 
 val create_input_netbuffer :
   ?keep_data:bool ->
@@ -450,6 +500,9 @@ val string_of_in_obj_channel : in_obj_channel -> string
    *
    * This function does not work for non-blocking channels.
    *)
+
+val bytes_of_in_obj_channel : in_obj_channel -> Bytes.t
+  (** Same for bytes *)
 
 val lines_of_in_obj_channel : in_obj_channel -> string list
   (** Reads from the input channel until EOF and returns the lines
@@ -671,7 +724,7 @@ val lift_out :
 class virtual augment_raw_in_channel :
 object
   inherit compl_in_channel
-  method virtual input : string -> int -> int -> int
+  method virtual input : Bytes.t -> int -> int -> int
     (** As in [raw_in_channel] *)
   method virtual close_in : unit -> unit
     (** As in [raw_in_channel] *)
@@ -701,7 +754,7 @@ class lift_rec_in_channel : ?start_pos_in:int -> rec_in_channel -> in_obj_channe
 class virtual augment_raw_out_channel :
 object
   inherit compl_out_channel
-  method virtual output : string -> int -> int -> int
+  method virtual output : Bytes.t -> int -> int -> int
     (** As in [raw_out_channel] *)
   method virtual close_out : unit -> unit
     (** As in [raw_out_channel] *)
@@ -749,7 +802,7 @@ object
   inherit raw_in_channel
   method private enhanced_input_line : unit -> string
     (** An improved implementation of [input_line] that uses the buffer *)
-  method private enhanced_input : string -> int -> int -> input_result
+  method private enhanced_input : Bytes.t -> int -> int -> input_result
     (** Works similar to [input], but distinguishes between normal data
      * and end-of-line separators. The latter are returned as
      * [`Separator s]. When normal data is found, it is copied to the

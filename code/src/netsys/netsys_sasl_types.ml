@@ -38,14 +38,14 @@ module type SASL_MECHANISM =
           unit ->
             server_session
     val server_configure_channel_binding :
-          server_session -> (string * string) list -> unit
+          server_session -> (string * string) list -> server_session
 
     val server_process_response :
-          server_session -> string -> unit
+          server_session -> string -> server_session
     val server_process_response_restart :
-          server_session -> string -> bool -> bool
+          server_session -> string -> bool -> server_session * bool
     val server_emit_challenge :
-          server_session -> string
+          server_session -> server_session * string
     val server_stash_session :
           server_session -> string
     val server_resume_session :
@@ -71,12 +71,12 @@ module type SASL_MECHANISM =
           params:(string * string * bool) list -> 
           unit ->
             client_session
-    val client_configure_channel_binding : client_session -> cb -> unit
-    val client_restart : client_session -> unit
+    val client_configure_channel_binding : client_session -> cb -> client_session
+    val client_restart : client_session -> client_session
     val client_process_challenge :
-          client_session -> string -> unit
+          client_session -> string -> client_session
     val client_emit_response :
-          client_session -> string
+          client_session -> client_session * string
     val client_channel_binding : client_session -> cb
     val client_user_name : client_session -> string
     val client_authz_name : client_session -> string
