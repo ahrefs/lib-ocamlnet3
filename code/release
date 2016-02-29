@@ -13,20 +13,27 @@ makepkg -spec ocamlnet.files -intree . -outtree "packages/$destdir"
 (cd packages; tar czf "$destdir.tar.gz" "$destdir")
 echo "Wrote packages/$destdir.tar.gz"
 
-# Checking for svn:
+# Checking git:
 
-status=$(svn status | grep -v '^\?' || true )
+master="$(git branch | grep '* master')"
+if [ -z "$master" ]; then
+    echo "Error: not on master branch"
+    exit 1
+fi
+
+status="$(git status -uno -s)"
 
 if [ -n "$status" ]; then
-    echo "Error: svn status not clean"
+    echo "Error: git status not clean"
     exit 1
 else
     printf "Tag revision (y/n)? "
     read answer
     case "$answer" in
 	y|Y|yes|YES)
-	    svn cp https://godirepo.camlcity.org/svn/lib-ocamlnet2/trunk/code https://godirepo.camlcity.org/svn/lib-ocamlnet2/tags/ocamlnet-$version
-	    echo "New tag: https://godirepo.camlcity.org/svn/lib-ocamlnet2/tags/ocamlnet-$version"
+            git tag -s ocamlnet-$version
+            git push origin master
+	    echo "New tag: ocamlnet-$version"
 	    ;;
 	*)
 	    echo "Nothing tagged."
