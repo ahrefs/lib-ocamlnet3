@@ -36,7 +36,7 @@ module SHA1 : PROFILE
    *)
 
 module SHA1_PLUS : PROFILE
-  (** Same as {!Netmech_scam_sasl.SHA1}, only that the mechanism name is
+  (** Same as {!Netmech_scram_sasl.SHA1}, only that the mechanism name is
       "SCRAM-SHA-1-PLUS"
    *)
 
@@ -46,7 +46,7 @@ module SHA256 : PROFILE
    *)
 
 module SHA256_PLUS : PROFILE
-  (** Same as {!Netmech_scam_sasl.SHA256}, only that the mechanism name is
+  (** Same as {!Netmech_scram_sasl.SHA256}, only that the mechanism name is
       "SCRAM-SHA-256-PLUS"
    *)
 
