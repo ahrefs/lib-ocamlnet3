@@ -220,7 +220,7 @@ val parse : ?dtd:simplified_dtd ->            (* default: html40_dtd *)
   (** Parses the HTML document from an object channel and returns it.
    * For example, to parse the HTML string [s]:
    * {[
-   * let ch = Netchannels.input_string s in
+   * let ch = new Netchannels.input_string s in
    * let doc = parse ch
    * ]}
    *
