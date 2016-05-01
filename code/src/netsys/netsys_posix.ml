@@ -771,12 +771,14 @@ external readlinkat : Unix.file_descr -> string -> string
 type timespec = float * int
 type clock_id
 type clock =
+  (* also in Netlog *)
   | CLOCK_REALTIME
   | CLOCK_MONOTONIC
   | CLOCK_ID of clock_id
 
 external nanosleep : timespec -> timespec ref -> unit = "netsys_nanosleep"
 external clock_gettime : clock -> timespec = "netsys_clock_gettime"
+         (* also in Netlog *)
 external clock_settime : clock -> timespec -> unit = "netsys_clock_settime"
 external clock_getres : clock -> timespec = "netsys_clock_getres"
 external clock_getcpuclockid : int -> clock_id = "netsys_clock_getcpuclockid"

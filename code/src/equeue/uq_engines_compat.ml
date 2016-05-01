@@ -7,7 +7,8 @@ class type server_socket_acceptor = server_endpoint_acceptor
 class type client_socket_connector = client_endpoint_connector
           
 
-exception Mem_not_supported = Uq_multiplex.Mem_not_supported
+(* exception Mem_not_supported = Uq_multiplex.Mem_not_supported *)
+(* already included from Uq_engines *)
 
 let create_multiplex_controller_for_connected_socket =
   Uq_multiplex.create_multiplex_controller_for_connected_socket

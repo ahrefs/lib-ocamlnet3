@@ -437,7 +437,7 @@ module Value = struct
                let hour = int_of_string (Netstring_str.matched_group m 4 s) in
                let minute = int_of_string (Netstring_str.matched_group m 5 s) in
                let second = int_of_string (Netstring_str.matched_group m 6 s) in
-               let zonestr = Netstring_str.matched_group m 8s in
+               let zonestr = Netstring_str.matched_group m 8 s in
                let zone = get_zone zonestr in
                if month = 0 || month > 12 || day = 0 || day > 31 ||
                     hour > 23 || minute > 59 || second > 59 

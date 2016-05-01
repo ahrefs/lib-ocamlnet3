@@ -8,6 +8,18 @@ type level =
 type logger =
     level -> string -> unit
 
+type timespec = float * int
+type clock_id
+type clock =
+  (* originally from Netsys_posix *)
+  | CLOCK_REALTIME
+  | CLOCK_MONOTONIC
+  | CLOCK_ID of clock_id
+
+external clock_gettime : clock -> timespec = "netsys_clock_gettime"
+(* originally from Netsys_posix *)
+
+
 let level_weight =
   function
     | `Emerg   -> 0
@@ -95,7 +107,7 @@ let current_formatter =
 let channel_logger ch max_lev lev msg = 
   if level_weight lev <= level_weight max_lev then (
     let (sec,ns) =
-      try Netsys_posix.clock_gettime Netsys_posix.CLOCK_REALTIME
+      try clock_gettime CLOCK_REALTIME
       with Invalid_argument _ ->
 	(Unix.gettimeofday(), 0) in
     let s =   (* Netdate is unavailable here *)
