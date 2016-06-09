@@ -209,7 +209,8 @@ let read_file_service_config cfg addr uri_path =
 	      [ `Enable_listings l ]
 	    else
 	      []
-	  )
+	  ) @
+            [ `Override_compression_suffixes[] ]  (* disable that for the time being *)
     } in
   spec
 
