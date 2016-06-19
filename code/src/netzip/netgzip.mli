@@ -2,6 +2,13 @@
 
 (** Gzip object channels *)
 
+(**
+{b OPAM users}: Note that the OPAM package for OCamlnet does not
+build with GZIP support by default. The trigger for this is the presence
+of the [camlzip] OPAM package, i.e. do [opam install camlzip]
+to include the [netzip] library in a rebuild.
+ *)
+
 class input_gzip : Gzip.in_channel -> Netchannels.in_obj_channel
   (** A [Gzip.in_channel] turned into a {!Netchannels.in_obj_channel} *)
 

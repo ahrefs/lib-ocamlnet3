@@ -15,6 +15,12 @@ open Unixqueue
  * to get the variant for lablgtk, and compile with
  * {[ ocamlfind ... -package equeue-gtk2 ... ]}
  * to get the variant for lablgtk2.
+ *
+ * {b OPAM users}: Note that the OPAM package for OCamlnet does not
+ * build with lablgtk support by default. The trigger for this is the presence
+ * of the [lablgtk] OPAM package, i.e. do [opam install lablgtk]
+ * to include [equeue-gtk2] in a rebuild. (There is no lablgtk-1 anymore
+ * in OPAM.)
  *)
 
 

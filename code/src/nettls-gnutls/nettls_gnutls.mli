@@ -2,6 +2,14 @@
 
 (** GnuTLS *)
 
+(**
+{b OPAM users}: Note that the OPAM package for OCamlnet does not
+build with GnuTLS support by default. The trigger for this is the presence
+of the [conf-gnutls] OPAM package, i.e. do [opam install conf-gnutls]
+to include the [nettls-gnutls] library in a rebuild.
+ *)
+
+
 module type GNUTLS_PROVIDER =
   sig
     include Netsys_crypto_types.TLS_PROVIDER

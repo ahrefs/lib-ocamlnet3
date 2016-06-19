@@ -51,6 +51,11 @@ So, enabling TLS in a program is quite easy:
    really linked in). After [init], {!Netsys_crypto.current_tls} returns
    the GnuTLS provider.
 
+{b OPAM users}: Note that the OPAM package for OCamlnet does not
+build the TLS provider by default. The trigger for this is the presence
+of the [conf-gnutls] OPAM package, i.e. do [opam install conf-gnutls]
+to rebuild with TLS.
+
 At the moment, not all of the functionaliy of GnuTLS is available through
 the provider API. If necessary, you can access the bindings directly:
 

@@ -17,6 +17,12 @@ into detail how the GSSAPI functions are called, but instead explain how
 you can use the GSSAPI together with the network protocol implementations
 in OCamlnet.
 
+{b OPAM users}: Note that the OPAM package for OCamlnet does not
+build the GSSAPI module by default. The trigger for this is the presence
+of the [conf-gssapi] OPAM package, i.e. do [opam install conf-gssapi]
+to rebuild with GSSAPI.
+
+
 {2 Compatibility}
 
 So far, OCamlnet only supports the base interface as speficied in the RFCs

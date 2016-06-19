@@ -9,6 +9,8 @@ open Unixqueue
  * TCL event queue (and, as a consequence, with the labltk event queue).
  *)
 
+(** OPAM users: Note that this library is currently unavailable. *)
+
 
 type runner =
     event_system -> (unit -> unit) -> unit

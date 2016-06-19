@@ -41,6 +41,11 @@ The meanings of the configuration options are thus:
  - [-enable-full-pcre]: The regexp engine is changed to PCRE, and
    {!Netstring_pcre} is also available in the separate library [netstring-pcre]
 
+{b OPAM users}: Note that the OPAM package for OCamlnet does not
+build with PCRE support by default. The trigger for this is the presence
+of the [pcre] OPAM package, i.e. do [opam install pcre]
+to include [netstring-pcre] in a rebuild.
+
 {2 Previous Solutions}
 
 Actually, Ocamlnet stepped away from PCRE in several phases.

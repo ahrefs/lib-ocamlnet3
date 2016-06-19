@@ -1,0 +1,44 @@
+How to get OCamlnet
+
+{2 From OPAM}
+
+OCamlnet is included in the main OPAM repository. Just do:
+
+{[opam install ocamlnet]}
+
+Some parts of OCamlnet are only installed when optional dependencies
+are installed:
+
+ - [netzip]: is only installed when the [camlzip] OPAM package is
+   available (i.e. do [opam install camlzip] to get it)
+ - [nettls-gnutls] (i.e. TLS supprt): is only installed when
+   the [conf-gnutls] OPAM package is installed
+ - [netgss-system] (i.e. GSSAPI support): is only installed when
+   the [conf-gssapi] package is installed
+ - [equeue-gtk2] (i.e. Gtk event loop support): is only installed
+   when the [lablgtk] package is installed
+ - [netstring-pcre] (i.e. using PCRE as regexp engine): is only
+   installed when the [pcre] package is installed
+
+For instance, if you want OCamlnet with TLS support, just do:
+
+{[opam install ocamlnet conf-gnutls]}
+
+{2 Most recent version}
+
+There is a separate repository with the most recent version:
+
+{{:https://gitlab.camlcity.org/gerd/opam} camlcity repository}
+
+See the README there how to use it.
+
+{2 From source}
+
+See the {{:http://projects.camlcity.org/projects/ocamlnet.html}project page}
+for downloading the tarball. See the inluded INSTALL file for installation
+instructions.
+
+{2 GIT version}
+
+See the {{:https://gitlab.camlcity.org/gerd/lib-ocamlnet3}GIT repository}.
+
