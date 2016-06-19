@@ -1,3 +1,9 @@
+2016-06-19  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
+
+	* Release 4.1.2
+
+	* Fixes so that OCamlnet builds with OCaml-4.03
+
 2016-02-29  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Release 4.1.1
