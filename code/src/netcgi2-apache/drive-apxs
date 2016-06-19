@@ -1,0 +1,28 @@
+#! /bin/sh
+
+# apxs is not fully compatible with the C compiler. In particular, -g
+# does not work as intended
+
+apxs="$1"
+shift
+
+options=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -c|-W*|-I*|-L*,-l*)
+            options="$options $1"
+            shift ;;
+        -o)
+            options="$options -o $2"
+            shift 2 ;;
+        -*)
+            options="$options -Wc,$1"
+            shift ;;
+        *)
+            options="$options $1"
+            shift ;;
+    esac
+done
+
+echo "+ $apxs $options"
+exec "$apxs" $options

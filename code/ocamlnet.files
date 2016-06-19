@@ -174,6 +174,7 @@ f src/netcgi2-apache/netcgi_apache_mod.mli
 f src/netcgi2-apache/netcgi_modtpl.ml
 f src/netcgi2-apache/netcgi_modtpl.mli
 f src/netcgi2-apache/500netcgi_apache.info.in
+f src/netcgi2-apache/drive-apxs
 
 d src/netcgi2-plex
 f src/netcgi2-plex/Makefile
