@@ -48,7 +48,7 @@ doc:
 
 .PHONY: tools
 tools:
-	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) all )
+	( cd tools/cppo-$(CPPO_VERSION) && $(MAKE) generate && $(MAKE) all )
 	( cd tools/unimap_to_ocaml && $(MAKE) all )
 
 
