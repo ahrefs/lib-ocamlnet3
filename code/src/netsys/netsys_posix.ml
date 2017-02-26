@@ -715,6 +715,12 @@ type at_flag = AT_EACCESS | AT_SYMLINK_NOFOLLOW | AT_SYMLINK_FOLLOW |
                AT_REMOVEDIR
 
 (* The stubs assume these type definitions: *)
+#ifdef HAVE_O_KEEPEXEC
+type open_flag1 = Unix.open_flag =
+    O_RDONLY | O_WRONLY | O_RDWR | O_NONBLOCK | O_APPEND | O_CREAT | O_TRUNC
+  | O_EXCL | O_NOCTTY | O_DSYNC | O_SYNC | O_RSYNC | O_SHARE_DELETE
+  | O_CLOEXEC | O_KEEPEXEC
+#else
 #ifdef HAVE_O_CLOEXEC
 type open_flag1 = Unix.open_flag =
     O_RDONLY | O_WRONLY | O_RDWR | O_NONBLOCK | O_APPEND | O_CREAT | O_TRUNC
@@ -729,6 +735,7 @@ type open_flag1 = Unix.open_flag =
 type open_flag1 = Unix.open_flag =
     O_RDONLY | O_WRONLY | O_RDWR | O_NONBLOCK | O_APPEND | O_CREAT | O_TRUNC
   | O_EXCL | O_NOCTTY | O_DSYNC | O_SYNC | O_RSYNC
+#endif
 #endif
 #endif
 

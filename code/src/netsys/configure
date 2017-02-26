@@ -437,6 +437,21 @@ else
     echo "no"
 fi
 
+######################################################################
+
+printf "Checking for O_KEEPEXEC... "
+mkdir -p tmp
+cat <<_EOF_ >tmp/t.ml
+let x = Unix.O_KEEPEXEC;;
+_EOF_
+
+def_o_keepexec="-D NO_O_KEEPEXEC"
+if ocaml unix.cma tmp/t.ml >/dev/null 2>/dev/null; then
+    echo "yes"
+    def_o_keepexec="-D HAVE_O_KEEPEXEC"
+else
+    echo "no"
+fi
 
 ######################################################################
 
@@ -445,6 +460,7 @@ cat <<EOF >Makefile.conf
 NETSYS_LINK_OPTIONS = $netsys_link_options
 DEF_O_SHARE_DELETE = $def_o_share_delete
 DEF_O_CLOEXEC = $def_o_cloexec
+DEF_O_KEEPEXEC = $def_o_keepexec
 OOH_OBJECT = $def_ooh_object
 EOF
 

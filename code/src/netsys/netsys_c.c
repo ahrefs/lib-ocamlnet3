@@ -448,32 +448,43 @@ static int at_flags_table[] = {
 #ifndef O_RSYNC
 #define O_RSYNC 0
 #endif
-#ifndef O_CLOEXEC
-#define NEED_CLOEXEC_EMULATION
-#define O_CLOEXEC 0
-#endif
 
 static int open_flag_table[] = {
   O_RDONLY, O_WRONLY, O_RDWR, O_NONBLOCK, O_APPEND, O_CREAT, O_TRUNC, O_EXCL, 
-  O_NOCTTY, O_DSYNC, O_SYNC, O_RSYNC, 0 /* O_SHARE_DELETE */, O_CLOEXEC
+  O_NOCTTY, O_DSYNC, O_SYNC, O_RSYNC,
+  0 /* O_SHARE_DELETE */, 0 /* O_CLOEXEC */, 0 /* O_KEEPEXEC */
 };
 
-#ifdef NEED_CLOEXEC_EMULATION
+enum { CLOEXEC = 1, KEEPEXEC = 2 };
+
 static int open_cloexec_table[] = {
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CLOEXEC, KEEPEXEC
 };
+#ifndef HAVE_O_KEEPEXEC
+#define unix_cloexec_default 0
 #endif
+
 #endif
 
 CAMLprim value netsys_openat(value dirfd, value path, value flags, value perm)
 {
 #ifdef HAVE_AT
     CAMLparam4(dirfd, path, flags, perm);
-    int ret, cv_flags;
+    int ret, cv_flags, clo_flags, cloexec;
     char * p;
 
     /* shamelessly copied from ocaml distro */
     cv_flags = convert_flag_list(flags, open_flag_table);
+    clo_flags = convert_flag_list(flags, open_cloexec_table);
+    if (clo_flags & CLOEXEC)
+        cloexec = 1;
+    else if (clo_flags & KEEPEXEC)
+        cloexec = 0;
+    else
+        cloexec = unix_cloexec_default;
+#if defined(O_CLOEXEC)
+    if (cloexec) cv_flags |= O_CLOEXEC;
+#endif
     p = stat_alloc(string_length(path) + 1);
     strcpy(p, String_val(path));
     enter_blocking_section();
@@ -481,8 +492,8 @@ CAMLprim value netsys_openat(value dirfd, value path, value flags, value perm)
     leave_blocking_section();
     stat_free(p);
     if (ret == -1) uerror("openat", path);
-#if defined(NEED_CLOEXEC_EMULATION) && defined(FD_CLOEXEC)
-    if (convert_flag_list(flags, open_cloexec_table) != 0) {
+#if !defined(O_CLOEXEC)
+    {
         int flags = fcntl(Int_val(dirfd), F_GETFD, 0);
         if (flags == -1 || fcntl(Int_val(dirfd), F_SETFD, flags | FD_CLOEXEC) == -1)
           uerror("openat", path);
