@@ -181,7 +181,7 @@ let main() =
 	 Direct.mark_decls_suited_for_direct_mapping xdr_def;
 	 Rename.simple_name_mapping xdr_def;
 	 let base = Filename.chop_extension target in
-	 let auxmodule = String.capitalize (Filename.basename base ^ "_aux") in
+         let auxmodule = STRING_CAPITALIZE (Filename.basename base ^ "_aux") in
 	 if !want_aux then begin
 	   let auxname = base ^ "_aux.ml" in
 	   let auxfile = open_out auxname in

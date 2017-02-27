@@ -20,8 +20,20 @@ let create_shm() =
   if Netsys_posix.have_posix_shm() then
     let fd, name = Netsys_posix.shm_create "/netplexshv" (8*shm_size) in
     let ba =
+#ifdef HAVE_UNIX_MAP_FILE
+      try
+        Bigarray.array1_of_genarray
+          (Unix.map_file fd Bigarray.int64 Bigarray.c_layout true [|shm_size|])
+      with
+        | Unix.Unix_error(error,_,file) ->
+            raise (Sys_error
+                     ((if file <> "" then file ^ ": " else "") ^
+                        Unix.error_message error))
+#else
       Bigarray.Array1.map_file
-        fd Bigarray.int64 Bigarray.c_layout true shm_size in
+      fd Bigarray.int64 Bigarray.c_layout true shm_size
+#endif
+    in
     Bigarray.Array1.fill ba 0L;
     Unix.close fd;
     Netsys_posix.shm_unlink name;

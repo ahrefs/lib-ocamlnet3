@@ -274,7 +274,7 @@ let extract_url_scheme s =
           (* or raise Malformed_URL *)
   if k = l then raise Malformed_URL;
   assert (s.[k] = ':');
-  String.lowercase(String.sub s 0 k)
+  STRING_LOWERCASE (String.sub s 0 k)
 ;;
 
 

@@ -113,7 +113,7 @@ let ldap_url_attributes ?(encoded=false) u =
 let ldap_url_scope u =
   let query = url_query ~encoded:true u in
   let q_scope = nth_query_part query 1 in
-  match String.lowercase q_scope with
+  match STRING_LOWERCASE q_scope with
     | ""
     | "base" -> `Base
     | "one" -> `One

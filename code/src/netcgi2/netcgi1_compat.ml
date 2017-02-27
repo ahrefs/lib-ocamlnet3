@@ -594,7 +594,7 @@ struct
 	  | Some size -> 
 	      ("content-length", [string_of_int size]) ::
 		(List.filter
-		   (fun (n,_) -> String.lowercase n <> "content-length")
+                   (fun (n,_) -> STRING_LOWERCASE n <> "content-length")
 		   fields) in
       (* The old [set_header] knows whether the output is
 	 transactional or not. *)

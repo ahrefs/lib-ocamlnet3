@@ -1079,7 +1079,7 @@ module Header = struct
       let toks_with_params' =
 	if not(List.mem_assoc "*" toks_with_params) && 
 	  not(List.exists
-		(fun (tok,_) -> String.lowercase tok = "iso-8859-1") 
+		(fun (tok,_) -> STRING_LOWERCASE tok = "iso-8859-1") 
 		toks_with_params) 
 	then
 	  toks_with_params @ [ "ISO-8859-1", ["q", "1.0"] ]
@@ -1735,7 +1735,7 @@ module Header = struct
         | Some (Atom auth_scheme) ->
             Stream.junk stream;
             let auth_params =
-              match String.lowercase auth_scheme with
+              match STRING_LOWERCASE auth_scheme with
                 | "negotiate" -> 
                      parse_auth_params_negotiate stream
                 | _ -> 
@@ -1756,7 +1756,7 @@ module Header = struct
       (List.map
 	 (fun (auth_name, auth_params) ->
             let pstring =
-              match String.lowercase auth_name with
+              match STRING_LOWERCASE auth_name with
                 | "negotiate" ->
                      ( match auth_params with
                          | [ "credentials", data ] -> encode_param data
@@ -1856,15 +1856,15 @@ module Header = struct
     (* Basic authentication is a special case! *)
     let v = mh # field fieldname in  (* or Not_found *)
     match Netstring_str.split ws_re v with
-      | [ name; creds ] when String.lowercase name = "basic" ->
+      | [ name; creds ] when STRING_LOWERCASE name = "basic" ->
 	  (name, ["credentials", creds])
-      | [ name; creds ] when String.lowercase name = "negotiate" ->
+      | [ name; creds ] when STRING_LOWERCASE name = "negotiate" ->
 	  (name, ["credentials", creds])
       | _ ->
 	  parse_field mh fn_name parse_creds fieldname
 
   let mk_credentials (auth_name, auth_params) =
-    match String.lowercase auth_name with
+    match STRING_LOWERCASE auth_name with
       | "basic"
       | "negotiate" ->
            let creds = 
@@ -1988,7 +1988,7 @@ module Header = struct
     match nv_list with
       | (n,v) :: params ->
 	  let params = 
-	    List.map (fun (n,v) -> (String.lowercase n, v)) params in
+	    List.map (fun (n,v) -> (STRING_LOWERCASE n, v)) params in
 	  { cookie_name = Netencoding.Url.decode ~plus:false n;
 	    cookie_value = Netencoding.Url.decode ~plus:false v;
 	    cookie_expires = (try

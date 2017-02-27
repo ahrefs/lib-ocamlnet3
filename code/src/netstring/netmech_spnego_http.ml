@@ -109,7 +109,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_CLIENT_MECHANISM
         v in
       try
         let (ch_name, ch_params) = challenge in
-        if String.lowercase ch_name <> "negotiate" then raise Not_found;
+        if STRING_LOWERCASE ch_name <> "negotiate" then raise Not_found;
         let trans_id = int_of_string (param "trans_id") in
         let https = bool_of_string (param "https") in
         let acceptable_transports =
@@ -304,7 +304,7 @@ module SPNEGO(P:PROFILE)(G:Netsys_gssapi.GSSAPI) : Nethttp.HTTP_CLIENT_MECHANISM
         if cs.cstate <> `Wait then
           failwith "protocol error";
         let (ch_name, ch_params) = challenge in
-        if String.lowercase ch_name <> "negotiate" then
+        if STRING_LOWERCASE ch_name <> "negotiate" then
           failwith "bad auth scheme";
         let msg =
           match ch_params with

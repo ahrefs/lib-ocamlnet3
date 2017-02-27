@@ -3,9 +3,6 @@
  *
  *)
 
-(* FIXME: deprecated uses of String.copy in this module! *)
-
-
 open Printf
 
 module Debug = struct
@@ -39,13 +36,13 @@ let create_env () = ref [| |];;
 let copy_env e =
   ref
     (Array.map
-       String.copy          (* ... for the time being ... *)
+       STRING_COPY          (* ... for the time being ... *)
        !e
     )
 ;;
 
 let set_env e a =
-  let a' = Array.map String.copy a in
+  let a' = Array.map STRING_COPY a in
   e := a'
 ;;
 
@@ -210,13 +207,13 @@ let set_assignments c x = c.c_assignments <- x ;;
 let set_filename    c x = c.c_filename    <- x ;;
 
 let copy_command c =
-  { c_cmdname     = String.copy c.c_cmdname;
-    c_arguments   = Array.map String.copy c.c_arguments;
+  { c_cmdname     = STRING_COPY c.c_cmdname;
+    c_arguments   = Array.map STRING_COPY c.c_arguments;
     c_directory   = c.c_directory;
     c_environment = copy_env c.c_environment;
     c_descriptors = c.c_descriptors;
     c_assignments = c.c_assignments;
-    c_filename    = String.copy c.c_filename;
+    c_filename    = STRING_COPY c.c_filename;
   }
 ;;
 

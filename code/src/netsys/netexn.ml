@@ -40,10 +40,14 @@ let registry =
        mapping the exception anchor to the printer.
      *)
 
+let scopy s =
+  (* we really want to make here a copy! *)
+  String.sub s 0 (String.length s)
+
 let register_printer e f =
   let e1 = Obj.repr e in
   let descriptor = if Obj.tag e1 = 0 then Obj.field e1 0 else e1 in
-  let name = String.copy (Obj.obj (Obj.field descriptor 0) : string) in
+  let name = scopy (Obj.obj (Obj.field descriptor 0) : string) in
   let descr_is_object = (Obj.tag descriptor = Obj.object_tag) in
 
   let alist =
@@ -66,7 +70,7 @@ let register_printer e f =
 let to_string_opt (e : exn) : string option =
   let e1 = Obj.repr e in
   let descriptor = if Obj.tag e1 = 0 then Obj.field e1 0 else e1 in
-  let name = String.copy (Obj.obj (Obj.field descriptor 0) : string) in
+  let name = scopy (Obj.obj (Obj.field descriptor 0) : string) in
   let descr_is_object = (Obj.tag descriptor = Obj.object_tag) in
 
   let f_opt =

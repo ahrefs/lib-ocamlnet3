@@ -161,7 +161,7 @@ let profile ?(return_unknown_user=false) ?(iteration_count_limit=100000)
 
 let mechanism_name p =
   let iana_name = List.assoc p.hash_function Netsys_digests.iana_rev_alist in
-  let uc = String.uppercase iana_name in
+  let uc = STRING_UPPERCASE iana_name in
   "SCRAM-" ^ uc
 
 

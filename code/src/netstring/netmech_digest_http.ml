@@ -161,7 +161,7 @@ module Make_digest(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM = struct
 
   let client_match ~params (ch_name, ch_params) =
     try
-      if String.lowercase ch_name <> "digest" then raise Not_found;
+      if STRING_LOWERCASE ch_name <> "digest" then raise Not_found;
       let cs = 
         create_client_session
           ~user:"user" ~creds:["password","",[]] ~params () in

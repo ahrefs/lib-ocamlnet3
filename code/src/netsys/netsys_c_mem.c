@@ -790,7 +790,7 @@ int netsys_init_value_1(struct htab *t,
 	    /* Body of first pass */
 	    work = (value) work_addr;
 	    work_tag = Tag_val(work);
-	    work_header = Hp_val(work);
+	    work_header = (char *) Hp_val(work);
 	    
 	    if (work_tag < No_scan_tag) {
 		/* It is a scanned value (with subvalues) */
@@ -1423,7 +1423,7 @@ value netsys_copy_value(value flags, value orig)
 	    block = caml_alloc_shr (wosize, String_tag);
 	}
 	color = Color_hd(Hd_val(block));
-	dest = Hp_val(block);
+	dest = (char *) Hp_val(block);
 	dest_end = dest + bytelen;
     }
 

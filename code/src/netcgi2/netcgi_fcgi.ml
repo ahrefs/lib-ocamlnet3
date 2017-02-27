@@ -378,7 +378,7 @@ let get_props_inheader =
       let ofs_value = ofs + namelen in
       let ofs_next = ofs_value + valuelen in
       if  ofs_next > datalen then failwith "Netcgi_fcgi.get_props_inheader";
-      let name = String.uppercase(Bytes.sub_string data ofs namelen)
+      let name = STRING_UPPERCASE (Bytes.sub_string data ofs namelen)
       and value = Bytes.sub_string data ofs_value valuelen in
       let props_inheader =
 	Netcgi_common.update_props_inheader (name, value) props_inheader in

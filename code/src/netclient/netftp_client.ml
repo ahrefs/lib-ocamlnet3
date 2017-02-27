@@ -388,7 +388,7 @@ let parse_facts s =
 	 | Some m ->
 	     let name = Netstring_str.matched_group m 1 word in
 	     let enabled = word.[String.length word - 1] = '*' in
-	     (String.lowercase name, enabled)
+	     (STRING_LOWERCASE name, enabled)
     )
     l
 
@@ -1164,7 +1164,7 @@ object(self)
 		      (cmd, param_opt) ::
 			(List.filter
 			   (fun (cmd',_) -> 
-			      String.lowercase cmd <> String.lowercase cmd')
+			      STRING_LOWERCASE cmd <> STRING_LOWERCASE cmd')
 			   ftp_state.ftp_options) in
 		    ready(); 
 		    reply { ftp_state with ftp_options = l } `Success
@@ -2657,7 +2657,7 @@ let parse_entry_line s =
 		 | Some m ->
 		     let factname = Netstring_str.matched_group m 1 fact in
 		     let value = Netstring_str.matched_group m 2 fact in
-		     (String.lowercase factname, value)
+		     (STRING_LOWERCASE factname, value)
 	    )
 	    fact_l in
 	(name, parsed_facts)
@@ -2713,7 +2713,7 @@ let get_create (_,e) =
   extract_time (" " ^ List.assoc "create" e)
 
 let get_type (_,e) =
-  match String.lowercase(List.assoc "type" e) with
+  match STRING_LOWERCASE (List.assoc "type" e) with
     | "file" -> `File
     | "cdir" -> `Cdir
     | "pdir" -> `Pdir

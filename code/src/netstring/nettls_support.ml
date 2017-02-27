@@ -174,7 +174,7 @@ let match_hostname n1 n2 =
   List.length l1 = List.length l2 &&
     List.for_all2
       (fun dc1 dc2 ->
-         dc1 = "*" || String.uppercase dc1 = String.uppercase dc2
+         dc1 = "*" || STRING_UPPERCASE dc1 = STRING_UPPERCASE dc2
       )
       l1
       l2

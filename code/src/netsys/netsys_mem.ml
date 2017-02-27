@@ -8,19 +8,19 @@ type memory =
 
 external blit_memory_to_string_unsafe :
            memory -> int -> Bytes.t -> int -> int -> unit
-  = "netsys_blit_memory_to_string" "noalloc"
+  = "netsys_blit_memory_to_string" NOALLOC
 
 external blit_memory_to_bytes_unsafe :
            memory -> int -> Bytes.t -> int -> int -> unit
-  = "netsys_blit_memory_to_string" "noalloc"
+  = "netsys_blit_memory_to_string" NOALLOC
 
 external blit_string_to_memory_unsafe : 
            string -> int -> memory ->  int -> int -> unit
-  = "netsys_blit_string_to_memory" "noalloc"
+  = "netsys_blit_string_to_memory" NOALLOC
 
 external blit_bytes_to_memory_unsafe : 
            Bytes.t -> int -> memory ->  int -> int -> unit
-  = "netsys_blit_string_to_memory" "noalloc"
+  = "netsys_blit_string_to_memory" NOALLOC
 
 let blit_memory_to_bytes mem memoff s soff len =
   let memlen = Bigarray.Array1.dim mem in

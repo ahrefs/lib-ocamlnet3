@@ -39,7 +39,7 @@ let string_of_level lev =
 
 
 let level_of_string s =
-  let s = String.lowercase s in
+  let s = STRING_LOWERCASE s in
   match s with
     | "emerg"   -> `Emerg
     | "alert"   -> `Alert

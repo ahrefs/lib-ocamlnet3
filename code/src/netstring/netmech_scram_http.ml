@@ -127,7 +127,7 @@ module Make_SCRAM(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM =
             params in
         let ch_params = decode_params ch_params in
 
-        if String.lowercase ch_name <> Netmech_scram.mechanism_name profile
+        if STRING_LOWERCASE ch_name <> Netmech_scram.mechanism_name profile
         then raise Not_found;
 
         let ac_realm_opt =

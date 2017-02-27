@@ -185,7 +185,7 @@ module DIGEST_MD5 : Netsys_sasl_types.SASL_MECHANISM = struct
     (* This can either be the initial challenge or the final server message *)
     try
       let msg_params = parse_message msg in
-      if List.exists (fun (k,_) -> String.lowercase k = "rspauth") msg_params
+      if List.exists (fun (k,_) -> STRING_LOWERCASE k = "rspauth") msg_params
       then
         client_process_final_challenge_kv cs msg_params
       else

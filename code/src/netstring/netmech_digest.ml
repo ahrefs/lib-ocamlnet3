@@ -219,7 +219,7 @@ let server_emit_initial_challenge_kv ?(quote=false) ss =
       ] @
         ( if ss.sstale then [ "stale", "true" ] else [] ) @
         ( if ss.sutf8 then [ "charset", "utf-8" ] else [] ) @
-          [ "algorithm", String.uppercase h_name ^ 
+          [ "algorithm", STRING_UPPERCASE h_name ^
                            (if ss.snosess then "" else "-sess") ] in
   ( { ss with
       sstate = `Wait;
@@ -558,7 +558,7 @@ let client_process_initial_challenge_kv cs msg_params =
     let domain =
       try space_split (StrMap.find "domain" m) with Not_found -> [] in
     let alg_lc = 
-      try String.lowercase(StrMap.find "algorithm" m) 
+      try STRING_LOWERCASE (StrMap.find "algorithm" m)
       with Not_found when cs.cprofile.ptype = `HTTP -> "md5" in
     let hash, no_sess =
       try (List.assoc alg_lc Netsys_digests.iana_alist, true)
@@ -670,7 +670,7 @@ let client_emit_response_kv ?(quote=false) cs =
                         []
                       else
                         let alg = 
-                          String.uppercase
+                          STRING_UPPERCASE
                             (List.assoc 
                                rp.r_hash Netsys_digests.iana_rev_alist) in
                         let suffix =

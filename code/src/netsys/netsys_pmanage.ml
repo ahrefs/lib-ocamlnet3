@@ -48,11 +48,12 @@ let read_pm pm_path trunc_flag =
   try
     Unix.lockf fd Unix.F_LOCK 0;
     let file = Unix.in_channel_of_descr fd in
+    let scanner = Scanf.Scanning.from_channel file in
     let set = ref PmSet.empty in
     ( try
         while true do
           let (op, res) =
-            Scanf.fscanf file "%c %s %S\n"
+            Scanf.bscanf scanner "%c %s %S\n"
               (fun op_s res_kind res_detail ->
                  let op =
                    match op_s with

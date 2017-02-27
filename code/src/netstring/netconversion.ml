@@ -249,7 +249,7 @@ let norm_enc_name e =
   (* Removes some punctuation characters from e; uppercase;
    * converts "IBM#" to "CP#"; drops ":YEAR" suffixes 
    *)
-  let e1 = String.uppercase e in
+  let e1 = STRING_UPPERCASE e in
   let e2 = Netstring_str.global_replace punct_re "" e1 in
   let e3 = Netstring_str.global_replace year_re "" e2 in
   match Netstring_str.string_match ibm_re e3 0 with

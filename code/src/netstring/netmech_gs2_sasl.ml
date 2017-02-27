@@ -414,7 +414,7 @@ module GS2(P:PROFILE)(G:Netsys_gssapi.GSSAPI) :
         check_gssapi_status fn_name major_status minor_status
       with
         | error ->
-            server_del_ctx ss;
+            ignore(server_del_ctx ss);
             raise error
 
     let create_server_session ~lookup ~params () =

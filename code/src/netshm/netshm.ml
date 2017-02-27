@@ -336,13 +336,37 @@ let resize_shm shm n =
 
 
 let map_int32matrix_fd fd is_open rows cols =
+#ifdef HAVE_UNIX_MAP_FILE
+  try
+    let ba =
+      Unix.map_file fd Bigarray.int32 Bigarray.c_layout true [|rows;cols|] in
+    Bigarray.array2_of_genarray ba
+  with
+    | Unix.Unix_error(error,_,file) ->
+        raise (Sys_error
+                 ((if file <> "" then file ^ ": " else "") ^
+                    Unix.error_message error))
+#else
   Bigarray.Array2.map_file
     fd Bigarray.int32 Bigarray.c_layout true rows cols
+#endif
 
 let map_int32matrix shm rows cols =
   let fd = mem_fd shm in
+#ifdef HAVE_UNIX_MAP_FILE
+  try
+    let ba =
+      Unix.map_file fd Bigarray.int32 Bigarray.c_layout true [|rows;cols|] in
+    Bigarray.array2_of_genarray ba
+  with
+    | Unix.Unix_error(error,_,file) ->
+        raise (Sys_error
+                 ((if file <> "" then file ^ ": " else "") ^
+                    Unix.error_message error))
+#else
   Bigarray.Array2.map_file
     fd Bigarray.int32 Bigarray.c_layout true rows cols
+#endif
 
 let dummy_int32matrix() =
   Bigarray.Array2.create Bigarray.int32 Bigarray.c_layout 0 0

@@ -253,7 +253,7 @@ let fold_header_poly ?(downcase=false) ?(unfold=false) ?(strip=false)
 	    else
 	      cat_values1 in
 	  let n' =
-	    if downcase then String.lowercase n else n in
+	    if downcase then STRING_LOWERCASE n else n in
 	  Some(n', cat_values2) in
   let (user, cur, at_end) =
     fold_lines_p_poly
@@ -749,8 +749,8 @@ let scan_next_token (spec,target) =
 	      with
 		  Not_found -> (charset_lang, "") 
 	    in
-	    let t = EncodedWord((String.uppercase charset, lang),
-				 String.uppercase encoding,
+	    let t = EncodedWord((STRING_UPPERCASE charset, lang),
+				 STRING_UPPERCASE encoding,
 				 content) in
 	    let pair = mk_pair t (i-i0) in
 	    target.scanner_pos <- i;
@@ -1026,7 +1026,7 @@ let split_mime_type ct_type =
   in
   match collect() with
       [ Atom main_type; Special '/'; Atom sub_type ] ->
-	(String.lowercase main_type, String.lowercase sub_type)
+	(STRING_LOWERCASE main_type, STRING_LOWERCASE sub_type)
     | _ ->
 	failwith "Netmime_string.split_mime_type"
 ;;
@@ -1135,7 +1135,7 @@ let decode_rfc2231_params ?(decode = true) params =
 		   let charset = S.matched_group r 1 rawvalue in
 		   let lang = S.matched_group r 2 rawvalue in
 		   let escaped_value = S.matched_group r 3 rawvalue in
-		   P_encoded(String.uppercase charset, 
+		   P_encoded(STRING_UPPERCASE charset, 
 			     lang, 
 			     Netencoding.Url.decode ~plus:false escaped_value)
 	   end
@@ -1259,15 +1259,15 @@ let scan_value_with_parameters s options =
 
 let scan_mime_type s options =
   let n, params = scan_value_with_parameters s options in
-  (String.lowercase n),
-  (List.map (fun (n,v) -> (String.lowercase n, v)) params)
+  (STRING_LOWERCASE n),
+  (List.map (fun (n,v) -> (STRING_LOWERCASE n, v)) params)
 ;;
 
 
 let scan_mime_type_ep s options =
   let n, params = scan_value_with_parameters_ep s options in
-  (String.lowercase n),
-  (List.map (fun (n,v) -> (String.lowercase n, v)) params)
+  (STRING_LOWERCASE n),
+  (List.map (fun (n,v) -> (STRING_LOWERCASE n, v)) params)
 ;;
 
 

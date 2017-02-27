@@ -1164,7 +1164,7 @@ object(self)
   method get_uri() = req_uri_raw
   method get_req_body() = req_body # value
   method get_req_header () =
-    List.map (fun (n,v) -> (String.lowercase n, v)) req_base_header#fields
+    List.map (fun (n,v) -> (STRING_LOWERCASE n, v)) req_base_header#fields
   method assoc_req_header n =
     req_base_header # field n
   method assoc_multi_req_header n =
@@ -1173,7 +1173,7 @@ object(self)
     req_base_header # update_field n v
   method get_resp_header() =
     self#check_response(); 
-    List.map (fun (n,v) -> (String.lowercase n, v)) resp_header#fields
+    List.map (fun (n,v) -> (STRING_LOWERCASE n, v)) resp_header#fields
   method assoc_resp_header n =
     self#check_response(); 
     resp_header # field n
@@ -1735,8 +1735,8 @@ let get_all_challenges call is_proxy =
       | Nethttp.Bad_header_field _ -> raise Not_applicable in  
   List.map
     (fun (name,params) ->
-     (String.lowercase name, 
-      List.map (fun (n,v) -> (String.lowercase n,v)) params)
+     (STRING_LOWERCASE name, 
+      List.map (fun (n,v) -> (STRING_LOWERCASE n,v)) params)
     )
     challenges
 
@@ -1744,7 +1744,7 @@ let get_all_challenges call is_proxy =
 let get_challenges mech_name call is_proxy =
   (* Get only the challenges for mechanism [mech_name] *)
   let challenges_lc = get_all_challenges call is_proxy in
-  let mech_name_lc = String.lowercase mech_name in
+  let mech_name_lc = STRING_LOWERCASE mech_name in
   let mech_challenges =
     List.filter
       (fun (name, params) ->
@@ -1884,7 +1884,7 @@ let basic_auth_session enable_reauth
        let charset =  (* RFC-7617 extension *)
          try
            let cs = List.assoc "charset" params in
-           if String.lowercase cs = "utf-8" then
+           if STRING_LOWERCASE cs = "utf-8" then
              `Enc_utf8
            else
              `Enc_iso88591
@@ -2258,9 +2258,9 @@ class generic_auth_handler (key_handler : #key_handler) mechs : auth_handler =
       List.find
         (fun m ->
          let module M = (val m : Nethttp.HTTP_CLIENT_MECHANISM) in
-           let mname = String.lowercase M.mechanism_name in
+           let mname = STRING_LOWERCASE M.mechanism_name in
            List.exists
-             (fun (ch_mech,_) -> String.lowercase ch_mech = mname)
+             (fun (ch_mech,_) -> STRING_LOWERCASE ch_mech = mname)
              challenges
         )
         mechs in
@@ -3336,32 +3336,32 @@ let test_conn_close hdr =
   let conn_list = 
     try Nethttp.Header.get_connection hdr
     with _ (* incl. syntax error *) -> [] in
-  List.mem "close" (List.map String.lowercase conn_list)
+  List.mem "close" (List.map STRING_LOWERCASE conn_list)
 
 
 let test_conn_keep_alive hdr =
   let conn_list = 
     try Nethttp.Header.get_connection hdr
     with _ (* incl. syntax error *) -> [] in
-  List.mem "keep-alive" (List.map String.lowercase conn_list)
+  List.mem "keep-alive" (List.map STRING_LOWERCASE conn_list)
 
 
 let test_proxy_conn_close hdr =
   let conn_list = 
     try 
-      List.map String.lowercase
+      List.map STRING_LOWERCASE
 	(hdr # multiple_field "proxy-connection")
     with _ (* incl. syntax error *) -> [] in
-  List.mem "close" (List.map String.lowercase conn_list)
+  List.mem "close" (List.map STRING_LOWERCASE conn_list)
 
 
 let test_proxy_conn_keep_alive hdr =
   let conn_list = 
     try 
-      List.map String.lowercase
+      List.map STRING_LOWERCASE
 	(hdr # multiple_field "proxy-connection")
     with _ (* incl. syntax error *) -> [] in
-  List.mem "keep-alive" (List.map String.lowercase conn_list)
+  List.mem "keep-alive" (List.map STRING_LOWERCASE conn_list)
 
 
 let test_http_1_1 proto_str =
@@ -4689,7 +4689,7 @@ let fragile_pipeline
              *)
 	    let rh = trans # message # request_header `Effective in
 	    if (not (trans # message # private_api # continue) &&
-		  String.lowercase(rh # field "expect") = "100-continue")
+                  STRING_LOWERCASE (rh # field "expect") = "100-continue")
 	    then Some !options.handshake_timeout
 	    else None
 	  with
@@ -5858,11 +5858,11 @@ class pipeline =
 		     String.length host > String.length dom
 		   then
                      let ld = String.length dom in
-                     String.lowercase(String.sub 
-					host 
-					(String.length host - ld) 
-					ld)
-                     = String.lowercase dom
+                     STRING_LOWERCASE (String.sub
+                                         host
+                                         (String.length host - ld)
+                                         ld)
+                     = STRING_LOWERCASE dom
 		   else
                      dom = host)
 		no_proxy_for

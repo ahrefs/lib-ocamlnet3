@@ -96,7 +96,7 @@ let string_ops =
                      let c2 = Char.code (String.unsafe_get s (k+2)) in
                      (c0 lsl 16) lor (c1 lsl 8) lor c2
                   );
-    copy = String.copy;   (* ... for the time being ... *)
+    copy = STRING_COPY;   (* ... for the time being ... *)
     string = (fun s -> s);
     bytes = Bytes.of_string;
     sub = String.sub;

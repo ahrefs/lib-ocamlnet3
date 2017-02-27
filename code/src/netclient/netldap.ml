@@ -1486,7 +1486,7 @@ let retr_password_e ~dn srv creds esys =
                                          let data =
                                            Netstring_str.matched_group m 2 v in
                                          [ "userPassword-" ^ 
-                                               String.uppercase scheme,
+                                               STRING_UPPERCASE scheme,
                                            data,
                                            []
                                          ]
@@ -1528,7 +1528,7 @@ let retr_password_e ~dn srv creds esys =
                                              let data =
                                                Netstring_str.matched_group m 3 v in
                                              [ "authPassword-" ^
-                                                 String.uppercase scheme,
+                                                 STRING_UPPERCASE scheme,
                                                data,
                                                [ "info", info ]
                                              ]

@@ -2078,14 +2078,14 @@ let default_ctx =
   (* By default, disallow direct mappings *)
   { ctx_direct = false;
     ctx_direct_sub = false;
-    ctx_copy_string = String.copy
+    ctx_copy_string = STRING_COPY
   }
 
 let expand_ctx =
   (* Special ctx for the generated "_expand_<t>" functions *)
   { ctx_direct = false;
     ctx_direct_sub = true;
-    ctx_copy_string = String.copy
+    ctx_copy_string = STRING_COPY
   }
 
 let direct_ctx =

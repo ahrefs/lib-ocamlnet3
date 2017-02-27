@@ -180,7 +180,7 @@ module DN_string_generic(L : AT_LOOKUP) = struct
             if esc then illegal_esc();
             if Netstring_str.string_match descr_re name 0 <> None then (
               (* it's a descr *)
-              let name_uc = String.uppercase name in
+              let name_uc = STRING_UPPERCASE name in
               let (oid, _, _) =
                 try L.lookup_attribute_type_by_name name_uc
                 with Not_found ->

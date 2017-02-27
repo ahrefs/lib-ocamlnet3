@@ -304,7 +304,7 @@ let parse_document ?(dtd = html40_dtd)
     if case_sensitive then
       (fun s -> s)
     else
-      String.lowercase in
+      STRING_LOWERCASE in
 
   let model_of element_name =
     if element_name = "" then

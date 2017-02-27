@@ -114,7 +114,7 @@ let rec buffer_add_header b num_headers = function
       else
         (* Ok, can add one more field (2 bytes to code the number of
            headers). *)
-        match String.lowercase f with
+        match STRING_LOWERCASE f with
         | "content-type" ->     add_code_value b num_headers 0xA001 v tl
         | "content-language" -> add_code_value b num_headers 0xA002 v tl
         | "content-length" ->   add_code_value b num_headers 0xA003 v tl

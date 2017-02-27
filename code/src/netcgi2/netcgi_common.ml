@@ -223,7 +223,7 @@ struct
      i1] but in a case insensitive manner. *)
   let search_case_fold pat =
     let m = String.length pat in
-    let pat = String.lowercase pat in
+    let pat = STRING_LOWERCASE pat in
     let b = preprocess pat m in
     fun s i0 i1 ->
       if i0 < 0 || i1 > String.length s then
@@ -232,7 +232,7 @@ struct
       and j = ref 0 in
       try
 	while !i < i1 do
-	  while !j >= 0 && Char.lowercase(unsafe_get s !i)
+          while !j >= 0 && CHAR_LOWERCASE (unsafe_get s !i)
 	    <> unsafe_get pat !j do
 	      j := Array.(*unsafe_*)get b !j
 	  done;
@@ -558,7 +558,7 @@ object(self)
     else `Other
 
   method cgi_https =
-    match String.lowercase(self#cgi_property ~default:"" "HTTPS") with
+    match STRING_LOWERCASE (self#cgi_property ~default:"" "HTTPS") with
     | "on"  -> true
     | "off" | "" -> false
     | p -> raise(HTTP(`Bad_request,

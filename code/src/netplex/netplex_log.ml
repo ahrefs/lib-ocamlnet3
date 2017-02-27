@@ -140,7 +140,7 @@ class extract_generic_config cf addr =
     with Not_found -> "all" in
   let max_level =
     try
-      if String.lowercase(max_level_str) = "all" then
+      if STRING_LOWERCASE (max_level_str) = "all" then
 	`Debug
       else
 	(level_of_string max_level_str)
@@ -397,7 +397,7 @@ object
 	       | Not_found -> "all" in
 	   let max_level =
 	     try
-	       if String.lowercase(max_level_str) = "all" then
+               if STRING_LOWERCASE (max_level_str) = "all" then
 		 `All
 	       else
 		 (level_of_string max_level_str :> [level | `All] )
@@ -508,7 +508,7 @@ object
       try cf # string_param (cf # resolve_parameter addr "facility")
       with Not_found -> "default" in
     let facility =
-      try List.assoc (String.lowercase facility_str) facilities 
+      try List.assoc (STRING_LOWERCASE facility_str) facilities
       with Not_found ->
 	failwith "Bad 'facility' parameter in syslog config" in
     let sc =

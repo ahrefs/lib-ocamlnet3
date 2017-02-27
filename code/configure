@@ -614,9 +614,34 @@ fi
 if [ $istring -gt 0 ]; then
     string_opts="-safe-string"
     pp_bytes="-D HAVE_BYTES"
+    echo "#define STRING_COPY (fun s -> s)" >> config.cppo
 else
     string_opts=""
     pp_bytes="-U HAVE_BYTES"
+    echo "#define STRING_COPY String.copy" >> config.cppo
+fi
+
+######################################################################
+
+printf "Checking for String.lowercase_ascii and the like... "
+cat <<EOF >tmp/t.ml
+let s = String.lowercase_ascii "FOO"
+EOF
+
+if ocamlc -c tmp/t.ml >/dev/null 2>/dev/null; then
+    echo "yes"
+    echo "#define STRING_LOWERCASE String.lowercase_ascii" >> config.cppo
+    echo "#define STRING_UPPERCASE String.uppercase_ascii" >> config.cppo
+    echo "#define STRING_CAPITALIZE String.capitalize_ascii" >> config.cppo
+    echo "#define CHAR_LOWERCASE Char.lowercase_ascii" >> config.cppo
+    echo "#define CHAR_UPPERCASE Char.uppercase_ascii" >> config.cppo
+else
+    echo "no"
+    echo "#define STRING_LOWERCASE String.lowercase" >> config.cppo
+    echo "#define STRING_UPPERCASE String.uppercase" >> config.cppo
+    echo "#define STRING_CAPITALIZE String.capitalize" >> config.cppo
+    echo "#define CHAR_LOWERCASE Char.lowercase" >> config.cppo
+    echo "#define CHAR_UPPERCASE Char.uppercase" >> config.cppo
 fi
 
 ######################################################################
@@ -633,6 +658,55 @@ if ocamlc -c tmp/extvariant.ml >/dev/null 2>/dev/null; then
 else
     echo "no"
     echo "#undef HAVE_EXTENSIBLE_VARIANTS" >> config.cppo
+fi
+
+######################################################################
+# check whether we have Unix.map_file
+
+printf "Checking for Unix.map_file... "
+mkdir -p tmp
+cat <<_EOF_ >tmp/t.ml
+let f = Unix.map_file;;
+_EOF_
+
+if ocaml unix.cma tmp/t.ml >/dev/null 2>/dev/null; then
+    echo "yes"
+    echo "#define HAVE_UNIX_MAP_FILE" >> config.cppo
+else
+    echo "no"
+    echo "#undef HAVE_UNIX_MAP_FILE" >> config.cppo
+fi
+
+######################################################################
+# check whether to prefer [@@noalloc]
+
+printf "Checking for [@@noalloc]... "
+
+mkdir -p tmp
+cat <<_EOF_ >tmp/t.ml
+external foo : float -> float = "foo" [@@noalloc]
+_EOF_
+
+if ocamlc -c tmp/t.ml >/dev/null 2>/dev/null; then
+    mkdir -p tmp
+    cat <<_EOF_ >tmp/t.ml
+external foo : float -> float = "foo" "noalloc"
+_EOF_
+    if ocamlc -c tmp/t.ml >tmp/t.log 2>&1; then
+        if [ -s tmp/t.log ]; then
+            echo "yes"
+            echo '#define NOALLOC [@@noalloc]' >> config.cppo
+        else
+            echo "unclear"
+            echo '#define NOALLOC "noalloc"' >> config.cppo
+        fi
+    else
+        echo "something is wrong"
+        exit 2
+    fi
+else
+    echo "no"
+    echo '#define NOALLOC "noalloc"' >> config.cppo
 fi
 
 
@@ -711,7 +785,6 @@ if [ $support_outofheap -gt 0 -a $support_semaphores -gt 0 ]; then
 else
     echo "no"
 fi
-
 
 ######################################################################
 # TCL

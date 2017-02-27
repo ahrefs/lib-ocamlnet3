@@ -40,9 +40,9 @@ let mangle_name opts name =
   List.fold_left
     (fun name opt ->
        match opt with
-         | `Lowercase -> String.lowercase name
-         | `Uppercase -> String.uppercase name
-         | `Capitalize -> String.capitalize name
+         | `Lowercase -> STRING_LOWERCASE name
+         | `Uppercase -> STRING_UPPERCASE name
+         | `Capitalize -> STRING_CAPITALIZE name
          | `Prefix p -> p ^ name
     )
     name
@@ -62,7 +62,7 @@ let mangle_id ?(remap=false) opts id =
       }
     else
       { id with
-        ocaml_name = String.lowercase id.xdr_name;
+        ocaml_name = STRING_LOWERCASE id.xdr_name;
         ocaml_name_requested = false;
       }
   )

@@ -163,14 +163,14 @@ let simple_name_mapping dl =
   (* --- ROUND 1: Assign requested names ---------------------------------- *)
   let check_lowercase id =
     let c = id.ocaml_name.[0] in
-    if c <> Char.lowercase c then
+    if c <> CHAR_LOWERCASE c then
       error ("Name mapping fails for requested O'Caml name `" ^
 	     id.ocaml_name ^ "': name must be lowercase");
   in
 
   let check_uppercase id =
     let c = id.ocaml_name.[0] in
-    if c <> Char.uppercase c then
+    if c <> CHAR_UPPERCASE c then
       error ("Name mapping fails for requested O'Caml name `" ^
 	     id.ocaml_name ^ "': name must be uppercase");
   in
@@ -218,8 +218,8 @@ let simple_name_mapping dl =
 
   (* --- ROUND 2: Map other names somehow --------------------------------- *)
 
-  let get_lowercase id = String.lowercase id.xdr_name in
-  let get_uppercase id = String.capitalize id.xdr_name in
+  let get_lowercase id = STRING_LOWERCASE id.xdr_name in
+  let get_uppercase id = STRING_CAPITALIZE id.xdr_name in
 
   let map_name ?(prefix = (fun s -> s)) ns uc id =
     if not id.ocaml_name_requested then begin

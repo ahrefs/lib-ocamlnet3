@@ -6,11 +6,12 @@ let filename = Sys.argv.(1)
 
 let generate label name =
   let f = open_in filename in
+  let scanner = Scanf.Scanning.from_channel f in
   printf "let %s k =\n" name;
   printf " match k with\n";
   ( try
       while true do
-        Scanf.fscanf f "%s %d-%d %d-%d\n"
+        Scanf.bscanf scanner "%s %d-%d %d-%d\n"
           (fun l r1s r1e r2s r2e ->
              if l = label then (
                if r1s = r1e then

@@ -117,7 +117,7 @@ let reset_not_event ne =
 
 
 let debug msg =
-  let tid = !(Netsys_oothr.provider)#self#id in
+  let _tid = !(Netsys_oothr.provider)#self#id in
   (* eprintf "THREAD %d: %s\n%!" tid msg *)
   ()
 

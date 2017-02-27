@@ -172,7 +172,7 @@ let rec find_file_members =
   function
     | Nethtml.Element(e,atts,subl) ->
 	let m =
-	  if String.lowercase e = "a" then (
+	  if STRING_LOWERCASE e = "a" then (
 	    try
 	      let href = List.assoc "href" atts in
 	      if href="" || href.[0] = '/' then raise Not_found;
@@ -787,7 +787,7 @@ object(self)
 	      (cont_type, charset)
 	    with _ -> fail() in
 	  (* we only support text/html: *)
-	  if String.lowercase cont_type <> "text/html" then fail();
+	  if STRING_LOWERCASE cont_type <> "text/html" then fail();
 	  (* check if we know the encoding: *)
 	  let enc =
 	    try Netconversion.encoding_of_string charset

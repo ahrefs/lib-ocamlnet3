@@ -3,7 +3,7 @@
 (** Some helpers for en/decoding XDR faster *)
 
 external s_read_int4_64_unsafe : Bytes.t -> int -> int
-  = "netsys_s_read_int4_64" "noalloc"
+  = "netsys_s_read_int4_64" NOALLOC
   (** For 64 bit platforms only: Decodes 4 bytes at this string position
       as a signed 32 bit int in network byte order
 
@@ -11,7 +11,7 @@ external s_read_int4_64_unsafe : Bytes.t -> int -> int
    *)
 
 external s_write_int4_64_unsafe : Bytes.t -> int -> int -> unit
-  = "netsys_s_write_int4_64" "noalloc"
+  = "netsys_s_write_int4_64" NOALLOC
   (** For 64 bit platforms only: Encodes 4 bytes at this string position
       as a signed 32 bit int in network byte order
 

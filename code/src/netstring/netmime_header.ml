@@ -25,4 +25,4 @@ let get_content_disposition hdr =
   Netmime_string.scan_mime_type_ep (hdr#field "content-disposition") []
 
 let get_content_transfer_encoding hdr = 
-  String.lowercase (hdr # field "content-transfer-encoding")
+  STRING_LOWERCASE (hdr # field "content-transfer-encoding")

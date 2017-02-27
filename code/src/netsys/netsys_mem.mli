@@ -28,12 +28,12 @@ val blit_memory_to_string : memory -> int -> Bytes.t -> int -> int -> unit
 
 external blit_memory_to_bytes_unsafe : 
      memory -> int -> Bytes.t -> int -> int -> unit
-     =  "netsys_blit_memory_to_string" "noalloc"
+     =  "netsys_blit_memory_to_string" NOALLOC
   (** Unsafe version *)
 
 external blit_memory_to_string_unsafe : 
      memory -> int -> Bytes.t -> int -> int -> unit
-     =  "netsys_blit_memory_to_string" "noalloc"
+     =  "netsys_blit_memory_to_string" NOALLOC
   DEPRECATED("Use blit_memory_to_bytes_unsafe instead.")
 
 val blit_bytes_to_memory : Bytes.t -> int -> memory ->  int -> int -> unit
@@ -47,7 +47,7 @@ val blit_bytes_to_memory : Bytes.t -> int -> memory ->  int -> int -> unit
 
 external blit_bytes_to_memory_unsafe : 
            Bytes.t -> int -> memory ->  int -> int -> unit
-  = "netsys_blit_string_to_memory" "noalloc"
+  = "netsys_blit_string_to_memory" NOALLOC
   (** Unsafe version *)
 
 val blit_string_to_memory : string -> int -> memory -> int -> int -> unit
@@ -56,7 +56,7 @@ val blit_string_to_memory : string -> int -> memory -> int -> int -> unit
 
 external blit_string_to_memory_unsafe : 
            string -> int -> memory ->  int -> int -> unit
-  = "netsys_blit_string_to_memory" "noalloc"
+  = "netsys_blit_string_to_memory" NOALLOC
   (** Unsafe version *)
 
 val memory_of_bytes : Bytes.t -> memory

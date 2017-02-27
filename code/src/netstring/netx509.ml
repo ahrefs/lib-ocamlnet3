@@ -85,7 +85,7 @@ module DN_attributes = struct
 
   let attribute_types_lc =
     List.map
-      (fun (oid, name, l) -> (oid, name, List.map String.lowercase l))
+      (fun (oid, name, l) -> (oid, name, List.map STRING_LOWERCASE l))
       attribute_types
 
   let lookup_attribute_type_by_oid oid =
@@ -94,7 +94,7 @@ module DN_attributes = struct
     (n,l)
 
   let lookup_attribute_type_by_name n =
-    let lc = String.lowercase n in
+    let lc = STRING_LOWERCASE n in
     List.find
       (fun (_,_,l) -> List.mem lc l)
       attribute_types_lc
@@ -112,9 +112,9 @@ let dn_uppercase =
   (* both PrintableString and IA5String are ASCII subsets *)
   function
   | PrintableString s ->
-       PrintableString (String.uppercase s)
+       PrintableString (STRING_UPPERCASE s)
   | IA5String s ->
-       IA5String (String.uppercase s)
+       IA5String (STRING_UPPERCASE s)
   | other ->
        other
 

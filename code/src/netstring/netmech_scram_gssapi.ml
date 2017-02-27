@@ -852,8 +852,8 @@ module Make(P:PROFILE) : Netsys_gssapi.GSSAPI = struct
 	             let ctx =
 		       Ctx_client sess in
 	             let context = new scram_context ctx scram_ret_flags in
-                     Netmech_scram.client_configure_channel_binding 
-                       sess (`GSSAPI cb_data);
+                     ignore(Netmech_scram.client_configure_channel_binding
+                              sess (`GSSAPI cb_data));
 	             (context, sess, false)
 	        | Some context -> 
 	             if not context#valid then

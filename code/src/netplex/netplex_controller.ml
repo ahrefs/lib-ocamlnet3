@@ -1903,7 +1903,7 @@ let extract_config (loggers : logger_factory list) (cf : config_file) =
 	    let s = 
 	      cf # string_param
 		(cf # resolve_parameter ctrladdr "max_level") in
-	    if String.lowercase s = "all" then
+            if STRING_LOWERCASE s = "all" then
 	      `Debug
 	    else
 	      Netplex_log.level_of_string s
