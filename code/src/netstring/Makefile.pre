@@ -13,7 +13,13 @@ NETNUMBER_DEFS = -D WORDSIZE_$(WORD_SIZE) -D HOST_IS_$(ENDIANESS) \
 
 PP_OPTIONS = -pp "$(CPPO) $(NETNUMBER_DEFS) $(REGEXP_DEFS) $(PP_BYTES) $(PP_DEPRECATED)"
 
-INSTALL_EXTRA = netstring_top.cmo netaccel_link.cmo netaccel.cma
+INSTALL_EXTRA_CMO = netstring_top \
+		    netaccel_link
+INSTALL_EXTRA_CMX = netconversion \
+		    netbuffer netnumber netxdr
+INSTALL_EXTRA = $(INSTALL_EXTRA_CMO:=.cmo) \
+		$(INSTALL_EXTRA_CMX:=.cmx) $(INSTALL_EXTRA_CMX:=.p.cmx) \
+		$(INSTALL_EXTRA_CMX:=.o) $(INSTALL_EXTRA_CMX:=.p.o)
 
 netconst.ml: netconst.mlp
 	sed -e 's/@VERSION@/$(VERSION)/' netconst.mlp >netconst.ml

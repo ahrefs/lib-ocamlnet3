@@ -3,11 +3,11 @@ TOP_DIR=../..
 include $(TOP_DIR)/Makefile.conf
 
 CPPO_VERSION = 0.9.4
-GENERATE = cppo_lexer.ml cppo_parser.ml cppo_version.ml
+GENERATE = cppo_lexer.ml cppo_parser.ml cppo_version.ml depend
 
 cppo_version.ml:
 	echo 'let cppo_version = "$(CPPO_VERSION)"' > cppo_version.ml
 
 include $(TOP_DIR)/Makefile.rules
-include depend
+
 

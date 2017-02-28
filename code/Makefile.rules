@@ -106,8 +106,10 @@ CLEAN_LIST = *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa dll* packlist-* \
 .SUFFIXES: .cmo .cmi .cmx .ml .mli .mll .mly .c .o
 
 .ml.cmx:
-	$(OCAMLOPT) -c $(OCAMLOPT_OPTIONS_FOR_$<) $<
-	[ $(HAVE_GPROF) -eq 0 ] || $(OCAMLOPT) -c -p -o `basename $@ .cmx`.p.cmx $(OCAMLOPT_OPTIONS_FOR_$<) $<
+	opts="-opaque"; \
+        if [ -f "$$(basename $< .ml)".nopaque ]; then opts=""; fi; \
+        $(OCAMLOPT) -c $(OCAMLOPT_OPTIONS_FOR_$<) $$opts $< && \
+	[ $(HAVE_GPROF) -eq 0 ] || $(OCAMLOPT) -c -p -o `basename $@ .cmx`.p.cmx $(OCAMLOPT_OPTIONS_FOR_$<) $$opts $<
 
 .ml.cmo:
 	$(OCAMLC) -c $(OCAMLC_OPTIONS_FOR_$<) $<

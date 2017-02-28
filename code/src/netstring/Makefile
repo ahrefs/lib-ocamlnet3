@@ -32,15 +32,6 @@ REQUIRES += $(REGEXP_PROVIDER_MAKE) bigarray
 INCLUDES += $(INC_NETSYS)
 INCLUDES += -I ../netstring-pcre
 
-INSTALL_EXTRA_CMO = netstring_top \
-		    netaccel_link
-INSTALL_EXTRA_CMX = netconversion \
-		    netbuffer netnumber netxdr
-INSTALL_EXTRA = $(INSTALL_EXTRA_CMO:=.cmo) \
-		$(INSTALL_EXTRA_CMX:=.cmx) $(INSTALL_EXTRA_CMX:=.p.cmx) \
-		$(INSTALL_EXTRA_CMX:=.o) $(INSTALL_EXTRA_CMX:=.p.o) \
-		dllnetaccel_c.*
-
 DOBJECTS = netconversion.mli netchannels.mli netstream.mli netmime_string.mli \
 	netmime.mli netsendmail.mli neturl.mli netaddress.mli netbuffer.mli \
 	netmime_header.mli netmime_channels.mli neturl_ldap.mli \
