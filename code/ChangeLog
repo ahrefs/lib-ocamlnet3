@@ -1,3 +1,13 @@
+2017-08-05  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
+
+	* Release 4.1.3
+
+	* Building modules with -opaque flag when we don't install the cmx file
+
+	* Fix: incompatbility with OCaml-4.05 (O_KEEPEXEC flag)
+
+	* Fix: the local cppo built has been made compatible with -safe-string
+
 2016-06-19  Gerd Stolpmann  <gerd@e130.lan.sumadev.de>
 
 	* Release 4.1.2
