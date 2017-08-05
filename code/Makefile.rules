@@ -106,16 +106,16 @@ CLEAN_LIST = *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa dll* packlist-* \
 .SUFFIXES: .cmo .cmi .cmx .ml .mli .mll .mly .c .o
 
 .ml.cmx:
-	opts="-opaque"; \
-        if [ -f "$$(basename $< .ml)".nopaque ]; then opts=""; fi; \
-        $(OCAMLOPT) -c $(OCAMLOPT_OPTIONS_FOR_$<) $$opts $< && \
-	[ $(HAVE_GPROF) -eq 0 ] || $(OCAMLOPT) -c -p -o `basename $@ .cmx`.p.cmx $(OCAMLOPT_OPTIONS_FOR_$<) $$opts $<
+	$(OCAMLOPT) -c $(OCAMLOPT_OPTIONS_FOR_$<) $< && \
+	[ $(HAVE_GPROF) -eq 0 ] || $(OCAMLOPT) -c -p -o `basename $@ .cmx`.p.cmx $(OCAMLOPT_OPTIONS_FOR_$<) $<
 
 .ml.cmo:
 	$(OCAMLC) -c $(OCAMLC_OPTIONS_FOR_$<) $<
 
 .mli.cmi:
-	$(OCAMLC_MLI) -c $(OCAMLC_OPTIONS_FOR_$<) $<
+	opts="-opaque"; \
+        if [ -f "$$(basename $< .ml)".nopaque ]; then opts=""; fi; \
+	$(OCAMLC_MLI) -c $(OCAMLC_OPTIONS_FOR_$<) $$opts $<
 
 .mll.ml:
 	$(OCAMLLEX) $<
@@ -182,7 +182,7 @@ META: META.in
 	    -e 's/@PREFERRED_CGI_PKG@/$(PREFERRED_CGI_PKG)/' \
 	    -e 's/@REGEXP_PROVIDER@/$(REGEXP_PROVIDER)/' \
 	    -e 's/@COMPAT_PCRE_PROVIDER@/$(COMPAT_PCRE_PROVIDER)/' \
- 	    -e 's/@ZIP_PROVIDER@/$(ZIP_PROVIDER)/' \
+	    -e 's/@ZIP_PROVIDER@/$(ZIP_PROVIDER)/' \
 		META.in >META
 
 #----------------------------------------------------------------------
