@@ -55,7 +55,6 @@ f tools/cppo-0.9.4/cppo_parser.mly
 f tools/cppo-0.9.4/cppo_types.ml
 f tools/cppo-0.9.4/LICENSE
 f tools/cppo-0.9.4/Makefile
-f tools/cppo-0.9.4/META
 f tools/cppo-0.9.4/README.md
 d tools/cppo-0.9.4/examples
 f tools/cppo-0.9.4/examples/debug.ml
