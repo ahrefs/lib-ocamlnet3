@@ -96,6 +96,10 @@ x src/netstring/netmappings_iso.ml
 x src/netstring/netmappings_jp.ml
 x src/netstring/netmappings_kr.ml
 x src/netstring/netmappings_other.ml
+f src/netstring/netbuffer.nopaque
+f src/netstring/netconversion.nopaque
+f src/netstring/netnumber.nopaque
+f src/netstring/netxdr.nopaque
 # The pattern:
 p src/netstring/.*\.ml
 p src/netstring/.*\.mli
