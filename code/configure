@@ -73,7 +73,7 @@ set_defaults () {
 ocamlc=`get_path ocamlc`
 set_defaults
 
-version="4.1.3"
+version="4.1.4"
 exec_suffix=""
 path_sep=":"
 
@@ -709,6 +709,18 @@ else
     echo '#define NOALLOC "noalloc"' >> config.cppo
 fi
 
+######################################################################
+# check for -opaque
+
+printf "checking for -opaque... "
+if ocamlc -opaque >/dev/null 2>/dev/null; then
+    echo "present"
+    opaque="-opaque"
+else
+    echo "not present"
+    opaque=""
+fi
+
 
 ######################################################################
 # Check that pcre is available:
@@ -1205,6 +1217,9 @@ ENDIANESS = $endianess
 
 # gprof:
 HAVE_GPROF = $have_gprof
+
+# opaque
+OPAQUE = $opaque
 
 # definition of the DEPRECATED macro
 PP_DEPRECATED =
