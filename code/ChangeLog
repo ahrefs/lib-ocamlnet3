@@ -1,3 +1,9 @@
+2017-08-14  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
+
+	* Release 4.1.4
+
+	* Fix: incompatibility for OCaml < 4.03 because of -opaque
+
 2017-08-05  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
 
 	* Release 4.1.3

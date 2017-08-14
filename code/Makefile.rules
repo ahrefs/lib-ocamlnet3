@@ -113,7 +113,7 @@ CLEAN_LIST = *.cmi *.cmo *.cma *.cmx *.o *.a *.cmxa dll* packlist-* \
 	$(OCAMLC) -c $(OCAMLC_OPTIONS_FOR_$<) $<
 
 .mli.cmi:
-	opts="-opaque"; \
+	opts="$(OPAQUE)"; \
         if [ -f "$$(basename $< .ml)".nopaque ]; then opts=""; fi; \
 	$(OCAMLC_MLI) -c $(OCAMLC_OPTIONS_FOR_$<) $$opts $<
 
