@@ -683,8 +683,21 @@ let gen_flags c mli ml tyname cases ~optional =
 let gen_same_as c mli ml old_tyname tyname =
   fprintf mli "type %s = %s\n" tyname old_tyname;
   fprintf ml "type %s = %s\n" tyname old_tyname;
+  (* (* this generates gcc warnings: *)
   fprintf c "#define wrap_%s wrap_%s\n" tyname old_tyname;
   fprintf c "#define unwrap_%s unwrap_%s\n" tyname old_tyname
+   *)
+  fprintf c "/************** %s *************/\n\n" tyname;
+  fprintf c "static value wrap_%s(%s x) {\n" tyname tyname;
+  fprintf c "  %s y;\n" old_tyname;
+  fprintf c "  y = (%s) x;\n" old_tyname;
+  fprintf c "  return wrap_%s(y);\n" old_tyname;
+  fprintf c "}\n\n";
+  fprintf c "static %s unwrap_%s(value v) {\n" tyname tyname;
+  fprintf c "  %s y;\n" old_tyname;
+  fprintf c "  y = unwrap_%s(v);\n" old_tyname;
+  fprintf c "  return (%s) y;\n" tyname;
+  fprintf c "}\n\n"
 
 (**********************************************************************)
 (* Functions                                                          *)
@@ -804,7 +817,7 @@ let rec translate_type_to_c name ty =
       | _ -> 
            ty, `Unsupported in
   let c_ty1 =
-    if is_const then "const " ^ c_ty else c_ty in
+    if is_const && tag <> `Unsupported then "const " ^ c_ty else c_ty in
   (c_ty1, tag)
 
 
