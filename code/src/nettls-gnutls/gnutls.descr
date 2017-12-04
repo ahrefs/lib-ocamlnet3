@@ -29,7 +29,6 @@ let types =
     "gnutls_x509_crl_t",         abstract_ptr "gnutls_x509_crl_deinit";
     "gnutls_x509_crt_t",         abstract_ptr "gnutls_x509_crt_deinit";
     (* "gnutls_x509_crq_t",         `Abstract_ptr; (* in x509.h *) *)
-    "gnutls_openpgp_keyring_t",  abstract_ptr "gnutls_openpgp_keyring_deinit";
     "gnutls_certificate_credentials_t",  abstract_ptr "gnutls_certificate_free_credentials";
     "gnutls_anon_server_credentials_t", abstract_ptr "gnutls_anon_free_server_credentials";
     "gnutls_anon_client_credentials_t", abstract_ptr "gnutls_anon_free_client_credentials";
@@ -37,8 +36,6 @@ let types =
     "gnutls_srp_client_credentials_t", abstract_ptr "gnutls_srp_free_client_credentials";
     "gnutls_psk_server_credentials_t", abstract_ptr "gnutls_psk_free_server_credentials";
     "gnutls_psk_client_credentials_t", abstract_ptr "gnutls_psk_free_client_credentials";
-    (* "gnutls_openpgp_crt_t",            `Abstract_ptr; *)
-    (* "gnutls_openpgp_privkey_t",        `Abstract_ptr; *)
     (* "gnutls_pkcs11_privkey_t",         `Abstract_ptr; *)
 
     (* "gnutls_datum_t",            `Abstract_ptr; *)
@@ -143,10 +140,6 @@ let types =
                                            "?GNUTLS_VERIFY_|DISABLE_CRL_CHECKS";
                                          ];
 
-    "gnutls_openpgp_crt_status_t",
-                                  `Enum [ "GNUTLS_OPENPGP_|CERT";
-                                          "GNUTLS_OPENPGP_|CERT_FINGERPRINT"
-                                        ];
     "gnutls_close_request_t",     `Enum [ "GNUTLS_SHUT_|RDWR";
                                           "GNUTLS_SHUT_|WR";
                                         ];
@@ -1059,14 +1052,6 @@ let functions =
             gnutls_x509_crl_t array crl_list, \
             crl_list array_size crl_list_size)";
        (* NB: crls are copied by this function *)
-(*
-    "gnutls_certificate_get_openpgp_keyring",
-    [ "sc", `In, "gnutls_certificate_credentials_t";
-      "keyring", `Out, "gnutls_openpgp_keyring_t";
-      "result", `Return_ignore, "void";
-    ],
-    [ ];
- *)
 
 
     (**********************************************************************)
@@ -1218,16 +1203,6 @@ let functions =
            (gnutls_certificate_credentials_t res, \
             uint max_bits, \
             uint max_depth)";
-
-    (**********************************************************************)
-    (* OpenPGP details                                                    *)
-    (**********************************************************************)
-
-    standard
-      "void gnutls_openpgp_send_cert \
-           (gnutls_session_t session, gnutls_openpgp_crt_status_t status)";
-
-
 
     (**********************************************************************)
     (* SRP                                                                *)
