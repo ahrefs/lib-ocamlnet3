@@ -98,6 +98,7 @@ static const char *net_nettle_cipher_name(net_nettle_cipher_t cipher) {
     return cipher->name;
 }
 
+#ifndef HAVE_FUN_nettle_get_ciphers
 #ifndef HAVE_FUN_nettle_ciphers
 const struct nettle_cipher * const nettle_ciphers[] = {
   &nettle_aes128,
@@ -122,13 +123,19 @@ const struct nettle_cipher * const nettle_ciphers[] = {
   NULL
 };
 #endif
-
+#endif
 
 static void net_nettle_ciphers(net_nettle_cipher_t **ciphers,
                                size_t *n) {
     size_t k;
+    const struct nettle_cipher * const *nciphers;
+#ifdef HAVE_FUN_nettle_get_ciphers
+    nciphers = nettle_get_ciphers();
+#else
+    nciphers = nettle_ciphers;
+#endif
     k = 0;
-    while (nettle_ciphers[k] != NULL) k++;
+    while (nciphers[k] != NULL) k++;
     *ciphers = (net_nettle_cipher_t *) nettle_ciphers;
     *n = k;
 }
@@ -337,6 +344,7 @@ static void net_nettle_hash_digest(net_nettle_hash_t hash,
     hash->digest(ctx, length, dst);
 }
 
+#ifndef HAVE_FUN_nettle_get_hashes
 #ifndef HAVE_FUN_nettle_hashes
 const struct nettle_hash * const nettle_hashes[] = {
     &nettle_md2,
@@ -347,10 +355,17 @@ const struct nettle_hash * const nettle_hashes[] = {
     NULL
 };
 #endif
+#endif
 
 static void net_nettle_hashes(net_nettle_hash_t **hashes,
                               size_t *n) {
     size_t k;
+    const struct nettle_hash * const *nhashes;
+#ifdef HAVE_FUN_nettle_get_hashes
+    nhashes = nettle_get_hashes();
+#else
+    nhashes = nettle_hashes;
+#endif
     k = 0;
     while (nettle_hashes[k] != NULL) k++;
     *hashes = (net_nettle_hash_t *) nettle_hashes;

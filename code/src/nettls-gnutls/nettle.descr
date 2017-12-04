@@ -137,7 +137,9 @@ let optional_types =
   [ "nettle_cipher_func" ]
 let optional_functions =
   [ "nettle_ciphers";   (* actually a variable *)
+    "nettle_get_ciphers";
     "nettle_hashes";    (* actually a variable *)
+    "nettle_get_hashes";
   ]
 
 
