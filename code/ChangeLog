@@ -1,5 +1,11 @@
 2017-12-05  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
 
+	* Fix Nettls_gnutls: If a TLS server is configured to
+	  authenticate the client, it does not expect that the
+	  name in the certificate matches the DNS name of the
+	  client. (In particular, the check is not done anymore
+	  when [peer_name] is [None].)
+
 	* Fix: compatibility with library Nettle-3.4
 
 2017-08-14  Gerd Stolpmann  <gerd@gerdbook.fritz.box>

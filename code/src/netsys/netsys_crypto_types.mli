@@ -206,15 +206,19 @@ module type TLS_PROVIDER =
       (** Creates a new endpoint for this configuration.
 
           [peer_name] is the expected common name or DNS name of the
-          peer.  [peer_name] has an option type as it is not always
-          required to pass it. However, keep in mind that clients
+          peer (if set). [peer_name] has an option type as it is not always
+          required to check the name. However, keep in mind that clients
           normally authenticate servers ([peer_auth=`Required]). In
           order to do so, they need to check whether the name in the
           server certificate equals the DNS name of the service they
           are connected to. This check is done by comparing [peer_name]
           with the name in the certificate.
 
-          [peer_name] is also used for the SNI extension.
+          If you set [peer_name] to [None], the name in the certificate
+          is not checked.
+
+          [peer_name] is also used for the SNI extension (name-based
+          virtual hosting).
 
           Servers normally need not to set [peer_name]. You can also omit it
           when there is no name-driven authentication at all.

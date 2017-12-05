@@ -614,7 +614,8 @@ module Make_TLS_1
               let name_ok =
                 match ep.peer_name with
                   | None ->
-                      false
+                      (* = we do not expect any particular name in the cert *)
+                      true
                   | Some pn ->
                       let der_peer_certs = 
                         G.gnutls_certificate_get_peers ep.session in
