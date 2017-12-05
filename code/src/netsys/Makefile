@@ -44,7 +44,7 @@ OPTMTP_EXTRA = netsys_oothr_mt.p.cmxa netsys_oothr_mt_init.cmx
 ifeq ($(HAVE_SHARED),1)
 OPT_EXTRA += netsys_oothr.cmxs
 OPTP_EXTRA += netsys_oothr.p.cmxs
-OPTMT_EXTRA += netsys_oothr_mt.cmxs
+OPTMT_EXTRA += netsys_oothr_mt.cmxs netsys_oothr_mt_init.cmxs
 OPTMTP_EXTRA += netsys_oothr_mt.p.cmxs
 endif
 # Note: we cannot refer here to *.p.cmx because there is no direct
@@ -106,6 +106,9 @@ netsys_oothr_mt.cmxa: netsys_oothr.cmx netsys_oothr-$(MT_TYPE)
 
 netsys_oothr_mt.cmxs: netsys_oothr_mt.cmxa
 	$(OCAMLOPT) -linkall -shared -o netsys_oothr_mt.cmxs netsys_oothr_mt.cmxa
+
+netsys_oothr_mt_init.cmxs: netsys_oothr_mt_init.cmx
+	$(OCAMLOPT) -linkall -shared -o netsys_oothr_mt_init.cmxs netsys_oothr_mt.cmx
 
 netsys_oothr_mt.p.cmxa: netsys_oothr.cmx netsys_oothr-$(MT_TYPE)
 	$(OCAMLOPT) -o netsys_oothr_mt.p.cmxa -a \

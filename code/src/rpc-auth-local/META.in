@@ -5,3 +5,6 @@ archive(byte) = "rpc_auth_local.cma"
 archive(native) = "rpc_auth_local.cmxa"
 archive(native,gprof) = "rpc_auth_local.p.cmxa"
 
+plugin(byte) = "rpc_auth_local.cma"
+plugin(native) = "rpc_auth_local.cmxs"
+plugin(native,gprof) = "rpc_auth_local.p.cmxs"

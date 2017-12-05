@@ -12,3 +12,9 @@ archive(native,gprof) =
     "netstring.p.cmxa"
 archive(byte,-nonetaccel) +=
     "netaccel.cma netaccel_link.cmo"
+plugin(byte) = 
+    "netstring.cma"
+plugin(native) = 
+    "netstring.cmxs"
+plugin(native,gprof) = 
+    "netstring.p.cmxs"

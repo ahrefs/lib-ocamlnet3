@@ -4,32 +4,41 @@ requires = "netstring"
 archive(byte) = "netunidata.cma netuniinit.cmo"
 archive(native) = "netunidata.cmxa netuniinit.cmx"
 archive(native,gprof) = "netunidata.p.cmxa netuniinit.cmx"
+plugin(native) = "netunidata.cmxs netuniinit.cmxs"
+plugin(native,gprof) = "netunidata.p.cmxs netuniinit.cmxs"
 
 package "iso" (
   requires = "netunidata"
   archive(byte) = "netmappings_iso.cmo"
   archive(native) = "netmappings_iso.cmx"
+  plugin(byte) = "netmappings_iso.cmo"
+  plugin(native) = "netmappings_iso.cmxs"
 )
 
 package "jp" (
   requires = "netunidata"
   archive(byte) = "netmappings_jp.cmo"
   archive(native) = "netmappings_jp.cmx"
+  plugin(byte) = "netmappings_jp.cmo"
+  plugin(native) = "netmappings_jp.cmxs"
 )
 
 package "kr" (
   requires = "netunidata"
   archive(byte) = "netmappings_kr.cmo"
   archive(native) = "netmappings_kr.cmx"
+  plugin(byte) = "netmappings_kr.cmo"
+  plugin(native) = "netmappings_kr.cmxs"
 )
 
 package "other" (
   requires = "netunidata"
   archive(byte) = "netmappings_other.cmo"
   archive(native) = "netmappings_other.cmx"
+  plugin(byte) = "netmappings_other.cmo"
+  plugin(native) = "netmappings_other.cmxs"
 )
 
 package "all" (
-  requires = "netunidata.iso netunidata.asn1 netunidata.jp netunidata.kr
-              netunidata.other"
+  requires = "netunidata.iso netunidata.jp netunidata.kr netunidata.other"
 )

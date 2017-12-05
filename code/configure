@@ -523,6 +523,18 @@ fi
 echo "$mt_type $mt_comment"
 
 ######################################################################
+# Check for cmxs support
+
+printf "%s" "Checking whether cmxs is supported... "
+have_shared=0
+if ocamlopt -shared -o .dummy.cmxs >/dev/null 2>/dev/null; then
+    have_shared=1
+    echo "yes"
+else
+    echo "no"
+fi
+
+######################################################################
 # Check word size at al
 
 printf "%s" "Checking word size... "
@@ -1208,6 +1220,9 @@ INSTMETHOD = findlib
 
 # Multi-threading type:
 MT_TYPE = $mt_type
+
+# whether cmxs is supported:
+HAVE_SHARED = $have_shared
 
 # word size:
 WORD_SIZE = $word_size

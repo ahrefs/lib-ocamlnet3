@@ -15,6 +15,9 @@ MAPPINGS = netmappings_iso.ml \
 
 ALL_EXTRA = $(MAPPINGS:.ml=.cmo) netuniinit.cmo
 OPT_EXTRA = $(MAPPINGS:.ml=.cmx) netuniinit.cmx
+ifeq ($(HAVE_SHARED),1)
+OPT_EXTRA += $(MAPPINGS:.ml=.cmxs) netuniinit.cmxs
+endif
 
 OCAMLC_OPTIONS += $(STRING_OPTS)
 OCAMLOPT_OPTIONS += $(STRING_OPTS)
@@ -22,5 +25,10 @@ OCAMLOPT_OPTIONS += $(STRING_OPTS)
 PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 include $(TOP_DIR)/Makefile.rules
+
+.SUFFIXES: .cmxs
+
+.cmx.cmxs:
+	$(OCAMLOPT) -linkall -shared -I . -o $@ $<
 
 include depend

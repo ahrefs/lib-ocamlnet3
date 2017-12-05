@@ -4,4 +4,6 @@ requires = "unix equeue lablgtk"
 archive(byte) = "equeue_gtk1.cma"
 archive(native) = "equeue_gtk1.cmxa"
 archive(native,gprof) = "equeue_gtk1.p.cmxa"
-
+plugin(byte) = "equeue_gtk1.cma"
+plugin(native) = "equeue_gtk1.cmxs"
+plugin(native,gprof) = "equeue_gtk1.p.cmxs"
