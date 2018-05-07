@@ -38,15 +38,9 @@ let line_directive buf prev_file pos =
   let len = Buffer.length buf in
   if len > 0 && Buffer.nth buf (len - 1) <> '\n' then
     Buffer.add_char buf '\n';
-  (match prev_file with
-       Some s when s = file ->
-	 bprintf buf "# %i\n"
-	   pos.Lexing.pos_lnum
-     | _ ->
-	 bprintf buf "# %i %S\n"
-	   pos.Lexing.pos_lnum
-	   pos.Lexing.pos_fname
-  );
+  bprintf buf "# %i %S\n"
+     pos.Lexing.pos_lnum
+     pos.Lexing.pos_fname;
   bprintf buf "%s" (String.make (pos.Lexing.pos_cnum - pos.Lexing.pos_bol) ' ')
     
 let rec add_sep sep last = function
