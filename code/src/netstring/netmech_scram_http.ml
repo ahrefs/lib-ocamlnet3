@@ -1,4 +1,4 @@
-(* There isn't an RFC yet ... *)
+(* RFC 7804 *)
 
 open Printf
 
@@ -119,33 +119,37 @@ module Make_SCRAM(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM =
         s1
 
     let client_match ~params (ch_name, ch_params) =
+      let params =
+        Netsys_sasl_util.preprocess_params
+          "Netmech_scram_http.client_match:"
+          [ "realm" ]
+          params in
+      let ac_realm_opt =
+        try Some(List.assoc "realm" params)
+        with Not_found -> None in
+      let realm_name =
+        match ac_realm_opt with
+          | None -> "_default_"
+          | Some r -> r in
       try
-        let params = 
-          Netsys_sasl_util.preprocess_params
-            "Netmech_scram_http.client_match:"
-            [ "realm" ]
-            params in
         let ch_params = decode_params ch_params in
 
         if STRING_LOWERCASE ch_name <> STRING_LOWERCASE (Netmech_scram.mechanism_name profile)
         then raise Not_found;
 
-        let ac_realm_opt =
-          try Some(List.assoc "realm" params)
-          with Not_found -> None in
-        let ch_realm_opt =
-          try Some(List.assoc "realm" ch_params)
-          with Not_found -> None in
-        ( match ac_realm_opt, ch_realm_opt with
-            | Some ac_realm, Some ch_realm ->
-                if ac_realm <> ch_realm then raise Not_found
-            | _ -> ()
-        );
-        let realm_name =
-          match ch_realm_opt with
-            | None -> "default"
-            | Some r -> r in
-        `Accept(realm_name, None)
+        match List.assoc "sid" ch_params with
+          | _ ->
+              `Accept(realm_name, None)
+          | exception Not_found ->
+              let ch_realm_opt =
+                try Some(List.assoc "realm" ch_params)
+                with Not_found -> None in
+              ( match ac_realm_opt, ch_realm_opt with
+                  | Some ac_realm, Some ch_realm ->
+                      if ac_realm <> ch_realm then raise Not_found
+                  | _ -> ()
+              );
+              `Accept(realm_name, None)
       with
         | Not_found
         | Failure _ -> `Reject
