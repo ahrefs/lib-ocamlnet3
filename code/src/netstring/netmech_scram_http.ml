@@ -15,7 +15,7 @@ module Make_SCRAM(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM =
       { Netmech_scram.ptype = `SASL;
         hash_function = P.hash_function;
         return_unknown_user = false;
-        iteration_count_limit = 65536;
+        iteration_count_limit = 100000;
       }
 
     let hash_available iana_name =
@@ -270,6 +270,22 @@ module Make_SCRAM(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM =
       raise Not_found
   end
 
+
+module SHA_256 : PROFILE =
+  struct
+    let mutual=false
+    let hash_function = `SHA_256
+    let test_nonce=None
+  end
+
+
+module SHA_256_mutual : PROFILE =
+  struct
+    let mutual=true
+    let hash_function = `SHA_256
+    let test_nonce=None
+  end
+    
 
 (*
 
