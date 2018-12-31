@@ -24,7 +24,7 @@ module Make_SCRAM(P:PROFILE) : Nethttp.HTTP_CLIENT_MECHANISM =
           with Not_found -> false
         )
 
-    let mechanism_name = "SCRAM"
+    let mechanism_name = Netmech_scram.mechanism_name profile
     let available() = hash_available P.hash_function
     let restart_supported = false (* TODO *)
 
