@@ -845,6 +845,24 @@ module Header = struct
       | Some(QString v) -> Stream.junk stream; v
       | _ -> raise Stream.Failure
 
+  let rec parse_eq_suffix stream =
+    match Stream.peek stream with
+      | Some (Special '=') ->
+          Stream.junk stream;
+          "=" ^ parse_eq_suffix stream
+      | _ ->
+          ""
+
+  let parse_token68_or_qstring stream =
+    (* token68: see RFC 7235 *)
+    match Stream.peek stream with
+      | Some(Atom tok) ->
+          Stream.junk stream;
+          let suff = parse_eq_suffix stream in
+          tok ^ suff
+      | Some(QString v) -> Stream.junk stream; v
+      | _ -> raise Stream.Failure
+
   let rec parse_params stream =
     match Stream.npeek 3 stream with
       | [ Special ';'; Atom name; Special '=' ] ->
@@ -1692,7 +1710,7 @@ module Header = struct
         | [ Atom ap_name; Special '=' ] ->
             Stream.junk stream;
             Stream.junk stream;
-            let ap_val = parse_token_or_qstring stream in
+            let ap_val = parse_token68_or_qstring stream in
             let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
         | _ ->
@@ -1704,7 +1722,7 @@ module Header = struct
             Stream.junk stream;
             Stream.junk stream;
             Stream.junk stream;
-            let ap_val = parse_token_or_qstring stream in
+            let ap_val = parse_token68_or_qstring stream in
 	    let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
 	| _ ->
@@ -1834,7 +1852,7 @@ module Header = struct
 	| [ Atom ap_name; Special '=' ] ->
             Stream.junk stream;
             Stream.junk stream;
-            let ap_val = parse_token_or_qstring stream in
+            let ap_val = parse_token68_or_qstring stream in
             let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
         | _ ->
@@ -1846,7 +1864,7 @@ module Header = struct
             Stream.junk stream;
             Stream.junk stream;
             Stream.junk stream;
-            let ap_val = parse_token_or_qstring stream in
+            let ap_val = parse_token68_or_qstring stream in
 	    let rest = parse_auth_param_rest stream in
 	    (ap_name, ap_val) :: rest
 	| _ ->
