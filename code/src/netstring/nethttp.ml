@@ -1845,7 +1845,30 @@ module Header = struct
 
   let ws_re = Netstring_str.regexp "[ \t\r\n]+";;
 
-  let parse_credentials ?(disable_fixups=false) mh fn_name fieldname =
+  let rec parse_auth_params stream =
+    match Stream.npeek 2 stream with
+      | [ Atom ap_name; Special '=' ] ->
+          Stream.junk stream;
+          Stream.junk stream;
+          let ap_val = parse_token68_or_qstring stream in
+          let rest = parse_auth_param_rest stream in
+          (ap_name, ap_val) :: rest
+      | _ ->
+          raise Stream.Failure
+
+  and parse_auth_param_rest stream =
+    match Stream.npeek 3 stream with
+      | [ Special ','; Atom ap_name; Special '=' ] ->
+          Stream.junk stream;
+          Stream.junk stream;
+          Stream.junk stream;
+          let ap_val = parse_token68_or_qstring stream in
+          let rest = parse_auth_param_rest stream in
+          (ap_name, ap_val) :: rest
+      | _ ->
+          []
+
+  let parse_credentials mh fn_name fieldname =
     let rec parse_creds stream =
       match Stream.peek stream with 
 	| Some (Atom auth_name) ->
@@ -1853,49 +1876,28 @@ module Header = struct
 	    let params = parse_auth_params stream in
 	    (auth_name, params)
         | _ ->
-            raise Stream.Failure
-	     
-    and parse_auth_params stream =
-      match Stream.npeek 2 stream with
-	| [ Atom ap_name; Special '=' ] ->
-            Stream.junk stream;
-            Stream.junk stream;
-            let ap_val = parse_token68_or_qstring stream in
-            let rest = parse_auth_param_rest stream in
-	    (ap_name, ap_val) :: rest
-        | _ ->
-            raise Stream.Failure
-
-    and parse_auth_param_rest stream =
-      match Stream.npeek 3 stream with
-	| [ Special ','; Atom ap_name; Special '=' ] ->
-            Stream.junk stream;
-            Stream.junk stream;
-            Stream.junk stream;
-            let ap_val = parse_token68_or_qstring stream in
-	    let rest = parse_auth_param_rest stream in
-	    (ap_name, ap_val) :: rest
-	| _ ->
-	    []
-    in
-
+            raise Stream.Failure in
     (* Basic authentication is a special case! *)
     let v = mh # field fieldname in  (* or Not_found *)
     match Netstring_str.split ws_re v with
-      | [ name; creds ] when not disable_fixups && STRING_LOWERCASE name = "basic" ->
+      | [ name; creds ] when STRING_LOWERCASE name = "basic" ->
 	  (name, ["credentials", creds])
-      | [ name; creds ] when not disable_fixups && STRING_LOWERCASE name = "negotiate" ->
+      | [ name; creds ] when STRING_LOWERCASE name = "negotiate" ->
 	  (name, ["credentials", creds])
       | _ ->
 	  parse_field mh fn_name parse_creds fieldname
 
-  let mk_credentials_std (auth_name, auth_params) =
-    auth_name ^ " " ^
-      (String.concat ","
-                     (List.map
-                        (fun (p_name, p_val) ->
-                          p_name ^ "=" ^ print_param_value p_val)
-                        auth_params))
+  let parse_auth_info mh fn_name fieldname =
+    parse_field mh fn_name parse_auth_params fieldname
+
+  let mk_auth_params auth_params =
+    String.concat
+      ","
+      (List.map
+         (fun (p_name, p_val) ->
+           p_name ^ "=" ^ print_param_value p_val)
+         auth_params
+      )
 
   let mk_credentials (auth_name, auth_params) =
     match STRING_LOWERCASE auth_name with
@@ -1907,7 +1909,7 @@ module Header = struct
 	       failwith "Nethttp.mk_credentials: credentials not found" in
            auth_name ^ " " ^ print_param_value creds
       | _ ->
-          mk_credentials_std (auth_name, auth_params)
+          auth_name ^ " " ^ mk_auth_params auth_params
 
   let get_authorization mh =
     mark_params_decoded
@@ -1925,26 +1927,22 @@ module Header = struct
     mh # update_field "Proxy-Authorization" (mk_credentials v)
 
   let get_authentication_info mh =
-    mark_params_decoded
-      (parse_credentials
-         ~disable_fixups:true
-         mh "Nethttp.get_authentication_infon"
-         "authentication-info")
+    parse_auth_info
+      mh "Nethttp.get_authentication_infon"
+      "authentication-info"
+    |> List.map mark_decoded
 
   let get_proxy_authentication_info mh =
-    mark_params_decoded
-      (parse_credentials
-         ~disable_fixups:true
-         mh "Nethttp.get_proxy_authentication_infon"
-         "proxy-authentication-info")
-      
+    parse_auth_info
+      mh "Nethttp.get_proxy_authentication_infon"
+      "proxy-authentication-info"
+    |> List.map mark_decoded
+
   let set_authentication_info mh v =
-    mh # update_field "Authentication-Info" (mk_credentials_std v)
+    mh # update_field "Authentication-Info" (mk_auth_params v)
 
   let set_proxy_authentication_info mh v =
-    mh # update_field "Proxy-Authentication-Info" (mk_credentials_std v)
-       
-
+    mh # update_field "Proxy-Authentication-Info" (mk_auth_params v)
 
   (* --- Cookies --- *)
 

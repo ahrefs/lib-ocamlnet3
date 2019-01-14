@@ -619,12 +619,13 @@ module Header : sig
   val set_allow : #http_header -> string list -> unit
     (** Sets the [Allow] header *)
 
-  val get_authentication_info : #http_header_ro -> auth_credentials
-    (** Returns the [Authentication-Info] header as pair
-      * [(auth_scheme,auth_params)],  or raises [Not_found] if not present.
+  val get_authentication_info : #http_header_ro -> (string * param_value) list
+    (** Returns the [Authentication-Info] header as list [auth_params],
+      * or raises [Not_found] if not present.
       *)
 
-  val set_authentication_info : #http_header -> auth_credentials -> unit
+  val set_authentication_info : #http_header -> (string * param_value) list ->
+                                unit
     (** Sets the [Authentication-Info] header. *)
 
   val get_authorization : #http_header_ro -> auth_credentials
@@ -872,12 +873,14 @@ module Header : sig
   val set_proxy_authenticate : #http_header -> auth_challenge list -> unit
     (** Sets the [Proxy-authenticate] header *)
 
-  val get_proxy_authentication_info : #http_header_ro -> auth_credentials
-    (** Returns the [Proxy-Authentication-Info] header as pair
-      * [(auth_scheme,auth_params)],  or raises [Not_found] if not present.
+  val get_proxy_authentication_info : #http_header_ro ->
+                                      (string * param_value) list
+    (** Returns the [Proxy-Authentication-Info] header as list
+      * [auth_params],  or raises [Not_found] if not present.
       *)
 
-  val set_proxy_authentication_info : #http_header -> auth_credentials -> unit
+  val set_proxy_authentication_info : #http_header ->
+                                      (string * param_value) list-> unit
     (** Sets the [Proxy-Authentication-Info] header. *)
 
   val get_proxy_authorization : #http_header_ro -> auth_credentials
