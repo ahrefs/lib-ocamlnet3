@@ -852,7 +852,6 @@ module Header = struct
           "=" ^ parse_eq_suffix stream
       | _ ->
           ""
-
   let parse_token68_or_qstring stream =
     (* token68: see RFC 7235 *)
     match Stream.peek stream with
@@ -918,6 +917,11 @@ module Header = struct
       qstring_of_value s
     with
 	Not_found -> s
+
+  let print_param_value p_val =
+    match p_val with
+      | `Q s -> s
+      | `V s -> string_of_value s 
 
   let string_of_params l =
     if l = [] then
@@ -1764,11 +1768,6 @@ module Header = struct
     in
     parse_comma_separated_field mh fn_name parse_challenge fieldname
 
-  let encode_param p_val =
-    match p_val with
-      | `Q s -> s
-      | `V s -> string_of_value s 
-                                
   let mk_challenges fields =
     String.concat "," 
       (List.map
@@ -1777,7 +1776,7 @@ module Header = struct
               match STRING_LOWERCASE auth_name with
                 | "negotiate" ->
                      ( match auth_params with
-                         | [ "credentials", data ] -> encode_param data
+                         | [ "credentials", data ] -> print_param_value data
                          | _ -> ""
                      )
                 | _ ->
@@ -1785,7 +1784,7 @@ module Header = struct
                         ","
 		        (List.map
 		           (fun (p_name, p_val) ->
-		              p_name ^ "=" ^ encode_param p_val
+                              p_name ^ "=" ^ print_param_value p_val
                            )
 		           auth_params
                         )
@@ -1825,6 +1824,15 @@ module Header = struct
     with
       | Bad_header_field _ -> failwith "parse_quoted_parameters"
 
+  let value_of_param =
+    function
+    | `V s -> s
+    | `Q s ->
+        (match parse_quoted_parameters ("x=" ^ s) with
+           | [ _, u ] -> u
+           | _ -> raise Not_found
+        )
+
   let set_www_authenticate mh fields =
     mh # update_field "WWW-Authenticate" (mk_challenges fields)
 
@@ -1837,7 +1845,7 @@ module Header = struct
 
   let ws_re = Netstring_str.regexp "[ \t\r\n]+";;
 
-  let parse_credentials mh fn_name fieldname =
+  let parse_credentials ?(disable_fixups=false) mh fn_name fieldname =
     let rec parse_creds stream =
       match Stream.peek stream with 
 	| Some (Atom auth_name) ->
@@ -1874,12 +1882,20 @@ module Header = struct
     (* Basic authentication is a special case! *)
     let v = mh # field fieldname in  (* or Not_found *)
     match Netstring_str.split ws_re v with
-      | [ name; creds ] when STRING_LOWERCASE name = "basic" ->
+      | [ name; creds ] when not disable_fixups && STRING_LOWERCASE name = "basic" ->
 	  (name, ["credentials", creds])
-      | [ name; creds ] when STRING_LOWERCASE name = "negotiate" ->
+      | [ name; creds ] when not disable_fixups && STRING_LOWERCASE name = "negotiate" ->
 	  (name, ["credentials", creds])
       | _ ->
 	  parse_field mh fn_name parse_creds fieldname
+
+  let mk_credentials_std (auth_name, auth_params) =
+    auth_name ^ " " ^
+      (String.concat ","
+                     (List.map
+                        (fun (p_name, p_val) ->
+                          p_name ^ "=" ^ print_param_value p_val)
+                        auth_params))
 
   let mk_credentials (auth_name, auth_params) =
     match STRING_LOWERCASE auth_name with
@@ -1889,15 +1905,10 @@ module Header = struct
 	     try List.assoc "credentials" auth_params 
 	     with Not_found -> 
 	       failwith "Nethttp.mk_credentials: credentials not found" in
-           auth_name ^ " " ^ encode_param creds
+           auth_name ^ " " ^ print_param_value creds
       | _ ->
-           auth_name ^ " " ^ 
-	     (String.concat ","
-	                    (List.map
-	                       (fun (p_name, p_val) ->
-		                p_name ^ "=" ^ encode_param p_val)
-	                       auth_params))
-               
+          mk_credentials_std (auth_name, auth_params)
+
   let get_authorization mh =
     mark_params_decoded
       (parse_credentials mh "Nethttp.get_authorization" "authorization")
@@ -1913,7 +1924,26 @@ module Header = struct
   let set_proxy_authorization mh v = 
     mh # update_field "Proxy-Authorization" (mk_credentials v)
 
+  let get_authentication_info mh =
+    mark_params_decoded
+      (parse_credentials
+         ~disable_fixups:true
+         mh "Nethttp.get_authentication_infon"
+         "authentication-info")
 
+  let get_proxy_authentication_info mh =
+    mark_params_decoded
+      (parse_credentials
+         ~disable_fixups:true
+         mh "Nethttp.get_proxy_authentication_infon"
+         "proxy-authentication-info")
+      
+  let set_authentication_info mh v =
+    mh # update_field "Authentication-Info" (mk_credentials_std v)
+
+  let set_proxy_authentication_info mh v =
+    mh # update_field "Proxy-Authentication-Info" (mk_credentials_std v)
+       
 
 
   (* --- Cookies --- *)

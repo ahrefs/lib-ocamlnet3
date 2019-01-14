@@ -455,7 +455,18 @@ module Header : sig
 
   type param_value =
       [ `V of string | `Q of string ]
-    (** Parameters may occur quoted ([`Q]) or as already decoded values ([`V])
+    (** Some parameters may occur quoted and unquoted. In partivular for
+        authentication it is important to get this aspect right, so we
+        represent values in two ways:
+        - [`V s] is the already decoded value. Originally it could be in
+          quotes or not, but the parser removed the quotes already.
+        - [`Q s] is a value where [s] includes the quotes, i.e. it is the
+          "raw" string.
+
+        The parsers below always return values in the [`V] form. For the
+        printers, you can specify whether to automatically add quotes
+        (using [`V]) or to pass the raw values (using [`Q]) that already
+        contains the quotes if needed.
      *)
 
   type auth_challenge = string * (string * param_value) list
@@ -478,6 +489,12 @@ module Header : sig
      (** A generic parser for comma-separated parameters in the form
          key=value or key="value". Fails if the string cannot be parsed.
       *)
+
+  val print_param_value : param_value -> string
+    (** returns `Q unchanged, and puts a `V into double quotes if necessary *)
+
+  val value_of_param : param_value -> string
+    (** return the real value wrapped by `Q or `V *)
 
   val get_accept : #http_header_ro -> (string *
 		                 (string * string) list *
@@ -601,6 +618,14 @@ module Header : sig
 
   val set_allow : #http_header -> string list -> unit
     (** Sets the [Allow] header *)
+
+  val get_authentication_info : #http_header_ro -> auth_credentials
+    (** Returns the [Authentication-Info] header as pair
+      * [(auth_scheme,auth_params)],  or raises [Not_found] if not present.
+      *)
+
+  val set_authentication_info : #http_header -> auth_credentials -> unit
+    (** Sets the [Authentication-Info] header. *)
 
   val get_authorization : #http_header_ro -> auth_credentials
     (** Returns the [Authorization] header as pair [(auth_scheme,auth_params)],
@@ -846,6 +871,14 @@ module Header : sig
 
   val set_proxy_authenticate : #http_header -> auth_challenge list -> unit
     (** Sets the [Proxy-authenticate] header *)
+
+  val get_proxy_authentication_info : #http_header_ro -> auth_credentials
+    (** Returns the [Proxy-Authentication-Info] header as pair
+      * [(auth_scheme,auth_params)],  or raises [Not_found] if not present.
+      *)
+
+  val set_proxy_authentication_info : #http_header -> auth_credentials -> unit
+    (** Sets the [Proxy-Authentication-Info] header. *)
 
   val get_proxy_authorization : #http_header_ro -> auth_credentials
     (** Returns the [Proxy-authorization] header as pair
