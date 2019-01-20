@@ -1834,7 +1834,8 @@ module Header = struct
         )
 
   let set_www_authenticate mh fields =
-    mh # update_field "WWW-Authenticate" (mk_challenges fields)
+    let mfields = List.map (fun field -> mk_challenges [field]) fields in
+    mh # update_multiple_field "WWW-Authenticate" mfields
 
   let get_proxy_authenticate mh =
     mark_many_decoded
