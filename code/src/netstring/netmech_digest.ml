@@ -15,7 +15,7 @@
 
    What is implemented in the server:
 
-   - HTTP: NO RFC-2069 mode
+   - HTTP: RFC-2069 mode
    - HTTP: RFC-2617 mode: qop="auth", both H and H-sess
      (selected by ss.snosess)
    - HTTP: NO user name hashing
@@ -101,43 +101,6 @@ let qstring =
 
 let hex s =
   Netencoding.to_hex ~lc:true s
-                       
-
-let compute_response (p:response_params) password a2_prefix =
-  (* a2_prefix: either "AUTHENTICATE:" or ":" *)
-  let nc = sprintf "%08x" p.r_nc in
-(*
-eprintf "compute_response user=%s authz=%s realm=%s password=%s nonce=%s cnonce=%s digest-uri=%s nc=%s a2_prefix=%s\n"
-      p.r_user (match p.r_authz with None -> "n/a" | Some a -> a)
-      p.r_realm password p.r_nonce p.r_cnonce p.r_digest_uri nc a2_prefix;
- *)
-  (* Note that RFC-2617 has an error here (it would calculate
-     a1_a = hex (h ...)), and this made it into the standard. So
-     DIGEST-MD5 as SASL is incompatible with Digest Authentication for HTTP.
-   *)
-  let h = hash p.r_hash in
-  let a1 =
-    if p.r_no_sess then
-      p.r_user ^ ":" ^ p.r_realm ^ ":" ^ password
-    else
-      let a1_a =
-        h (p.r_user ^ ":" ^ p.r_realm ^ ":" ^ password) in
-      let a1_a =
-        match p.r_ptype with
-          | `HTTP -> hex a1_a   (* see comment above *)
-          | `SASL -> a1_a in
-      let a1_b =
-        a1_a ^ ":" ^ p.r_nonce ^ ":" ^ p.r_cnonce in
-      match p.r_authz with
-        | None -> a1_b
-        | Some authz -> a1_b ^ ":" ^ authz in
-  let a2 = a2_prefix ^ p.r_digest_uri in
-  let auth_body =
-    if p.r_rfc2069 then  (* RFC 2069 mode *)
-      [ hex (h a1); p.r_nonce; hex (h a2) ]
-    else
-      [ hex (h a1); p.r_nonce; nc; p.r_cnonce; "auth"; hex (h a2) ] in
-  hex (h (String.concat ":" auth_body))
 
 let verify_utf8 s =
   try
@@ -173,6 +136,73 @@ let to_client is_utf8 s =
       | Netconversion.Malformed_code -> 
           failwith "cannot convert to ISO-8859-1"
 
+let create_hashed_creds hash_fn user password realm =
+  let h_name = List.assoc hash_fn Netsys_digests.iana_rev_alist in
+  let h = hash hash_fn in
+  [ "digest",
+    h (user ^ ":" ^ realm ^ ":" ^ password) |> Netencoding.Base64.encode,
+    [ "realm", realm;
+      "algo", h_name
+    ]
+  ]
+
+let extract_h_pw (p:response_params) (creds:Netsys_sasl.credentials) =
+  let h_name = List.assoc p.r_hash Netsys_digests.iana_rev_alist in
+  try
+    let _, h_a1, _ =
+      List.find
+        (fun (t, _, params) ->
+          t = "digest" &&
+            List.mem_assoc "realm" params &&
+              List.assoc "realm" params = p.r_realm &&
+                List.mem_assoc "algo" params &&
+                  List.assoc "algo" params = h_name
+        )
+        creds in
+    Netencoding.Base64.decode h_a1
+  with
+    | Not_found ->
+        let pw_utf8 = Netsys_sasl_util.extract_password creds in
+        let pw = to_client p.r_utf8 pw_utf8 in
+        let h = hash p.r_hash in
+        h (p.r_user ^ ":" ^ p.r_realm ^ ":" ^ pw)
+
+let compute_response (p:response_params) creds a2_prefix =
+  (* a2_prefix: either "AUTHENTICATE:" or ":" *)
+  let nc = sprintf "%08x" p.r_nc in
+(*
+eprintf "compute_response user=%s authz=%s realm=%s password=%s nonce=%s cnonce=%s digest-uri=%s nc=%s a2_prefix=%s\n"
+      p.r_user (match p.r_authz with None -> "n/a" | Some a -> a)
+      p.r_realm password p.r_nonce p.r_cnonce p.r_digest_uri nc a2_prefix;
+ *)
+  (* Note that RFC-2617 has an error here (it would calculate
+     a1_a = hex (h ...)), and this made it into the standard. So
+     DIGEST-MD5 as SASL is incompatible with Digest Authentication for HTTP.
+   *)
+  let h = hash p.r_hash in
+  let h_pw = extract_h_pw p creds in
+  let h_a1 =
+    if p.r_no_sess then
+      h_pw
+    else
+      let a1_a =
+        match p.r_ptype with
+          | `HTTP -> hex h_pw   (* see comment above *)
+          | `SASL -> h_pw in
+      let a1_b =
+        a1_a ^ ":" ^ p.r_nonce ^ ":" ^ p.r_cnonce in
+      let a1 =
+        match p.r_authz with
+          | None -> a1_b
+          | Some authz -> a1_b ^ ":" ^ authz in
+      h a1 in
+  let a2 = a2_prefix ^ p.r_digest_uri in
+  let auth_body =
+    if p.r_rfc2069 then  (* RFC 2069 mode *)
+      [ hex h_a1; p.r_nonce; hex (h a2) ]
+    else
+      [ hex h_a1; p.r_nonce; nc; p.r_cnonce; "auth"; hex (h a2) ] in
+  hex (h (String.concat ":" auth_body))
 
 let to_strmap l =
   (* will raise Not_found if a key appears twice *)
@@ -198,10 +228,10 @@ let nc_re =
 let get_nc s =
   match Netstring_str.string_match nc_re s 0 with
     | None ->
-         raise Not_found
+        failwith "cannot parse nc"
     | Some _ ->
          ( try int_of_string ("0x" ^ s)
-           with Failure _ -> raise Not_found
+           with Failure _ -> failwith "cannot convert nc from hex"
          )
 
 let server_emit_initial_challenge_kv ?(quote=false) ss =
@@ -215,7 +245,7 @@ let server_emit_initial_challenge_kv ?(quote=false) ss =
         | Some realm -> [ "realm", q (to_utf8 ss.sutf8 realm) ]
     ) @
       [ "nonce", q ss.snonce;
-        "qpop", "auth"
+        "qop", "auth"
       ] @
         ( if ss.sstale then [ "stale", "true" ] else [] ) @
         ( if ss.sutf8 then [ "charset", "utf-8" ] else [] ) @
@@ -233,17 +263,20 @@ let server_emit_final_challenge_kv ?(quote=false) ss =
   match ss.sresponse with
     | None -> assert false
     | Some(rp,_,srv_resp) ->
-        ( { ss with sstate = `OK; },
-          [ "rspauth", q srv_resp ] @
-            ( match ss.sprofile.ptype with
-                | `SASL -> []
-                | `HTTP ->
-                    [ "qop", "auth";
-                      "cnonce", q rp.r_cnonce;
-                      "nc", sprintf "%08x" rp.r_nc
-                    ]
-            )
-        )
+        if rp.r_rfc2069 then
+          ( { ss with sstate = `OK; }, [] )
+        else
+          ( { ss with sstate = `OK; },
+            [ "rspauth", q srv_resp ] @
+              ( match ss.sprofile.ptype with
+                  | `SASL -> []
+                  | `HTTP ->
+                      [ "qop", "auth";
+                        "cnonce", q rp.r_cnonce;
+                        "nc", sprintf "%08x" rp.r_nc
+                      ]
+              )
+          )
 
 
 let iana_sess_alist =
@@ -256,20 +289,31 @@ let decode_response ptype msg_params method_name =
   let user = StrMap.find "username" m in
   let realm = try StrMap.find "realm" m with Not_found -> "" in
   let nonce = StrMap.find "nonce" m in
-  (* We only support qop="auth" in server mode, so there is always
-     a cnonce and nc.
-   *)
-  let qop = StrMap.find "qop" m in
-  if qop <>"auth" then failwith "bad qop";
-  let cnonce = StrMap.find "cnonce" m in
-  let nc_str = StrMap.find "nc" m in
-  let nc = get_nc nc_str in
+  let qop, rfc2069 =
+    try
+      let qop = StrMap.find "qop" m in
+      if qop <> "auth" then failwith "bad qop";
+      qop, false
+    with Not_found -> "auth", true in
+  if rfc2069 && ptype<>`HTTP then raise Not_found;
+  let cnonce, nc =
+    if rfc2069 then
+      "", 1
+    else
+      let cnonce = try StrMap.find "cnonce" m
+                   with Not_found -> failwith "missing cnonce" in
+      let nc_str = try StrMap.find "nc" m
+                   with Not_found -> failwith "missing nc" in
+      let nc = get_nc nc_str in
+      cnonce, nc in
   let digest_uri_name =
     match ptype with
       | `HTTP -> "uri"
       | `SASL -> "digest-uri" in
-  let digest_uri = StrMap.find digest_uri_name m in
-  let response = StrMap.find "response" m in
+  let digest_uri = try StrMap.find digest_uri_name m
+                   with Not_found -> failwith ("missing " ^ digest_uri_name) in
+  let response = try StrMap.find "response" m
+                 with Not_found -> failwith "missing response" in
   let utf8 =
     if StrMap.mem "charset" m then (
       let v = StrMap.find "charset" m in
@@ -287,15 +331,18 @@ let decode_response ptype msg_params method_name =
   let userhash =
     try StrMap.find "userhash" m = "true" with Not_found -> false in
   let alg_lc =
-    try StrMap.find "algorithm" m with Not_found -> "" in
+    try StrMap.find "algorithm" m |> STRING_LOWERCASE with Not_found -> "" in
   let hash, no_sess =
-    try (List.assoc alg_lc Netsys_digests.iana_alist, true)
-    with Not_found ->
-      try (List.assoc alg_lc iana_sess_alist, false)
+    if rfc2069 then
+      `MD5, true
+    else
+      try (List.assoc alg_lc Netsys_digests.iana_alist, true)
       with Not_found ->
-           match ptype with
-             | `SASL -> (`MD5, false)
-             | `HTTP -> raise Not_found in
+           try (List.assoc alg_lc iana_sess_alist, false)
+           with Not_found ->
+                match ptype with
+                  | `SASL -> (`MD5, false)
+                  | `HTTP -> failwith "cannot determine algorithem" in
   let r =
     { r_ptype = ptype;
       r_hash = hash;
@@ -309,7 +356,7 @@ let decode_response ptype msg_params method_name =
       r_method = method_name;
       r_digest_uri = digest_uri;
       r_utf8 = utf8;
-      r_rfc2069 = false;   (* not in the server *)
+      r_rfc2069 = rfc2069;
       r_opaque = opaque;
       r_domain = [];   (* not repeated in response *)
       r_userhash = userhash;
@@ -336,16 +383,15 @@ let validate_response ss r response =
     match r.r_authz with
       | None -> ""
       | Some authz -> verify_utf8 authz; authz in
-  let password_utf8 =
+  let creds =
     match ss.lookup user_utf8 authz with
       | None ->
           failwith "bad user"
       | Some creds ->
-           Netsys_sasl_util.extract_password creds in
-  let password = to_client r.r_utf8 password_utf8 in
-  let expected_response = compute_response r password (r.r_method ^ ":") in
+          creds in
+  let expected_response = compute_response r creds (r.r_method ^ ":") in
   if response <> expected_response then failwith "bad password";
-  password
+  creds
 
 exception Restart of string
 
@@ -355,9 +401,9 @@ let server_process_response_kv ss msg_params method_name =
       decode_response ss.sprofile.ptype msg_params method_name in
     if r.r_nc > 1 then raise(Restart r.r_nonce);
     if ss.sstate <> `Wait then raise Not_found;
-    let password = validate_response ss r response in
+    let creds = validate_response ss r response in
     (* success: *)
-    let srv_response = compute_response r password ":" in
+    let srv_response = compute_response r creds ":" in
     { ss with
       snextnc = r.r_nc + 1;
       sresponse = Some(r, response, srv_response);
@@ -390,10 +436,10 @@ let server_process_response_restart_kv ss msg_params set_stale method_name =
        || old_r.r_nc + 1 <> new_r.r_nc
        (* || old_r.r_digest_uri <> new_r.r_digest_uri *) (* CHECK *)
        || old_r.r_utf8 <> new_r.r_utf8 then raise Not_found;
-    let password = validate_response ss new_r response in
+    let creds = validate_response ss new_r response in
     (* success *)
     if set_stale then raise Exit;
-    let srv_response = compute_response new_r password ":" in
+    let srv_response = compute_response new_r creds ":" in
     ( { ss with
         snextnc = new_r.r_nc + 1;
         sresponse = Some(new_r, response, srv_response);
@@ -516,8 +562,8 @@ let client_process_final_challenge_kv cs msg_params =
       match cs.cresp with
         | None -> raise Not_found
         | Some rp ->
-            let pw = to_client rp.r_utf8 cs.cpasswd in
-            let resp = compute_response rp pw ":" in
+            let creds = [ "password", cs.cpasswd, [] ] in
+            let resp = compute_response rp creds ":" in
             if resp <> rspauth then raise Not_found;
             { cs with cstate = `OK }
     ) else
@@ -630,8 +676,8 @@ let client_emit_response_kv ?(quote=false) cs =
     | None ->
         assert false
     | Some rp ->
-        let pw = to_client rp.r_utf8 cs.cpasswd in
-        let resp = compute_response rp pw (rp.r_method ^ ":") in
+        let creds = [ "password", cs.cpasswd, [] ] in
+        let resp = compute_response rp creds (rp.r_method ^ ":") in
         let digest_uri_name =
           match cs.cprofile.ptype with
             | `SASL -> "digest-uri"
