@@ -67,6 +67,7 @@
 #include "caml/custom.h"
 #include "caml/callback.h"
 #include "caml/bigarray.h"
+#include "caml/version.h"
 
 
 #ifdef HAVE_POLL
@@ -124,8 +125,10 @@ CAMLextern unsigned char * caml_page_table[Pagetable1_size];
 
 /* Stuff from minor_gc.h */
 
+#if OCAML_VERSION < 41000
 CAMLextern char *caml_young_start;
 CAMLextern char *caml_young_end;
+#endif
 
 struct caml_ref_table {
   value **base;
@@ -136,13 +139,17 @@ struct caml_ref_table {
   asize_t size;
   asize_t reserve;
 };
+extern void caml_realloc_ref_table (struct caml_ref_table *);
+
+#if OCAML_VERSION < 41000
 CAMLextern struct caml_ref_table caml_ref_table;
+#else
+#define caml_ref_table (*(Caml_state_field(ref_table)))
+#endif
 
 #define Is_young(val) \
     ((char *)(val) < (char *)caml_young_end && \
      (char *)(val) > (char *)caml_young_start)
-
-extern void caml_realloc_ref_table (struct caml_ref_table *);
 
 /* Stuff from major_gc.h */
 
@@ -223,4 +230,3 @@ extern int caml_ba_element_size[];
 
 
 #endif
-
