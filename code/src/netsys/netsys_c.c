@@ -199,11 +199,10 @@ CAMLprim value netsys_setregid(value rgid, value egid) {
 
 CAMLprim value netsys_initgroups(value user, value gid) {
 #ifdef HAVE_INITGROUPS
-    char *user_s;
     long gid_i;
     int e;
 
-    user_s = String_val(user);
+    const char *user_s = String_val(user);
     gid_i = Long_val(gid);
 
     e = initgroups(user_s, gid_i);
@@ -273,10 +272,10 @@ CAMLprim value netsys_fdopendir(value fd)
 CAMLprim value netsys_realpath (value name)    /* POSIX.1-2001 */
 {
 #ifdef HAVE_REALPATH
-    char *name_in_s, *name_out_s;
+    char *name_out_s;
     value name_out;
 
-    name_in_s = String_val(name);
+    const char *name_in_s = String_val(name);
     name_out_s = realpath(name_in_s, NULL);   /* Note: GNU extension! */
     if (name_out_s == NULL) {
 	uerror("realpath", Nothing);
