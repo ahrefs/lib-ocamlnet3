@@ -52,7 +52,6 @@
 #include <stdio.h>
 #include <errno.h>
 
-
 #include "caml/misc.h"
 /* misc.h also includes OCaml's config.h
    All HAS_* macros come from there. All HAVE_* macros come from our own
@@ -128,8 +127,6 @@ CAMLextern unsigned char * caml_page_table[Pagetable1_size];
 #if OCAML_VERSION < 41000
 CAMLextern char *caml_young_start;
 CAMLextern char *caml_young_end;
-#endif
-
 struct caml_ref_table {
   value **base;
   value **end;
@@ -140,16 +137,17 @@ struct caml_ref_table {
   asize_t reserve;
 };
 extern void caml_realloc_ref_table (struct caml_ref_table *);
-
-#if OCAML_VERSION < 41000
-CAMLextern struct caml_ref_table caml_ref_table;
-#else
-#define caml_ref_table (*(Caml_state_field(ref_table)))
-#endif
-
 #define Is_young(val) \
     ((char *)(val) < (char *)caml_young_end && \
      (char *)(val) > (char *)caml_young_start)
+CAMLextern struct caml_ref_table caml_ref_table;
+#else
+#define CAML_NAME_SPACE
+#include <caml/minor_gc.h>
+#undef CAML_NAME_SPACE
+#define caml_ref_table (*(Caml_state_field(ref_table)))
+#endif
+
 
 /* Stuff from major_gc.h */
 
