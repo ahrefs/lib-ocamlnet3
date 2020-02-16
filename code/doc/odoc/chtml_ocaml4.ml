@@ -55,7 +55,7 @@ open Printf
 open Odoc_info
 open Module
 
-module StringSet = Odoc_html.StringSet
+module StringSet = Odoc_html.String.Set
 
 
 let word_re = Str.regexp "[ \t\r\n]+"
