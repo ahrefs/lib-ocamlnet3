@@ -1,3 +1,9 @@
+2020-02-16  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
+
+	* Release 4.1.7
+
+	* Support for OCaml-4.10
+
 2018-05-07  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
 
 	* Release 4.1.6
