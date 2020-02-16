@@ -310,7 +310,7 @@ struct
 
   let () =
     try
-      Dynlink.init ();
+     (* Dynlink.init (); *)  (* not needed since ocaml-3.11.0, gone since ocaml-4.08.0 *)
       Dynlink.allow_unsafe_modules true
     with
       Dynlink.Error(e) -> failwith(Dynlink.error_message e)
