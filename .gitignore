@@ -1,10 +1,13 @@
 *~
 *.cmi
+*.cmt
+*.cmti
 *.cmo
 *.cma
 *.cmx
 *.o
 *.cmxa
+*.cmxs
 *.a
 *.annot
 *.so
@@ -16,6 +19,8 @@
 Makefile.conf
 config.cppo
 setup.save
+
+ocamlnet.install
 
 code/src/netplex/netplex_ctrl_aux.ml
 code/src/netplex/netplex_ctrl_aux.mli
