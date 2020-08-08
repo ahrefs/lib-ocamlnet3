@@ -14,6 +14,12 @@
 
 #undef DEBUG
 
+#if OCAML_VERSION < 41100
+#define BIGARRAY_MARSHAL_ID "_bigarray"
+#else
+#define BIGARRAY_MARSHAL_ID "_bigarr02"
+#endif
+
 /**********************************************************************/
 /* Bigarray helpers                                                   */
 /**********************************************************************/
@@ -745,7 +751,7 @@ int netsys_init_value_1(struct htab *t,
     nativeint_target_ops = NULL;
     ops_ptr = target_custom_ops;
     while (ops_ptr != NULL) {
-	if (strcmp(ops_ptr->name, "_bigarray") == 0)
+	if (strcmp(ops_ptr->name, BIGARRAY_MARSHAL_ID) == 0)
 	    bigarray_target_ops = ops_ptr->ops;
 	else if (strcmp(ops_ptr->name, "_i") == 0)
 	    int32_target_ops = ops_ptr->ops;
@@ -908,7 +914,7 @@ int netsys_init_value_1(struct htab *t,
 #endif
                                     return (-2);
                                 };
-				if (strcmp(id, "_bigarray") == 0) {
+				if (strcmp(id, BIGARRAY_MARSHAL_ID) == 0) {
 				    caml_id = 'b';
 				    break;
 				}
@@ -1380,7 +1386,7 @@ value netsys_copy_value(value flags, value orig)
     /* set up the custom ops. We always set this, because we assume that
        the values in [orig] are not trustworthy
     */
-    bigarray_ops.name = "_bigarray";
+    bigarray_ops.name = BIGARRAY_MARSHAL_ID;
     bigarray_ops.ops = 
 	Custom_ops_val(alloc_bigarray_dims(CAML_BA_UINT8 | BIGARRAY_C_LAYOUT, 
 					   1, NULL, 1));
@@ -1520,7 +1526,7 @@ value netsys_is_bigarray(value v) {
 
     if (Is_block(v) && Tag_val(v) == Custom_tag) {
 	custom_ops = Custom_ops_val(v);
-        r = Val_bool(strcmp(custom_ops->identifier, "_bigarray")==0);
+        r = Val_bool(strcmp(custom_ops->identifier, BIGARRAY_MARSHAL_ID)==0);
     }
     else
         r = Val_bool(0);
