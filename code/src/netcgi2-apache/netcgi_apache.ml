@@ -252,14 +252,14 @@ object(self)
 
   method close_out () = (* Apache closes the channel itself *)
     if not closed then (
-      closed <- true;
-      try
+      (try
 	self#flush();
       with
 	| error ->
 	    Netlog.logf `Err
 	      "Netcgi_apache: Suppressed error in close_out: %s"
-	      (Netexn.to_string error);
+	      (Netexn.to_string error));
+      closed <- true;
     )
 
   (* raw_out_channel *)
