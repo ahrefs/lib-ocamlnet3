@@ -139,7 +139,7 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     sub_argv = malloc((Wosize_val(v_args) + 1) * sizeof(char *));
     if (sub_argv == NULL) MAIN_ERROR(ENOMEM, "netsys_spawn/malloc [020]");
     for (k = 0; k < Wosize_val(v_args); k++) {
-	sub_argv[k] = String_val(Field(v_args, k));
+	sub_argv[k] = Bytes_val(Field(v_args, k));
     }
     sub_argv[ Wosize_val(v_args)] = NULL;
     cleanup_sub_argv = 1;
@@ -147,7 +147,7 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     sub_env = malloc((Wosize_val(v_env) + 1) * sizeof(char *));
     if (sub_env == NULL) MAIN_ERROR(ENOMEM, "netsys_spawn/malloc [021]");
     for (k = 0; k < Wosize_val(v_env); k++) {
-	sub_env[k] = String_val(Field(v_env, k));
+	sub_env[k] = Bytes_val(Field(v_env, k));
     }
     sub_env[ Wosize_val(v_env)] = NULL;
     cleanup_sub_env = 1;
@@ -570,7 +570,7 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
     sub_argv = malloc((Wosize_val(v_args) + 1) * sizeof(char *));
     if (sub_argv == NULL) MAIN_ERROR(ENOMEM, "netsys_posix_spawn/malloc [1]");
     for (k = 0; k < Wosize_val(v_args); k++) {
-	sub_argv[k] = String_val(Field(v_args, k));
+	sub_argv[k] = Bytes_val(Field(v_args, k));
     }
     sub_argv[ Wosize_val(v_args)] = NULL;
     cleanup_sub_argv = 1;
@@ -578,7 +578,7 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
     sub_env = malloc((Wosize_val(v_env) + 1) * sizeof(char *));
     if (sub_env == NULL) MAIN_ERROR(ENOMEM, "netsys_posix_spawn/malloc [2]");
     for (k = 0; k < Wosize_val(v_env); k++) {
-	sub_env[k] = String_val(Field(v_env, k));
+	sub_env[k] = Bytes_val(Field(v_env, k));
     }
     sub_env[ Wosize_val(v_env)] = NULL;
     cleanup_sub_env = 1;

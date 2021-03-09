@@ -70,7 +70,7 @@ static void clockid_val(value c, clockid_t *out) {
 	}
     }
     else {
-	char * s;
+	const char * s;
 	s = String_val(Field(c,0));
 	memcpy(out, s, sizeof(clockid_t));
     }
@@ -296,7 +296,7 @@ CAMLprim value netsys_timer_create(value clock, value texp) {
 	code = timer_create(c, &sev, &tm);
 	if (code == -1) uerror("timer_create", Nothing);
 	v = caml_alloc_string(sizeof(timer_t));
-	memcpy(String_val(v), (char *) &tm, sizeof(timer_t));
+	memcpy(Bytes_val(v), (char *) &tm, sizeof(timer_t));
 	v_timer = caml_alloc(1, 0);
 	Store_field(v_timer, 0, v);
 	break;
