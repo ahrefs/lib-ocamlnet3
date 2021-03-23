@@ -1103,7 +1103,7 @@ fi
 ######################################################################
 # Check for gmake
 
-printf "%s" "Checking for lablgtk... "
+printf "%s" "Checking for make utility... "
 if [ -z "$MAKE" ]
 then
   if which gmake >/dev/null
