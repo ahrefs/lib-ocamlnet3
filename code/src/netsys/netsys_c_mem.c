@@ -31,7 +31,7 @@ CAMLprim value netsys_blit_memory_to_string(value memv,
 					    value lenv)
 {
     struct caml_bigarray *mem = Bigarray_val(memv);
-    char * s = String_val(sv);
+    char * s = Bytes_val(sv);
     long memoff = Long_val(memoffv);
     long soff = Long_val(soffv);
     long len = Long_val(lenv);
@@ -49,7 +49,7 @@ CAMLprim value netsys_blit_string_to_memory(value sv,
 					    value lenv)
 {
     struct caml_bigarray *mem = Bigarray_val(memv);
-    char * s = String_val(sv);
+    const char * s = String_val(sv);
     long memoff = Long_val(memoffv);
     long soff = Long_val(soffv);
     long len = Long_val(lenv);
@@ -901,10 +901,11 @@ int netsys_init_value_1(struct htab *t,
 		case Custom_tag: 
 		    {
 			struct custom_operations *custom_ops;
-			char *id;
+			const char *id;
 
 			custom_ops = Custom_ops_val(work);
 			id = custom_ops->identifier;
+
 			if (id[0] == '_') {
 			    switch (id[1]) {
 			    case 'b':
