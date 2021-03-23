@@ -1,5 +1,6 @@
 opam-version: "1.2"
 name: "ocamlnet"
+version: "4.1.9.git"
 maintainer: "vb@luminar.eu.org"
 homepage: "http://projects.camlcity.org/projects/ocamlnet.html"
 doc: ["http://projects.camlcity.org/projects/dl/ocamlnet-4.1.4/doc/html-main/index.html"]

@@ -73,7 +73,7 @@ set_defaults () {
 ocamlc=`get_path ocamlc`
 set_defaults
 
-version="4.1.9"
+version="$(sed -ne 's/^version: *"\(.*\)\.git".*/\1/p' ../opam)"
 exec_suffix=""
 path_sep=":"
 
