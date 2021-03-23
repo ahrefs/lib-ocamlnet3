@@ -54,7 +54,7 @@ let protect f arg =
          EAGAIN
     | Unix.Unix_error(Unix.EMSGSIZE, _, _) ->
          EMSGSIZE
-    | Unix.Unix_error(_, _, _) ->
+    | Unix.Unix_error(e, _, _) ->
          EPERM
     | e ->
          Netlog.logf `Crit "Exception in Nettls_gnutls_bindings: %s"

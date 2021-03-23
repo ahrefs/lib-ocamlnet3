@@ -172,7 +172,12 @@ module Make_TLS_1
             raise(Exc.TLS_error (G.gnutls_strerror_name code))
                                    
 
-    let create_config ?(algorithms="NORMAL") ?dh_params 
+    let default_algorithms = "NORMAL:-VERS-TLS1.3"
+      (* TLS1.3 is disabled because it triggers a problem in the way we
+         use GnuTLS - this still needs to be understood
+       *)
+
+    let create_config ?(algorithms=default_algorithms) ?dh_params
                       ?(verify=fun _ cert_ok name_ok -> cert_ok && name_ok)
                       ~peer_auth 
                       ~credentials () =
@@ -373,6 +378,12 @@ module Make_TLS_1
         (create_x509_credentials_1 ~system_trust ~trust ~revoke ~keys)
         ()
 
+    let deactivate_pull_timeout session =
+      G.b_set_pull_timeout_callback session
+        (fun _ ->
+           failwith "Nettls_gnutls: unexpected call of pull_timeout function (hint: this may happen if TLS1.3 is picked; it is better to disable TLS1.3 for the time being)"
+        )
+
     let create_endpoint ~role ~recv ~send ~peer_name config =
       if peer_name=None && 
          role=`Client &&
@@ -381,7 +392,10 @@ module Make_TLS_1
         failwith "TLS configuration error: authentication required, \
                   but no peer_name set";
       let f() =
-        let flags = [ (role :> G.gnutls_init_flags_flag) ] in
+        let flags = [ (role :> G.gnutls_init_flags_flag); (*`Nonblock*) ] in
+        (* `Nonblock is recommended by GnuTLS but it apparently does not work
+           properly - need to understand this. Probably required for fixing
+           TLS1.3 *)
         let session = G.gnutls_init flags in
         let ep =
           { role;
@@ -400,6 +414,7 @@ module Make_TLS_1
           n in
         G.b_set_pull_callback session recv1;
         G.b_set_push_callback session send;
+        deactivate_pull_timeout session;
 
         G.gnutls_priority_set session config.priority;
         G.gnutls_credentials_set session config.credentials.gcred;
@@ -480,6 +495,7 @@ module Make_TLS_1
           n in
         G.b_set_pull_callback session recv1;
         G.b_set_push_callback session send;
+        deactivate_pull_timeout session;
 
         G.gnutls_priority_set session config.priority;
         G.gnutls_credentials_set session config.credentials.gcred;
