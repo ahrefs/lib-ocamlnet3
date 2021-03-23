@@ -1049,7 +1049,7 @@ let filter_out_buffer ~max (p : Netchannels.io_obj_channel) d0 : out_buffer =
 	`Async_in(new Uq_transfer.pseudo_async_in_channel p, esys) in
       ( copy_e p_dev d
 	>> (function
-	      | `Done _ -> `Done ()
+              | `Done _ -> `Done ()
 	      | `Error Netchannels.Buffer_underrun -> `Done ()
 	      | `Error err -> `Error err
 	      | `Aborted -> `Aborted

@@ -1,3 +1,19 @@
+2021-03-23  Gerd Stolpmann  <gerd@gerdpro.fritz.box>
+
+	* Release 4.1.9
+
+	* Support for OCaml-4.12 (thanks to kate)
+
+	* Disable TLS-1.3 because it created connection problems
+
+	* Supporess E_GNUTLS_PREMATURE_TERMINATION errors
+
+	* Fixing build of cmxs archives (Jerome Voillon)
+
+	* Some fixes for netcgi2-apache (Eike Ritter)
+
+	* Searching gmake on BSD systems (madroach)
+
 2020-08-08  Gerd Stolpmann  <gerd@gerdbook.fritz.box>
 
 	* Release 4.1.8
