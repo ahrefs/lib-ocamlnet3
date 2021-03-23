@@ -538,7 +538,7 @@ module Make_TLS_1
               else
                 raise(Exc.TLS_error code')
         | G.Error code ->
-              let code' = G.gnutls_strerror_name code in
+            let code' = G.gnutls_strerror_name code in
             if warnings && not(G.gnutls_error_is_fatal code) then
               raise(Exc.TLS_warning code')
             else
@@ -567,7 +567,7 @@ module Make_TLS_1
 
 
     let hello ep =
-      if ep.state <> `Start && ep.state <> `Handshake && 
+      if ep.state <> `Start && ep.state <> `Handshake &&
            ep.state <> `Switching then
         unexpected_state();
       ep.state <- `Handshake;
@@ -596,7 +596,11 @@ module Make_TLS_1
           endpoint_exn
             ~warnings:true
             ep
-            (G.gnutls_bye ep.session)
+            (fun arg ->
+              try G.gnutls_bye ep.session arg;
+              with
+                | G.Error `Premature_termination -> ()
+            )
             ghow;
           ep.state <- new_state
         )
@@ -746,7 +750,10 @@ module Make_TLS_1
           endpoint_exn
             ~warnings:true
             ep
-            (G.gnutls_record_recv ep.session)
+            (fun arg ->
+              try G.gnutls_record_recv ep.session arg
+              with G.Error `Premature_termination -> 0
+            )
             buf in
         if Bigarray.Array1.dim buf > 0 && n=0 then
           ep.state <- (if ep.state = `Data_rw then `Data_w else `End);
