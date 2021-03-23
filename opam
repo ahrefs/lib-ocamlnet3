@@ -5,6 +5,7 @@ homepage: "http://projects.camlcity.org/projects/ocamlnet.html"
 doc: ["http://projects.camlcity.org/projects/dl/ocamlnet-4.1.4/doc/html-main/index.html"]
 bug-reports: "https://gitlab.com/gerdstolpmann/lib-ocamlnet3/issues"
 dev-repo: "https://gitlab.com/gerdstolpmann/lib-ocamlnet3.git"
+synopsis: "Internet protocols (http, cgi, email etc.) and helper data structures (mail messages, character sets, etc.)"
 build: [
   [
     "./build.sh"
