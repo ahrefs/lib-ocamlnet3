@@ -1101,6 +1101,34 @@ where PIC code differs from non-PIC\n    such as x86_64, hppa,..."
 fi
 
 ######################################################################
+# Check for gmake
+
+printf "%s" "Checking for lablgtk... "
+if [ -z "$MAKE" ]
+then
+  if which gmake >/dev/null
+  then
+    make=gmake
+  else
+    if which make >/dev/null
+    then
+      make=make
+    fi
+  fi
+else
+  make=$MAKE
+fi
+if $make -v |grep 'GNU Make' >/dev/null
+then
+  true
+else
+  echo "GNU Make not found"
+  echo "    please set MAKE environment variable."
+  exit 1
+fi
+
+
+######################################################################
 # cpp
 
 echo "Preprocessor for ocamlrpcgen: $cpp"
@@ -1183,6 +1211,10 @@ fi
 echo "Writing Makefile.conf"
 cat <<_EOF_ >Makefile.conf
 # Makefike.conf written by configure
+
+# GNU Make
+MAKE = $make
+
 # The Ocamlnet version
 VERSION = $version
 
