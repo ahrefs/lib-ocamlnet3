@@ -108,7 +108,7 @@ netsys_oothr_mt.cmxs: netsys_oothr_mt.cmxa
 	$(OCAMLOPT) -linkall -shared -o netsys_oothr_mt.cmxs netsys_oothr_mt.cmxa
 
 netsys_oothr_mt_init.cmxs: netsys_oothr_mt_init.cmx
-	$(OCAMLOPT) -linkall -shared -o netsys_oothr_mt_init.cmxs netsys_oothr_mt.cmx
+	$(OCAMLOPT) -linkall -shared -o netsys_oothr_mt_init.cmxs netsys_oothr_mt_init.cmx
 
 netsys_oothr_mt.p.cmxa: netsys_oothr.cmx netsys_oothr-$(MT_TYPE)
 	$(OCAMLOPT) -o netsys_oothr_mt.p.cmxa -a \
