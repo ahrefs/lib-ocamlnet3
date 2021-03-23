@@ -9,7 +9,7 @@
 
 CAMLprim value netsys_s_read_int4_64(value sv, value pv) 
 {
-    char *s;
+    const char *s;
     intnat p;
 
     s = String_val(sv);
@@ -22,7 +22,7 @@ CAMLprim value netsys_s_read_int4_64(value sv, value pv)
 
 CAMLprim value netsys_s_write_int4_64(value sv, value pv, value iv) 
 {
-    char *s;
+    const char *s;
     intnat p;
 
     s = String_val(sv);
@@ -52,7 +52,7 @@ static value netsys_alloc_string_shr(mlsize_t len)
 CAMLprim value netsys_s_read_string_array(value sv, value pv, value lv,
 					  value mv, value av)
 {
-    char *s;
+    const char *s;
     long p, l, n, k;
     unsigned int e, j, m;
     value uv;
@@ -90,7 +90,7 @@ CAMLprim value netsys_s_read_string_array(value sv, value pv, value lv,
 	if (e > m) { err=-2; break; }
 	uv = av_in_heap ? netsys_alloc_string_shr(e) : caml_alloc_string(e);
 	s = String_val(sv);           /* see above */
-	memcpy(String_val(uv), s+p, e);
+	memcpy(Bytes_val(uv), s+p, e);
 	caml_modify(&Field(av,k), uv);
 	p += e;
 	if ((e&3) != 0) p += 4-(e&3);

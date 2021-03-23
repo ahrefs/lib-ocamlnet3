@@ -8,6 +8,8 @@
 /* Linux: make all system prototypes available */
 #define _GNU_SOURCE
 
+#define CAML_INTERNALS
+
 /* POSIX: we want POSIX.1-2008 if possible */
 /* #define _XOPEN_SOURCE 700 */
 
@@ -68,6 +70,9 @@
 #include "caml/bigarray.h"
 #include "caml/version.h"
 
+#ifndef Bytes_val
+#define Bytes_val(x) String_val(x)
+#endif
 
 #ifdef HAVE_POLL
 #define CONST_POLLIN POLLIN
