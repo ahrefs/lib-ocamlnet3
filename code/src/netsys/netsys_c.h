@@ -129,7 +129,7 @@ CAMLextern unsigned char * caml_page_table[Pagetable1_size];
 
 /* Stuff from minor_gc.h */
 
-#if OCAML_VERSION < 41000
+#if !defined(OCAML_VERSION) || OCAML_VERSION < 40400
 CAMLextern char *caml_young_start;
 CAMLextern char *caml_young_end;
 struct caml_ref_table {
@@ -150,7 +150,9 @@ CAMLextern struct caml_ref_table caml_ref_table;
 #define CAML_NAME_SPACE
 #include <caml/minor_gc.h>
 #undef CAML_NAME_SPACE
+#ifdef Caml_state_field
 #define caml_ref_table (*(Caml_state_field(ref_table)))
+#endif
 #endif
 
 
