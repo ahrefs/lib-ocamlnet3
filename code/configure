@@ -1106,11 +1106,11 @@ fi
 printf "%s" "Checking for make utility... "
 if [ -z "$MAKE" ]
 then
-  if which gmake >/dev/null
+  if command -v gmake >/dev/null
   then
     make=gmake
   else
-    if which make >/dev/null
+    if command -v make >/dev/null
     then
       make=make
     fi
