@@ -219,6 +219,7 @@ type init_value_flag =
 
 type custom_ops = nativeint
 
+(*
 external netsys_init_value : 
   memory -> int -> 'a -> init_value_flag list -> nativeint -> 
   (string * custom_ops) list -> ((int*int) list) -> (int * int)
@@ -241,10 +242,12 @@ let init_value ?targetaddr ?(target_custom_ops=[]) ?(cc=[])
       ) 
       cc in
   netsys_init_value mem offset v flags taddr target_custom_ops cc
+*)
 
 external get_custom_ops : 'a -> string * custom_ops
   = "netsys_get_custom_ops"
 
+(*
 external copy_value : init_value_flag list -> 'a -> 'a
   = "netsys_copy_value"
 
@@ -255,6 +258,7 @@ external color : Obj.t -> color
 
 external set_color : Obj.t -> color -> unit
   = "netsys_set_color"
+*)
 
 external is_bigarray : Obj.t -> bool
   = "netsys_is_bigarray"
@@ -275,6 +279,7 @@ let mem_write fd mem off len =
     invalid_arg "Netsys_mem.mem_write";
   netsys_mem_write fd mem off len
 
+(*
 external netsys_mem_recv : 
   Unix.file_descr -> memory -> int -> int -> Unix.msg_flag list -> int
   = "netsys_mem_recv"
@@ -289,6 +294,7 @@ external netsys_mem_recvfrom :
 external netsys_mem_send :
   Unix.file_descr -> memory -> int -> int -> Unix.msg_flag list -> int
   = "netsys_mem_send"
+*)
 
 (*
 external netsys_mem_sendto :
@@ -300,7 +306,8 @@ external netsys_mem_sendto :
 let mem_recv fd mem off len flags =
   if len < 0 || off < 0 || len > Bigarray.Array1.dim mem - off then
     invalid_arg "Netsys_mem.mem_recv";
-  netsys_mem_recv fd mem off len flags
+(*   netsys_mem_recv fd mem off len flags *)
+  invalid_arg "mem_recv : disabled"
 
 (*
 let mem_recvfrom fd mem off len flags =
@@ -312,7 +319,8 @@ let mem_recvfrom fd mem off len flags =
 let mem_send fd mem off len flags =
   if len < 0 || off < 0 || len > Bigarray.Array1.dim mem - off then
     invalid_arg "Netsys_mem.mem_send";
-  netsys_mem_send fd mem off len flags
+(*   netsys_mem_send fd mem off len flags *)
+  invalid_arg "mem_send : disabled"
 
 (*
 let mem_sendto fd mem off len flags addr =

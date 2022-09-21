@@ -4,6 +4,8 @@
 #include "netsys_c_htab.h"
 #include "netsys_c_queue.h"
 
+#define Bigarray_val Caml_ba_array_val
+
 #ifdef HAVE_MMAP
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -30,7 +32,7 @@ CAMLprim value netsys_blit_memory_to_string(value memv,
 					    value soffv,
 					    value lenv)
 {
-    struct caml_bigarray *mem = Bigarray_val(memv);
+    struct caml_ba_array *mem = Bigarray_val(memv);
     char * s = Bytes_val(sv);
     long memoff = Long_val(memoffv);
     long soff = Long_val(soffv);
@@ -48,7 +50,7 @@ CAMLprim value netsys_blit_string_to_memory(value sv,
 					    value memoffv,
 					    value lenv)
 {
-    struct caml_bigarray *mem = Bigarray_val(memv);
+    struct caml_ba_array *mem = Bigarray_val(memv);
     const char * s = String_val(sv);
     long memoff = Long_val(memoffv);
     long soff = Long_val(soffv);
@@ -62,7 +64,7 @@ CAMLprim value netsys_blit_string_to_memory(value sv,
 
 CAMLprim value netsys_memory_address(value memv)
 {
-    struct caml_bigarray *mem = Bigarray_val(memv);
+    struct caml_ba_array *mem = Bigarray_val(memv);
     return caml_copy_nativeint((intnat) mem->data);
 }
 
@@ -72,7 +74,7 @@ CAMLprim value netsys_getpagesize(value dummy)
 #ifdef HAVE_SYSCONF
     return Val_long(sysconf(_SC_PAGESIZE));
 #else
-    invalid_argument("Netsys_mem.getpagesize not available");
+    caml_invalid_argument("Netsys_mem.getpagesize not available");
 #endif
 }
 
@@ -83,7 +85,7 @@ CAMLprim value netsys_grab(value addrv, value lenv)
 
     start = (void *) Nativeint_val(addrv);
     length = Long_val(lenv);
-    return alloc_bigarray_dims(BIGARRAY_C_LAYOUT | BIGARRAY_UINT8,
+    return caml_ba_alloc_dims(CAML_BA_C_LAYOUT | CAML_BA_UINT8,
 			       1, start, length);
 }
 
@@ -109,15 +111,15 @@ CAMLprim value netsys_alloc_memory_pages(value addrv, value pv, value execv)
 
     data = mmap(start, length, flags, 
 		MAP_PRIVATE | MAP_ANON, (-1), 0);
-    if (data == (void *) -1) uerror("mmap", Nothing);
+    if (data == (void *) -1) caml_uerror("mmap", Nothing);
 
-    r = alloc_bigarray_dims(BIGARRAY_C_LAYOUT | BIGARRAY_UINT8 | 
-			    BIGARRAY_MAPPED_FILE,
+    r = caml_ba_alloc_dims(CAML_BA_C_LAYOUT | CAML_BA_UINT8 | 
+			    CAML_BA_MAPPED_FILE,
 			    1, data, length);
 
     return r;
 #else
-    invalid_argument("Netsys_mem.alloc_memory_pages not available");
+    caml_invalid_argument("Netsys_mem.alloc_memory_pages not available");
 #endif
 }
 
@@ -125,7 +127,7 @@ CAMLprim value netsys_alloc_memory_pages(value addrv, value pv, value execv)
 CAMLprim value netsys_zero_pages(value memv, value offsv, value lenv)
 {
 #if defined(HAVE_MMAP) && defined(HAVE_SYSCONF) && defined(MAP_ANON) && defined (MAP_FIXED)
-    struct caml_bigarray *mem = Bigarray_val(memv);
+    struct caml_ba_array *mem = Bigarray_val(memv);
     long offs = Long_val(offsv);
     long len = Long_val(lenv);
     long pgsize = sysconf(_SC_PAGESIZE);
@@ -137,17 +139,17 @@ CAMLprim value netsys_zero_pages(value memv, value offsv, value lenv)
 	    data2 = mmap(data, len, PROT_READ|PROT_WRITE, 
 			 MAP_PRIVATE | MAP_ANON | MAP_FIXED,
 			 (-1), 0);
-	    if (data2 == (void *) -1) uerror("mmap", Nothing);
+	    if (data2 == (void *) -1) caml_uerror("mmap", Nothing);
 	    if (((void *) data) != data2)
-		failwith("Netsys_mem.zero_pages assertion failed");
+		caml_failwith("Netsys_mem.zero_pages assertion failed");
 	}
     }
     else
-	invalid_argument("Netsys_mem.zero_pages only for whole pages");
+	caml_invalid_argument("Netsys_mem.zero_pages only for whole pages");
 
     return Val_unit;
 #else
-    invalid_argument("Netsys_mem.zero_pages not available");
+    caml_invalid_argument("Netsys_mem.zero_pages not available");
 #endif
 }
 
@@ -162,14 +164,14 @@ CAMLprim value netsys_alloc_aligned_memory(value alignv, value pv)
     value r;
 
     e = posix_memalign(&addr, align, size);
-    if (e != 0) unix_error(e, "posix_memalign", Nothing);
+    if (e != 0) caml_unix_error(e, "posix_memalign", Nothing);
 
-    r = alloc_bigarray_dims(BIGARRAY_C_LAYOUT | BIGARRAY_UINT8 | 
-			    BIGARRAY_MANAGED,
+    r = caml_ba_alloc_dims(CAML_BA_C_LAYOUT | CAML_BA_UINT8 | 
+			    CAML_BA_MANAGED,
 			    1, addr, size);
     return r;
 #else
-    invalid_argument("Netsys_mem.alloc_aligned_memory not available");
+    caml_invalid_argument("Netsys_mem.alloc_aligned_memory not available");
 #endif
 }
 
@@ -197,7 +199,7 @@ CAMLprim value netsys_map_file(value fdv,
     fd = Int_val(fdv);
     pos0 = Int64_val(posv);
     if (((int64_t) ((off_t) pos0)) != pos0)
-	failwith("Netsys_mem: large files not supported on this OS");
+	caml_failwith("Netsys_mem: large files not supported on this OS");
     pos = pos0;
     addr = (void *) Nativeint_val(addrv);
     if (addr == 0) addr = NULL;
@@ -206,36 +208,36 @@ CAMLprim value netsys_map_file(value fdv,
 
     pagesize = sysconf(_SC_PAGESIZE);
 
-    if (fstat(fd, &st) == -1) uerror("fstat", Nothing);
+    if (fstat(fd, &st) == -1) caml_uerror("fstat", Nothing);
     eofpos = st.st_size;
     
     if (size == -1) {
 	if (eofpos < pos) 
-	    failwith("Netsys_mem: cannot mmap - file position exceeds file size");
+	    caml_failwith("Netsys_mem: cannot mmap - file position exceeds file size");
 	basize0 = eofpos - pos;
 	if (((off_t) ((uintnat) basize0)) != basize0)
-	    failwith("Netsys_mem: cannot mmap - file too large");
+	    caml_failwith("Netsys_mem: cannot mmap - file too large");
 	basize = (uintnat) basize0;
     }
     else {
 	if (size < 0)
-	    invalid_argument("netsys_map_file");
+	    caml_invalid_argument("netsys_map_file");
 	if (eofpos - pos < size) {
 	    if (ftruncate(fd, pos + size) == -1)
-		uerror("ftruncate", Nothing);
+		caml_uerror("ftruncate", Nothing);
 	}
 	basize = size;
     }
     delta = (uintnat) (pos % pagesize);
     eff_addr = mmap(addr, basize + delta, PROT_READ | PROT_WRITE,
 		    shared, fd, pos - delta);
-    if (eff_addr == (void*) MAP_FAILED) uerror("mmap", Nothing);
+    if (eff_addr == (void*) MAP_FAILED) caml_uerror("mmap", Nothing);
     eff_addr = (void *) ((uintnat) eff_addr + delta);
 
-    return alloc_bigarray_dims(BIGARRAY_UINT8 | BIGARRAY_C_LAYOUT | 
-			       BIGARRAY_MAPPED_FILE, 1, eff_addr, basize);
+    return caml_ba_alloc_dims(CAML_BA_UINT8 | CAML_BA_C_LAYOUT | 
+			       CAML_BA_MAPPED_FILE, 1, eff_addr, basize);
 #else
-    invalid_argument("Netsys_mem.memory_map_file not available");
+    caml_invalid_argument("Netsys_mem.memory_map_file not available");
 #endif
 }
 
@@ -254,20 +256,20 @@ static void ba_unmap_file(void * addr, uintnat len)
 
 CAMLprim value netsys_memory_unmap_file(value memv) 
 {
-    struct caml_bigarray *b = Bigarray_val(memv);
-    if ((b->flags & BIGARRAY_MANAGED_MASK) == BIGARRAY_MAPPED_FILE) {
+    struct caml_ba_array *b = Bigarray_val(memv);
+    if ((b->flags & CAML_BA_MANAGED_MASK) == CAML_BA_MAPPED_FILE) {
 	if (b->proxy == NULL) {
 	    ba_unmap_file(b->data, b->dim[0]);
 	    b->data = NULL;
 	    b->flags = 
-		(b->flags & ~BIGARRAY_MANAGED_MASK) | BIGARRAY_EXTERNAL;
+		(b->flags & ~CAML_BA_MANAGED_MASK) | CAML_BA_EXTERNAL;
 	}
 	else if (b->proxy->refcount == 1) {
 	    ba_unmap_file(b->proxy->data, b->dim[0]);
 	    b->proxy->data = NULL;
 	    b->data = NULL;
 	    b->flags = 
-		(b->flags & ~BIGARRAY_MANAGED_MASK) | BIGARRAY_EXTERNAL;
+		(b->flags & ~CAML_BA_MANAGED_MASK) | CAML_BA_EXTERNAL;
 	}
     }
     return Val_unit;
@@ -278,8 +280,8 @@ extern value caml_ba_reshape(value bv, value dimv);
 
 CAMLprim value netsys_reshape(value bv)
 {
-    struct caml_bigarray *b;
-    struct caml_bigarray *mem;
+    struct caml_ba_array *b;
+    struct caml_ba_array *mem;
     uintnat size;
     int i,k;
     CAMLparam1(bv);
@@ -291,7 +293,7 @@ CAMLprim value netsys_reshape(value bv)
        to call caml_ba_reshape, and to fix the returned bigarray descriptor
        afterward.
     */
-    dimv = alloc(b->num_dims,0);
+    dimv = caml_alloc(b->num_dims,0);
     for (k=0; k < b->num_dims; k++) {
 	Store_field(dimv, k, Val_long(b->dim[k]));
     };
@@ -347,6 +349,7 @@ CAMLprim value netsys_hdr_address(value objv)
     return caml_copy_nativeint((intnat) Hp_val(objv));
 }
 
+/*
 CAMLprim value netsys_color(value objv)
 {
     return Val_int(Color_hd(Hd_val(objv)) >> 8);
@@ -359,6 +362,7 @@ CAMLprim value netsys_set_color(value objv, value colv)
     Hd_val(objv) = Whitehd_hd(Hd_val(objv)) | (col << 8);
     return Val_unit;
 }
+*/
 
 /**********************************************************************/
 /* I/O with Bigarrays                                                 */
@@ -379,16 +383,16 @@ CAMLprim value netsys_mem_read(value fdv, value memv, value offv, value lenv)
 #ifdef _WIN32
     if (Descr_kind_val(fdv) == KIND_SOCKET) {
 	SOCKET h = Socket_val(fdv);
-	enter_blocking_section();
+	caml_enter_blocking_section();
 	ret = recv(h, data, numbytes, 0);
 	if (ret == SOCKET_ERROR) err = WSAGetLastError();
-	leave_blocking_section();
+	caml_leave_blocking_section();
 	ret = n;
     } else {
 	HANDLE h = Handle_val(fdv);
-	enter_blocking_section();
+	caml_enter_blocking_section();
 	if (! ReadFile(h, data, numbytes, &n, NULL)) err = GetLastError();
-	leave_blocking_section();
+	caml_leave_blocking_section();
 	ret = n;
     }
     if (err) {
@@ -396,11 +400,11 @@ CAMLprim value netsys_mem_read(value fdv, value memv, value offv, value lenv)
 	ret = -1;
     }
 #else
-    enter_blocking_section();
+    caml_enter_blocking_section();
     ret = read(Int_val(fdv), data, (int) numbytes);
-    leave_blocking_section();   /* keeps errno intact */
+    caml_leave_blocking_section();   /* keeps errno intact */
 #endif
-    if (ret == -1) uerror("mem_read", Nothing);
+    if (ret == -1) caml_uerror("mem_read", Nothing);
     return Val_long(ret);
 }
 
@@ -420,16 +424,16 @@ CAMLprim value netsys_mem_write(value fdv, value memv, value offv, value lenv)
 #ifdef _WIN32
     if (Descr_kind_val(fdv) == KIND_SOCKET) {
 	SOCKET h = Socket_val(fdv);
-	enter_blocking_section();
+	caml_enter_blocking_section();
 	ret = send(h, data, numbytes, 0);
 	if (ret == SOCKET_ERROR) err = WSAGetLastError();
-	leave_blocking_section();
+	caml_leave_blocking_section();
 	ret = n;
     } else {
 	HANDLE h = Handle_val(fdv);
-	enter_blocking_section();
+	caml_enter_blocking_section();
 	if (! WriteFile(h, data, numbytes, &n, NULL)) err = GetLastError();
-	leave_blocking_section();
+	caml_leave_blocking_section();
 	ret = n;
     }
     if (err) {
@@ -437,11 +441,11 @@ CAMLprim value netsys_mem_write(value fdv, value memv, value offv, value lenv)
 	ret = -1;
     }
 #else
-    enter_blocking_section();
+    caml_enter_blocking_section();
     ret = write(Int_val(fdv), data, (int) numbytes);
-    leave_blocking_section();
+    caml_leave_blocking_section();
 #endif
-    if (ret == -1) uerror("mem_write", Nothing);
+    if (ret == -1) caml_uerror("mem_write", Nothing);
     return Val_long(ret);
 }
 
@@ -467,7 +471,7 @@ CAMLprim value netsys_mem_recv(value fdv, value memv, value offv, value lenv,
 
     numbytes = Long_val(lenv);
     data = ((char *) (Bigarray_val(memv)->data)) + Long_val(offv);
-    flags = convert_flag_list(flagsv, msg_flag_table);
+    flags = caml_convert_flag_list(flagsv, msg_flag_table);
 
 #ifdef _WIN32
     s = Socket_val(fdv);
@@ -475,22 +479,22 @@ CAMLprim value netsys_mem_recv(value fdv, value memv, value offv, value lenv,
     s = Int_val(fdv);
 #endif
 
-    enter_blocking_section();
+    caml_enter_blocking_section();
     ret = recv(s, data, (int) numbytes, flags);
 
 #ifdef _WIN32
     if (ret == -1) err = WSAGetLastError();
-    leave_blocking_section();
+    caml_leave_blocking_section();
     if (ret == -1) win32_maperr(err);
 #else
-    leave_blocking_section();
+    caml_leave_blocking_section();
 #endif
 
-    if (ret == -1) uerror("mem_recv", Nothing);
+    if (ret == -1) caml_uerror("mem_recv", Nothing);
     return Val_long(ret);
 }
 
-
+/*
 CAMLprim value netsys_mem_send(value fdv, value memv, value offv, value lenv,
 			       value flagsv)
 {
@@ -507,7 +511,7 @@ CAMLprim value netsys_mem_send(value fdv, value memv, value offv, value lenv,
 
     numbytes = Long_val(lenv);
     data = ((char *) (Bigarray_val(memv)->data)) + Long_val(offv);
-    flags = convert_flag_list(flagsv, msg_flag_table);
+    flags = cam_caml_convert_flag_list(flagsv, msg_flag_table);
 
 #ifdef _WIN32
     s = Socket_val(fdv);
@@ -515,20 +519,21 @@ CAMLprim value netsys_mem_send(value fdv, value memv, value offv, value lenv,
     s = Int_val(fdv);
 #endif
 
-    enter_blocking_section();
+    caml_enter_blocking_section();
     ret = send(s, data, (int) numbytes, flags);
 
 #ifdef _WIN32
     if (ret == -1) err = WSAGetLastError();
-    leave_blocking_section();
+    caml_leave_blocking_section();
     if (ret == -1) win32_maperr(err);
 #else
-    leave_blocking_section();
+    caml_leave_blocking_section();
 #endif
 
-    if (ret == -1) uerror("mem_send", Nothing);
+    if (ret == -1) caml_uerror("mem_send", Nothing);
     return Val_long(ret);
 }
+*/
 
 
 /**********************************************************************/
@@ -537,44 +542,44 @@ CAMLprim value netsys_mem_send(value fdv, value memv, value offv, value lenv,
 
 CAMLprim value netsys_as_value(value memv, value offv) 
 {
-    struct caml_bigarray *b = Bigarray_val(memv);
+    struct caml_ba_array *b = Bigarray_val(memv);
     return (value) (b->data + Long_val(offv));
 }
 
 CAMLprim value netsys_value_area_add(value memv) 
 {
 #ifdef FANCY_PAGE_TABLES
-    struct caml_bigarray *b = Bigarray_val(memv);
+    struct caml_ba_array *b = Bigarray_val(memv);
     int code;
     code = caml_page_table_add(In_static_data,
 			       b->data,
 			       b->data + b->dim[0]);
     if (code != 0) 
-	failwith("Netsys_mem.value_area: error");
+	caml_failwith("Netsys_mem.value_area: error");
     return Val_unit;
 #else
-    invalid_argument("Netsys_mem.value_area");
+    caml_invalid_argument("Netsys_mem.value_area");
 #endif
 }
 
 CAMLprim value netsys_value_area_remove(value memv) 
 {
 #ifdef FANCY_PAGE_TABLES
-    struct caml_bigarray *b = Bigarray_val(memv);
+    struct caml_ba_array *b = Bigarray_val(memv);
     caml_page_table_remove(In_static_data,
                            b->data,
                            b->data + b->dim[0]);
     /* Silently ignore errors... */
     return Val_unit;
 #else
-    invalid_argument("Netsys_mem.value_area");
+    caml_invalid_argument("Netsys_mem.value_area");
 #endif
 }
 
 CAMLprim value netsys_init_header(value memv, value offv, value tagv,
 				  value sizev)
 {
-    struct caml_bigarray *b = Bigarray_val(memv);
+    struct caml_ba_array *b = Bigarray_val(memv);
     intnat off = Long_val(offv);
     intnat size = Long_val(sizev);
     int tag = Int_val(tagv);
@@ -582,10 +587,10 @@ CAMLprim value netsys_init_header(value memv, value offv, value tagv,
 
 #ifdef ARCH_SIXTYFOUR
     if (off % 8 != 0)
-	invalid_argument("Netsys_mem.init_header");
+	caml_invalid_argument("Netsys_mem.init_header");
 #else
     if (off % 4 != 0)
-	invalid_argument("Netsys_mem.init_header");
+	caml_invalid_argument("Netsys_mem.init_header");
 #endif
 
     m = (value *) (((char *) b->data) + off);
@@ -619,7 +624,7 @@ CAMLprim value netsys_cmp_string(value s1, value s2)
 
 CAMLprim value netsys_init_string(value memv, value offv, value lenv) 
 {
-    struct caml_bigarray *b = Bigarray_val(memv);
+    struct caml_ba_array *b = Bigarray_val(memv);
     intnat off = Long_val(offv);
     intnat len = Long_val(lenv);
     value *m;
@@ -629,10 +634,10 @@ CAMLprim value netsys_init_string(value memv, value offv, value lenv)
 
 #ifdef ARCH_SIXTYFOUR
     if (off % 8 != 0)
-	invalid_argument("Netsys_mem.init_string");
+	caml_invalid_argument("Netsys_mem.init_string");
 #else
     if (off % 4 != 0)
-	invalid_argument("Netsys_mem.init_string");
+	caml_invalid_argument("Netsys_mem.init_string");
 #endif
 
     m = (value *) (((char *) b->data) + off);
@@ -671,6 +676,7 @@ extern uintnat caml_allocated_words;
      2 = copy them to buffer memory
 */
 
+#if 0
 int netsys_init_value_1(struct htab *t,
 			struct nqueue *q,
 			char *dest,
@@ -1035,7 +1041,7 @@ int netsys_init_value_1(struct htab *t,
 			dest_cur += size_aligned;
 		    } else if (!simulation) {
 			data_header = NULL;
-			data_copy = stat_alloc(size_aligned);
+			data_copy = caml_stat_alloc(size_aligned);
 		    };
 
 		    if (!simulation) {
@@ -1134,6 +1140,7 @@ int netsys_init_value_1(struct htab *t,
 
     return 0;
 }
+#endif
 
 
 static int init_value_flags[] = { 1, 2, 4, 8, 16, 32 };
@@ -1198,6 +1205,7 @@ static void unprep_stat_queue(void)
 	netsys_queue_free(stat_queue);
 }
 
+#if 0
 
 value netsys_init_value(value memv, 
 			value offv, 
@@ -1254,8 +1262,8 @@ value netsys_init_value(value memv,
 	old_ops = ops;
 	pair = Field(target_custom_ops,0);
 	ops = (struct named_custom_ops*) 
-	          stat_alloc(sizeof(struct named_custom_ops));
-	ops->name = stat_alloc(caml_string_length(Field(pair,0))+1);
+	          caml_stat_alloc(sizeof(struct named_custom_ops));
+	ops->name = caml_stat_alloc(caml_string_length(Field(pair,0))+1);
 	strcmp(ops->name, String_val(Field(pair,0)));
 	ops->ops = (void *) Nativeint_val(Field(pair,1));
 	ops->next = old_ops;
@@ -1287,8 +1295,8 @@ value netsys_init_value(value memv,
 
     while (ops != NULL) {
 	next_ops = ops->next;
-	stat_free(ops->name);
-	stat_free(ops);
+	caml_stat_free(ops->name);
+	caml_stat_free(ops);
 	ops = next_ops;
     };
     
@@ -1304,16 +1312,16 @@ value netsys_init_value(value memv,
 
     switch(code) {
     case (-1):
-	unix_error(errno, "netsys_init_value", Nothing);
+	caml_unix_error(errno, "netsys_init_value", Nothing);
     case (-2):
 #ifdef DEBUG
         fprintf(stderr, "Lib err\n");
 #endif
-	failwith("Netsys_mem.init_value: Library error");
+	caml_failwith("Netsys_mem.init_value: Library error");
     case (-4):
 	caml_raise_constant(*caml_named_value("Netsys_mem.Out_of_space"));
     default:
-	failwith("Netsys_mem.init_value: Unknown error");
+	caml_failwith("Netsys_mem.init_value: Unknown error");
     }
 }
 
@@ -1389,7 +1397,7 @@ value netsys_copy_value(value flags, value orig)
     */
     bigarray_ops.name = BIGARRAY_MARSHAL_ID;
     bigarray_ops.ops = 
-	Custom_ops_val(alloc_bigarray_dims(CAML_BA_UINT8 | BIGARRAY_C_LAYOUT, 
+	Custom_ops_val(caml_ba_alloc_dims(CAML_BA_UINT8 | BIGARRAY_C_LAYOUT, 
 					   1, NULL, 1));
     bigarray_ops.next = &int32_ops;
 
@@ -1398,7 +1406,7 @@ value netsys_copy_value(value flags, value orig)
     int32_ops.next = &int64_ops;
 
     int64_ops.name = "_j";
-    int64_ops.ops = Custom_ops_val(caml_copy_int64(0));
+    int64_ops.ops = Custom_ops_val(caml_caml_copy_int64(0));
     int64_ops.next = &nativeint_ops;
 
     nativeint_ops.name = "_n";
@@ -1490,15 +1498,16 @@ value netsys_copy_value(value flags, value orig)
 
     switch(code) {
     case (-1):
-	unix_error(errno, "netsys_copy_value", Nothing);
+	caml_unix_error(errno, "netsys_copy_value", Nothing);
     case (-2):
-	failwith("Netsys_mem.copy_value: Library error");
+	caml_failwith("Netsys_mem.copy_value: Library error");
     case (-4):
 	caml_raise_constant(*caml_named_value("Netsys_mem.Out_of_space"));
     default:
-	failwith("Netsys_mem.copy_value: Unknown error");
+	caml_failwith("Netsys_mem.copy_value: Unknown error");
     }
 }
+#endif
 
 
 value netsys_get_custom_ops (value v) 
@@ -1509,12 +1518,12 @@ value netsys_get_custom_ops (value v)
 
     if (Is_block(v) && Tag_val(v) == Custom_tag) {
 	custom_ops = Custom_ops_val(v);
-	r = alloc_small(2,0);
+	r = caml_alloc_small(2,0);
 	Field(r,0) = caml_copy_string(custom_ops->identifier);
 	Field(r,1) = caml_copy_nativeint((intnat) custom_ops);
     }
     else 
-	invalid_argument("Netsys_mem.get_custom_ops");
+	caml_invalid_argument("Netsys_mem.get_custom_ops");
 
     CAMLreturn(r);
 }

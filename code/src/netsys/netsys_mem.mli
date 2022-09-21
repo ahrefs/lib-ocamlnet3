@@ -309,6 +309,7 @@ val init_float_array_bytelen : int -> int
 
 type custom_ops = nativeint
 
+(*
 type init_value_flag = 
   | Copy_bigarray
   | Copy_custom_int
@@ -322,6 +323,7 @@ val init_value :
       ?target_custom_ops:(string * custom_ops) list ->
       ?cc:(nativeint * nativeint) list ->
       memory -> int -> 'a -> init_value_flag list -> (int * int)
+*)
   (** [let voffset, bytelen = init_value mem offset v flags]:
       Initializes the memory at [offset] and following bytes as
       copy of the boxed value [v]. 
@@ -393,7 +395,7 @@ val init_value :
 val get_custom_ops : 'a -> (string * custom_ops)
   (** Returns custom ops for a sample value (or [Invalid_argument]) *)
 
-val copy_value : init_value_flag list -> 'a -> 'a
+(* val copy_value : init_value_flag list -> 'a -> 'a *)
   (** [copy_value flags v]: Creates a deep copy of [v] and returns it.
       The copy is allocated in the normal Ocaml heap.
 
@@ -410,6 +412,7 @@ val copy_value : init_value_flag list -> 'a -> 'a
       Cyclic input values are supported. [Copy_simulate] is ignored.
    *)
 
+(*
 type color = White | Gray | Blue | Black
     (** GC colors *)
 
@@ -418,6 +421,7 @@ val color : Obj.t -> color
 
 val set_color : Obj.t -> color -> unit
   (** Set the GC color *)
+*)
 
 val is_bigarray : Obj.t -> bool
   (** Checks whether the objects ia actually a bigarray *)

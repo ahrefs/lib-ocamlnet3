@@ -33,7 +33,7 @@ static int socket_domain(int fd) {
 
     l = sizeof(addr);
     if (getsockname(fd, &addr.s_gen, &l) == -1) 
-        uerror("getsockname", Nothing);
+        caml_uerror("getsockname", Nothing);
 
     switch (addr.s_gen.sa_family) {
     case AF_INET:
@@ -43,7 +43,7 @@ static int socket_domain(int fd) {
         return PF_INET6;
 #endif
     default:
-	invalid_argument("Not an Internet socket");
+	caml_invalid_argument("Not an Internet socket");
     }
 
     return 0;
@@ -77,11 +77,11 @@ CAMLprim value netsys_mcast_set_loop(value fd, value flag) {
 #endif
 #endif
     default:
-	invalid_argument("Netsys.mcast_set_loop");
+	caml_invalid_argument("Netsys.mcast_set_loop");
     };
 
     if (r == -1)
-        uerror("setsockopt",Nothing);
+        caml_uerror("setsockopt",Nothing);
 
     return Val_unit;
 }
@@ -93,7 +93,7 @@ CAMLprim value netsys_mcast_set_ttl(value fd, value ttl) {
 
 #ifdef _WIN32
     if (Descr_kind_val(fd) != KIND_SOCKET)
-	invalid_argument("Netsys.mcast_set_ttl");
+	caml_invalid_argument("Netsys.mcast_set_ttl");
     fd_sock = Socket_val(fd);
 #else
     fd_sock = Int_val(fd);
@@ -123,11 +123,11 @@ CAMLprim value netsys_mcast_set_ttl(value fd, value ttl) {
 #endif
 #endif
     default:
-	invalid_argument("Netsys.mcast_set_ttl");
+	caml_invalid_argument("Netsys.mcast_set_ttl");
     };
 
     if (r == -1)
-        uerror("setsockopt",Nothing);
+        caml_uerror("setsockopt",Nothing);
 
     return Val_unit;
 }
@@ -141,7 +141,7 @@ CAMLprim value netsys_mcast_add_membership(value fd,
 
 #ifdef _WIN32
     if (Descr_kind_val(fd) != KIND_SOCKET)
-	invalid_argument("Netsys.mcast_add_membership");
+	caml_invalid_argument("Netsys.mcast_add_membership");
     fd_sock = Socket_val(fd);
 #else
     fd_sock = Int_val(fd);
@@ -154,8 +154,8 @@ CAMLprim value netsys_mcast_add_membership(value fd,
 #ifdef IP_ADD_MEMBERSHIP
     case PF_INET: {
         struct ip_mreq mreq;
-        if (string_length(group_addr) != 4 || string_length(if_addr) != 4 )
-            invalid_argument("Netsys.mcast_add_membership: Not an IPV4 address");
+        if (caml_string_length(group_addr) != 4 || caml_string_length(if_addr) != 4 )
+            caml_invalid_argument("Netsys.mcast_add_membership: Not an IPV4 address");
         memcpy(&mreq.imr_multiaddr,
                &GET_INET_ADDR(group_addr),
                4);
@@ -173,8 +173,8 @@ CAMLprim value netsys_mcast_add_membership(value fd,
 #ifdef IPV6_ADD_MEMBERSHIP
     case PF_INET6: {
         struct ipv6_mreq mreq;
-        if (string_length(group_addr) != 16 || string_length(if_addr) != 16 )
-            invalid_argument("Netsys.mcast_add_membership: Not an IPV6 address");
+        if (caml_string_length(group_addr) != 16 || caml_string_length(if_addr) != 16 )
+            caml_invalid_argument("Netsys.mcast_add_membership: Not an IPV6 address");
         memcpy(&mreq.ipv6mr_multiaddr,
                &GET_INET6_ADDR(group_addr),
                16);
@@ -193,10 +193,10 @@ CAMLprim value netsys_mcast_add_membership(value fd,
 #endif
 #endif
     default:
-	invalid_argument("Netsys.mcast_add_membership");
+	caml_invalid_argument("Netsys.mcast_add_membership");
     };
     if (r == -1)
-        uerror("setsockopt",Nothing);
+        caml_uerror("setsockopt",Nothing);
 
     return Val_unit;
 }
@@ -210,7 +210,7 @@ CAMLprim value netsys_mcast_drop_membership(value fd,
 
 #ifdef _WIN32
     if (Descr_kind_val(fd) != KIND_SOCKET)
-	invalid_argument("Netsys.mcast_drop_membership");
+	caml_invalid_argument("Netsys.mcast_drop_membership");
     fd_sock = Socket_val(fd);
 #else
     fd_sock = Int_val(fd);
@@ -223,8 +223,8 @@ CAMLprim value netsys_mcast_drop_membership(value fd,
 #ifdef IP_DROP_MEMBERSHIP
     case PF_INET: {
         struct ip_mreq mreq;
-        if (string_length(group_addr) != 4 || string_length(if_addr) != 4 )
-            invalid_argument("Netsys.mcast_drop_membership: Not an IPV4 address");
+        if (caml_string_length(group_addr) != 4 || caml_string_length(if_addr) != 4 )
+            caml_invalid_argument("Netsys.mcast_drop_membership: Not an IPV4 address");
         memcpy(&mreq.imr_multiaddr,
                &GET_INET_ADDR(group_addr),
                4);
@@ -242,8 +242,8 @@ CAMLprim value netsys_mcast_drop_membership(value fd,
 #ifdef IPV6_DROP_MEMBERSHIP
     case PF_INET6: {
         struct ipv6_mreq mreq;
-        if (string_length(group_addr) != 16 || string_length(if_addr) != 16 )
-            invalid_argument("Netsys.mcast_drop_membership: Not an IPV6 address");
+        if (caml_string_length(group_addr) != 16 || caml_string_length(if_addr) != 16 )
+            caml_invalid_argument("Netsys.mcast_drop_membership: Not an IPV6 address");
         memcpy(&mreq.ipv6mr_multiaddr,
                &GET_INET6_ADDR(group_addr),
                16);
@@ -262,11 +262,11 @@ CAMLprim value netsys_mcast_drop_membership(value fd,
 #endif
 #endif
     default:
-	invalid_argument("Netsys.mcast_drop_membership");
+	caml_invalid_argument("Netsys.mcast_drop_membership");
     };
 
     if (r == -1)
-        uerror("setsockopt",Nothing);
+        caml_uerror("setsockopt",Nothing);
 
     return Val_unit;
 }

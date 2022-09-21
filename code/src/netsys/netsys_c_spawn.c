@@ -25,8 +25,8 @@ typedef union {
 } marshalled_error;
 
 
-#define MAIN_ERROR(e,f) { uerror_errno = e; uerror_function = f; goto main_exit; }
-#define SUB_ERROR(e,f) { uerror_errno = e; uerror_function = f; goto sub_error; }
+#define MAIN_ERROR(e,f) { caml_uerror_errno = e; caml_uerror_function = f; goto main_exit; }
+#define SUB_ERROR(e,f) { caml_uerror_errno = e; caml_uerror_function = f; goto sub_error; }
 
 
 
@@ -44,8 +44,8 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
 				value v_cmd,
 				value v_args) {
 #if defined(HAVE_FORK_EXEC) && defined(HAVE_POSIX_SIGNALS)
-    int   uerror_errno;
-    char *uerror_function;
+    int   caml_uerror_errno;
+    char *caml_uerror_function;
     value return_value;
 
     int code;
@@ -88,7 +88,7 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     int j, k, nofile;
     int fd1, fd2;
 
-    uerror_errno = 0;
+    caml_uerror_errno = 0;
     cleanup_mask = 0;
     cleanup_pipe0 = 0;
     cleanup_pipe1 = 0;
@@ -99,7 +99,7 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     sub_argv = NULL;
     sub_env = NULL;
     return_value = Val_int(0);
-    uerror_function = "<uninit>";
+    caml_uerror_function = "<uninit>";
 
     nofile = sysconf(_SC_OPEN_MAX);
 
@@ -112,19 +112,19 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
        In the calling process, the mask is reset below at [exit].
     */
     code = sigfillset(&mask);
-    if (code == -1) unix_error(EINVAL, "netsys_spawn/sigfillset [000]", 
+    if (code == -1) caml_unix_error(EINVAL, "netsys_spawn/sigfillset [000]", 
 			       Nothing);
 #ifdef HAVE_PTHREAD
     code = pthread_sigmask(SIG_SETMASK, &mask, &save_mask);
-    if (code != 0) unix_error(code, "netsys_spawn/pthread_sigmask [001]", 
+    if (code != 0) caml_unix_error(code, "netsys_spawn/pthread_sigmask [001]", 
 			      Nothing);
 #else
     code = sigprocmask(SIG_SETMASK, &mask, &save_mask);
-    if (code == -1) uerror("netsys_spawn/sigprocmask [002]", Nothing);
+    if (code == -1) caml_uerror("netsys_spawn/sigprocmask [002]", Nothing);
 #endif
     memcpy(&spawn_mask, &save_mask, sizeof(sigset_t));
 
-    /* From now on, we don't jump out with uerror, but leave via "exit" 
+    /* From now on, we don't jump out with caml_uerror, but leave via "exit" 
        below.
     */
     cleanup_mask = 1;
@@ -156,7 +156,7 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     /* caml_enter_blocking_section();
        cleanup_bsection = 1;
        -- TODO: check this more carefully before enabling it
-       -- see also leave_blocking_section below
+       -- see also caml_leave_blocking_section below
     */
 
     /* Fork the process. */
@@ -364,9 +364,9 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     SUB_ERROR(EINVAL, "netsys_spawn/assert_execve [291]");
 
  sub_error:
-    /* Marshal the error in uerror_errno and uerror_function */
-    me.decoded.b_errno = uerror_errno;
-    strcpy(me.decoded.b_function, uerror_function);
+    /* Marshal the error in caml_uerror_errno and caml_uerror_function */
+    me.decoded.b_errno = caml_uerror_errno;
+    strcpy(me.decoded.b_function, caml_uerror_function);
     
     n = write(ctrl_pipe[1], me.buffer, sizeof(me.buffer));
     /* it doesn't make much sense here to check for write errors */
@@ -387,16 +387,16 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
 
     code = close(ctrl_pipe[1]);
     if (code == -1) {
-	uerror_errno = errno;
-	uerror_function = "netsys_spawn/close [300]";
+	caml_uerror_errno = errno;
+	caml_uerror_function = "netsys_spawn/close [300]";
 	goto main_exit;
     };
     cleanup_pipe1 = 0;   /* it's already closed */
 
     n = read(ctrl_pipe[0], me.buffer, sizeof(me.buffer));
     if (n == (ssize_t) -1) {
-	uerror_errno = errno;
-	uerror_function = "netsys_spawn/read [301]";
+	caml_uerror_errno = errno;
+	caml_uerror_function = "netsys_spawn/read [301]";
 	goto main_exit;
     };
 
@@ -408,8 +408,8 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
     
     /* There is an error message in me. Look at it. */
     if (n != (ssize_t) sizeof(me.buffer)) {
-	uerror_errno = EINVAL;
-	uerror_function = "netsys_spawn/assert_me [302]";
+	caml_uerror_errno = EINVAL;
+	caml_uerror_function = "netsys_spawn/assert_me [302]";
     }
 
     /* Also don't forget to wait on the child to avoid zombies: */
@@ -419,8 +419,8 @@ CAMLprim value netsys_spawn_nat(value v_chdir,
 	code = (code == -1 && errno == EINTR);
     };
 
-    uerror_errno = me.decoded.b_errno;
-    uerror_function = me.decoded.b_function;
+    caml_uerror_errno = me.decoded.b_errno;
+    caml_uerror_function = me.decoded.b_function;
     /* now exit... */
 
 main_exit:
@@ -435,32 +435,32 @@ main_exit:
     if (cleanup_mask) {
 #ifdef HAVE_PTHREAD
 	code = pthread_sigmask(SIG_SETMASK, &save_mask, NULL);
-	if (code != 0 && uerror_errno == 0) {
-	    uerror_errno = code;
-	    uerror_function = "netsys_spawn/pthread_sigmask [400]";
+	if (code != 0 && caml_uerror_errno == 0) {
+	    caml_uerror_errno = code;
+	    caml_uerror_function = "netsys_spawn/pthread_sigmask [400]";
 	}
 #else
 	code = sigprocmask(SIG_SETMASK, &save_mask, NULL);
-	if (code == -1 && uerror_errno == 0) {
-	    uerror_errno = errno;
-	    uerror_function = "netsys_spawn/sigprocmask [401]";
+	if (code == -1 && caml_uerror_errno == 0) {
+	    caml_uerror_errno = errno;
+	    caml_uerror_function = "netsys_spawn/sigprocmask [401]";
 	}
 #endif
     };
 
     if (cleanup_pipe0) {
 	code = close(ctrl_pipe[0]);
-	if (code == -1 && uerror_errno == 0) {
-	    uerror_errno = errno;
-	    uerror_function = "netsys_spawn/close [410]";
+	if (code == -1 && caml_uerror_errno == 0) {
+	    caml_uerror_errno = errno;
+	    caml_uerror_function = "netsys_spawn/close [410]";
 	}
     }
 
     if (cleanup_pipe1) {
 	code = close(ctrl_pipe[1]);
-	if (code == -1 && uerror_errno == 0) {
-	    uerror_errno = errno;
-	    uerror_function = "netsys_spawn/close [411]";
+	if (code == -1 && caml_uerror_errno == 0) {
+	    caml_uerror_errno = errno;
+	    caml_uerror_function = "netsys_spawn/close [411]";
 	}
     }
 
@@ -472,12 +472,12 @@ main_exit:
 	free(sub_env);
     }
 
-    if (uerror_errno != 0)
-	unix_error(uerror_errno, uerror_function, Nothing);
+    if (caml_uerror_errno != 0)
+	caml_unix_error(caml_uerror_errno, caml_uerror_function, Nothing);
 
     return return_value;
 #else
-     invalid_argument("netsys_spawn");
+     caml_invalid_argument("netsys_spawn");
 #endif
 }
 
@@ -505,8 +505,8 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
 				      value v_cmd,
 				      value v_args) {
 #ifdef HAVE_POSIX_SPAWN
-    int   uerror_errno;
-    char *uerror_function;
+    int   caml_uerror_errno;
+    char *caml_uerror_function;
     value return_value;
     int code;
     short flags;
@@ -541,7 +541,7 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
     long j,k;
     long nofile;
 
-    uerror_errno = 0;
+    caml_uerror_errno = 0;
     cleanup_sub_argv = 0;
     cleanup_sub_env = 0;
     cleanup_fd_actions = 0;
@@ -551,7 +551,7 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
     sub_argv = NULL;
     sub_env = NULL;
     return_value = Val_int(0);
-    uerror_function = "<uninit>";
+    caml_uerror_function = "<uninit>";
     flags = 0;
     fd_known = 0;
     use_fork_exec = 0;
@@ -614,7 +614,7 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
 	    flags |= POSIX_SPAWN_SETPGROUP;
 	    break;
 	case 2: /* Pg_new_fg_group */
-	    invalid_argument
+	    caml_invalid_argument
 		("Netsys_posix.posix_spawn: Pg_new_fg_group not supported");
 	    break;
 	default:
@@ -638,7 +638,7 @@ CAMLprim value netsys_posix_spawn_nat(value v_pg,
 	    flags |= POSIX_SPAWN_SETSIGDEF;
 	    break;
 	case 1: /* Sig_ignore */
-	    invalid_argument
+	    caml_invalid_argument
 		("Netsys_posix.posix_spawn: Sig_ignore not supported");
 	    break;
 	case 2: /* Sig_mask */
@@ -799,16 +799,16 @@ main_exit:
 	posix_spawnattr_destroy(&attr);
     };
 
-    if (uerror_errno != 0)
-	unix_error(uerror_errno, uerror_function, Nothing);
+    if (caml_uerror_errno != 0)
+	caml_unix_error(caml_uerror_errno, caml_uerror_function, Nothing);
 
     if (use_fork_exec != 0)
-	failwith("USE_FORK_EXEC");
+	caml_failwith("USE_FORK_EXEC");
 
     return return_value;
 
 #else
-     invalid_argument("netsys_posix_spawn not available");
+     caml_invalid_argument("netsys_posix_spawn not available");
 #endif
 }
 

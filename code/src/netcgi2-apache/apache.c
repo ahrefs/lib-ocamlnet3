@@ -78,7 +78,7 @@ netcgi2_apache_table_get (value tv, value str)
   table *t = Table_val (tv);
   const char *res = apr_table_get(t, String_val (str));
   if (res)
-    CAMLreturn (copy_string (res));
+    CAMLreturn (caml_copy_string (res));
   else
     raise_not_found ();
 }
@@ -89,7 +89,7 @@ netcgi2_apache_table_get_loop(void *res, const char *key, const char *val)
   CAMLparam0();
   CAMLlocal1(cons); /* head cell of new list */
   cons = alloc(2, 0); /* :: */
-  Store_field(cons, 0, copy_string(val)); /* value :: */
+  Store_field(cons, 0, caml_copy_string(val)); /* value :: */
   Store_field(cons, 1, *((value *) res)); /* :: previous list */
   *((value *) res) = cons;
   CAMLreturn(1);
@@ -117,8 +117,8 @@ netcgi2_apache_table_fields_loop(void *res, const char *key, const char *val)
   CAMLparam0();
   CAMLlocal2(cons, pair);
   pair = alloc_tuple(2); /* (,) */
-  Store_field(pair, 0, copy_string(key));
-  Store_field(pair, 1, copy_string(val));
+  Store_field(pair, 0, caml_copy_string(key));
+  Store_field(pair, 1, caml_copy_string(val));
 /*   fprintf(stderr, "(%s, %s)\n", key, val); /\* DEBUG *\/ */
   cons = alloc(2, 0); /* :: */
   Store_field(cons, 0, pair); /* pair :: */
@@ -176,7 +176,7 @@ netcgi2_apache_server_hostname (value sv)
   CAMLparam1(sv);
   server_rec *s = Server_rec_val(sv);
   if (s->server_hostname)
-    CAMLreturn(copy_string(s->server_hostname));
+    CAMLreturn(caml_copy_string(s->server_hostname));
   else
     raise_not_found ();
 }
@@ -187,7 +187,7 @@ netcgi2_apache_server_admin(value sv)
   CAMLparam1(sv);
   server_rec *s = Server_rec_val(sv);
   if (s->server_admin)
-    CAMLreturn(copy_string(s->server_admin));
+    CAMLreturn(caml_copy_string(s->server_admin));
   else
     raise_not_found();
 }
@@ -209,7 +209,7 @@ netcgi2_apache_connection_ ## suffix (value cv)        \
   CAMLparam1 (cv);                              \
   conn_rec *c = Conn_rec_val (cv);              \
   if (c->field)                                 \
-    CAMLreturn (copy_string (c->field));        \
+    CAMLreturn (caml_copy_string (c->field));        \
   else                                          \
     raise_not_found ();                         \
 }
@@ -289,7 +289,7 @@ netcgi2_apache_request_the_request (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->the_request)
-    CAMLreturn (copy_string (r->the_request));
+    CAMLreturn (caml_copy_string (r->the_request));
   else
     raise_not_found ();
 }
@@ -316,7 +316,7 @@ netcgi2_apache_request_protocol (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->protocol)
-    CAMLreturn (copy_string (r->protocol));
+    CAMLreturn (caml_copy_string (r->protocol));
   else
     raise_not_found ();
 }
@@ -335,7 +335,7 @@ netcgi2_apache_request_hostname (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->hostname)
-    CAMLreturn (copy_string (r->hostname));
+    CAMLreturn (caml_copy_string (r->hostname));
   else
     raise_not_found ();
 }
@@ -354,7 +354,7 @@ netcgi2_apache_request_status_line (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->status_line)
-    CAMLreturn (copy_string (r->status_line));
+    CAMLreturn (caml_copy_string (r->status_line));
   else
     raise_not_found ();
 }
@@ -390,7 +390,7 @@ netcgi2_apache_request_method (value rv)
 {
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
-  CAMLreturn (copy_string (r->method));
+  CAMLreturn (caml_copy_string (r->method));
 }
 
 CAMLprim value
@@ -447,7 +447,7 @@ netcgi2_apache_request_content_type (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->content_type)
-    CAMLreturn (copy_string (r->content_type));
+    CAMLreturn (caml_copy_string (r->content_type));
   else
     raise_not_found ();
 }
@@ -468,10 +468,10 @@ netcgi2_apache_request_user (value rv)
   request_rec *r = Request_rec_val (rv);
 #if APACHE2
   if (r->user)
-    CAMLreturn (copy_string (r->user));
+    CAMLreturn (caml_copy_string (r->user));
 #else
   if (r->connection->user)
-    CAMLreturn (copy_string (r->connection->user));
+    CAMLreturn (caml_copy_string (r->connection->user));
 #endif
   else
     raise_not_found ();
@@ -483,7 +483,7 @@ netcgi2_apache_request_uri (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->uri)
-    CAMLreturn (copy_string (r->uri));
+    CAMLreturn (caml_copy_string (r->uri));
   else
     raise_not_found ();
 }
@@ -513,7 +513,7 @@ netcgi2_apache_request_filename (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->filename)
-    CAMLreturn (copy_string (r->filename));
+    CAMLreturn (caml_copy_string (r->filename));
   else
     raise_not_found ();
 }
@@ -533,7 +533,7 @@ netcgi2_apache_request_path_info (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->path_info)
-    CAMLreturn (copy_string (r->path_info));
+    CAMLreturn (caml_copy_string (r->path_info));
   else
     raise_not_found ();
 }
@@ -553,7 +553,7 @@ netcgi2_apache_request_args (value rv)
   CAMLparam1 (rv);
   request_rec *r = Request_rec_val (rv);
   if (r->args)
-    CAMLreturn (copy_string (r->args));
+    CAMLreturn (caml_copy_string (r->args));
   else
     raise_not_found ();
 }
@@ -604,7 +604,7 @@ CAMLprim value netcgi2_apache_request_finfo (value rv)
 	copy_double ((double) apr_time_sec (r->finfo.ctime)) :
 	copy_double (0.);
 
-      sb = alloc_small (12, 0);
+      sb = caml_alloc_small (12, 0);
       Field (sb, 0) = Val_int (r->finfo.device);
       Field (sb, 1) = Val_int (r->finfo.inode);
       Field (sb, 2) =
@@ -636,7 +636,7 @@ else
       mtime = copy_double ((double) r->finfo.st_mtime);
       ctime = copy_double ((double) r->finfo.st_ctime);
 
-      sb = alloc_small (12, 0);
+      sb = caml_alloc_small (12, 0);
       Field (sb, 0) = Val_int (r->finfo.st_dev);
       Field (sb, 1) = Val_int (r->finfo.st_ino);
       Field (sb, 2) =
@@ -755,10 +755,10 @@ CAMLprim value netcgi2_apache_auth_type(value rv)
   request_rec *r = Request_rec_val(rv);
 #if APACHE2
   if (r->ap_auth_type)
-    CAMLreturn(copy_string(r->ap_auth_type));
+    CAMLreturn(caml_copy_string(r->ap_auth_type));
 #else
   if (r->connection->ap_auth_type)
-    CAMLreturn(copy_string(r->connection->ap_auth_type));
+    CAMLreturn(caml_copy_string(r->connection->ap_auth_type));
 #endif
   else
     raise_not_found();
@@ -834,7 +834,7 @@ netcgi2_apache_request_print_char (value rv, value cv)
   request_rec *r = Request_rec_val (rv);
   int c = Int_val (cv);
   if (ap_rputc (c, r) == EOF)
-    raise_sys_error(copy_string("Netcgi_mod#out_channel#output_char"));
+    raise_sys_error(caml_copy_string("Netcgi_mod#out_channel#output_char"));
   CAMLreturn (Val_unit);
 }
 

@@ -21,6 +21,7 @@ DOBJECTS = equeue.mli unixqueue.mli unixqueue_pollset.mli \
 
 INCLUDES += $(INC_NETSYS)
 INCLUDES += $(INC_NETSTRING)
+REQUIRES += camlp-streams
 
 OCAMLC_OPTIONS += $(STRING_OPTS)
 OCAMLOPT_OPTIONS += $(STRING_OPTS)

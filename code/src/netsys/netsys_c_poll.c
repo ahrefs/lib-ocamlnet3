@@ -75,7 +75,7 @@ CAMLprim value netsys_mk_poll_mem(value n) {
     };
     return s;
 #else
-    invalid_argument("netsys_mk_poll_mem");
+    caml_invalid_argument("netsys_mk_poll_mem");
 #endif
 }
 
@@ -89,7 +89,7 @@ CAMLprim value netsys_set_poll_mem(value s, value k, value fd, value ev, value r
     (*(Poll_mem_val(s)))[Int_val(k)] = p;
     return Val_unit;
 #else
-    invalid_argument("netsys_set_poll_mem");
+    caml_invalid_argument("netsys_set_poll_mem");
 #endif
 
 }
@@ -106,7 +106,7 @@ CAMLprim value netsys_get_poll_mem(value s, value k) {
     Store_field(triple, 2, Val_int(p.revents));
     return triple;
 #else
-    invalid_argument("netsys_get_poll_mem");
+    caml_invalid_argument("netsys_get_poll_mem");
 #endif
 }
 
@@ -120,7 +120,7 @@ CAMLprim value netsys_blit_poll_mem(value s1, value k1, value s2, value k2, valu
     memmove(p2 + Int_val(k2), p1 + Int_val(k1), l*sizeof(struct pollfd));
     return Val_unit;
 #else
-    invalid_argument("netsys_blit_poll_mem");
+    caml_invalid_argument("netsys_blit_poll_mem");
 #endif
 };
 
@@ -148,15 +148,15 @@ CAMLprim value netsys_poll(value s, value nv, value tv) {
     n = Int_val(nv);
     tmo = Long_val(tv);
     
-    enter_blocking_section();
+    caml_enter_blocking_section();
     r = poll(p, n, tmo);
-    leave_blocking_section();
+    caml_leave_blocking_section();
 
-    if (r == -1) uerror("poll", Nothing);
+    if (r == -1) caml_uerror("poll", Nothing);
     
     return Val_int(r);
 #else
-     invalid_argument("netsys_poll");
+     caml_invalid_argument("netsys_poll");
 #endif
 }
 
@@ -224,12 +224,12 @@ CAMLprim value netsys_create_event_aggreg(value cancelv)
 
 #ifdef USABLE_EPOLL
     fd = epoll_create(128);
-    if (fd == -1) uerror("epoll_create", Nothing);
+    if (fd == -1) caml_uerror("epoll_create", Nothing);
     code = fcntl(fd, F_SETFD, FD_CLOEXEC);
     if (code == -1) {
 	e = errno;
 	close(fd);
-	unix_error(e, "fcntl", Nothing);
+	caml_unix_error(e, "fcntl", Nothing);
     };
     r = alloc_poll_aggreg();
     pa = *(Poll_aggreg_val(r));
@@ -243,14 +243,14 @@ CAMLprim value netsys_create_event_aggreg(value cancelv)
 	if (cancel_fd == -1) {
 	    e = errno;
 	    close(fd);
-	    unix_error(e, "eventfd", Nothing);
+	    caml_unix_error(e, "eventfd", Nothing);
 	};
 	code = fcntl(cancel_fd, F_SETFD, FD_CLOEXEC);
 	if (code == -1) {
 	    e = errno;
 	    close(fd);
 	    close(cancel_fd);
-	    unix_error(e, "fcntl", Nothing);
+	    caml_unix_error(e, "fcntl", Nothing);
 	};
 	ee.events = EPOLLIN;  /* not oneshot! */
 	ee.data.u64 = 1;  /* reserved value */
@@ -259,14 +259,14 @@ CAMLprim value netsys_create_event_aggreg(value cancelv)
 	    e = errno;
 	    close(fd);
 	    close(cancel_fd);
-	    unix_error(e, "epoll_ctl (ADD)", Nothing);
+	    caml_unix_error(e, "epoll_ctl (ADD)", Nothing);
 	};
 	pa->cancel_fd = cancel_fd;
     };
 #endif
     return r;
 #else
-    invalid_argument("Netsys_posix.create_event_aggregator not available");
+    caml_invalid_argument("Netsys_posix.create_event_aggregator not available");
 #endif
 }
 
@@ -279,14 +279,14 @@ CAMLprim value netsys_destroy_event_aggreg(value pav)
 
     pa = *(Poll_aggreg_val(pav));
     code = close(pa->fd);
-    if (code == -1) uerror("close", Nothing);
+    if (code == -1) caml_uerror("close", Nothing);
     if (pa->cancel_fd >= 0) {
 	code = close(pa->cancel_fd);
-	if (code == -1) uerror("close", Nothing);
+	if (code == -1) caml_uerror("close", Nothing);
     };
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.destroy_event_aggregator not available");
+    caml_invalid_argument("Netsys_posix.destroy_event_aggregator not available");
 #endif
 }
 
@@ -299,7 +299,7 @@ CAMLprim value netsys_event_aggreg_fd(value pav)
     pa = *(Poll_aggreg_val(pav));
     return Val_int(pa->fd);
 #else
-    invalid_argument("Netsys_posix.event_aggregator_fd not available");
+    caml_invalid_argument("Netsys_posix.event_aggregator_fd not available");
 #endif
 }
 
@@ -348,12 +348,12 @@ CAMLprim value netsys_add_event_source(value pav, value pushv)
 	translate_to_epoll_events(Int_val(Field(pushv, 2))) | EPOLLONESHOT;
     ee.data.u64 = Long_val(Field(pushv, 0)) << 1;
     code = epoll_ctl(pa->fd, EPOLL_CTL_ADD, fd, &ee);
-    if (code == -1) uerror("epoll_ctl (ADD)", Nothing);
+    if (code == -1) caml_uerror("epoll_ctl (ADD)", Nothing);
 #endif
 
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.add_event_source not available");
+    caml_invalid_argument("Netsys_posix.add_event_source not available");
 #endif
 }
 
@@ -373,12 +373,12 @@ CAMLprim value netsys_del_event_source(value pav, value idv, value tagv)
 
 #ifdef USABLE_EPOLL
     code = epoll_ctl(pa->fd, EPOLL_CTL_DEL, fd, &ee);
-    if (code == -1) uerror("epoll_ctl (DEL)", Nothing);
+    if (code == -1) caml_uerror("epoll_ctl (DEL)", Nothing);
 #endif
 
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.del_event_source not available");
+    caml_invalid_argument("Netsys_posix.del_event_source not available");
 #endif
 }
 
@@ -394,11 +394,11 @@ CAMLprim value netsys_interrupt_aggreg(value pav)
         int n;
 	buf = 1;
 	n = write(pa->cancel_fd, (char *) &buf, 8);
-        if (n == -1) uerror("write", Nothing);
+        if (n == -1) caml_uerror("write", Nothing);
     };
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.interrupt_event_aggregator not available");
+    caml_invalid_argument("Netsys_posix.interrupt_event_aggregator not available");
 #endif
 }
 
@@ -427,12 +427,12 @@ CAMLprim value netsys_push_event_sources(value pav, value pushlistv)
 	    EPOLLONESHOT;
 	ee.data.u64 = Long_val(Field(v_pushlist_hd, 0)) << 1;
 	code = epoll_ctl(pa->fd, EPOLL_CTL_MOD, fd, &ee);
-	if (code == -1) uerror("epoll_ctl (MOD)", Nothing);
+	if (code == -1) caml_uerror("epoll_ctl (MOD)", Nothing);
 #endif
     };
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.push_event_sources not available");
+    caml_invalid_argument("Netsys_posix.push_event_sources not available");
 #endif
 }
 
@@ -459,7 +459,7 @@ CAMLprim value netsys_poll_event_sources(value pav, value tmov)
     code = epoll_wait(pa->fd, ee, EPOLL_NUM, tmo);
     e = errno;
     caml_leave_blocking_section();
-    if (code == -1) unix_error(e, "epoll_wait", Nothing);
+    if (code == -1) caml_unix_error(e, "epoll_wait", Nothing);
 
     r = Val_int(0);
     for (k=0; k<code; k++) {
@@ -467,7 +467,7 @@ CAMLprim value netsys_poll_event_sources(value pav, value tmov)
 	    uint64_t buf;
             int n;
 	    n = read(pa->cancel_fd, (char *) &buf, 8);
-            if (n == -1) unix_error(errno, "read", Nothing);
+            if (n == -1) caml_unix_error(errno, "read", Nothing);
 	}
 	else {
 	    r_item = caml_alloc(3,0);
@@ -486,6 +486,6 @@ CAMLprim value netsys_poll_event_sources(value pav, value tmov)
 
     CAMLreturn(r);
 #else
-    invalid_argument("Netsys_posix.pull_event_sources not available");
+    caml_invalid_argument("Netsys_posix.pull_event_sources not available");
 #endif
 }

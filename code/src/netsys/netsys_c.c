@@ -12,13 +12,13 @@ CAMLprim value netsys_int64_of_file_descr(value fd) {
 #ifdef _WIN32
     switch (Descr_kind_val(fd)) {
     case KIND_HANDLE:
-	return copy_int64((intnat) (Handle_val(fd)));
+	return caml_copy_int64((intnat) (Handle_val(fd)));
     case KIND_SOCKET:
-	return copy_int64((intnat) (Socket_val(fd)));
+	return caml_copy_int64((intnat) (Socket_val(fd)));
     }
-    return copy_int64(0);
+    return caml_copy_int64(0);
 #else
-    return copy_int64(Long_val(fd));
+    return caml_copy_int64(Long_val(fd));
 #endif
 }
 
@@ -45,18 +45,18 @@ CAMLprim value netsys_unix_error_of_code(value n) {
     win32_maperr(e);
     e = errno;
 #endif
-    return(unix_error_of_code(e));
+    return(caml_unix_error_of_code(e));
 }
 
 CAMLprim value netsys_get_nonblock(value fd)
 {
 #ifdef _WIN32
-    invalid_argument("Netsys_posix.get_nonblcok not avaiable");
+    caml_invalid_argument("Netsys_posix.get_nonblcok not avaiable");
 #else
     int r;
 
     r = fcntl(Int_val(fd), F_GETFL, 0);
-    if (r == -1) uerror("fcntl", Nothing);
+    if (r == -1) caml_uerror("fcntl", Nothing);
 
     return Val_bool((r & O_NONBLOCK) != 0);
 #endif
@@ -67,7 +67,7 @@ CAMLprim value netsys__exit (value n) {
     _exit(Int_val(n));
     return Val_int(0);
 #else
-    invalid_argument("Netsys._exit not available");
+    caml_invalid_argument("Netsys._exit not available");
 #endif
 }
 
@@ -76,7 +76,7 @@ CAMLprim value netsys_sysconf_open_max (value unit) {
 #ifdef HAVE_SYSCONF
     return Val_long(sysconf(_SC_OPEN_MAX));
 #else
-    invalid_argument("Netsys.sysconf_open_max not available");
+    caml_invalid_argument("Netsys.sysconf_open_max not available");
 #endif
 }
 
@@ -86,10 +86,10 @@ CAMLprim value netsys_getpgid (value pid) {
     int pgid;
 
     pgid = getpgid(Int_val(pid));
-    if (pgid == -1) uerror("getpgid", Nothing);
+    if (pgid == -1) caml_uerror("getpgid", Nothing);
     return Val_int(pgid);
 #else
-    invalid_argument("Netsys.getpgid not available");
+    caml_invalid_argument("Netsys.getpgid not available");
 #endif
 }
 
@@ -99,10 +99,10 @@ CAMLprim value netsys_setpgid (value pid, value pgid) {
     int r;
 
     r = setpgid(Int_val(pid), Int_val(pgid));
-    if (r == -1) uerror("setpgid", Nothing);
+    if (r == -1) caml_uerror("setpgid", Nothing);
     return Val_int(0);
 #else
-    invalid_argument("Netsys.setpgid not available");
+    caml_invalid_argument("Netsys.setpgid not available");
 #endif
 }
 
@@ -112,10 +112,10 @@ CAMLprim value netsys_tcgetpgrp (value fd) {
     int pgid;
 
     pgid = tcgetpgrp(Int_val(fd));
-    if (pgid == -1) uerror("tcgetpgrp", Nothing);
+    if (pgid == -1) caml_uerror("tcgetpgrp", Nothing);
     return Val_int(pgid);
 #else
-    invalid_argument("Netsys.tcgetpgrp not available");
+    caml_invalid_argument("Netsys.tcgetpgrp not available");
 #endif
 }
 
@@ -125,10 +125,10 @@ CAMLprim value netsys_tcsetpgrp (value fd, value pgid) {
     int r;
     
     r = tcsetpgrp(Int_val(fd), Int_val(pgid));
-    if (r == -1) uerror("tcsetpgrp", Nothing);
+    if (r == -1) caml_uerror("tcsetpgrp", Nothing);
     return Val_int(0);
 #else
-    invalid_argument("Netsys.tcsetpgrp not available");
+    caml_invalid_argument("Netsys.tcsetpgrp not available");
 #endif
 }
 
@@ -137,10 +137,10 @@ CAMLprim value netsys_ctermid (value unit) {
 #ifdef HAVE_POSIX_TTY
     char *s;
     s = NULL;
-    return copy_string(ctermid(s));
+    return caml_copy_string(ctermid(s));
     /* ctermid is always successful; however it can return an empty string */
 #else
-    invalid_argument("Netsys.ctermid not available");
+    caml_invalid_argument("Netsys.ctermid not available");
 #endif
 }
 
@@ -150,10 +150,10 @@ CAMLprim value netsys_ttyname (value fd) {
     char *s;
 
     s = ttyname(Int_val(fd));
-    if ( s == NULL ) uerror("ttyname", Nothing);
-    return copy_string(s);
+    if ( s == NULL ) caml_uerror("ttyname", Nothing);
+    return caml_copy_string(s);
 #else
-    invalid_argument("Netsys.ttyname not available");
+    caml_invalid_argument("Netsys.ttyname not available");
 #endif
 }
 
@@ -163,10 +163,10 @@ CAMLprim value netsys_getsid (value pid) {
     int sid;
 
     sid = getsid(Int_val(pid));
-    if ( sid == -1 )  uerror("getsid", Nothing);
+    if ( sid == -1 )  caml_uerror("getsid", Nothing);
     return Val_int(sid);
 #else
-    invalid_argument("Netsys.getsid not available");
+    caml_invalid_argument("Netsys.getsid not available");
 #endif
 }
 
@@ -176,10 +176,10 @@ CAMLprim value netsys_setreuid(value ruid, value euid) {
     int r;
 
     r = setreuid(Int_val(ruid), Int_val(euid));
-    if (r == -1) uerror("setreuid", Nothing);
+    if (r == -1) caml_uerror("setreuid", Nothing);
     return Val_int(0);
 #else
-    invalid_argument("Netsys.setreuid not available");
+    caml_invalid_argument("Netsys.setreuid not available");
 #endif
 }
 
@@ -189,10 +189,10 @@ CAMLprim value netsys_setregid(value rgid, value egid) {
     int r;
 
     r = setregid(Int_val(rgid), Int_val(egid));
-    if (r == -1) uerror("setregid", Nothing);
+    if (r == -1) caml_uerror("setregid", Nothing);
     return Val_int(0);
 #else
-    invalid_argument("Netsys.setregid not available");
+    caml_invalid_argument("Netsys.setregid not available");
 #endif
 }
 
@@ -206,11 +206,11 @@ CAMLprim value netsys_initgroups(value user, value gid) {
     gid_i = Long_val(gid);
 
     e = initgroups(user_s, gid_i);
-    if (e < 0) uerror("initgroups", Nothing);
+    if (e < 0) caml_uerror("initgroups", Nothing);
 
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.initgroups not available");
+    caml_invalid_argument("Netsys_posix.initgroups not available");
 #endif
 }
 
@@ -220,10 +220,10 @@ CAMLprim value netsys_fsync(value fd) {
     int r;
     r = fsync(Int_val(fd));
     if (r == -1) 
-	uerror("fsync", Nothing);
+	caml_uerror("fsync", Nothing);
     return Val_unit;
 #else
-    invalid_argument("Netsys.fsync not available");
+    caml_invalid_argument("Netsys.fsync not available");
 #endif
 }
 
@@ -237,19 +237,19 @@ CAMLprim value netsys_fdatasync(value fd) {
     r = fdatasync(Int_val(fd));
 #endif
     if (r == -1) 
-	uerror("fdatasync", Nothing);
+	caml_uerror("fdatasync", Nothing);
     return Val_unit;
 #else
-    invalid_argument("Netsys.fdatasync not available");
+    caml_invalid_argument("Netsys.fdatasync not available");
 #endif
 }
 
 CAMLprim value netsys_fchdir(value fd) {
 #ifdef HAVE_FCHDIR
-    if (fchdir(Int_val(fd)) == -1) uerror("fchdir", Nothing);
+    if (fchdir(Int_val(fd)) == -1) caml_uerror("fchdir", Nothing);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.fchdir not available");
+    caml_invalid_argument("Netsys_posix.fchdir not available");
 #endif
 }
 
@@ -259,12 +259,12 @@ CAMLprim value netsys_fdopendir(value fd)
   DIR * d;
   value res;
   d = fdopendir(Int_val(fd));
-  if (d == (DIR *) NULL) uerror("fdopendir", Nothing);
-  res = alloc_small(1, Abstract_tag);
+  if (d == (DIR *) NULL) caml_uerror("fdopendir", Nothing);
+  res = caml_alloc_small(1, Abstract_tag);
   DIR_Val(res) = d;
   return res;
 #else
-  invalid_argument("Netsys_posix.fdopendir not available");
+  caml_invalid_argument("Netsys_posix.fdopendir not available");
 #endif
 }
 
@@ -278,15 +278,15 @@ CAMLprim value netsys_realpath (value name)    /* POSIX.1-2001 */
     const char *name_in_s = String_val(name);
     name_out_s = realpath(name_in_s, NULL);   /* Note: GNU extension! */
     if (name_out_s == NULL) {
-	uerror("realpath", Nothing);
+	caml_uerror("realpath", Nothing);
     }
     else {
-	name_out = copy_string(name_out_s);
+	name_out = caml_copy_string(name_out_s);
 	free(name_out_s);
     }
     return name_out;
 #else
-    invalid_argument("Netsys_posix.realpath not available");
+    caml_invalid_argument("Netsys_posix.realpath not available");
 #endif
 }
 
@@ -296,10 +296,10 @@ CAMLprim value netsys_grantpt (value fd)    /* POSIX.1-2001 */
 #ifdef HAVE_PTY
     int e;
     e = grantpt(Int_val(fd));
-    if ( e < 0 ) uerror("grantpt", Nothing);
+    if ( e < 0 ) caml_uerror("grantpt", Nothing);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.granpt not available");
+    caml_invalid_argument("Netsys_posix.granpt not available");
 #endif
 }
 
@@ -309,10 +309,10 @@ CAMLprim value netsys_unlockpt (value fd)    /* POSIX.1-2001 */
 #ifdef HAVE_PTY
     int e;
     e = unlockpt(Int_val(fd));
-    if ( e < 0 ) uerror("unlockpt", Nothing);
+    if ( e < 0 ) caml_uerror("unlockpt", Nothing);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.unlockpt not available");
+    caml_invalid_argument("Netsys_posix.unlockpt not available");
 #endif
 }
 
@@ -323,10 +323,10 @@ CAMLprim value netsys_ptsname (value fd)    /* POSIX.1-2001 */
     char *s;
 
     s = ptsname(Int_val(fd));
-    if ( s == NULL ) uerror("ptsname", Nothing);
-    return copy_string(s);
+    if ( s == NULL ) caml_uerror("ptsname", Nothing);
+    return caml_copy_string(s);
 #else
-    invalid_argument("Netsys_posix.ptsname not available");
+    caml_invalid_argument("Netsys_posix.ptsname not available");
 #endif
 }
 
@@ -345,10 +345,10 @@ CAMLprim value netsys_posix_openpt(value noctty)     /* POSIX.1-2001 */
     fd = open("/dev/ptmx", flags);
 #endif
 
-    if (fd == -1) uerror("openpt", Nothing);
+    if (fd == -1) caml_uerror("openpt", Nothing);
     return Val_int(fd);
 #else
-    invalid_argument("Netsys_posix.posix_openpt not available");
+    caml_invalid_argument("Netsys_posix.posix_openpt not available");
 #endif
 }
 
@@ -356,7 +356,7 @@ CAMLprim value netsys_posix_openpt(value noctty)     /* POSIX.1-2001 */
 CAMLprim value netsys_mknod (value name, value perm, value nt)
 {
 #ifdef _WIN32
-    invalid_argument("Netsys_posix.mknod not available");
+    caml_invalid_argument("Netsys_posix.mknod not available");
 #else
     mode_t m;
     dev_t d;
@@ -389,7 +389,7 @@ CAMLprim value netsys_mknod (value name, value perm, value nt)
     }
 
     e = mknod(String_val(name), m, d);
-    if (e < 0) uerror("mknod", Nothing);
+    if (e < 0) caml_uerror("mknod", Nothing);
 
     return Val_unit;
 #endif
@@ -460,7 +460,9 @@ static int open_cloexec_table[] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CLOEXEC, KEEPEXEC
 };
 #ifndef HAVE_O_KEEPEXEC
-#define unix_cloexec_default 0
+#ifndef caml_unix_cloexec_default
+#define caml_unix_cloexec_default 0
+#endif
 #endif
 
 #endif
@@ -473,34 +475,34 @@ CAMLprim value netsys_openat(value dirfd, value path, value flags, value perm)
     char * p;
 
     /* shamelessly copied from ocaml distro */
-    cv_flags = convert_flag_list(flags, open_flag_table);
-    clo_flags = convert_flag_list(flags, open_cloexec_table);
+    cv_flags = caml_convert_flag_list(flags, open_flag_table);
+    clo_flags = caml_convert_flag_list(flags, open_cloexec_table);
     if (clo_flags & CLOEXEC)
         cloexec = 1;
     else if (clo_flags & KEEPEXEC)
         cloexec = 0;
     else
-        cloexec = unix_cloexec_default;
+        cloexec = caml_unix_cloexec_default;
 #if defined(O_CLOEXEC)
     if (cloexec) cv_flags |= O_CLOEXEC;
 #endif
-    p = stat_alloc(string_length(path) + 1);
+    p = caml_stat_alloc(caml_string_length(path) + 1);
     strcpy(p, String_val(path));
-    enter_blocking_section();
+    caml_enter_blocking_section();
     ret = openat(Int_val(dirfd), p, cv_flags, Int_val(perm));
-    leave_blocking_section();
-    stat_free(p);
-    if (ret == -1) uerror("openat", path);
+    caml_leave_blocking_section();
+    caml_stat_free(p);
+    if (ret == -1) caml_uerror("openat", path);
 #if !defined(O_CLOEXEC)
     {
         int flags = fcntl(Int_val(dirfd), F_GETFD, 0);
         if (flags == -1 || fcntl(Int_val(dirfd), F_SETFD, flags | FD_CLOEXEC) == -1)
-          uerror("openat", path);
+          caml_uerror("openat", path);
     }
 #endif
     CAMLreturn (Val_int(ret));
 #else
-    invalid_argument("Netsys_posix.openat not available");
+    caml_invalid_argument("Netsys_posix.openat not available");
 #endif
 }
 
@@ -517,15 +519,15 @@ CAMLprim value netsys_faccessat(value dirfd, value path, value perms,
 {
 #ifdef HAVE_AT
     int ret, cv_perms, cv_flags;
-    cv_perms = convert_flag_list(perms, access_permission_table);
-    cv_flags = convert_flag_list(flags, at_flags_table);
+    cv_perms = caml_convert_flag_list(perms, access_permission_table);
+    cv_flags = caml_convert_flag_list(flags, at_flags_table);
     cv_flags &= (AT_EACCESS | AT_SYMLINK_NOFOLLOW);
     ret = faccessat(Int_val(dirfd), String_val(path), cv_perms, cv_flags);
     if (ret == -1)
-	uerror("faccessat", path);
+	caml_uerror("faccessat", path);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.faccessat not available");
+    caml_invalid_argument("Netsys_posix.faccessat not available");
 #endif
 }
 
@@ -534,10 +536,10 @@ CAMLprim value netsys_mkdirat(value dirfd, value path, value perm)
 {
 #ifdef HAVE_AT
     if (mkdirat(Int_val(dirfd), String_val(path), Int_val(perm)) == -1) 
-	uerror("mkdirat", path);
+	caml_uerror("mkdirat", path);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.mkdirat not available");
+    caml_invalid_argument("Netsys_posix.mkdirat not available");
 #endif
 }
 
@@ -548,10 +550,10 @@ CAMLprim value netsys_renameat(value olddirfd, value oldpath,
 #ifdef HAVE_AT
     if (renameat(Int_val(olddirfd), String_val(oldpath),
 		 Int_val(newdirfd), String_val(newpath)) == -1)
-	uerror("renameat", oldpath);
+	caml_uerror("renameat", oldpath);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.renameat not available");
+    caml_invalid_argument("Netsys_posix.renameat not available");
 #endif
 }
 
@@ -561,14 +563,14 @@ CAMLprim value netsys_linkat(value olddirfd, value oldpath,
 {
 #ifdef HAVE_AT
     int cv_flags;
-    cv_flags = convert_flag_list(flags, at_flags_table);
+    cv_flags = caml_convert_flag_list(flags, at_flags_table);
     cv_flags &= AT_SYMLINK_FOLLOW;  /* only allowed flag here */
     if (linkat(Int_val(olddirfd), String_val(oldpath),
 	       Int_val(newdirfd), String_val(newpath), cv_flags) == -1)
-	uerror("linkat", oldpath);
+	caml_uerror("linkat", oldpath);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.linkat not available");
+    caml_invalid_argument("Netsys_posix.linkat not available");
 #endif
 }
 
@@ -577,13 +579,13 @@ CAMLprim value netsys_unlinkat(value dirfd, value path, value flags)
 {
 #ifdef HAVE_AT
     int cv_flags;
-    cv_flags = convert_flag_list(flags, at_flags_table);
+    cv_flags = caml_convert_flag_list(flags, at_flags_table);
     cv_flags &= AT_REMOVEDIR;  /* only allowed flag here */
     if (unlinkat(Int_val(dirfd), String_val(path), cv_flags) == -1)
-	uerror("unlinkat", path);
+	caml_uerror("unlinkat", path);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.unlinkat not available");
+    caml_invalid_argument("Netsys_posix.unlinkat not available");
 #endif
 }
 
@@ -594,10 +596,10 @@ CAMLprim value netsys_symlinkat(value oldpath,
 #ifdef HAVE_AT
     if (symlinkat(String_val(oldpath),
 		  Int_val(newdirfd), String_val(newpath)) == -1)
-	uerror("symlinkat", oldpath);
+	caml_uerror("symlinkat", oldpath);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.symlinkat not available");
+    caml_invalid_argument("Netsys_posix.symlinkat not available");
 #endif
 }
 
@@ -606,10 +608,10 @@ CAMLprim value netsys_mkfifoat(value dirfd, value path, value mode)
 {
 #ifdef HAVE_MKFIFOAT
     if (mkfifoat(Int_val(dirfd), String_val(path), Int_val(mode)) == -1)
-	uerror("mkfifoat", path);
+	caml_uerror("mkfifoat", path);
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.mkfifoat not available");
+    caml_invalid_argument("Netsys_posix.mkfifoat not available");
 #endif
 }
 
@@ -620,10 +622,10 @@ CAMLprim value netsys_readlinkat(value dirfd, value path)
   char buffer[PATH_MAX];
   int len;
   len = readlinkat(Int_val(dirfd), String_val(path), buffer, sizeof(buffer)-1);
-  if (len == -1) uerror("readlinkat", path);
+  if (len == -1) caml_uerror("readlinkat", path);
   buffer[len] = '\0';
-  return copy_string(buffer);
+  return caml_copy_string(buffer);
 #else
-    invalid_argument("Netsys_posix.readlinkat not available");
+    caml_invalid_argument("Netsys_posix.readlinkat not available");
 #endif
 }

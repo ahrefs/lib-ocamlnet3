@@ -275,7 +275,7 @@ static const char *                                                    \
 name (cmd_parms *parms, void *dummy, const char *strarg)               \
 {                                                                      \
   static value *f = NULL;                                              \
-  value arg = copy_string (strarg);                                    \
+  value arg = caml_copy_string (strarg);                                    \
   value exn;                                                           \
   if (f == NULL) f = caml_named_value("netcgi2_apache_" #name);        \
   exn = callback_exn(*f, arg);                                         \
@@ -297,7 +297,7 @@ cmd_translate_handler (cmd_parms *parms, void *dummy, const char *name)
   value *sconfig = (value *)
     ap_get_module_config (parms->server->module_config, &netcgi_module);
   static value *f = NULL;
-  value arg = copy_string(name);
+  value arg = caml_copy_string(name);
   value exn;
   if (f == NULL) f = caml_named_value("netcgi2_apache_cmd_translate_handler");
   exn = callback2_exn(*f, *sconfig, arg);
@@ -313,7 +313,7 @@ static const char *						\
 name (cmd_parms *parms, void *dconfig, const char *name)	\
 {								\
   value *f = NULL;						\
-  value arg = copy_string(name);				\
+  value arg = caml_copy_string(name);				\
   value exn;							\
   if (f == NULL) f = caml_named_value("netcgi2_apache_" #name);	\
   exn = callback2_exn(*f, *(value *) dconfig, arg);		\

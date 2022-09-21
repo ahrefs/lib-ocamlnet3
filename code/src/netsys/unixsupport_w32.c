@@ -5,7 +5,7 @@
 
    To avoid name clashes, some functions have got a prefix (netsysw32_).
    The "#include" lines are adapted. cst_to_constr and
-   unix_error_of_code have been added.
+   caml_unix_error_of_code have been added.
 */
 
 /***********************************************************************/
@@ -167,7 +167,7 @@ void netsysw32_win32_maperr(DWORD errcode)
     }
   }
   /* Not found: save original error code, negated so that we can
-     recognize it in unix_error_message */
+     recognize it in caml_unix_error_message */
   errno = -errcode;
 }
 
@@ -226,9 +226,9 @@ int netsysw32_error_table[] = {
   EHOSTUNREACH, ELOOP, EOVERFLOW /*, EUNKNOWNERR */
 };
 
-static value * unix_error_exn = NULL;
+static value * caml_unix_error_exn = NULL;
 
-value netsysw32_unix_error_of_code (int errcode)
+value netsysw32_caml_unix_error_of_code (int errcode)
 {
   int errconstr;
   value err;
@@ -236,7 +236,7 @@ value netsysw32_unix_error_of_code (int errcode)
   errconstr = 
       cst_to_constr(errcode, netsysw32_error_table, sizeof(netsysw32_error_table)/sizeof(int), -1);
   if (errconstr == Val_int(-1)) {
-    err = alloc_small(1, 0);
+    err = caml_alloc_small(1, 0);
     Field(err, 0) = Val_int(errcode);
   } else {
     err = errconstr;
@@ -245,22 +245,22 @@ value netsysw32_unix_error_of_code (int errcode)
 }
 
 
-void netsysw32_unix_error(int errcode, char *cmdname, value cmdarg)
+void netsysw32_caml_unix_error(int errcode, char *cmdname, value cmdarg)
 {
   value res;
   value name = Val_unit, err = Val_unit, arg = Val_unit;
 
   Begin_roots3 (name, err, arg);
-    arg = cmdarg == Nothing ? copy_string("") : cmdarg;
-    name = copy_string(cmdname);
-    err = unix_error_of_code(errcode);
-    if (unix_error_exn == NULL) {
-      unix_error_exn = caml_named_value("Unix.Unix_error");
-      if (unix_error_exn == NULL)
-        invalid_argument("Exception Unix.Unix_error not initialized, please link unix.cma");
+    arg = cmdarg == Nothing ? caml_copy_string("") : cmdarg;
+    name = caml_copy_string(cmdname);
+    err = caml_unix_error_of_code(errcode);
+    if (caml_unix_error_exn == NULL) {
+      caml_unix_error_exn = caml_named_value("Unix.Unix_error");
+      if (caml_unix_error_exn == NULL)
+        caml_invalid_argument("Exception Unix.Unix_error not initialized, please link unix.cma");
     }
-    res = alloc_small(4, 0);
-    Field(res, 0) = *unix_error_exn;
+    res = caml_alloc_small(4, 0);
+    Field(res, 0) = *caml_unix_error_exn;
     Field(res, 1) = err;
     Field(res, 2) = name;
     Field(res, 3) = arg;
@@ -268,9 +268,9 @@ void netsysw32_unix_error(int errcode, char *cmdname, value cmdarg)
   mlraise(res);
 }
 
-void netsysw32_uerror(cmdname, cmdarg)
+void netsysw32_caml_uerror(cmdname, cmdarg)
      char * cmdname;
      value cmdarg;
 {
-  unix_error(errno, cmdname, cmdarg);
+  caml_unix_error(errno, cmdname, cmdarg);
 }

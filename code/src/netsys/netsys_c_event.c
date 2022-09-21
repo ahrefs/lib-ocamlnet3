@@ -187,24 +187,24 @@ CAMLprim value netsys_create_not_event(value allow_user_add)
     p->allow_user_add = Bool_val(allow_user_add);
 #ifdef HAVE_PTHREAD
     x = pthread_mutex_init(&(p->mutex), NULL);
-    if (x != 0) unix_error(x, "pthread_mutex_init", Nothing);
+    if (x != 0) caml_unix_error(x, "pthread_mutex_init", Nothing);
 #endif
 
 #ifdef HAVE_EVENTFD
     p->type = NE_EVENTFD;
     x = eventfd(0, 0);
-    if (x == -1) uerror("eventfd", Nothing);
+    if (x == -1) caml_uerror("eventfd", Nothing);
     p->fd1 = x;
     x = fcntl(p->fd1, F_SETFD, FD_CLOEXEC);
     if (x == -1) {
 	e = errno;
 	close(p->fd1);
-	unix_error(e, "fcntl", Nothing);
+	caml_unix_error(e, "fcntl", Nothing);
     }
 #else
     p->type = NE_PIPE;
     x = pipe(pipefd);
-    if (x == -1) uerror("pipe", Nothing);
+    if (x == -1) caml_uerror("pipe", Nothing);
     p->fd1 = pipefd[0];
     p->fd2 = pipefd[1];
     x = fcntl(p->fd1, F_SETFD, FD_CLOEXEC);
@@ -212,19 +212,19 @@ CAMLprim value netsys_create_not_event(value allow_user_add)
 	e = errno;
 	close(p->fd1);
 	close(p->fd2);
-	unix_error(e, "fcntl", Nothing);
+	caml_unix_error(e, "fcntl", Nothing);
     }
     x = fcntl(p->fd2, F_SETFD, FD_CLOEXEC);
     if (x == -1) {
 	e = errno;
 	close(p->fd1);
 	close(p->fd2);
-	unix_error(e, "fcntl", Nothing);
+	caml_unix_error(e, "fcntl", Nothing);
     }
 #endif
     return r;
 #else
-    invalid_argument("Netsys_posix.create_event not available");
+    caml_invalid_argument("Netsys_posix.create_event not available");
 #endif
 }
 
@@ -246,13 +246,13 @@ CAMLprim value netsys_not_event_timerfd(int clockid)
 
     p->type = NE_TIMERFD;
     x = timerfd_create(clockid, 0);
-    if (x == -1) uerror("timerfd_create", Nothing);
+    if (x == -1) caml_uerror("timerfd_create", Nothing);
     p->fd1 = x;
     x = fcntl(p->fd1, F_SETFD, FD_CLOEXEC);
     if (x == -1) {
 	e = errno;
 	close(p->fd1);
-	unix_error(e, "fcntl", Nothing);
+	caml_unix_error(e, "fcntl", Nothing);
     }
     return r;
 }
@@ -268,17 +268,17 @@ CAMLprim value netsys_set_nonblock_not_event(value nev)
     ne = *(Not_event_val(nev));
 
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.set_nonblock_event: already destroyed");
+	caml_failwith("Netsys_posix.set_nonblock_event: already destroyed");
     
     x = fcntl(ne->fd1, F_GETFL, 0);
-    if (x == -1) uerror("fcntl", Nothing);
+    if (x == -1) caml_uerror("fcntl", Nothing);
 
     x = fcntl(ne->fd1, F_SETFL, x | O_NONBLOCK);
-    if (x == -1) uerror("fcntl", Nothing);
+    if (x == -1) caml_uerror("fcntl", Nothing);
 
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.set_nonblock_event not available");
+    caml_invalid_argument("Netsys_posix.set_nonblock_event not available");
 #endif
 }
 
@@ -290,10 +290,10 @@ CAMLprim value netsys_get_not_event_fd_nodup(value nev)
     int fd, code;
     ne = *(Not_event_val(nev));
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.get_event_fd_nodup: already destroyed");
+	caml_failwith("Netsys_posix.get_event_fd_nodup: already destroyed");
     return Val_int(ne->fd1);
 #else
-    invalid_argument("Netsys_posix.get_event_fd not available");
+    caml_invalid_argument("Netsys_posix.get_event_fd not available");
 #endif
 }
 
@@ -306,11 +306,11 @@ int netsys_return_not_event_fd(value nev)
     int fd;
     ne = *(Not_event_val(nev));
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.get_event_fd: already destroyed");
+	caml_failwith("Netsys_posix.get_event_fd: already destroyed");
     fd = ne->fd1;
     return fd;
 #else
-    invalid_argument("Netsys_posix.get_event_fd not available");
+    caml_invalid_argument("Netsys_posix.get_event_fd not available");
 #endif
 }
 
@@ -350,15 +350,15 @@ CAMLprim value netsys_set_not_event(value nev)
     CAMLparam1(nev);
     ne = *(Not_event_val(nev));
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.set_event: already destroyed");
+	caml_failwith("Netsys_posix.set_event: already destroyed");
     if (!ne->allow_user_add)
-	failwith("Netsys_posix.set_event: not allowed for this type of event");
+	caml_failwith("Netsys_posix.set_event: not allowed for this type of event");
     caml_enter_blocking_section();
     netsys_not_event_signal(ne);
     caml_leave_blocking_section();
     CAMLreturn(Val_unit);
 #else
-    invalid_argument("Netsys_posix.set_event not available");
+    caml_invalid_argument("Netsys_posix.set_event not available");
 #endif
 }
 
@@ -373,7 +373,7 @@ CAMLprim value netsys_wait_not_event(value nev)
     ne = *(Not_event_val(nev));
     
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.wait_event: already destroyed");
+	caml_failwith("Netsys_posix.wait_event: already destroyed");
 
     caml_enter_blocking_section();
     p.fd = ne->fd1;
@@ -383,10 +383,10 @@ CAMLprim value netsys_wait_not_event(value nev)
     e = errno;
     caml_leave_blocking_section();
 
-    if (code == -1) unix_error(e, "poll", Nothing);
+    if (code == -1) caml_unix_error(e, "poll", Nothing);
     CAMLreturn(Val_unit);
 #else
-    invalid_argument("Netsys_posix.wait_event not available");
+    caml_invalid_argument("Netsys_posix.wait_event not available");
 #endif
 }
 
@@ -402,7 +402,7 @@ CAMLprim value netsys_consume_not_event(value nev)
     ne = *(Not_event_val(nev));
     
     if (ne->fd1 == -1) 
-	failwith("Netsys_posix.consume_event: already destroyed");
+	caml_failwith("Netsys_posix.consume_event: already destroyed");
 
     caml_enter_blocking_section();
 
@@ -426,8 +426,8 @@ CAMLprim value netsys_consume_not_event(value nev)
 
     caml_leave_blocking_section();
 
-    if (code == -1) unix_error(e, "read", Nothing);
-    if (!ok) unix_error(EINVAL, "read (result invalid)", Nothing);
+    if (code == -1) caml_unix_error(e, "read", Nothing);
+    if (!ok) caml_unix_error(EINVAL, "read (result invalid)", Nothing);
 
     ne->state = 0;
     /* No need to block signals, or to use the mutex. The next signaller
@@ -436,6 +436,6 @@ CAMLprim value netsys_consume_not_event(value nev)
 
     CAMLreturn(Val_unit);
 #else
-    invalid_argument("Netsys_posix.wait_event not available");
+    caml_invalid_argument("Netsys_posix.wait_event not available");
 #endif
 }

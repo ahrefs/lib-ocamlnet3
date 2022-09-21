@@ -26,7 +26,7 @@ let rec exn_to_string err =
 
 module SessionInt = struct
   type t = int
-  let compare = (Pervasives.compare : int -> int -> int)
+  let compare = (Stdlib.compare : int -> int -> int)
 end
 
 module SessionMap =

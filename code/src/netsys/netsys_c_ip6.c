@@ -30,7 +30,7 @@ CAMLprim value netsys_test_for_ip6_global_addr(value dummy) {
     int family;
 
     if (getifaddrs(&ifaddr) == -1) {
-        uerror("getifaddrs", Nothing);
+        caml_uerror("getifaddrs", Nothing);
     }
 
     found = 0;

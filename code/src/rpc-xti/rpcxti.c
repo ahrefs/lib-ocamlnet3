@@ -24,8 +24,10 @@
 
 #define Nothing ((value) 0)
 
-extern void unix_error (int errcode, char * cmdname, value arg) Noreturn;
-extern void uerror (char * cmdname, value arg) Noreturn;
+/*
+extern void caml_unix_error (int errcode, char * cmdname, value arg) Noreturn;
+extern void caml_uerror (char * cmdname, value arg) Noreturn;
+*/
 
 /**********************************************************************/
 
@@ -41,7 +43,7 @@ void xti_error(int fd, char *cmdname) {
 
     if (fd >= 0) t_close(fd);
 
-    unix_error(n, cmdname, copy_string(error));
+    caml_unix_error(n, cmdname, caml_copy_string(error));
 }
 
 
@@ -76,13 +78,13 @@ value xti_cots_connect (value device, value addr) {
     sndcall.addr.maxlen = ABUFLEN;
     sndcall.sequence = 0;
 
-    if (string_length(addr) > sndcall.addr.maxlen) {
+    if (caml_string_length(addr) > sndcall.addr.maxlen) {
 	t_close(fd);
-	invalid_argument("cots_connect: address too long");
+	caml_invalid_argument("cots_connect: address too long");
     };
 
-    sndcall.addr.len = string_length(addr);
-    for (k=0; k<string_length(addr); k++) {
+    sndcall.addr.len = caml_string_length(addr);
+    for (k=0; k<caml_string_length(addr); k++) {
 	sndcall.addr.buf[k] = Byte(addr,k);
     };
     if (t_connect( fd, &sndcall, (struct t_call *) NULL) == -1 ) {
@@ -92,7 +94,7 @@ value xti_cots_connect (value device, value addr) {
     if (ioctl(fd, I_PUSH, "tirdwr") == -1) {
 	int e = errno;
 	t_close(fd);
-	unix_error(e, "ioctl(I_PUSH)", Nothing);
+	caml_unix_error(e, "ioctl(I_PUSH)", Nothing);
     }
 
     CAMLreturn(Val_int(fd));

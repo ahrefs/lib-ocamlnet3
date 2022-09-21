@@ -28,9 +28,9 @@ CAMLprim value netsys_fallocate(value fd, value start, value len) {
     len_int = Int64_val(len);
 
     if ( ((int64_t) ((off_t) start_int)) != start_int )
-	failwith("Netsys.fadvise: large files not supported on this OS");
+	caml_failwith("Netsys.fadvise: large files not supported on this OS");
     if ( ((int64_t) ((off_t) len_int)) != len_int )
-	failwith("Netsys.fadvise: large files not supported on this OS");
+	caml_failwith("Netsys.fadvise: large files not supported on this OS");
 
     start_off = start_int;
     len_off = len_int;
@@ -38,10 +38,10 @@ CAMLprim value netsys_fallocate(value fd, value start, value len) {
     r = posix_fallocate(Int_val(fd), start_off, len_off);
     /* does not set errno! */
     if (r != 0) 
-	unix_error(r, "posix_fallocate64", Nothing);
+	caml_unix_error(r, "posix_fallocate64", Nothing);
     return Val_unit;
 #else
-    invalid_argument("Netsys.fallocate not available");
+    caml_invalid_argument("Netsys.fallocate not available");
 #endif
 }
 

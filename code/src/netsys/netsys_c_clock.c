@@ -23,10 +23,10 @@ static void make_timespec(value tspair, struct timespec *ts) {
 
     d = Double_val(Field(tspair,0));
     if (!isfinite(d) || d < 0 || d > LONG_MAX-1)
-	failwith("Netsys_posix: time value out of range");
+	caml_failwith("Netsys_posix: time value out of range");
     n = Long_val(Field(tspair,1));
     if (n < 0 || n > 999999999)
-	failwith("Netsys_posix: time value out of range");
+	caml_failwith("Netsys_posix: time value out of range");
     i = floor(d);
     r = floor((d - i) * 1E9);
     r = r + n;
@@ -44,7 +44,7 @@ static void make_timespec(value tspair, struct timespec *ts) {
 static value alloc_timespec_pair(double sec, long nsec) {
     CAMLparam0();
     CAMLlocal1(tsout);
-    tsout = alloc(2,0);
+    tsout = caml_alloc(2,0);
     Store_field(tsout, 0, caml_copy_double(sec));
     Store_field(tsout, 1, Val_long(nsec));
     CAMLreturn(tsout);
@@ -65,7 +65,7 @@ static void clockid_val(value c, clockid_t *out) {
 	    *out = CLOCK_MONOTONIC;
 	    break;
 #else
-	    failwith("Netsys_posix: CLOCK_MONOTONIC is not supported");
+	    caml_failwith("Netsys_posix: CLOCK_MONOTONIC is not supported");
 #endif
 	}
     }
@@ -98,11 +98,11 @@ CAMLprim value netsys_nanosleep(value tspair, value tsref)
     tsout = alloc_timespec_pair(t_out.tv_sec, t_out.tv_nsec);
     Store_field(tsref, 0, tsout);
 
-    if (r == -1) unix_error(e, "nanosleep", Nothing);
+    if (r == -1) caml_unix_error(e, "nanosleep", Nothing);
    
     CAMLreturn(Val_unit);
 #else
-    invalid_argument("Netsys_posix.nanosleep not available");
+    caml_invalid_argument("Netsys_posix.nanosleep not available");
 #endif
 }
 
@@ -118,13 +118,13 @@ CAMLprim value netsys_clock_gettime(value clock)
 
     clockid_val(clock, &c);
     r = clock_gettime(c, &ts);
-    if (r == -1) uerror("clock_gettime", Nothing);
+    if (r == -1) caml_uerror("clock_gettime", Nothing);
     
     tsout = alloc_timespec_pair(ts.tv_sec, ts.tv_nsec);
     
     CAMLreturn(tsout);
 #else
-    invalid_argument("Netsys_posix.clock_gettime not available");
+    caml_invalid_argument("Netsys_posix.clock_gettime not available");
 #endif
 }
 
@@ -141,11 +141,11 @@ CAMLprim value netsys_clock_settime(value clock, value tspair)
     make_timespec(tspair, &ts);
 
     r = clock_settime(c, &ts);
-    if (r == -1) uerror("clock_settime", Nothing);
+    if (r == -1) caml_uerror("clock_settime", Nothing);
     
     CAMLreturn(Val_unit);
 #else
-    invalid_argument("Netsys_posix.clock_settime not available");
+    caml_invalid_argument("Netsys_posix.clock_settime not available");
 #endif
 }
 
@@ -162,13 +162,13 @@ CAMLprim value netsys_clock_getres(value clock)
     clockid_val(clock, &c);
 
     r = clock_getres(c, &ts);
-    if (r == -1) uerror("clock_getres", Nothing);
+    if (r == -1) caml_uerror("clock_getres", Nothing);
     
     tsout = alloc_timespec_pair(ts.tv_sec, ts.tv_nsec);
     
     CAMLreturn(tsout);
 #else
-    invalid_argument("Netsys_posix.clock_getres not available");
+    caml_invalid_argument("Netsys_posix.clock_getres not available");
 #endif
 }
 
@@ -182,7 +182,7 @@ CAMLprim value netsys_clock_getcpuclockid(value pid) {
     char *s;
 
     r = clock_getcpuclockid(Long_val(pid), &c);
-    if (r != 0) unix_error(r, "clock_getcpuclockid", Nothing);
+    if (r != 0) caml_unix_error(r, "clock_getcpuclockid", Nothing);
 
     v = caml_alloc_string(sizeof(clockid_t));
     s = String_val(v);
@@ -191,7 +191,7 @@ CAMLprim value netsys_clock_getcpuclockid(value pid) {
 
     CAMLreturn(v);
 #else
-    invalid_argument("Netsys_posix.clock_getcpuclockid not available");
+    caml_invalid_argument("Netsys_posix.clock_getcpuclockid not available");
 #endif
 }
 
@@ -263,7 +263,7 @@ CAMLprim value netsys_timer_create(value clock, value texp) {
 	    sev.sigev_value.sival_ptr = ne;
 	    break;
 #else
-	    failwith("Netsys_posix.timer_create: unsupported type of timer");
+	    caml_failwith("Netsys_posix.timer_create: unsupported type of timer");
 #endif
 #endif
 	}
@@ -280,7 +280,7 @@ CAMLprim value netsys_timer_create(value clock, value texp) {
 	    sev.sigev_value.sival_ptr = ne;
 	    break;
 #else
-	    failwith("Netsys_posix.timer_create: unsupported type of timer");
+	    caml_failwith("Netsys_posix.timer_create: unsupported type of timer");
 #endif
 	case 1:
 	    /* TEXP_SIGNAL */
@@ -294,7 +294,7 @@ CAMLprim value netsys_timer_create(value clock, value texp) {
     switch (tcase) {
     case 0:
 	code = timer_create(c, &sev, &tm);
-	if (code == -1) uerror("timer_create", Nothing);
+	if (code == -1) caml_uerror("timer_create", Nothing);
 	v = caml_alloc_string(sizeof(timer_t));
 	memcpy(Bytes_val(v), (char *) &tm, sizeof(timer_t));
 	v_timer = caml_alloc(1, 0);
@@ -313,7 +313,7 @@ CAMLprim value netsys_timer_create(value clock, value texp) {
     Store_field(v, 1, v_event);
     CAMLreturn(v);
 #else
-    invalid_argument("Netsys_posix.timer_create not available");
+    caml_invalid_argument("Netsys_posix.timer_create not available");
 #endif
 }
 
@@ -346,7 +346,7 @@ CAMLprim value netsys_timer_settime(value timer, value abstime,
 			     Bool_val(abstime) ? TIMER_ABSTIME : 0,
 			     &it,
 			     NULL);
-	if (code == -1) uerror("timer_settime", Nothing);
+	if (code == -1) caml_uerror("timer_settime", Nothing);
 	break;
 #ifdef HAVE_TIMERFD
     case 1:
@@ -356,14 +356,14 @@ CAMLprim value netsys_timer_settime(value timer, value abstime,
 			       Bool_val(abstime) ? TFD_TIMER_ABSTIME : 0,
 			       &it,
 			       NULL);
-	if (code == -1) uerror("timerfd_settime", Nothing);
+	if (code == -1) caml_uerror("timerfd_settime", Nothing);
 	break;
 #endif
     };
 
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.timer_settime not available");
+    caml_invalid_argument("Netsys_posix.timer_settime not available");
 #endif
 }
 
@@ -382,14 +382,14 @@ CAMLprim value netsys_timer_gettime(value timer) {
 	/* POSIX timer */
 	extract_timer(Field(Field(timer, 0), 0), &tm);
 	code = timer_gettime(tm, &it);
-	if (code == -1) uerror("timer_gettime", Nothing);
+	if (code == -1) caml_uerror("timer_gettime", Nothing);
 	break;
 #ifdef HAVE_TIMERFD
     case 1:
 	/* TIMERFD */
 	fd = Int_val(Field(Field(timer, 0), 0));
 	code = timerfd_gettime(fd, &it);
-	if (code == -1) uerror("timerfd_gettime", Nothing);
+	if (code == -1) caml_uerror("timerfd_gettime", Nothing);
 	break;
 #endif
     };
@@ -398,7 +398,7 @@ CAMLprim value netsys_timer_gettime(value timer) {
 			    it.it_value.tv_nsec);
     return r;
 #else
-    invalid_argument("Netsys_posix.timer_gettime not available");
+    caml_invalid_argument("Netsys_posix.timer_gettime not available");
 #endif
 }
 
@@ -413,7 +413,7 @@ CAMLprim value netsys_timer_delete(value timer) {
 	/* POSIX timer */
 	extract_timer(Field(Field(timer, 0), 0), &tm);
 	code = timer_delete(tm);
-	if (code == -1) uerror("timer_delete", Nothing);
+	if (code == -1) caml_uerror("timer_delete", Nothing);
 	break;
 #ifdef HAVE_TIMERFD
     case 1:
@@ -424,7 +424,7 @@ CAMLprim value netsys_timer_delete(value timer) {
     }
     return Val_unit;
 #else
-    invalid_argument("Netsys_posix.timer_delete not available");
+    caml_invalid_argument("Netsys_posix.timer_delete not available");
 #endif
 }
 
@@ -435,9 +435,9 @@ CAMLprim value netsys_timer_event(value timer) {
 	return Field(timer,1);
     }
     else {
-	failwith("Netsys_posix.timer_event: timer is not connected with event");
+	caml_failwith("Netsys_posix.timer_event: timer is not connected with event");
     }
 #else
-    invalid_argument("Netsys_posix.timer_delete not available");
+    caml_invalid_argument("Netsys_posix.timer_delete not available");
 #endif
 }

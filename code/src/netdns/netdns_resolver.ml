@@ -407,7 +407,7 @@ module Domain = struct
       | (lab1 :: dom1'), (lab2 :: dom2') ->
 	  let lab1_lc = String.lowercase lab1 in
 	  let lab2_lc = String.lowercase lab2 in
-	  ( match Pervasives.compare lab1_lc lab2_lc with
+	  ( match Stdlib.compare lab1_lc lab2_lc with
 	      | 0 ->
 		  compare dom1' dom2'
 	      | n -> n
@@ -478,7 +478,7 @@ let of_addr_domain dom =
 module Float = struct
   type t = float
   let compare x y =
-    Pervasives.compare (x:float) y
+    Stdlib.compare (x:float) y
 end
 
 

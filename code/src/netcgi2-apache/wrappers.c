@@ -40,8 +40,8 @@ Val_optstring (const char *str)
     {
       CAMLparam0();
       CAMLlocal2(rv, s);
-      s = copy_string (str);
-      rv = alloc_small (1, 0);
+      s = caml_copy_string (str);
+      rv = caml_alloc_small (1, 0);
       Field(rv, 0) = s;
       CAMLreturn(rv);
     }

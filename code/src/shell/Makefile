@@ -14,6 +14,8 @@ PP_OPTIONS = -pp "$(CPPO) $(PP_BYTES) $(PP_DEPRECATED)"
 
 INCLUDES += $(INC_EQUEUE) $(INC_NETSYS) $(INC_NETSTRING)
 
+REQUIRES += camlp-streams
+
 include $(TOP_DIR)/Makefile.rules
 
 include depend
