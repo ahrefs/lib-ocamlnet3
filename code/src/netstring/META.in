@@ -1,5 +1,5 @@
 version = "@VERSION@"
-requires = "@REGEXP_PROVIDER@ unix netsys @COMPAT_PCRE_PROVIDER@"
+requires = "@REGEXP_PROVIDER@ unix netsys @COMPAT_PCRE_PROVIDER@ camlp-streams"
 description = "Ocamlnet - String processing library"
 
 archive(byte) = 

@@ -49,6 +49,7 @@ remove: [
 
 ]
 depends: [
+  "camlp-streams"
   "ocamlfind"
   "ocamlbuild" {build}
   "base-bytes"
